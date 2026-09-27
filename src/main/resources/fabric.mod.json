@@ -6,9 +6,7 @@
   "description": "체력 하나, 인벤토리 하나로 최대 네 명이 엔더 드래곤을 잡는 협동 로그라이크. 전멸하면 월드가 사라지고 새 월드에서 다음 회차가 시작된다. 레벨이 오를 때마다 증강을 하나씩 골라 회차마다 다른 몸이 된다.",
   "authors": ["Yumesa2025"],
   "contact": {
-    "homepage": "https://github.com/Yumesa2025/Minecraft_HPShareMod",
-    "sources": "https://github.com/Yumesa2025/Minecraft_HPShareMod",
-    "issues": "https://github.com/Yumesa2025/Minecraft_HPShareMod/issues"
+    "homepage": "https://yumesa2025.github.io/sharedfate/"
   },
   "license": "MIT",
   "icon": "assets/sharedfate/icon.png",
