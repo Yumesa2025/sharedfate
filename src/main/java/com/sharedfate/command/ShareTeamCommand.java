@@ -107,6 +107,8 @@ public final class ShareTeamCommand {
 				.then(PerkCommand.node())
 				// 운영자 전용 증강 시험 명령. 권한이 없으면 이 가지는 아예 보이지 않는다.
 				.then(PerkTestCommand.node())
+				// 엔드 전투 시험. 엔드까지 걸어가지 않고 전투를 열어 볼 수 있다.
+				.then(DragonTrialCommand.node())
 				.then(Commands.literal("storage").executes(ShareTeamCommand::openStorage))
 				.then(Commands.literal("list").executes(ShareTeamCommand::list))
 				// 내 클라이언트와 서버가 같은 판인지 게임 안에서 확인한다. all 은 접속 중인

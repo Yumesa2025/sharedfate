@@ -118,7 +118,7 @@ public final class SharedAreaDamage {
 		return SEEN_THIS_TICK.size();
 	}
 
-	static void clearState() {
+	public static void clearState() {
 		SEEN_THIS_TICK.clear();
 		seenTick = Long.MIN_VALUE;
 	}

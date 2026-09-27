@@ -110,6 +110,8 @@ public class SharedFateMod implements ModInitializer {
 			ConditionalPerkManager.reset();
 			PeriodicPerkManager.reset();
 			com.sharedfate.sync.AbsorptionRechargeManager.reset();
+			com.sharedfate.sync.DragonTrialManager.clearState();
+			com.sharedfate.sync.SharedAreaDamage.clearState();
 			com.sharedfate.perk.PerkSupplyDrops.reset();
 			PerkHolderManager.reset();
 			TeamGathering.reset();
@@ -146,6 +148,9 @@ public class SharedFateMod implements ModInitializer {
 		// 넘는데 모두 「넣고 되돌려 보고 남는다」 모양이라, 부르는 곳마다 달지 않고 늘어난
 		// 것을 여기 한 곳에서 본다.
 		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.storage.TeamStorage::tick);
+		// 엔드 전투. 엔드에 사람이 없으면 첫 줄에서 빠져나가므로 평소에는 비용이 없다.
+		ServerTickEvents.END_SERVER_TICK.register(
+				com.sharedfate.sync.DragonTrialManager::tick);
 		ServerPlayerEvents.JOIN.register(player -> {
 			com.sharedfate.perk.PerkFlightCharm.onPlayerJoin(player);
 			TeamManager manager = TeamManager.get(player.level().getServer());
