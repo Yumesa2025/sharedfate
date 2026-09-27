@@ -4,6 +4,7 @@ import com.sharedfate.perk.PerkChoiceSession;
 import com.sharedfate.perk.PerkDamage;
 import com.sharedfate.sync.DifficultyEscalation;
 import com.sharedfate.sync.GameStartManager;
+import com.sharedfate.sync.SharedAreaDamage;
 import com.sharedfate.sync.SharedEffectDamage;
 import com.sharedfate.sync.SpreadDamageManager;
 import net.minecraft.server.level.ServerLevel;
@@ -195,6 +196,10 @@ public abstract class LivingEntityPerkDamageMixin {
 			return;
 		}
 		if (SharedEffectDamage.isDuplicateEffectDamage(self)) {
+			callback.setReturnValue(false);
+			return;
+		}
+		if (SharedAreaDamage.isDuplicateAreaDamage(self, source)) {
 			callback.setReturnValue(false);
 			return;
 		}
