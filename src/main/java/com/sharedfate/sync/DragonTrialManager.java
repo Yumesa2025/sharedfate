@@ -57,6 +57,8 @@ public final class DragonTrialManager {
 
 	private static final Map<UUID, DragonTrialSession> SESSIONS = new HashMap<>();
 	private static final Map<UUID, Long> PENDING_SUMMON = new HashMap<>();
+	/** 전투를 열 때의 크리스탈 수. 「처음 깨졌다」를 이것과 비교해 판단한다. */
+	private static final Map<UUID, Integer> CRYSTALS_AT_START = new HashMap<>();
 
 	/** 전투 상태를 적어 두는 곳. 서버가 뜰 때 정해진다. */
 	private static @Nullable java.nio.file.Path stateFile;
@@ -84,9 +86,8 @@ public final class DragonTrialManager {
 			} catch (IllegalArgumentException malformed) {
 				continue;
 			}
-			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick,
-					SharedFateMod.config.trialIntervalTicks, SharedFateMod.config.trialMaxCount);
-			session.restore(entry.chosen, entry.nextTrialTick, entry.awaitingChoice);
+			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick);
+			session.restore(entry.chosen, entry.fired, entry.queued, entry.awaitingChoice);
 			SESSIONS.put(teamId, session);
 			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {}장",
 					session.trialCount());
@@ -103,8 +104,9 @@ public final class DragonTrialManager {
 			DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
 			entry.teamId = session.teamId().toString();
 			entry.startedTick = session.startedTick();
-			entry.nextTrialTick = session.nextTrialTickForSave();
 			entry.chosen = new ArrayList<>(session.chosen());
+			entry.fired = session.firedNames();
+			entry.queued = session.queuedNames();
 			entry.awaitingChoice = session.awaitingChoice();
 			entries.add(entry);
 		}
@@ -194,15 +196,16 @@ public final class DragonTrialManager {
 
 	private static void startSession(MinecraftServer server, ServerLevel end, ShareTeam team,
 			long now) {
-		DragonTrialSession session = new DragonTrialSession(team.teamId(), now,
-				SharedFateMod.config.trialIntervalTicks, SharedFateMod.config.trialMaxCount);
+		DragonTrialSession session = new DragonTrialSession(team.teamId(), now);
 		SESSIONS.put(team.teamId(), session);
 		int memberCount = Math.max(1, team.members().size());
 		float target = strengthenDragon(end, memberCount);
+		// 엔드에 들어선 것 자체가 첫 자리다.
+		session.fire(TrialCatalog.Trigger.ENTRY);
+		CRYSTALS_AT_START.put(team.teamId(), countCrystals(end));
 		SharedFateMod.LOGGER.info(
-				"[END] 팀 '{}' 엔드 전투 시작 — 인원 {}명 · 드래곤 체력 {} · 시련 간격 {}초 · 상한 {}장",
-				team.name(), memberCount, target,
-				SharedFateMod.config.trialIntervalTicks / 20, SharedFateMod.config.trialMaxCount);
+				"[END] 팀 '{}' 엔드 전투 시작 — 인원 {}명 · 드래곤 체력 {} · 크리스탈 {}개",
+				team.name(), memberCount, target, countCrystals(end));
 		persist();
 	}
 
@@ -261,8 +264,9 @@ public final class DragonTrialManager {
 				continue;
 			}
 			List<ServerPlayer> members = membersOf(server, team);
-			if (session.shouldOfferTrial(now)) {
-				offerTrial(session, members, now);
+			detectTriggers(end, dragon, session);
+			if (session.shouldOfferTrial()) {
+				offerTrial(session, members);
 			}
 			DelayedStrike.tick(end, members, session, now);
 		}
@@ -273,30 +277,84 @@ public final class DragonTrialManager {
 	}
 
 	/**
-	 * 시련 한 장을 준다.
+	 * 전투 진행도를 보고 자리가 터졌는지 본다.
+	 *
+	 * <p>체력은 <b>강화된 최대치</b> 기준이다. 크리스탈로 회복해 문턱을 오르내려도
+	 * {@link DragonTrialSession#fire} 가 처음 한 번만 센다.
+	 */
+	private static void detectTriggers(ServerLevel end, EnderDragon dragon,
+			DragonTrialSession session) {
+		int crystals = countCrystals(end);
+		Integer atStart = CRYSTALS_AT_START.get(session.teamId());
+		if (atStart != null && atStart > 0) {
+			if (crystals < atStart) {
+				session.fire(TrialCatalog.Trigger.FIRST_CRYSTAL);
+			}
+			if (crystals == 0) {
+				session.fire(TrialCatalog.Trigger.ALL_CRYSTALS);
+			}
+		}
+
+		float max = dragon.getMaxHealth();
+		if (!(max > 0.0F)) {
+			return;
+		}
+		float ratio = dragon.getHealth() / max;
+		if (ratio <= 0.80F) {
+			session.fire(TrialCatalog.Trigger.HEALTH_80);
+		}
+		if (ratio <= 0.50F) {
+			session.fire(TrialCatalog.Trigger.HEALTH_50);
+		}
+		if (ratio <= 0.30F) {
+			session.fire(TrialCatalog.Trigger.HEALTH_30);
+		}
+	}
+
+	/** 지금 엔드에 살아 있는 크리스탈 수. 철장에 갇힌 것도 센다. */
+	private static int countCrystals(ServerLevel end) {
+		int count = 0;
+		for (net.minecraft.world.entity.boss.enderdragon.EndCrystal ignored
+				: end.getEntities(EntityTypes.END_CRYSTAL, crystal -> crystal.isAlive())) {
+			count++;
+		}
+		return count;
+	}
+
+	/**
+	 * 줄 맨 앞의 자리에서 시련 한 장을 준다.
 	 *
 	 * <p><b>아직 선택 화면이 없다.</b> 화면은 클라이언트가 그려야 하고 그러면 통신 규약이 30 으로
 	 * 올라간다. 규약을 올리면 서버와 플레이어 전원이 같은 날 함께 판을 올려야 하므로, 흐름을 먼저
 	 * 굴려 보는 지금 단계에서는 <b>첫 장을 그냥 준다</b>. 선택은 화면과 함께 붙인다.
+	 *
+	 * <p>풀이 비어 있으면 아무것도 주지 않고 지나간다. 카드를 채워 가는 동안에는 빈 풀이
+	 * 정상이다.
 	 */
-	private static void offerTrial(DragonTrialSession session, List<ServerPlayer> members,
-			long now) {
-		List<TrialCatalog.Trial> available = TrialCatalog.offerable(session.chosen());
+	private static void offerTrial(DragonTrialSession session, List<ServerPlayer> members) {
+		TrialCatalog.Trigger trigger = session.beginChoice();
+		if (trigger == null) {
+			return;
+		}
+		List<TrialCatalog.Trial> available = TrialCatalog.offerable(trigger, session.chosen());
 		if (available.isEmpty()) {
-			session.cancelChoice(now);
+			session.skipChoice();
+			SharedFateMod.LOGGER.info("[END] {} — 줄 수 있는 카드가 없어 지나갑니다", trigger.label());
+			persist();
 			return;
 		}
 		TrialCatalog.Trial trial = available.getFirst();
-		session.beginChoice();
-		session.choose(trial.id(), now);
+		session.choose(trial.id());
 
 		for (ServerPlayer member : members) {
-			TitleMessenger.showTitle(member, Component.literal("시련 — " + trial.name()),
-					Component.literal(trial.description()), 10, 70, 20);
+			TitleMessenger.showTitle(member,
+					Component.literal("시련 — " + trial.name()),
+					Component.literal(trigger.label() + " · " + trial.description()), 10, 70, 20);
 			member.level().playSound(null, member.getX(), member.getY(), member.getZ(),
 					SoundEvents.ENDER_DRAGON_GROWL, SoundSource.HOSTILE, 1.0F, 0.6F);
 		}
-		SharedFateMod.LOGGER.info("[END] 시련 {}장째 — {}", session.trialCount(), trial.name());
+		SharedFateMod.LOGGER.info("[END] {} 에서 시련 {}장째 — {} (줄에 {}개 남음)",
+				trigger.label(), session.trialCount(), trial.name(), session.queuedCount());
 		persist();
 	}
 
@@ -328,6 +386,7 @@ public final class DragonTrialManager {
 	public static void clearState() {
 		SESSIONS.clear();
 		PENDING_SUMMON.clear();
+		CRYSTALS_AT_START.clear();
 		DelayedStrike.clearState();
 	}
 

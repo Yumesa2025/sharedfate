@@ -64,11 +64,12 @@ public final class DragonTrialCommand {
 		MinecraftServer server = source.getServer();
 		long now = server.overworld().getGameTime();
 		long elapsed = session.elapsedTicks(now) / 20;
-		long next = session.ticksUntilNextTrial(now);
-		String nextText = next < 0 ? "없음(상한 도달)" : (next / 20) + "초 뒤";
+		String next = session.peekTrigger() == null
+				? "대기 중인 자리 없음"
+				: session.peekTrigger().label() + " 대기";
 		source.sendSuccess(() -> Component.literal(
-				"전투 " + elapsed + "초째 · 시련 " + session.trialCount() + "장 "
-						+ session.chosen() + " · 다음 " + nextText), false);
+				"전투 " + elapsed + "초째 · 시련 " + session.trialCount() + "장 " + session.chosen()
+						+ " · 터진 자리 " + session.fired().size() + "/6 · " + next), false);
 		return 1;
 	}
 

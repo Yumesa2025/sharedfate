@@ -42,8 +42,11 @@ public final class DragonTrialStore {
 	public static final class Entry {
 		public String teamId = "";
 		public long startedTick;
-		public long nextTrialTick;
 		public List<String> chosen = new ArrayList<>();
+		/** 이미 터진 자리들. 같은 자리를 다시 세지 않으려고 남긴다. */
+		public List<String> fired = new ArrayList<>();
+		/** 터졌지만 아직 고르지 않은 자리들. 순서가 곧 줄이다. */
+		public List<String> queued = new ArrayList<>();
 		public boolean awaitingChoice;
 	}
 
@@ -73,6 +76,12 @@ public final class DragonTrialStore {
 				if (entry != null && entry.teamId != null && !entry.teamId.isBlank()) {
 					if (entry.chosen == null) {
 						entry.chosen = new ArrayList<>();
+					}
+					if (entry.fired == null) {
+						entry.fired = new ArrayList<>();
+					}
+					if (entry.queued == null) {
+						entry.queued = new ArrayList<>();
 					}
 					clean.add(entry);
 				}

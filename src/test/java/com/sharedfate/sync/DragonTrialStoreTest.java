@@ -28,8 +28,9 @@ class DragonTrialStoreTest {
 		DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
 		entry.teamId = "cccccccc-0000-0000-0000-000000000001";
 		entry.startedTick = 1234L;
-		entry.nextTrialTick = 5678L;
 		entry.chosen = new ArrayList<>(List.of("a", "b"));
+		entry.fired = new ArrayList<>(List.of("ENTRY", "HEALTH_80"));
+		entry.queued = new ArrayList<>(List.of("HEALTH_80"));
 		entry.awaitingChoice = true;
 
 		DragonTrialStore.save(file, List.of(entry));
@@ -38,8 +39,9 @@ class DragonTrialStoreTest {
 		assertEquals(1, loaded.size());
 		assertEquals("cccccccc-0000-0000-0000-000000000001", loaded.getFirst().teamId);
 		assertEquals(1234L, loaded.getFirst().startedTick);
-		assertEquals(5678L, loaded.getFirst().nextTrialTick);
 		assertEquals(List.of("a", "b"), loaded.getFirst().chosen);
+		assertEquals(List.of("ENTRY", "HEALTH_80"), loaded.getFirst().fired);
+		assertEquals(List.of("HEALTH_80"), loaded.getFirst().queued);
 		assertTrue(loaded.getFirst().awaitingChoice);
 	}
 
@@ -99,22 +101,23 @@ class DragonTrialStoreTest {
 	}
 
 	@Test
-	void 되살린_세션이_타이머를_이어받는다(@TempDir Path dir) throws IOException {
+	void 되살린_세션이_줄을_이어받는다(@TempDir Path dir) throws IOException {
 		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
 		DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
 		entry.teamId = "cccccccc-0000-0000-0000-000000000001";
 		entry.startedTick = 1000L;
-		entry.nextTrialTick = 9000L;
 		entry.chosen = new ArrayList<>(List.of("a"));
+		entry.fired = new ArrayList<>(List.of("ENTRY", "HEALTH_80"));
+		entry.queued = new ArrayList<>(List.of("HEALTH_80"));
 		DragonTrialStore.save(file, List.of(entry));
 
 		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
 		DragonTrialSession session = new DragonTrialSession(
-				java.util.UUID.fromString(loaded.teamId), loaded.startedTick, 3000, 4);
-		session.restore(loaded.chosen, loaded.nextTrialTick, loaded.awaitingChoice);
+				java.util.UUID.fromString(loaded.teamId), loaded.startedTick);
+		session.restore(loaded.chosen, loaded.fired, loaded.queued, loaded.awaitingChoice);
 
 		assertEquals(1, session.trialCount());
-		assertFalse(session.shouldOfferTrial(8999L), "복원한 시각보다 이르면 아직이다");
-		assertTrue(session.shouldOfferTrial(9000L), "복원한 시각이 되면 이어서 나와야 한다");
+		assertTrue(session.shouldOfferTrial(), "줄에 남아 있던 자리는 재시작 뒤에도 떠야 한다");
+		assertEquals(TrialCatalog.Trigger.HEALTH_80, session.peekTrigger());
 	}
 }
