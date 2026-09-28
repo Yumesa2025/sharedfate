@@ -80,6 +80,8 @@ public class SharedFateMod implements ModInitializer {
 			RunProgressManager.onServerStarted(server);
 			TeamRosterStore.onServerStarted(server);
 			WorldResetCoordinator.onServerStarted(server);
+			// 전투 중에 서버가 내려갔다 올라오면 체력만 강화된 채 타이머가 0 인 상태가 된다.
+			com.sharedfate.sync.DragonTrialManager.onServerStarted(server);
 			// 발전과제 달성 알림 끄기. 회차마다 월드가 새로 만들어지므로 월드에 한 번 적어
 			// 두는 방식으로는 유지되지 않는다.
 			WorldGameRules.onServerStarted(server);

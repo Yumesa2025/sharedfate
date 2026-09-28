@@ -58,7 +58,61 @@ public final class DragonTrialManager {
 	private static final Map<UUID, DragonTrialSession> SESSIONS = new HashMap<>();
 	private static final Map<UUID, Long> PENDING_SUMMON = new HashMap<>();
 
+	/** 전투 상태를 적어 두는 곳. 서버가 뜰 때 정해진다. */
+	private static @Nullable java.nio.file.Path stateFile;
+
 	private DragonTrialManager() {
+	}
+
+	/**
+	 * 서버가 뜰 때. 진행 중이던 전투를 되살린다.
+	 *
+	 * <p>드래곤 체력 수정자는 개체에 붙어 월드와 함께 저장되지만 타이머와 누적은 메모리에만
+	 * 있다. 되살리지 않으면 체력만 강화된 채 시련 0 장인 어긋난 상태가 된다.
+	 */
+	public static void onServerStarted(@Nullable MinecraftServer server) {
+		if (server == null) {
+			return;
+		}
+		stateFile = server.getServerDirectory().toAbsolutePath().normalize()
+				.resolve(DragonTrialStore.FILE_NAME);
+		SESSIONS.clear();
+		for (DragonTrialStore.Entry entry : DragonTrialStore.load(stateFile)) {
+			UUID teamId;
+			try {
+				teamId = UUID.fromString(entry.teamId);
+			} catch (IllegalArgumentException malformed) {
+				continue;
+			}
+			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick,
+					SharedFateMod.config.trialIntervalTicks, SharedFateMod.config.trialMaxCount);
+			session.restore(entry.chosen, entry.nextTrialTick, entry.awaitingChoice);
+			SESSIONS.put(teamId, session);
+			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {}장",
+					session.trialCount());
+		}
+	}
+
+	/** 지금 상태를 파일에 남긴다. 세션이 열리고 닫힐 때와 시련을 고를 때 부른다. */
+	private static void persist() {
+		if (stateFile == null) {
+			return;
+		}
+		List<DragonTrialStore.Entry> entries = new ArrayList<>();
+		for (DragonTrialSession session : SESSIONS.values()) {
+			DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
+			entry.teamId = session.teamId().toString();
+			entry.startedTick = session.startedTick();
+			entry.nextTrialTick = session.nextTrialTickForSave();
+			entry.chosen = new ArrayList<>(session.chosen());
+			entry.awaitingChoice = session.awaitingChoice();
+			entries.add(entry);
+		}
+		try {
+			DragonTrialStore.save(stateFile, entries);
+		} catch (java.io.IOException error) {
+			SharedFateMod.LOGGER.error("엔드 전투 상태를 쓰지 못했습니다: {}", stateFile, error);
+		}
 	}
 
 	/**
@@ -149,6 +203,7 @@ public final class DragonTrialManager {
 				"[END] 팀 '{}' 엔드 전투 시작 — 인원 {}명 · 드래곤 체력 {} · 시련 간격 {}초 · 상한 {}장",
 				team.name(), memberCount, target,
 				SharedFateMod.config.trialIntervalTicks / 20, SharedFateMod.config.trialMaxCount);
+		persist();
 	}
 
 	/**
@@ -211,7 +266,10 @@ public final class DragonTrialManager {
 			}
 			DelayedStrike.tick(end, members, session, now);
 		}
-		finished.forEach(SESSIONS::remove);
+		if (!finished.isEmpty()) {
+			finished.forEach(SESSIONS::remove);
+			persist();
+		}
 	}
 
 	/**
@@ -239,6 +297,7 @@ public final class DragonTrialManager {
 					SoundEvents.ENDER_DRAGON_GROWL, SoundSource.HOSTILE, 1.0F, 0.6F);
 		}
 		SharedFateMod.LOGGER.info("[END] 시련 {}장째 — {}", session.trialCount(), trial.name());
+		persist();
 	}
 
 	private static @Nullable EnderDragon findDragon(ServerLevel end) {

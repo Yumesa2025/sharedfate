@@ -138,7 +138,8 @@ public final class DragonTrialSession {
 		awaitingChoice = waiting;
 	}
 
-	long nextTrialTick() {
+	/** 저장에 쓰는 값. 다음 시련 시각을 그대로 적어야 서버가 재시작해도 타이머가 이어진다. */
+	public long nextTrialTickForSave() {
 		return nextTrialTick;
 	}
 }
