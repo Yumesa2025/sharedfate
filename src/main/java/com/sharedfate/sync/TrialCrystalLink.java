@@ -26,19 +26,20 @@ import java.util.UUID;
  *
  * <h2>무엇을 해야 하는가</h2>
  *
- * <p>크리스탈을 <b>부순 순간</b> 가장 가까운 다른 크리스탈이 8초({@code shieldTicks}) 동안
- * 보호막을 두른다.
+ * <p>크리스탈을 <b>부순 순간</b> 가장 가까운 다른 크리스탈이 {@code shieldTicks} 동안 보호막을
+ * 두른다. 카드가 약속하는 것은 <b>「그동안은 어떤 피해도 통하지 않습니다」</b>다 — 화살도 근접도
+ * 폭발도 연쇄도 전부다.
  *
  * <p><b>때리는 것만으로는 걸리지 않는다.</b> 방아쇠는 「맞았다」가 아니라 「부서졌다」다.
  *
  * <h2>이 카드가 빼앗는 것은 순서다</h2>
  *
  * <p>피해가 없다. 한쪽 끝부터 기둥을 차례로 밀고 나가는 가장 편한 길이 막히고, 팀은 <b>먼 것부터
- * 깨거나 8초를 기다리거나</b> 둘 중 하나를 골라야 한다. 그래서 이 파일에서 가장 중요한 코드는
- * 보호막 한 줄이 아니라 「어느 것이 잠겼는지」를 아레나 어디에서든 읽게 만드는 연출 쪽이다 —
- * 그것이 안 보이면 이 카드는 「왜 안 깨지지」가 된다.
+ * 깨거나 기다리거나</b> 둘 중 하나를 골라야 한다. 그래서 이 파일에서 가장 중요한 코드는 보호막 한
+ * 줄이 아니라 「어느 것이 잠겼는지」를 아레나 어디에서든 읽게 만드는 연출 쪽이다 — 그것이 안
+ * 보이면 이 카드는 「왜 안 깨지지」가 된다.
  *
- * <h2>「부서졌다」를 무엇으로 잡는가 — 믹스인을 쓰지 않는다</h2>
+ * <h2>「부서졌다」를 무엇으로 잡는가 — 여기에는 믹스인을 쓰지 않는다</h2>
  *
  * <p>{@code EndCrystal.hurtServer} 는 <b>{@code final}</b> 이라 피해 처리를 덮어쓸 길이 없고,
  * {@link CrystalWatch#lastBreaker()} 는 「누가」만 적을 뿐 <b>「어느 것을」</b>은 적지 않는다.
@@ -71,27 +72,97 @@ import java.util.UUID;
  * 판별은 {@link TrialCrystalOvercharge#onSeat} 를 그대로 쓴다 — 같은 뜻의 판별이 둘로 갈리면
  * 두 카드가 서로 다른 「기둥 위」를 갖게 된다.
  *
- * <h2>보호막은 시간제 무적이다 — 「부활」이 찾아 둔 그 값</h2>
+ * <h2>보호막은 <b>우리 봉인</b>이다 — 바닐라 무적 칸을 빌려 쓰지 않는다</h2>
  *
- * <p>{@code Entity.setInvulnerableTime} 만 쓴다. {@code setPermanentlyInvulnerable} 은
- * {@code Invulnerable} 태그로 <b>저장되므로</b> 서버가 8초 안에 내려가면 다음에 떴을 때
- * 영영 안 깨지는 크리스탈이 남는다 — 전멸하면 월드가 지워지는 게임에서 「끝나지 않는 전투」는
- * 난이도가 아니라 고장이다. 까닭은 {@link TrialCrystalRevive} 클래스 설명에 이미 적혀 있다.
+ * <p>앞선 구현은 {@code Entity.setInvulnerableTime} 을 매 틱 다시 걸었다. 사람이 「보호막이
+ * 걸렸는데 화살에 깨진다」를 들고 왔고, 26.3 바이트코드를 다시 읽어 보니 <b>그 칸이 하는 일과
+ * 이 카드가 약속한 것이 애초에 같지 않았다.</b> 확인한 것을 그대로 적어 둔다.
  *
- * <p>거는 값은 <b>「남은 보호막 + 여유」</b>({@link #guardTicks})라 매 틱 다시 걸린다.
- * {@code Entity.commonTick} 이 매 틱 1씩 깎으므로 <b>우리가 부르기를 멈추는 순간 스스로
- * 풀린다.</b> 드래곤이 죽어 세션이 사라지는 길에는 {@code TrialRisks.clearState} 가 끼어들지
- * 않는데({@code DragonTrialManager.tickSessions} 가 세션만 지운다), 그래도 잠긴 크리스탈이 남지
- * 않는 이유가 이 한 줄이다.
+ * <pre>{@code
+ * javap -p -c net/minecraft/world/entity/boss/enderdragon/EndCrystal.class
+ *   public final boolean hurtServer(ServerLevel, DamageSource, float)
+ *     0: this.isInvulnerableToBase(source)  → 참이면 곧바로 false
  *
- * <p>{@link CrystalWatch#setArrowImmune} 을 쓰지 않은 것은 그쪽이 <b>판 전체·투사체 한정</b>이기
- * 때문이다. 이 카드는 <b>크리스탈 하나·모든 피해</b>라 뜻이 정반대다.
+ * javap -p -c net/minecraft/world/entity/Entity.class
+ *   protected final boolean isInvulnerableToBase(DamageSource source) {
+ *     return this.isRemoved()
+ *         || this.isInvulnerable() && !source.is(BYPASSES_INVULNERABILITY)
+ *                                  && !source.isCreativePlayer()
+ *         || source.is(IS_FIRE) && this.fireImmune()
+ *         || source.is(IS_FALL) && this.is(FALL_DAMAGE_IMMUNE);
+ *   }
+ *   public boolean isInvulnerable()          { permanentlyInvulnerable || invulnerableTime > 0 }
+ *   public final void commonTick()           { if (invulnerableTime > 0) invulnerableTime--; … }
+ *   public void saveWithoutId(ValueOutput o) { if (invulnerableTime > 0) o.putInt("invulnerable_time", …) }
+ * }</pre>
+ *
+ * <p>읽고 나서 바뀐 것이 셋이다.
+ *
+ * <ol>
+ *   <li><b>{@code invulnerableTime} 은 우리 칸이 아니다.</b> 개체 하나에 <b>한 칸</b>뿐이고
+ *       바닐라와 다른 카드가 같은 칸에 쓴다. 이 저장소만 해도 {@link TrialCrystalRevive} 가
+ *       {@code raise}·{@code release}·{@code sweep} 세 곳에서 같은 칸을 쓰고, {@code sweep} 은
+ *       <b>판의 모든 크리스탈을 0 으로 민다.</b> {@code TrialRisks} 의 실행 순서는 카드 순서라
+ *       그쪽이 우리 뒤에 돌면 우리가 건 값이 그 틱 내내 0 인 채로 남는다 — 그 틈에 들어온 화살은
+ *       그대로 통과한다. 앞선 구현의 「둘 다 매 틱 다시 걸므로 대칭이다」는 <b>틀린 설명</b>이다.
+ *       대칭인 것은 「다시 거는 쪽」이고, 비는 것은 <b>두 실행기 사이의 틈</b>이다</li>
+ *   <li><b>그 칸은 저장된다.</b> {@code saveWithoutId} 가 {@code invulnerable_time} 으로 적는다.
+ *       세는 값이라 언젠가 0 이 되긴 하지만, 우리가 켠 것이 개체에 남아 월드 파일까지 따라간다</li>
+ *   <li><b>{@code isInvulnerableToBase} 는 「무적이라 안 맞았다」로 끝난다.</b> 맞은 티가 전혀
+ *       나지 않아 「이건 지금 못 깬다」를 화면에서 읽을 수 없다. 사람이 「버그인가」라고 한 것은
+ *       이 때문이기도 하다</li>
+ * </ol>
+ *
+ * <p>그래서 무적 칸을 <b>아예 쓰지 않는다.</b> 대신 「크리스탈 보호막」
+ * ({@link TrialCrystalGuard} → {@link CrystalWatch} → {@code EndCrystalGuardMixin})이 이미
+ * 증명한 길을 그대로 쓴다 — <b>{@code EndCrystal.hurtServer} 의 {@code HEAD} 에서 거절한다.</b>
+ * 저쪽은 {@code final} 이라 하위 클래스가 가로챌 수 없는 자리임을 바이트코드로 못박아 두었고,
+ * {@code hurtServer} 는 피해량을 쓰지 않으므로 「깎는다」가 아니라 「통째로 거절」밖에 없다는 것도
+ * 이미 적혀 있다.
+ *
+ * <p>다만 <b>그대로는 쓸 수 없어 두 가지를 늘렸다.</b>
+ *
+ * <ul>
+ *   <li>저쪽 깃발은 <b>판 전체 · 투사체 한정</b>({@code boolean arrowImmune})이고 이 카드는
+ *       <b>크리스탈 하나 · 모든 피해</b>다. 그래서 깃발이 아니라 <b>봉인된 크리스탈의
+ *       {@code UUID}</b>({@link #sealedCrystal()})를 들고, 태그를 보지 않고 전부 거절한다</li>
+ *   <li>저쪽에는 없는 <b>시한</b>이 필요하다 — 아래 「죽은 사람 스위치」</li>
+ * </ul>
+ *
+ * <p>운영자 탈출구는 {@code isInvulnerableToBase} 가 남겨 둔 것과 <b>글자 그대로 같은 둘</b>이다.
+ * {@code BYPASSES_INVULNERABILITY}({@code out_of_world}·{@code generic_kill})와
+ * {@code DamageSource.isCreativePlayer()}. 바닐라 무적이 열어 두는 문을 우리 봉인이 닫아 버리면
+ * 운영자가 치울 길이 없어진다.
+ *
+ * <p>⚠ {@code setPermanentlyInvulnerable} 은 여전히 <b>쓰지 않는다.</b> {@code Invulnerable}
+ * 태그로 저장되므로 보호막이 도는 중에 서버가 내려가면 영영 안 깨지는 크리스탈이 남는다. 까닭은
+ * {@link TrialCrystalRevive} 클래스 설명에 이미 적혀 있다.
+ *
+ * <h2>죽은 사람 스위치 — 우리가 부르기를 멈추면 스스로 풀린다</h2>
+ *
+ * <p>무적 칸을 버리면서 <b>공짜로 얻던 안전장치 하나를 잃었다.</b> 그 칸은
+ * {@code Entity.commonTick} 이 매 틱 1씩 깎아 주므로 우리가 죽어도 저절로 0 이 됐다. 정적 칸에
+ * 적은 {@code UUID} 는 아무도 깎아 주지 않는다 — 드래곤이 죽어 세션이 사라지는 길에는
+ * {@code TrialRisks.clearState} 가 끼어들지 않으므로({@code DragonTrialManager.tickSessions} 가
+ * 세션만 지운다), 그대로 두면 <b>영영 안 깨지는 크리스탈</b>이 정확히 그 길로 생긴다.
+ *
+ * <p>그래서 봉인에 <b>유효기한</b>({@link #sealFreshUntil})을 함께 적는다. 매 틱
+ * 「{@code now} + 남은 보호막 + 여유」로 다시 적고, 믹스인은 기한이 지난 봉인을 <b>없는 것으로
+ * 본다.</b> 우리가 한 번이라도 못 부르면 여유만큼만 더 버티고 스스로 열린다 — 잃었던 성질을 그대로
+ * 되찾은 셈이고, 이번에는 개체에 아무것도 남지 않으므로 저장 파일까지 따라가지도 않는다.
+ *
+ * <p>⚠ 기한을 재는 시계만은 <b>{@code now} 가 아니라 {@code level.getGameTime()}</b> 이다.
+ * 죽은 사람 스위치는 「우리가 안 돌 때」를 재는 장치라 <b>우리가 돌려주는 값으로는 잴 수 없다.</b>
+ * 둘은 같은 눈금이다 — {@code DragonTrialManager} 가 {@code now = end.getGameTime()} 으로 시작한다.
+ * 얼어붙은 판({@code TrialFreeze})에서도 어긋나지 않는다. 그쪽은
+ * {@code ServerTickRateManager.setFrozen} 이라 <b>게임 시각이 아예 멈추고</b>, 그러면 기한도 멈추고
+ * 개체도 틱을 안 받아 아무도 크리스탈을 때릴 수 없다. 카드의 시계는 그대로 {@code elapsed} 다.
  *
  * <h2>보호막은 언제나 하나뿐이다 — 한 틱에 여럿이 부서져도</h2>
  *
  * <p>카드에 적힌 것은 「가장 가까운 <b>다른 크리스탈이</b>」 하나다. 부서진 개수만큼 걸면 연쇄
- * 폭발 한 번에 남은 기둥이 통째로 잠기고, 그때는 「순서를 바꿔라」가 아니라 「8초 동안 아무것도
- * 하지 마라」가 된다.
+ * 폭발 한 번에 남은 기둥이 통째로 잠기고, 그때는 「순서를 바꿔라」가 아니라 「그동안 아무것도 하지
+ * 마라」가 된다.
  *
  * <p>그래서 한 틱에 여럿이 부서지면 <b>부서진 것들과 남은 것들 사이에서 가장 가까운 한 쌍</b>을
  * 골라 그 한 쌍의 남은 쪽에만 건다({@link #nearestIndex}). 「가장 가까운 이웃을 잠근다」가 부서진
@@ -122,14 +193,43 @@ import java.util.UUID;
  * 판에 함께 뜰 수 있고, 그쪽은 달아오른 크리스탈에 <b>매 틱</b> 빔을 다시 쓴다. 같은 크리스탈에
  * 둘이 붙으면 매 틱 서로 덮어써 <b>두 카드의 연출이 같이 깨진다.</b>
  *
- * <p>대신 크리스탈을 감싸는 <b>파티클 껍질</b>을 그린다. 껍질은 남은 시간만큼 크고, 다 오므라들어
- * 크리스탈에 달라붙으면 풀린다 — 「어느 것인가」와 「얼마나 남았는가」를 한 신호가 같이 말한다
- * (「과충전」의 자라는 빛기둥과 같은 문법이다).
+ * <p>대신 크리스탈을 감싸는 <b>파티클 껍질</b>을 그린다. 껍질은 「어느 것인가」와 「얼마나
+ * 남았는가」를 한 신호로 같이 말한다(「과충전」의 자라는 빛기둥과 같은 문법이다).
  *
  * <p>색은 {@link TrialWarning.Colors} 에서 고르지 않는다. 그 규약은 <b>바닥 표식이 요구하는
  * 행동</b>을 뜻하는데(서 있으면 죽는다·밀려난다·너를 노린다·번개), 「이건 지금 못 깬다」는 그
  * 넷 중 어느 것도 아니고 새 색을 만드는 것은 규약을 규약이 아니게 만든다. 그래서 색이 아니라
  * <b>바닐라 파티클 종류</b>로 가른다.
+ *
+ * <h2>30초짜리 초읽기는 오므라드는 반경으로 못 읽는다</h2>
+ *
+ * <p>8초일 때는 껍질 반경 {@code 2.4 → 1.3} 이 초읽기였다. 30초로 늘리면 <b>초당 0.037
+ * 블록</b>이라 사람 눈에는 아예 멈춘 것으로 보이고, 크리스탈은 반경 42 기둥 꼭대기라 그 1.1 블록이
+ * 40 블록 밖에서 <b>1.6도</b>밖에 안 된다. 「얼마나 남았는가」를 말하는 신호가 사실상 사라진다.
+ *
+ * <p>그래서 초읽기를 <b>적도 띠의 호 길이</b>로 옮겼다({@link #shellArc}). 갓 걸렸을 때는 완전한
+ * 고리, 풀릴 때쯤이면 짧은 조각이다. 같은 30초에 <b>360도</b>를 쓰므로 반경이 쓰던 1.6도와는
+ * 자릿수가 다르고, 「고리가 닫혀 있나 열려 있나」는 멀리서도 읽힌다. 위아래 띠는 <b>언제나
+ * 온전한 고리</b>로 남겨 「감싸고 있다」가 무너지지 않게 한다 — 셋이 다 같이 줄면 그냥 사라지는
+ * 것으로 보인다.
+ *
+ * <p>반경 쪽은 그대로 두었다. 이제는 초읽기가 아니라 <b>거드는 신호</b>다. 둘 다 단조롭게 줄므로
+ * 서로 거짓말하지 않는다.
+ *
+ * <p>점 수는 <b>호의 길이에 비례</b>해 뽑는다({@link #bandPoints}). 예전에는 띠마다 20 점을 똑같이
+ * 찍었는데 위아래 띠는 둘레가 {@code cos(π/4) ≈ 0.71} 배라 거기만 촘촘했다. 비례로 바꾸면 밀도가
+ * 고르고, 한 번에 나가는 패킷도 {@code 60} 에서 처음 {@code 48} · 끝 {@code 32} 로 준다 —
+ * 30초를 버텨야 하니 그만큼이 그대로 이득이다.
+ *
+ * <h2>막힌 것이 눈에 보여야 한다</h2>
+ *
+ * <p>바닐라 무적은 <b>아무 반응도 내지 않는다.</b> 화살을 쐈는데 소리도 불꽃도 없으면 사람은
+ * 「막혔다」가 아니라 「버그다」로 읽는다 — 실제로 그렇게 들어왔다.
+ *
+ * <p>그래서 봉인이 한 방을 거절하면 믹스인이 {@link #noteDeflected()} 로 적어 두고, <b>다음 틱의
+ * 실행기가</b> 튕겨 낸 연출을 낸다. 믹스인 쪽에서 바로 내지 않는 이유는 둘이다 — 피격 경로에
+ * 파티클·소리를 넣으면 연쇄 폭발 한 번에 수십 번 나가고, 소리는 <b>사람마다 그 자리에서</b> 내야
+ * 하는데 믹스인에는 팀 명단이 없다. 한 틱에 몇 방을 막았든 <b>깃발 하나</b>라 연출도 한 번이다.
  *
  * <h2>이 저장소가 이미 밟은 지뢰</h2>
  *
@@ -142,8 +242,11 @@ import java.util.UUID;
  *       <b>사람마다 그 자리에서</b> 낸다</li>
  *   <li><b>자막은 쓰지 않는다.</b> 화면 아래 글자는 전부 걷어냈다({@link TrialWarning#shout})</li>
  *   <li><b>크리스탈을 부수지도 만들지도 않는다.</b> 이 카드가 하는 일은 보호막뿐이다</li>
+ *   <li><b>개체에 아무것도 쓰지 않는다.</b> 봉인은 이 클래스의 정적 칸에만 산다. 그래서 되돌릴 것도
+ *       저장될 것도 없고, 서버가 그냥 죽어도 다음에 뜬 판에는 봉인이 없다</li>
  *   <li><b>시간은 받은 {@code now} 로만 잰다.</b> {@code level.getGameTime()} 을 부르면 얼어붙은
- *       판({@code TrialFreeze})에서 혼자 시간이 흐른다</li>
+ *       판({@code TrialFreeze})에서 혼자 시간이 흐른다. 유일한 예외가 죽은 사람 스위치이고,
+ *       까닭은 위에 적었다</li>
  *   <li><b>드래곤을 건드리지 않는다.</b> {@code setPhase} 도 {@code setTarget} 도 부르지 않는다 —
  *       드래곤 페이즈에 끼어들었다가 착지를 아예 안 하게 된 사고가 있다
  *       ({@link TrialDragonFocus} 클래스 설명)</li>
@@ -156,8 +259,19 @@ public final class TrialCrystalLink {
 	/** 껍질을 다시 그리는 간격(틱). 매 틱 그리면 이 카드 하나가 파티클 예산을 먹는다. */
 	private static final int PULSE_TICKS = 4;
 
-	/** 껍질 한 겹(위도)에 찍는 점 수. 세 겹이므로 한 번에 이 값의 세 배가 나간다. */
-	private static final int SHELL_POINTS = 20;
+	/**
+	 * <b>온전한 적도 띠</b> 하나에 찍는 점 수. 다른 띠와 짧아진 호는 여기서 비례로 깎는다
+	 * ({@link #bandPoints}).
+	 */
+	static final int SHELL_POINTS = 20;
+
+	/**
+	 * 어떤 띠도 이보다 적게 찍지 않는다.
+	 *
+	 * <p>초읽기가 끝나 갈 때 적도 호는 아주 짧아지는데, 비례만 따르면 점 한두 개가 되어 <b>남은
+	 * 조각이 보이지 않는다.</b> 마지막 순간이 가장 알고 싶은 순간이라 바닥을 둔다.
+	 */
+	static final int SHELL_MIN_POINTS = 4;
 
 	/**
 	 * 껍질을 이루는 위도들(라디안).
@@ -165,6 +279,9 @@ public final class TrialCrystalLink {
 	 * <p>적도 하나만 그리면 <b>고리</b>로 보이고, 고리는 이 저장소에서 「바닥 위험 범위」라는 뜻을
 	 * 이미 갖고 있다({@link TrialWarning#markGround}). 위아래를 더해야 <b>공</b>으로 읽혀 「감싸고
 	 * 있다」가 된다.
+	 *
+	 * <p>순서가 뜻을 갖는다 — <b>{@code 0.0} 인 적도가 초읽기</b>고 나머지 둘은 언제나 온전한
+	 * 고리다({@link #shell}).
 	 */
 	private static final double[] SHELL_BANDS = {-Math.PI / 4.0, 0.0, Math.PI / 4.0};
 
@@ -184,11 +301,22 @@ public final class TrialCrystalLink {
 	 */
 	static final double SHELL_MIN = 1.3;
 
+	/**
+	 * 풀리기 직전에 적도 띠에 남는 호의 비율.
+	 *
+	 * <p>0 으로 닫지 <b>않는다.</b> 다 사라지면 「이미 풀렸다」로 읽혀 한 번 더 헛되이 쏘게 된다 —
+	 * {@link #SHELL_MIN} 과 정확히 같은 이유다. 0.12 는 약 43도라 40 블록 밖에서도 조각으로 보인다.
+	 */
+	static final double ARC_MIN = 0.12;
+
 	/** 껍질이 한 틱에 도는 각(라디안). 멈춰 있으면 점 무늬로 보이고, 돌면 껍질로 보인다. */
 	private static final double SHELL_SPIN = 0.05;
 
 	/** 껍질의 중심을 개체 자리에서 이만큼 올린다. 개체 자리는 몸의 바닥이라 그대로 쓰면 아래로 쏠린다. */
 	private static final double SHELL_LIFT = 1.0;
+
+	/** 한 방을 튕겨 냈을 때 그리는 불꽃 고리의 점 수. 껍질보다 성글어야 「따로 난 일」로 읽힌다. */
+	private static final int DEFLECT_POINTS = 12;
 
 	// ------------------------------------------------------------------ 상태
 
@@ -217,8 +345,8 @@ public final class TrialCrystalLink {
 	/**
 	 * 지금 보호막을 두른 크리스탈. 없으면 {@code null}.
 	 *
-	 * <p>여기도 개체를 든다 — {@link #clearState()} 에는 {@code ServerLevel} 이 없어서, 좌표만
-	 * 적어 두면 무적을 풀 방법이 없다.
+	 * <p>여기 개체를 드는 것은 <b>연출 때문</b>이다 — 자리를 물어야 껍질을 그리고, 사라졌는지를
+	 * 물어야 손을 놓는다. 봉인 자체는 개체가 아니라 {@link #sealedId} 가 한다.
 	 */
 	private static @Nullable EndCrystal shielded;
 
@@ -230,7 +358,62 @@ public final class TrialCrystalLink {
 	 */
 	private static long shieldEnds;
 
+	/**
+	 * 봉인된 크리스탈의 {@code UUID}. 없으면 {@code null}.
+	 *
+	 * <p><b>이 한 칸이 실제로 막는 것이다.</b> {@code EndCrystalSealMixin} 이 모든 크리스탈 피격에서
+	 * 읽는다. {@code volatile} 인 까닭은 {@link CrystalWatch} 와 같다 — 쓰는 쪽(시련 틱)과 읽는
+	 * 쪽(피격)이 사실 같은 스레드지만, 믹스인은 남의 클래스 안에서 도는 코드라 이 파일만 보고는
+	 * 보증할 수 없다.
+	 */
+	private static volatile @Nullable UUID sealedId;
+
+	/**
+	 * 봉인의 유효기한. <b>{@code level.getGameTime()} 눈금</b>이다.
+	 *
+	 * <p>죽은 사람 스위치다. 클래스 설명의 「죽은 사람 스위치」를 볼 것 — 여기가 유한한 수를 들고
+	 * 있는 한 「영영 안 깨지는 크리스탈」은 구조적으로 생길 수 없다.
+	 */
+	private static volatile long sealFreshUntil;
+
+	/** 지난 틱 이후로 봉인이 한 방이라도 거절했는가. 믹스인이 세우고 실행기가 내린다. */
+	private static volatile boolean deflected;
+
 	private TrialCrystalLink() {
+	}
+
+	// ------------------------------------------------------------------ 믹스인이 보는 자리
+
+	/**
+	 * 지금 봉인된 크리스탈. 없으면 {@code null}.
+	 *
+	 * <p>믹스인이 <b>모든 크리스탈 피격</b>에서 첫 줄로 부른다. 그래서 이 메서드는 칸 하나를 읽는
+	 * 것 이상을 해서는 안 된다 — 여기에 계산을 넣으면 시련이 하나도 없는 서버까지 값을 치른다
+	 * ({@link CrystalWatch#arrowImmune()} 와 같은 규칙이다).
+	 */
+	public static @Nullable UUID sealedCrystal() {
+		return sealedId;
+	}
+
+	/**
+	 * 봉인이 아직 살아 있는가.
+	 *
+	 * <p>시계를 <b>인자로 받는다.</b> 이 파일이 {@code level.getGameTime()} 을 직접 부르지 않게
+	 * 하려는 것이다 — 카드의 시계는 어디까지나 {@code now}/{@code elapsed} 이고, 죽은 사람
+	 * 스위치만 다른 시계를 쓴다는 사실이 호출부에 그대로 드러나야 한다.
+	 */
+	public static boolean sealHolds(long gameTime) {
+		return sealFresh(sealedId, sealFreshUntil, gameTime);
+	}
+
+	/**
+	 * 봉인이 한 방을 거절했다고 적는다. 믹스인이 부른다.
+	 *
+	 * <p>한 틱에 몇 번 불려도 <b>깃발 하나</b>다. 연쇄 폭발은 한 틱에 수십 번 들어오는데 그때마다
+	 * 연출을 내면 화면이 하얘지고, 그것은 「막혔다」가 아니라 「무슨 일이 났다」로 읽힌다.
+	 */
+	public static void noteDeflected() {
+		deflected = true;
 	}
 
 	// ------------------------------------------------------------------ 진입점
@@ -253,6 +436,8 @@ public final class TrialCrystalLink {
 	 * @param dragon  <b>쓰지 않는다.</b> 이 카드는 드래곤에게서 아무것도 읽지 않고 아무것도 쓰지
 	 *                않는다 — 클래스 설명의 「드래곤을 건드리지 않는다」를 볼 것
 	 * @param granted 카드를 받은 틱. 시간은 월드 시간이 아니라 여기서부터 센다
+	 * @param now     지금의 게임 시각. 카드의 시계로 쓰는 것이 아니라 <b>봉인의 유효기한</b>을 적는
+	 *                데 쓴다 — 클래스 설명의 「죽은 사람 스위치」를 볼 것
 	 */
 	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
 			@Nullable List<ServerPlayer> members, String key, long granted, long now,
@@ -279,17 +464,18 @@ public final class TrialCrystalLink {
 		remember(onSeats);
 
 		if (!broken.isEmpty()) {
-			arm(end, members, broken, onSeats, elapsed, risk.shieldTicks());
+			arm(end, members, broken, onSeats, elapsed, now, risk.shieldTicks());
 		}
-		sustain(end, members, elapsed, risk.shieldTicks());
+		sustain(end, members, elapsed, now, risk.shieldTicks());
 	}
 
 	/**
 	 * 월드가 바뀌거나 서버가 내려갈 때.
 	 *
-	 * <p>여기가 <b>보호막을 푸는 마지막 정상 경로</b>다. 월드를 못 받으므로 들고 있던 개체에 직접
-	 * {@code setInvulnerableTime(0)} 을 쓴다 — 이미 지워진 개체에 써도 해가 없다. 빠뜨리면 다음
-	 * 판에 <b>이유 없이 안 깨지는 크리스탈</b>이 남는다. 컴파일도 시험도 조용한 사고다.
+	 * <p>여기가 <b>봉인을 푸는 마지막 정상 경로</b>다. 되돌릴 것은 전부 이 클래스의 정적 칸이라
+	 * <b>월드도 개체도 필요 없다</b> — {@code SERVER_STOPPED} 에서도 불리는 길이라 이것이 중요하다.
+	 * 예전 구현은 개체에 {@code setInvulnerableTime(0)} 을 써야 했고, 그래서 개체를 들고 있어야만
+	 * 되돌릴 수 있었다. 이제는 {@link #sealedId} 를 비우는 것으로 끝난다.
 	 *
 	 * <p>껍질은 되돌릴 것이 없다. 파티클은 한 번 보내고 스스로 사라지는 것이라 우리가 끄지 않아도
 	 * 다음 틱에 남지 않는다. 빔도 건드린 적이 없으므로 걷지 않는다 — 여기서 {@code setBeamTarget}
@@ -351,7 +537,7 @@ public final class TrialCrystalLink {
 	 * 늘어난다.
 	 */
 	private static void arm(ServerLevel end, @Nullable List<ServerPlayer> members,
-			List<Vec3> broken, List<EndCrystal> survivors, long elapsed, int shieldTicks) {
+			List<Vec3> broken, List<EndCrystal> survivors, long elapsed, long now, int shieldTicks) {
 		List<Vec3> seats = new ArrayList<>(survivors.size());
 		for (EndCrystal crystal : survivors) {
 			seats.add(crystal.position());
@@ -363,42 +549,44 @@ public final class TrialCrystalLink {
 
 		EndCrystal next = survivors.get(pick);
 		if (shielded != null && shielded != next) {
-			// 옮기기 전에 옛 것을 반드시 푼다. 안 풀면 들고 있던 손을 놓는 순간 그 크리스탈은
-			// 여유 시간만큼 더 무적인 채로 우리 손을 떠난다.
+			// 옮기기 전에 옛 것을 반드시 푼다. 안 풀면 봉인이 둘이 되는데, 칸은 하나뿐이라
+			// 실제로는 「옛 것이 기한까지 잠긴 채 우리 손을 떠난다」가 된다.
 			release();
 		}
 		shielded = next;
 		shieldEnds = elapsed + shieldTicks;
-		next.setInvulnerableTime(guardTicks(shieldTicks));
+		seal(next, shieldTicks, now);
 		// 껍질을 여기서 한 번 그린다. 유지 쪽은 주기를 타므로 그쪽에만 맡기면 소리가 난 뒤
 		// 최대 PULSE_TICKS 동안 화면에 아무것도 없는 틈이 생긴다 — 그 틈이 「걸렸다는데 어디에?」다.
-		shell(end, next.position(), SHELL_MAX, elapsed);
+		shell(end, next.position(), SHELL_MAX, shellArc(shieldTicks, shieldTicks), elapsed);
 		announce(end, members);
 		SharedFateMod.LOGGER.info("[END] 「연결된 수정」 — 크리스탈이 부서져 가장 가까운 하나가 {}틱 동안 잠깁니다",
 				shieldTicks);
 	}
 
 	/**
-	 * 보호막 한 틱 — 무적을 다시 걸고 껍질을 그린다.
+	 * 보호막 한 틱 — 봉인의 기한을 미루고, 막은 것을 알리고, 껍질을 그린다.
 	 *
-	 * <p>무적을 <b>매 틱 다시 거는 것</b>이 이 카드의 안전장치다. 거는 값이 「남은 시간 + 여유」라
-	 * 우리가 한 번이라도 못 부르면 그 순간부터 여유만큼만 더 버티고 스스로 0 이 된다. 드래곤이
+	 * <p>기한을 <b>매 틱 미루는 것</b>이 이 카드의 안전장치다. 미루는 값이 「남은 시간 + 여유」라
+	 * 우리가 한 번이라도 못 부르면 그 순간부터 여유만큼만 더 버티고 스스로 열린다. 드래곤이
 	 * 죽어 세션이 사라지는 길에는 {@code TrialRisks.clearState} 가 끼어들지 않으므로, 그 길에서
-	 * 보호막을 푸는 것은 정확히 이 성질이다.
+	 * 봉인을 푸는 것은 정확히 이 성질이다.
 	 *
-	 * <p>지켜보던 크리스탈이 <b>사라져 있으면</b> 손만 놓는다. 청크 언로드로 없어졌을 수 있고,
-	 * 없는 것을 찾다 예외를 내면 <b>그 틱의 다른 시련까지 멈춘다.</b>
+	 * <p>지켜보던 크리스탈이 <b>사라져 있으면</b> 봉인을 풀고 손을 놓는다. 청크 언로드로 없어졌을
+	 * 수 있고, 없는 것을 찾다 예외를 내면 <b>그 틱의 다른 시련까지 멈춘다.</b>
+	 *
+	 * <p>튕겨 낸 연출은 <b>주기를 타지 않는다.</b> 쏜 뒤 최대 {@code PULSE_TICKS} 만큼 아무 반응이
+	 * 없으면 그 침묵이 곧 「버그인가」다.
 	 */
 	private static void sustain(ServerLevel end, @Nullable List<ServerPlayer> members, long elapsed,
-			int shieldTicks) {
+			long now, int shieldTicks) {
 		EndCrystal crystal = shielded;
 		if (crystal == null) {
 			return;
 		}
 		if (crystal.isRemoved()) {
-			// 걷을 대상이 없다. 무적은 개체와 함께 사라졌으므로 되돌릴 것도 없다.
-			shielded = null;
-			shieldEnds = 0L;
+			// 지킬 것이 없어졌다. 봉인도 함께 푼다 — 개체가 사라져도 UUID 는 우리 칸에 남는다.
+			release();
 			return;
 		}
 
@@ -409,29 +597,45 @@ public final class TrialCrystalLink {
 			return;
 		}
 
-		// 「부활」의 sweep 이 판의 모든 크리스탈 무적을 0 으로 밀 때가 있는데, 매 틱 다시 거는
-		// 덕분에 그 한 틱만 비고 스스로 돌아온다. 반대로 우리가 release 로 0 을 써도 그쪽이 매 틱
-		// 다시 걸므로 대칭이다 — 둘 다 「매 틱 다시 건다」라 어느 쪽도 상대를 영영 지우지 못한다.
-		crystal.setInvulnerableTime(guardTicks(remaining));
+		seal(crystal, remaining, now);
+
+		if (deflected) {
+			deflected = false;
+			deflect(end, members, crystal.position(), elapsed);
+		}
 
 		if (elapsed % PULSE_TICKS != 0L) {
 			return;
 		}
-		shell(end, crystal.position(), shellRadius(remaining, shieldTicks), elapsed);
+		shell(end, crystal.position(), shellRadius(remaining, shieldTicks),
+				shellArc(remaining, shieldTicks), elapsed);
+	}
+
+	/**
+	 * 이 크리스탈을 봉인하고 기한을 미룬다.
+	 *
+	 * <p>개체에는 <b>아무것도 쓰지 않는다.</b> 쓰는 곳은 우리 정적 칸 둘뿐이다.
+	 */
+	private static void seal(EndCrystal crystal, int remaining, long now) {
+		sealedId = crystal.getUUID();
+		sealFreshUntil = now + guardTicks(remaining);
 	}
 
 	/**
 	 * 들고 있던 보호막을 되돌린다.
 	 *
-	 * <p>되돌릴 것은 시간제 무적 하나뿐이다. 블록도 빔도 드래곤도 건드린 적이 없다.
+	 * <p>되돌릴 것은 정적 칸 넷뿐이다. 개체도 블록도 빔도 드래곤도 건드린 적이 없다.
 	 * {@code setPermanentlyInvulnerable} 은 <b>켠 적이 없으므로 끄지도 않는다</b> — 그것까지 끄는
 	 * 것은 「부활」의 일이고(옛 저장 파일과 소환 의식을 함께 보는 자리다), 여기서 같이 끄면 우리가
 	 * 켜지 않은 값을 우리가 지우는 셈이 된다.
+	 *
+	 * <p>{@link #deflected} 도 함께 내린다. 봉인이 없는데 깃발만 남아 있으면 <b>다음에 걸리는
+	 * 보호막이 맞지도 않았는데 튕겨 내는 연출</b>로 시작한다.
 	 */
 	private static void release() {
-		if (shielded != null) {
-			shielded.setInvulnerableTime(0);
-		}
+		sealedId = null;
+		sealFreshUntil = 0L;
+		deflected = false;
 		shielded = null;
 		shieldEnds = 0L;
 	}
@@ -446,20 +650,30 @@ public final class TrialCrystalLink {
 	 * 밖이므로 <b>보호막이 통째로 안 보이게 된다.</b> 「부활」이 정확히 이 함정에 빠진 적이 있다.
 	 *
 	 * <p>{@code END_ROD} 를 고른 것은 밝고 오래 남아 <b>멀리서도 모양이 읽히기</b> 때문이다.
-	 * 「부활」도 같은 파티클을 쓰지만 그쪽은 크리스탈이 설 때 한 번 터지는 꽃이고 이것은 8초 동안
+	 * 「부활」도 같은 파티클을 쓰지만 그쪽은 크리스탈이 설 때 한 번 터지는 꽃이고 이것은 계속
 	 * 도는 껍질이라, 화면에서 섞이지 않는다.
 	 *
-	 * <p>껍질을 천천히 돌린다. 같은 점에 계속 찍으면 점 무늬로 보이고, 돌면 면으로 보인다.
+	 * <p><b>적도 띠만 초읽기다.</b> 호가 {@code arc} 만큼만 그려져 시간이 갈수록 고리가 열린다.
+	 * 위아래 두 띠는 언제나 온전한 고리라 「감싸고 있다」가 끝까지 남는다 — 까닭은 클래스 설명의
+	 * 「30초짜리 초읽기는 오므라드는 반경으로 못 읽는다」에 있다.
 	 *
-	 * @param radius 남은 시간이 정하는 반경. 다 오므라들면 곧 풀린다는 뜻이다
+	 * <p>껍질을 천천히 돌린다. 같은 점에 계속 찍으면 점 무늬로 보이고, 돌면 면으로 보인다. 도는
+	 * 것은 호의 <b>길이</b>를 바꾸지 않으므로 초읽기를 흐리지 않는다.
+	 *
+	 * @param radius 남은 시간이 정하는 반경. 이제는 거드는 신호다
+	 * @param arc    적도 띠에 그릴 호의 비율. {@code 1.0} 이면 온전한 고리다
 	 */
-	private static void shell(ServerLevel end, Vec3 at, double radius, long elapsed) {
+	private static void shell(ServerLevel end, Vec3 at, double radius, double arc, long elapsed) {
 		double spin = elapsed * SHELL_SPIN;
 		for (double band : SHELL_BANDS) {
 			double ringRadius = radius * Math.cos(band);
 			double lift = radius * Math.sin(band);
-			for (int index = 0; index < SHELL_POINTS; index++) {
-				double angle = spin + (Math.PI * 2.0 * index) / SHELL_POINTS;
+			// 적도만 초읽기다. 부동소수 비교로 보이지만 SHELL_BANDS 에 적은 리터럴 0.0 을 그대로
+			// 읽는 것이라 오차가 끼어들 자리가 없다.
+			double span = band == 0.0 ? Math.PI * 2.0 * arc : Math.PI * 2.0;
+			int points = bandPoints(ringRadius, radius, span);
+			for (int index = 0; index < points; index++) {
+				double angle = spin + (span * index) / points;
 				end.sendParticles(ParticleTypes.END_ROD, true, false,
 						at.x + Math.cos(angle) * ringRadius,
 						at.y + SHELL_LIFT + lift,
@@ -467,6 +681,33 @@ public final class TrialCrystalLink {
 						1, 0.0, 0.0, 0.0, 0.0);
 			}
 		}
+	}
+
+	/**
+	 * 한 방을 튕겨 냈다 — <b>막혔다는 것을 보이고 들린다.</b>
+	 *
+	 * <p>바닐라 무적은 아무 반응도 내지 않는다. 화살이 그냥 사라지면 사람은 「막혔다」가 아니라
+	 * 「버그다」로 읽는다.
+	 *
+	 * <p>{@code ELECTRIC_SPARK} 는 이 저장소의 어느 시련도 쓰지 않는 파티클이다. 밝고 짧아
+	 * <b>그 순간에만</b> 보이므로 계속 도는 {@code END_ROD} 껍질과 섞이지 않는다.
+	 *
+	 * <p>소리는 방패가 막는 소리다. 바닐라에서 그 소리의 뜻이 <b>글자 그대로 「막혔다」</b>라
+	 * 배울 것이 없고, 걸릴 때와 풀릴 때의 전도체 소리({@link #announce}·{@link #expire})와도
+	 * 귀로 섞이지 않는다. {@code Holder.Reference} 로 들어 있어 {@code value()} 로 꺼낸다.
+	 */
+	private static void deflect(ServerLevel end, @Nullable List<ServerPlayer> members, Vec3 at,
+			long elapsed) {
+		double spin = elapsed * SHELL_SPIN;
+		for (int index = 0; index < DEFLECT_POINTS; index++) {
+			double angle = spin + (Math.PI * 2.0 * index) / DEFLECT_POINTS;
+			end.sendParticles(ParticleTypes.ELECTRIC_SPARK, true, false,
+					at.x + Math.cos(angle) * SHELL_MAX,
+					at.y + SHELL_LIFT,
+					at.z + Math.sin(angle) * SHELL_MAX,
+					2, 0.0, 0.0, 0.0, 0.0);
+		}
+		playEverywhere(end, members, SoundEvents.SHIELD_BLOCK.value(), 1.0F, 0.8F);
 	}
 
 	/**
@@ -532,6 +773,16 @@ public final class TrialCrystalLink {
 	// ------------------------------------------------------------------ 월드 없이 도는 계산
 
 	/**
+	 * 이 봉인이 아직 유효한가. <b>순수 계산</b>이라 시험이 여기를 직접 본다.
+	 *
+	 * <p>봉인이 없으면 거짓, 기한이 지났으면 거짓이다. 기한과 같은 눈금이면 <b>이미 끝난 것</b>으로
+	 * 본다 — 열리는 쪽으로 기울여야 「영영 안 깨지는 크리스탈」이 생기지 않는다.
+	 */
+	static boolean sealFresh(@Nullable UUID sealed, long freshUntil, long gameTime) {
+		return sealed != null && gameTime < freshUntil;
+	}
+
+	/**
 	 * 부서진 자리들에서 가장 가까운 후보의 번호. 후보가 없으면 {@code -1}.
 	 *
 	 * <p>부서진 것이 여럿이면 <b>모든 쌍</b> 중 가장 가까운 한 쌍을 찾아 그 후보를 돌려준다.
@@ -571,7 +822,7 @@ public final class TrialCrystalLink {
 	 * 보호막이 끝나기까지 남은 틱. 0 이면 이번 틱에 풀린다.
 	 *
 	 * <p>위를 {@code shieldTicks} 로 <b>자른다.</b> 세션을 복원하면 {@code elapsed} 가 뒤로 갈 수
-	 * 있고, 그러면 남은 시간이 카드에 적힌 것보다 길어져 8초짜리 보호막이 20초가 된다.
+	 * 있고, 그러면 남은 시간이 카드에 적힌 것보다 길어져 30초짜리 보호막이 한참 더 간다.
 	 */
 	static int remainingShield(long elapsed, long endsAt, int shieldTicks) {
 		int span = Math.max(0, shieldTicks);
@@ -580,10 +831,10 @@ public final class TrialCrystalLink {
 	}
 
 	/**
-	 * 이번 틱에 걸어 둘 무적 길이.
+	 * 이번 틱에 밀어 둘 봉인의 여명(틱).
 	 *
 	 * <p>남은 보호막 + 여유. <b>절대 무한이 되어서는 안 된다</b> — 이 함수가 유한한 수만 돌려주는
-	 * 한, 우리가 다음 틱에 죽어도 크리스탈은 그만큼 뒤에 스스로 깨질 수 있게 된다.
+	 * 한, 우리가 다음 틱에 죽어도 봉인은 그만큼 뒤에 스스로 열린다.
 	 *
 	 * <p>여유는 {@link TrialCrystalRevive#GUARD_MARGIN_TICKS} 를 <b>빌려 쓴다.</b> 뜻이 정확히
 	 * 같은 값이고(연출이 끊겨도 이만큼 뒤에는 반드시 풀린다), 여기 따로 적어 두면 한쪽만 고쳤을 때
@@ -596,8 +847,9 @@ public final class TrialCrystalLink {
 	/**
 	 * 남은 시간에 맞는 껍질 반경.
 	 *
-	 * <p>갓 걸렸을 때 가장 크고 풀리기 직전에 가장 작다. 「얼마나 남았는가」를 말하는 유일한
-	 * 신호라 <b>단조롭게 줄어야 한다</b> — 중간에 다시 커지면 사람이 시간을 잘못 읽는다.
+	 * <p>갓 걸렸을 때 가장 크고 풀리기 직전에 가장 작다. 초읽기의 <b>주된</b> 신호는 이제
+	 * {@link #shellArc} 지만 이쪽도 <b>단조롭게 줄어야 한다</b> — 둘이 서로 반대로 움직이면 사람이
+	 * 어느 쪽을 믿어야 할지 알 수 없다.
 	 */
 	static double shellRadius(int remaining, int shieldTicks) {
 		if (shieldTicks <= 0) {
@@ -605,5 +857,41 @@ public final class TrialCrystalLink {
 		}
 		double left = Math.max(0.0, Math.min(shieldTicks, remaining)) / shieldTicks;
 		return SHELL_MIN + (SHELL_MAX - SHELL_MIN) * left;
+	}
+
+	/**
+	 * 남은 시간에 맞는 적도 띠의 호 비율. {@code 1.0} 이면 온전한 고리다.
+	 *
+	 * <p><b>30초를 버티는 초읽기는 이쪽이다.</b> 반경이 쓸 수 있는 폭은 1.1 블록(40 블록 밖에서
+	 * 1.6도)뿐인데 이쪽은 360도를 쓴다. 까닭은 클래스 설명에 적어 두었다.
+	 *
+	 * <p>{@link #ARC_MIN} 에서 멈추는 이유는 {@link #shellRadius} 가 {@link #SHELL_MIN} 에서
+	 * 멈추는 것과 같다 — 다 사라지면 「이미 풀렸다」로 읽힌다.
+	 */
+	static double shellArc(int remaining, int shieldTicks) {
+		if (shieldTicks <= 0) {
+			return ARC_MIN;
+		}
+		double left = Math.max(0.0, Math.min(shieldTicks, remaining)) / shieldTicks;
+		return ARC_MIN + (1.0 - ARC_MIN) * left;
+	}
+
+	/**
+	 * 그 띠의 그 호에 찍을 점 수.
+	 *
+	 * <p><b>호의 실제 길이에 비례</b>한다. 온전한 적도({@code ringRadius == radius},
+	 * {@code span == 2π})가 {@link #SHELL_POINTS} 이고 나머지는 거기서 깎인다. 예전처럼 띠마다
+	 * 같은 수를 찍으면 둘레가 {@code cos(π/4) ≈ 0.71} 배인 위아래 띠만 촘촘해져 <b>공이 아니라
+	 * 위아래가 두꺼운 통</b>으로 보인다.
+	 *
+	 * <p>{@link #SHELL_MIN_POINTS} 아래로는 내려가지 않는다. 짧아진 호가 점 한둘이 되면 남은
+	 * 조각이 보이지 않는데, 그 조각이 「아직 못 깬다」를 말하는 마지막 신호다.
+	 */
+	static int bandPoints(double ringRadius, double radius, double span) {
+		if (!(radius > 0.0) || !(span > 0.0)) {
+			return SHELL_MIN_POINTS;
+		}
+		double share = (ringRadius / radius) * (span / (Math.PI * 2.0));
+		return Math.max(SHELL_MIN_POINTS, (int) Math.round(SHELL_POINTS * share));
 	}
 }

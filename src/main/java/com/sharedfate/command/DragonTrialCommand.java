@@ -315,11 +315,14 @@ public final class DragonTrialCommand {
 					+ overcharge.damagePerSecond();
 			case TrialCatalog.Risk.EnderStorm storm -> "엔더폭풍 · " + storm.count() + "개 · 초당 "
 					+ storm.speedPerSecond() + "블록 · 피해 " + storm.damage() + " · 넉백 "
-					+ storm.knockback() + "(안쪽) · 쉼 " + ticks(storm.restTicks());
+					// 미는 방향이 바깥으로 뒤집혔다. 여기에 「안쪽」이 남아 있으면 값을 보는
+					// 사람이 낙사 위험을 정반대로 읽는다.
+					+ storm.knockback() + "(바깥) · 쉼 " + ticks(storm.restTicks());
 			case TrialCatalog.Risk.DryWorld ignored ->
 					"메마른 세계 · 한 번 · 물·용암 증발 및 설치 금지";
 			case TrialCatalog.Risk.NightHost host -> "밤의 군세 · 한 번 · 엔더맨 적대 "
-					+ ticks(host.hostileTicks());
+					+ ticks(host.hostileTicks()) + " · 반경 " + host.radius() + "블록 · 최대 "
+					+ host.maxMobs() + "마리";
 			case TrialCatalog.Risk.EndRain rain -> "종말의 비 · 한 번 · 지속 "
 					+ ticks(rain.durationTicks()) + " · 간격 " + rain.minInterval() + "~"
 					+ rain.maxInterval() + "틱 · " + rain.minSpots() + "~" + rain.maxSpots()
@@ -327,7 +330,9 @@ public final class DragonTrialCommand {
 					+ " · 반경 " + rain.radius() + "블록";
 			case TrialCatalog.Risk.LandingShock shock -> "착지 충격 · 퍼짐 "
 					+ ticks(shock.travelTicks()) + " · 최대 반경 " + shock.maxRadius()
-					+ "블록 · 피해 " + shock.damage() + " · 넉백 " + shock.knockback() + "블록";
+					+ "블록 · 피해 " + shock.damage() + " · 넉백 " + shock.knockback()
+					+ "블록(바깥) · 고리 " + shock.ringCount() + "개 · 고리 간격 "
+					+ ticks(shock.ringIntervalTicks());
 			case TrialCatalog.Risk.HotbarLock lock -> "굳는 손 · 간격 " + ticks(lock.interval())
 					+ " · " + lock.slots() + "칸";
 		};

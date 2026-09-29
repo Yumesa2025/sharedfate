@@ -102,6 +102,10 @@ public final class TrialWarning {
 	 * {@link #markGround} 는 <b>매 틱</b> 불리며, 이제 거리 제한 없이 <b>전원에게</b> 나간다 —
 	 * 상한이 없으면 큰 반경 카드 하나가 파티클 패킷만으로 틱을 민다. 상한에 걸리면 간격이 벌어질
 	 * 뿐 고리는 남는다.
+	 *
+	 * <p>⚠ <b>이 상한은 고리 <i>하나</i>만 본다.</b> 작은 고리를 수십 개 띄우는 카드는 여기에
+	 * 걸리지 않고도 한 틱 예산을 넘긴다 — 그쪽은
+	 * {@link #markGround(ServerLevel, Vec3, double, ParticleOptions, int, int)} 로 나눠 그린다.
 	 */
 	static final int MAX_POINTS = 80;
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다. */
@@ -217,11 +221,63 @@ public final class TrialWarning {
 	 */
 	public static void markGround(@Nullable ServerLevel level, @Nullable Vec3 center, double radius,
 			@Nullable ParticleOptions type) {
+		markGround(level, center, radius, type, 1, 0);
+	}
+
+	/**
+	 * 규약의 빨강 그대로 <b>나눠 그리는</b> 형태. 색을 고를 일이 없는 카드가 한 틱 예산만
+	 * 아끼고 싶을 때 쓴다 — 색을 인자로 받지 않으므로 「서 있으면 죽는다」가 아닌 뜻으로
+	 * 새어 나갈 수 없다.
+	 *
+	 * @see #markGround(ServerLevel, Vec3, double, ParticleOptions, int, int)
+	 */
+	public static void markGround(@Nullable ServerLevel level, @Nullable Vec3 center, double radius,
+			int stride, int phase) {
+		markGround(level, center, radius, dust(Colors.DEADLY), stride, phase);
+	}
+
+	/**
+	 * 고리 한 바퀴를 <b>여러 틱에 나눠</b> 그리는 형태. 한 틱에 {@code stride} 개마다 하나씩만 찍고,
+	 * 다음 틱에 {@code phase} 를 한 칸 옮겨 나머지를 채운다.
+	 *
+	 * <h2>왜 생겼는가 — 고리가 <b>많은</b> 카드 때문이다</h2>
+	 *
+	 * <p>점 하나가 패킷 한 장이고 {@link #markGround} 는 매 틱 불린다. 반경이 큰 고리는
+	 * {@link #MAX_POINTS} 가 막아 주지만, <b>작은 고리를 수십 개</b> 띄우는 카드는 그 상한에
+	 * 걸리지 않는다 — 「종말의 비」가 한 볼리에 45곳이 되면서 한 틱에 1800점이 됐다. 반경을 줄일
+	 * 수도 개수를 줄일 수도 없어서(둘 다 사람이 정한 값이다) <b>시간축으로 나눈다.</b>
+	 *
+	 * <p>{@link #BASE_POINTS} 하한을 낮추는 길도 있었지만 그쪽은 <b>이 메서드를 쓰는 카드 전부</b>
+	 * 의 모습을 바꾼다(낙뢰·연쇄 포격·기둥 화염구·자리 폭격…). 이 형태는 <b>더해 놓기만</b> 한
+	 * 것이라 {@code stride} 를 안 넘기는 기존 호출자에게는 아무 일도 일어나지 않는다.
+	 *
+	 * <h2>⚠ {@code stride} 는 8보다 작아야 한다</h2>
+	 *
+	 * <p>나눠 그려도 고리가 고리로 보이는 것은 <b>먼저 찍은 점이 아직 살아 있기</b> 때문이다.
+	 * 26.3 {@code DustParticleBase} 의 생성자가 수명을 이렇게 잡는다.
+	 *
+	 * <pre>lifetime = max(1, (int)(8.0 / (random.nextDouble() * 0.8 + 0.2)) * scale)</pre>
+	 *
+	 * <p>{@link #dust} 가 {@code scale} 을 1.0 으로 주므로 수명은 <b>최소 8틱</b>(굴림이 1 에
+	 * 가까울 때) ~ 40틱이다. 즉 {@code stride} 가 8 이상이면 한 바퀴를 다 그리기 전에 첫 점이
+	 * 죽어 <b>고리가 영영 안 닫힌다.</b> 8 이하로 둘 것.
+	 *
+	 * <p>대가는 <b>처음 {@code stride} 틱 동안 고리가 성기다</b>는 것이다. 예고가 그보다 훨씬
+	 * 길어야 뜻이 있다.
+	 *
+	 * @param stride 몇 틱에 나눠 한 바퀴를 채울지. 1 이하면 예전처럼 한 틱에 다 그린다
+	 * @param phase  이번 틱에 그릴 몫. 보통 호출자가 받은 {@code now} 에서 뽑는다 — 매 틱
+	 *               1씩 늘어야 빈자리가 순서대로 메워진다
+	 */
+	public static void markGround(@Nullable ServerLevel level, @Nullable Vec3 center, double radius,
+			@Nullable ParticleOptions type, int stride, int phase) {
 		if (level == null || center == null || type == null || !(radius > 0.0)) {
 			return;
 		}
 		int points = ringPoints(radius);
-		for (int index = 0; index < points; index++) {
+		int step = Math.max(1, stride);
+		// floorMod 라야 음수 phase 에서도 0..step-1 로 떨어진다. 되감긴 판의 now 가 음수일 수 있다.
+		for (int index = Math.floorMod(phase, step); index < points; index += step) {
 			double angle = (Math.PI * 2.0 * index) / points;
 			level.sendParticles(type, true, false,
 					center.x + Math.cos(angle) * radius,
@@ -229,6 +285,22 @@ public final class TrialWarning {
 					center.z + Math.sin(angle) * radius,
 					1, 0.0, 0.0, 0.0, 0.0);
 		}
+	}
+
+	/**
+	 * {@link #markGround(ServerLevel, Vec3, double, ParticleOptions, int, int)} 한 번에 나가는
+	 * 점 수의 <b>상한</b>.
+	 *
+	 * <p>위상에 따라 실제로는 이보다 하나 적을 수 있다({@code 40점을 6으로 나누면 7·7·7·7·6·6}).
+	 * 예산을 묻는 자리는 늘 나쁜 쪽을 봐야 하므로 올림으로 돌려준다.
+	 */
+	static int strokePoints(double radius, int stride) {
+		int points = ringPoints(radius);
+		if (points <= 0) {
+			return 0;
+		}
+		int step = Math.max(1, stride);
+		return (points + step - 1) / step;
 	}
 
 	/**

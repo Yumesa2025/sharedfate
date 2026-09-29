@@ -1,15 +1,16 @@
 package com.sharedfate.sync;
 
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -89,6 +90,36 @@ import java.util.UUID;
  *
  * <p>엔드 중앙 섬은 사방이 허공이고 체력이 팀 공유라 <b>한 사람의 낙사가 팀 전체를 끝낸다.</b>
  * 이 카드는 아무것도 밀지 않는다 — 미는 코드를 한 줄도 두지 않는 것이 그 장치다.
+ *
+ * <h2>⚠ 고리는 지형을 탄다 — 그리는 것도 판정도 함께</h2>
+ *
+ * <p>전에는 고리를 <b>평평한 한 높이</b>로 그렸다. 중앙에서 지표를 한 번 재고 그 값을 한 바퀴에
+ * 다 썼는데, 중앙 섬은 평평하지 않고 사람이 발판을 쌓기도 해서 <b>높이가 달라지는 자리에서
+ * 고리가 땅에 파묻히거나 공중에 떴다.</b> 사람이 직접 고쳐 달라고 한 자리다.
+ *
+ * <p>그래서 이제 <b>점마다 그 자리의 지표를 묻는다</b>({@link Ground}). 고리가 지나는 칸의
+ * 가장 높은 블록 위에 점이 찍히므로 기둥이든 쌓아 올린 발판이든 고리가 그 위를 넘어간다.
+ *
+ * <p><b>판정도 같이 따라간다.</b> 보이는 고리가 지형을 타는데 「바닥을 딛고 있는가」가 평평한
+ * 높이로 남으면, <b>지붕 밑에 선 사람은 머리 위로 지나간 고리에 묶이고</b> 사람이 본 것과 맞은
+ * 것이 갈라진다. {@link #atRingHeight} 가 「내 발밑을 지나갔는가」를 물어 그 어긋남을 막는다.
+ *
+ * <p>비싸지지 않게 하는 장치가 셋이다. 한 틱에 사백 점을 찍으므로 점마다 월드에 묻는 것은
+ * 그대로 두면 비싸다.
+ *
+ * <ul>
+ *   <li>{@link Ground} 가 <b>직전에 본 청크를 기억한다.</b> 고리는 한 바퀴를 이어 도므로 이웃한
+ *       점은 거의 같은 청크다 — 청크를 새로 찾는 것은 경계를 넘을 때뿐이다</li>
+ *   <li>청크는 {@code getChunkNow} 로만 본다. <b>없으면 그 점을 건너뛴다</b> — 고리를 그리자고
+ *       청크를 불러오는 것이 이 카드에서 가장 비싼 일이다</li>
+ *   <li>하이트맵은 {@code ServerLevel} 이 아니라 <b>청크에서 바로</b> 읽는다. 월드 쪽
+ *       {@code getHeightmapPos} 는 부를 때마다 청크를 다시 찾고 {@code BlockPos} 를 하나씩
+ *       만든다 — 점마다 부르면 그 둘이 사백 배가 된다</li>
+ * </ul>
+ *
+ * <p><b>허공에는 점을 찍지 않는다.</b> 블록이 하나도 없는 칸에서는 하이트맵이 월드 바닥을
+ * 돌려주는데, 거기에 찍으면 고리가 발밑이 아니라 까마득한 아래에 뜬다. 안 찍으면 섬이 끝나는
+ * 자리에서 고리도 함께 끊겨 <b>「여기서부터 땅이 없다」가 그대로 읽힌다.</b>
  */
 public final class TrialEnderPulse {
 
@@ -132,23 +163,47 @@ public final class TrialEnderPulse {
 	 */
 	static final int WAKE_MAX_POINTS = 160;
 	/**
-	 * 한 틱에 이 카드가 쓰는 점 수.
+	 * 한 틱에 이 카드가 쓰는 점 수의 <b>상한</b>.
 	 *
 	 * <p>숫자를 따로 박지 않고 위 둘에서 뽑는다 — 한쪽만 고치면 예산이 조용히 깨진다. 400 은
 	 * 이 저장소가 이미 쓰는 예산이다({@code DragonFireBarrage.MARK_MAX_POINTS} 의 설명 —
 	 * 「낙뢰」가 반경 3 짜리 고리 열 개로 정확히 400점을 쓴다).
+	 *
+	 * <p>실제로 나가는 수는 이보다 <b>적다.</b> 고리가 지형을 타면서 허공에 걸린 점을 건너뛰기
+	 * 때문이다 — 섬이 끊긴 자리에서는 고리가 함께 끊긴다.
 	 */
 	static final int MAX_POINTS_PER_TICK = EDGE_MAX_POINTS + WAKE_MAX_POINTS;
 
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다({@code TrialWarning} 과 같은 이유). */
 	private static final double GROUND_OFFSET = 0.15;
+
 	/**
-	 * 하이트맵이 허공을 돌려줬을 때 쓰는 높이.
+	 * 「그 자리에는 설 땅이 없다」. {@link Ground#surfaceAt} 이 돌려주는 값이다.
 	 *
-	 * <p>{@code DragonFireBarrage.FALLBACK_GROUND_Y} 와 같은 값이고 까닭도 같다 — 중앙 섬
-	 * 표면이다.
+	 * <p>두 경우를 한 값으로 묶는다 — <b>청크가 아직 안 올라왔거나</b>, 올라왔는데 그 칸이
+	 * <b>바닥까지 허공</b>이거나. 둘 다 이 카드가 할 일은 같다(점을 안 찍고 판정도 안 한다)라
+	 * 갈래를 늘려 봐야 부르는 쪽이 같은 줄을 두 번 적게 된다.
+	 *
+	 * <p>{@code Integer.MIN_VALUE} 인 것은 <b>진짜 높이일 수 없는 수</b>라서다. 월드 바닥
+	 * ({@code getMinY}) 을 표시값으로 쓰면 바닥에 실제로 블록이 있는 판에서 구별되지 않는다.
 	 */
-	private static final double FALLBACK_GROUND_Y = 63.0;
+	static final int NO_GROUND = Integer.MIN_VALUE;
+	/**
+	 * 판정이 지표에서 봐 주는 <b>세로 여유</b>(블록).
+	 *
+	 * <p>고리는 칸마다 그 자리의 지표 위에 그려진다. 그러니 「고리가 나를 지나갔다」는 내 발이
+	 * <b>그 지표 근처에 있었다</b>는 뜻이고, 이 값이 그 「근처」다.
+	 *
+	 * <p>2 인 근거. 아래쪽으로는 반 블록짜리 발판(하프 블록·계단)에 서면 하이트맵이 한 칸 위를
+	 * 돌려주므로 <b>1 블록쯤은 반드시 봐 줘야 한다</b>. 위쪽으로는 점프가 1.25 블록까지 뜨는데,
+	 * 뜬 사람은 어차피 {@link #JUMP_WINDOW_TICKS} 창이 먼저 통과시키므로 여기서 더 볼 것이 없다.
+	 * 그 둘을 다 덮는 가장 작은 정수가 2 다.
+	 *
+	 * <p>여기를 키우면 <b>지붕 밑에 선 사람이 머리 위로 지나간 고리에 다시 묶인다</b> — 고친
+	 * 어긋남이 그대로 돌아온다. 줄이면 반 블록 발판 위에 선 사람이 눈앞으로 지나가는 고리를
+	 * 그냥 통과시킨다.
+	 */
+	static final double JUDGE_VERTICAL_REACH = 2.0;
 
 	// ------------------------------------------------------------------ 상태
 
@@ -180,14 +235,15 @@ public final class TrialEnderPulse {
 	/**
 	 * 퍼지고 있는 고리 하나.
 	 *
+	 * <p>높이를 들지 않는다. 전에는 출발할 때 중앙에서 한 번 재어 여기에 담아 두었는데, 이제
+	 * 고리가 <b>칸마다 그 자리의 지표</b>를 따라가므로 파동 전체가 공유할 높이라는 것이 없다.
+	 *
 	 * @param index   몇 번째 파동인가. 주기가 넘어갔는지 판단한다
-	 * @param groundY 고리를 얹을 높이. 고리가 출발할 때 중앙에서 한 번만 잰다 — 까닭은 그 값을
-	 *                재는 곳에 적어 두었다
 	 * @param crossed 이미 고리가 지나간 사람들. <b>이 집합은 고쳐 쓴다.</b> 고리가 한 사람을 두
 	 *                번 지나가지 않게 막는 것이 전부인데, 안 막으면 고리 끝에 붙어 바깥으로 달리는
 	 *                사람이 같은 파동에 두 번 묶인다
 	 */
-	private record Pulse(long index, double groundY, Set<UUID> crossed) {
+	private record Pulse(long index, Set<UUID> crossed) {
 	}
 
 	private TrialEnderPulse() {
@@ -245,15 +301,18 @@ public final class TrialEnderPulse {
 		long index = elapsed / interval;
 		Pulse pulse = PULSES.get(pulseKey);
 		if (pulse == null || pulse.index() != index) {
-			pulse = new Pulse(index, groundY(end), new HashSet<>());
+			pulse = new Pulse(index, new HashSet<>());
 			PULSES.put(pulseKey, pulse);
 		}
 
+		// 지표를 묻는 자리가 이 틱에 둘(그리기·판정)이라 기억을 하나만 만들어 함께 쓴다.
+		// 나눠 들면 판정이 그리기가 이미 찾아 둔 청크를 다시 찾는다.
+		Ground ground = new Ground();
 		if (step <= travelTicks) {
-			draw(end, pulse.groundY(), radiusAt(step, travelTicks, risk.maxRadius()));
+			draw(end, ground, radiusAt(step, travelTicks, risk.maxRadius()));
 		}
 		warn(end, members, step, risk);
-		judge(end, members, pulse, step, now, risk);
+		judge(end, ground, members, pulse, step, now, risk);
 	}
 
 	/**
@@ -310,9 +369,13 @@ public final class TrialEnderPulse {
 	 * 구간으로 물으면 0 부터 {@code maxRadius} 까지 어느 거리든 정확히 한 번 덮인다.
 	 *
 	 * <p>피해는 없고 넉백도 없다. 여기서 사람에게 하는 일은 구속을 거는 것 하나뿐이다.
+	 *
+	 * <p><b>거리만으로는 부족하다.</b> 고리가 지형을 타므로 같은 거리라도 내 발밑을 지나갔는지는
+	 * 높이를 봐야 안다({@link #atRingHeight}). 그 검사가 없으면 지붕 밑이나 굴 속에 선 사람이
+	 * <b>머리 위로 지나간 고리</b>에 묶인다.
 	 */
-	private static void judge(ServerLevel end, List<ServerPlayer> members, Pulse pulse, int step,
-			long now, TrialCatalog.Risk.EnderPulse risk) {
+	private static void judge(ServerLevel end, Ground ground, List<ServerPlayer> members,
+			Pulse pulse, int step, long now, TrialCatalog.Risk.EnderPulse risk) {
 		double outer = judgeRadius(step, risk.travelTicks(), risk.maxRadius());
 		double inner = judgeRadius(step - 1, risk.travelTicks(), risk.maxRadius());
 		for (ServerPlayer member : members) {
@@ -320,13 +383,18 @@ public final class TrialEnderPulse {
 			if (pulse.crossed().contains(memberId)) {
 				continue;
 			}
-			double distance = distanceFromCenter(member.position());
+			Vec3 at = member.position();
+			double distance = distanceFromCenter(at);
 			if (!(distance > inner) || !(distance <= outer)) {
 				continue;
 			}
 			// 지나간 것은 뛰었든 아니든 지나간 것이다. 안 적으면 고리 끝에 붙어 바깥으로 달리는
-			// 사람이 같은 파동에 다시 걸린다.
+			// 사람이 같은 파동에 다시 걸린다. 높이로 빠진 사람도 마찬가지로 적는다 — 고리는
+			// 그 사람의 칸을 이미 지나갔고, 안 적으면 지붕 밑에서 나오는 순간 다시 걸린다.
 			pulse.crossed().add(memberId);
+			if (!atRingHeight(at.y, ground.surfaceAt(end, at.x, at.z))) {
+				continue;
+			}
 			if (jumpedThrough(memberId, now)) {
 				continue;
 			}
@@ -421,17 +489,16 @@ public final class TrialEnderPulse {
 	 *
 	 * <p>반경이 0 인 출발 틱에는 그릴 것이 없다. 중앙 한 점에 400 발을 쏘아 봐야 덩어리 하나다.
 	 */
-	private static void draw(ServerLevel end, double groundY, double radius) {
+	private static void draw(ServerLevel end, Ground ground, double radius) {
 		if (!(radius > 0.0)) {
 			return;
 		}
-		double y = groundY + GROUND_OFFSET;
-		ring(end, ParticleTypes.CRIT, y, radius, edgePoints(radius));
-		ring(end, ParticleTypes.PORTAL, y, radius, wakePoints(radius));
+		ring(end, ground, ParticleTypes.CRIT, radius, edgePoints(radius));
+		ring(end, ground, ParticleTypes.PORTAL, radius, wakePoints(radius));
 	}
 
 	/**
-	 * 중앙을 도는 점들을 찍는다.
+	 * 중앙을 도는 점들을 <b>각자 제 자리의 지표 위에</b> 찍는다.
 	 *
 	 * <p><b>첫 {@code boolean} 을 {@code false} 로 되돌리지 말 것.</b> 짧은 형태는 서버에서
 	 * 32칸으로 잘리고 클라이언트가 한 번 더 거른다({@link TrialWarning} 의 「거리 제한을 끄고
@@ -440,31 +507,97 @@ public final class TrialEnderPulse {
 	 *
 	 * <p>둘째 {@code boolean}({@code alwaysShow}) 은 첫 깃발이 켜져 있으면 무의미하고, 사용자의
 	 * 「파티클 줄이기」 설정을 우리가 뒤집을 이유도 없어 {@code false} 로 둔다.
+	 *
+	 * <p>각을 도는 순서를 뒤섞지 말 것. 이어 도니까 이웃한 두 점이 거의 같은 청크이고, 그래서
+	 * {@link Ground} 의 기억이 거의 언제나 맞는다 — 순서를 흩으면 점마다 청크를 새로 찾는다.
 	 */
-	private static void ring(ServerLevel end, ParticleOptions type, double y, double radius,
+	private static void ring(ServerLevel end, Ground ground, ParticleOptions type, double radius,
 			int points) {
 		for (int index = 0; index < points; index++) {
 			double angle = (Math.PI * 2.0 * index) / points;
-			end.sendParticles(type, true, false,
-					Math.cos(angle) * radius, y, Math.sin(angle) * radius,
+			double x = Math.cos(angle) * radius;
+			double z = Math.sin(angle) * radius;
+			int surface = ground.surfaceAt(end, x, z);
+			if (surface == NO_GROUND) {
+				// 허공이거나 아직 안 올라온 청크다. 여기에 찍으면 고리가 까마득한 아래에 떠
+				// 「저기가 바닥이다」라고 거짓말을 한다.
+				continue;
+			}
+			end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
 					1, 0.0, 0.0, 0.0, 0.0);
 		}
 	}
 
+	// ------------------------------------------------------------------ 지표 묻기
+
 	/**
-	 * 고리를 얹을 높이. 고리가 출발할 때 중앙에서 <b>한 번만</b> 잰다.
+	 * 지표 높이를 묻되 <b>직전에 본 청크를 기억하는</b> 조회기.
 	 *
-	 * <p>점마다 재면 한 틱에 하이트맵을 사백 번 두드리게 되고, 이 카드는 20초마다 4초씩 그린다.
-	 * 이 카드는 블록을 한 칸도 건드리지 않으니 파동이 도는 동안 지면이 바뀌지도 않는다 —
-	 * {@code DragonFireBarrage} 가 같은 이유로 놓을 때 한 번만 잰다.
+	 * <p>한 틱에 하나 만들어 그 틱 안에서만 쓴다. 틱을 넘겨 들고 있으면 블록이 바뀌어도 낡은
+	 * 청크를 붙들게 되고, 무엇보다 정적으로 두면 월드가 바뀔 때 비워 줄 자리가 하나 더 는다.
 	 *
-	 * <p>중앙 섬은 평평해서 이 한 값으로 충분하고, 섬이 끊긴 바깥에서는 고리가 허공에 뜬다.
-	 * 거기 설 수 있는 사람이 없으므로 그대로 둔다 — 안 그리면 오히려 「저쪽은 안전한가」로 읽힌다.
+	 * <p>기억이 <b>한 칸</b>뿐인 것은 고리를 이어 돌기 때문이다. 이웃한 두 점은 거의 같은 청크라
+	 * 한 칸으로도 거의 다 맞고, 여러 칸을 두면 그 자체를 뒤지는 값이 하이트맵 한 번보다 비싸진다.
 	 */
-	private static double groundY(ServerLevel end) {
-		BlockPos ground = end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-				BlockPos.containing(0.0, 0.0, 0.0));
-		return ground.getY() > end.getMinY() ? ground.getY() : FALLBACK_GROUND_Y;
+	static final class Ground {
+
+		private @Nullable LevelChunk chunk;
+		/** 기억하고 있는 청크 좌표. 시작값은 <b>있을 수 없는 좌표</b>라 첫 물음이 반드시 빗나간다. */
+		private int chunkX = Integer.MIN_VALUE;
+		private int chunkZ = Integer.MIN_VALUE;
+
+		/**
+		 * 그 칸에서 <b>설 수 있는 높이</b>. 곧 가장 높은 블록의 윗면이다.
+		 *
+		 * <p>{@code MOTION_BLOCKING_NO_LEAVES} 를 쓰는 것은 이 저장소의 다른 실행기와 같다 —
+		 * 지나갈 수 있는 것(잎·풀)을 지표로 치면 고리가 그 위에 뜬다.
+		 *
+		 * <p>{@code chunk.getHeight} 는 <b>가장 높은 블록 자체</b>의 y 를 돌려주므로 1 을 더해
+		 * 윗면으로 옮긴다. 월드 쪽 {@code getHeight} 가 안에서 하는 것과 같은 계산인데, 그쪽은
+		 * 부를 때마다 청크를 다시 찾는다.
+		 *
+		 * @return 설 수 있는 높이, 또는 {@link #NO_GROUND}
+		 */
+		int surfaceAt(ServerLevel end, double x, double z) {
+			int blockX = Mth.floor(x);
+			int blockZ = Mth.floor(z);
+			int wantX = blockX >> 4;
+			int wantZ = blockZ >> 4;
+			if (wantX != chunkX || wantZ != chunkZ) {
+				chunkX = wantX;
+				chunkZ = wantZ;
+				// 없으면 없는 대로 둔다. 표식을 그리자고 청크를 불러오면 그것이 가장 비싸다.
+				chunk = end.getChunkSource().getChunkNow(wantX, wantZ);
+			}
+			LevelChunk here = chunk;
+			if (here == null) {
+				return NO_GROUND;
+			}
+			int surface = here.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+					blockX, blockZ) + 1;
+			// 바닥까지 통째로 허공이면 하이트맵이 월드 바닥을 돌려준다. 거기는 땅이 아니다.
+			return surface > end.getMinY() ? surface : NO_GROUND;
+		}
+	}
+
+	/**
+	 * 고리가 <b>이 사람의 발밑</b>을 지나갔는가.
+	 *
+	 * <p>고리는 칸마다 그 자리의 지표 위에 그려진다. 그러니 거리가 맞아도 높이가 어긋나면 그
+	 * 사람이 본 고리는 <b>제 발밑을 지나간 고리가 아니다</b> — 지붕 밑에 선 사람, 굴을 파고 들어간
+	 * 사람이 그렇다. 여유는 {@link #JUDGE_VERTICAL_REACH} 에 근거를 적어 두었다.
+	 *
+	 * <p>땅이 없으면({@link #NO_GROUND}) 거짓이다. 그 칸에는 고리를 그리지도 않았으니 판정만
+	 * 남으면 <b>아무것도 안 보이는데 걸리는</b> 꼴이 된다.
+	 *
+	 * @param feetY    사람의 발 높이({@code position().y})
+	 * @param surfaceY {@link Ground#surfaceAt} 이 돌려준 값
+	 */
+	static boolean atRingHeight(double feetY, int surfaceY) {
+		if (surfaceY == NO_GROUND) {
+			return false;
+		}
+		return Math.abs(feetY - surfaceY) <= JUDGE_VERTICAL_REACH;
 	}
 
 	// ------------------------------------------------------------------ 월드 없이 도는 계산

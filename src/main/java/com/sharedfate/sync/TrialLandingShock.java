@@ -26,19 +26,23 @@ import java.util.UUID;
  *
  * <h2>무엇을 해야 하는가</h2>
  *
- * <p>드래곤이 <b>착지할 때마다</b> 중앙에서 고리가 반경 15칸({@code maxRadius})까지 퍼진다
- * ({@code travelTicks} 에 걸쳐). 고리가 지나갈 때
+ * <p>드래곤이 <b>착지할 때마다</b> 중앙에서 고리가 {@code maxRadius} 까지 퍼진다
+ * ({@code travelTicks} 에 걸쳐). 그런 고리가 <b>{@code ringCount} 개</b>,
+ * {@code ringIntervalTicks} 간격으로 이어 나간다. 고리가 지나갈 때
  *
  * <ul>
- *   <li><b>바닥을 딛고 있으면</b> 피해 4({@code damage}) 와 바깥 넉백 최대 8칸({@code knockback})</li>
+ *   <li><b>바닥을 딛고 있으면</b> 피해({@code damage}) 와 바깥 넉백({@code knockback})</li>
  *   <li><b>점프해 있으면 회피</b>한다 — 이 카드가 요구하는 행동이 그것 하나다</li>
  * </ul>
+ *
+ * <p>고리가 여럿이라 <b>한 번 비켰다고 끝이 아니다.</b> 지금 값(고리 3개·2초 간격)에서는 착지
+ * 한 번에 점프를 세 번 읽어야 한다.
  *
  * <h2>⚠ 「엔더 파동」과 <b>같은 고리</b>다 — 한쪽만 고치지 말 것</h2>
  *
  * <p>{@link TrialEnderPulse} 가 중앙에서 퍼지는 고리를 먼저 끝냈고, 동작이 이 카드와 똑같다 —
- * 중앙에서 퍼지고, 바닥을 딛고 있으면 걸리고, 점프하면 통과한다. 다른 것은 반경과 결과뿐이다
- * (엔더 파동 42칸·구속, 착지 충격 15칸·피해 4·넉백).
+ * 중앙에서 퍼지고, 바닥을 딛고 있으면 걸리고, 점프하면 통과한다. 다른 것은 반경·개수·결과뿐이다
+ * (엔더 파동 42칸 고리 하나·구속, 착지 충격 75칸 고리 셋·피해 4·넉백).
  *
  * <p><b>두 카드가 같은 동작을 다른 규칙으로 가르치면 사람은 「고리는 뛰면 피한다」를 하나로 배울
  * 수 없다.</b> 한 카드에서 통하던 타이밍이 다른 카드에서 안 통하면 그것은 배움이 아니라 운이다.
@@ -46,11 +50,21 @@ import java.util.UUID;
  * {@link TrialEnderPulse#JUMP_WINDOW_TICKS}, {@link TrialEnderPulse#radiusAt},
  * {@link TrialEnderPulse#judgeRadius}, {@link TrialEnderPulse#reachTick},
  * {@link TrialEnderPulse#lifetime}, {@link TrialEnderPulse#edgePoints},
- * {@link TrialEnderPulse#wakePoints} 다.
+ * {@link TrialEnderPulse#wakePoints} 다. 지형을 타는 것도 같은 자리에서 온다 —
+ * {@link TrialEnderPulse.Ground}, {@link TrialEnderPulse#atRingHeight}.
  *
  * <p>값을 베껴 오지 않은 것이 핵심이다. 같은 숫자를 두 파일에 적어 두면 <b>한쪽만 고쳐지고</b>,
  * 그때 어긋나는 것은 숫자가 아니라 사람이 배운 타이밍이다. 두 규칙을 한 자리로 합치는 일은
  * 아직 안 됐다 — 그때까지는 이 의존이 그 자리를 대신한다.
+ *
+ * <h2>고리는 지형을 탄다 — 그리는 것도 판정도 함께</h2>
+ *
+ * <p>점마다 그 자리의 지표를 묻고 그 위에 찍는다. 이 고리의 중심은 아레나 바닥이 아니라
+ * <b>포탈 꼭대기</b>라, 전에는 고리가 포탈 단을 벗어난 뒤로 섬 위를 떠서 지나갔다.
+ *
+ * <p>「바닥을 딛고 있는가」도 함께 따라간다({@link TrialEnderPulse#atRingHeight}). 그러지
+ * 않으면 보이는 고리와 맞는 자리가 갈라진다. 까닭과 성능 장치는
+ * {@link TrialEnderPulse.Ground} 에 한 번만 적어 두었다 — <b>한쪽만 고치지 말 것.</b>
  *
  * <h2>「점프해 있다」를 한 틱으로 묻지 않는다</h2>
  *
@@ -69,18 +83,26 @@ import java.util.UUID;
  * <p>창은 <b>뒤로만</b> 열린다. 늦게 뛴 것은 봐 주고 너무 일찍 뛴 것은 안 봐 주는데, 바닐라
  * 점프가 그 자체로 열두 틱쯤 공중에 떠 있어 <b>앞쪽 여유는 점프가 이미 들고 있기</b> 때문이다.
  *
- * <h2>넉백 8칸의 근거</h2>
+ * <h2>⚠⚠ 넉백 천장 — 이제 이것 하나가 팀을 살린다</h2>
  *
- * <p>15칸 고리의 <b>가장 바깥</b>에서 맞아 끝까지 밀려도 중앙에서 23칸이다. 섬은 반경 40,
- * 흑요석 기둥이 서 있는 원이 반경 42 이므로 <b>섬 안에 머문다.</b>
+ * <p>예전에는 반경 15 + 넉백 8 = <b>23칸</b>이라 섬(반경 40, 흑요석 기둥이 서 있는 원 42)
+ * 안에 저절로 머물렀고, 그 산수가 이 카드를 「강한 넉백 금지」의 예외로 만든 근거였다.
  *
- * <p>이 여유가 이 카드의 전부다. <b>낙사시키면 공유 체력이라 팀 전체가 끝난다.</b> 반경이나
- * 넉백을 올리는 사람은 두 값을 함께 더한 수가 섬 반경 안인지부터 볼 것.
+ * <p><b>지금 값은 그 조건을 깼다.</b> 75 + 16 = 91칸이라 산수로는 섬을 두 배 넘게 벗어난다.
+ * 엔드 중앙 섬은 사방이 허공이고 체력이 팀 공유라 <b>한 사람의 낙사가 팀 전체를 끝내며 그것이
+ * 곧 월드 삭제</b>다.
  *
- * <p>계산만 맞춰 두고 끝내지 않았다. {@link #outwardLimit} 이 <b>그 23칸을 실제로 천장으로
- * 건다</b> — 다른 카드가 이미 바깥으로 밀어 놓았거나 경사를 타고 흘러가 있어도, 이 카드가 미는
- * 목적지는 결코 중앙에서 23칸(그리고 {@code TrialRisks.ARENA_RADIUS})을 넘지 않는다. 산수는
- * 값을 고치는 사람이 안 볼 수 있지만 이 함수는 못 피한다.
+ * <p>그래서 근거를 산수에서 <b>함수</b>로 옮겼다. {@link #outwardLimit} 이 미는 자리에 천장을
+ * 걸고 {@link #pushDistance} 가 그 천장 밖으로는 한 칸도 내보내지 않는다 — <b>카드에 어떤 값을
+ * 적어도</b> 목적지는 섬 안이다. 천장은 섬 경계가 아니라 {@link #EDGE_MARGIN} 만큼 안쪽이다.
+ * 경계에 딱 세우면 그 자리에서 한 걸음이 곧 낙사이기 때문이다.
+ *
+ * <p>여기에 하나를 더 건다. {@link #groundedReach} 가 미는 길을 한 칸씩 짚어 <b>땅이 끊기기
+ * 전</b>에서 멈춘다 — 중앙 섬은 둥글지 않아 반경 34 안에도 빈 곳이 있을 수 있고
+ * ({@code TrialRisks.pickSpot} 이 같은 이유로 허공을 거른다), 사람이 파 놓은 구멍도 있다.
+ *
+ * <p><b>위 셋 중 하나라도 무르면 이 카드는 그날로 전멸 카드다.</b> 반경 75 자체는 위험하지
+ * 않다 — 섬(40)을 넘는 구간은 허공 위라 거기엔 사람이 없다. 위험한 것은 넉백뿐이다.
  *
  * <h2>드래곤을 읽기만 한다 — 이 저장소가 한 번 크게 틀린 자리다</h2>
  *
@@ -114,11 +136,17 @@ import java.util.UUID;
  * <p>둘째 조건이 있어야 <b>돌진</b>과 갈린다. 포탈 위에 선 사람에게 드래곤이 달려들면 좌표만으로는
  * 착지와 구별되지 않는데, 그때 드래곤은 매 틱 움직이고 있다.
  *
- * <h2>한 번의 착지에 고리 하나</h2>
+ * <h2>한 번의 착지에 <b>고리 한 벌</b></h2>
  *
  * <p>앉아 있는 내내 「착지했다」가 참이므로 그것을 그대로 쓰면 초당 스무 번 터져
  * {@code 4 × 20} 으로 즉사한다. 그래서 <b>가장자리</b>만 잡는다({@link #touchdown}) — 직전 틱은
  * 앉아 있지 않았고 이번 틱은 앉아 있는 그 한 틱이다. 다시 날아올랐다가 앉으면 그때 다시 잡힌다.
+ *
+ * <p>가장자리 한 번이 여는 것은 <b>{@link Wave} 하나</b>고, 그 안에 고리가 {@code ringCount}
+ * 개 들어 있다. 고리마다 나이가 다르므로({@link #stepOf}) <b>셋이 동시에 날고 있다</b> —
+ * 지금 값(퍼짐 150틱, 수명 155틱, 간격 40틱)에서 벌 하나가 235틱을 살고 그 가운데 70틱은
+ * 고리 셋이 함께 떠 있다. 그래서 <b>지나간 사람 명단도 고리마다 따로</b> 든다. 하나로 합치면
+ * 첫 고리를 맞은 사람이 두 번째·세 번째 고리를 그냥 통과한다.
  *
  * <p>카드를 받은 직후에는 <b>기준을 잡기만 하고 터뜨리지 않는다</b>({@link #sitting} 이 처음에
  * {@code null} 이다). 그러지 않으면 이미 앉아 있는 드래곤을 때리던 중에 이 카드를 받은 판에서
@@ -134,10 +162,17 @@ import java.util.UUID;
  * 같은 4</b> 라 「나는 안 뛰어도 된다」가 성립하고, 회피 카드가 회피를 못 가르친다. 「엔더 파동」이
  * 구속을 걸린 사람마다 거는 것과 같은 판단이다.
  *
- * <p>그 대신 천장이 낮다. {@link #worstCaseTeamDamage} 가 넷 전원 실패의 값을 직접 센다 —
- * {@code 4 × 4 = 16} 으로 팀 공유 체력 20 아래다. <b>피해 4 는 전원 타격을 전제로만 설명되는
- * 값</b>이고(이 판 카드 중 가장 작다), 여기를 5 로 올리면 20 이라 그날로 즉사 카드다. 16 은 이미
- * 체력의 8할이라 <b>다른 카드와 겹치면 그 16 이 마지막 한 방</b>이다.
+ * <p>그 대신 천장이 낮다. {@link #worstCaseTeamDamage} 가 넷 전원 실패의 값을 직접 센다.
+ * <b>다이아 풀셋 + 보호 IV 기준</b>으로 재면 피해 4 는 한 대에 <b>0.56</b> 이라(폭발형이라
+ * 하드 곱 1.5 가 먼저 붙고 방어·보호가 그 뒤를 깎는다), 넷이 고리 셋을 모두 맞아도
+ * {@code 0.56 × 4 × 3 ≈ 6.7} 로 팀 공유 체력 20 의 3분의 1 이다.
+ *
+ * <p><b>피해 4 는 지금 이 판에서 가장 작은 값이고 그것이 맞다.</b> 큰 카드들(자리 폭격·낙뢰 35,
+ * 기둥 화염구·연쇄 포격·종말의 비 23)은 무장 기준 <b>세 대에 전멸</b>하도록 잡혀 있는데, 이
+ * 카드는 <b>넉백이 본체</b>라 피해로 승부하지 않는다. 사람을 끝내는 것은 4 가 아니라 <b>허공</b>
+ * 이고, 그래서 이 파일이 지키는 것도 피해 산수가 아니라 {@link #outwardLimit} 의 천장이다.
+ * <b>피해를 올리지 말 것</b> — 올리는 순간 이 카드는 「밀리는 카드」가 아니라 그냥 또 하나의
+ * 「아픈 카드」가 된다.
  *
  * <h2>안 터지는 판이 있다 — 의도한 것이다</h2>
  *
@@ -150,10 +185,16 @@ import java.util.UUID;
  *
  * <h2>파티클과 소리는 멀리 보낸다</h2>
  *
- * <p>고리는 15칸까지 가고 보는 사람은 반대편에 있을 수 있어 지름으로 30칸이 넘는다. 파티클
- * 짧은 형태는 <b>32칸</b>에서 잘리므로({@link TrialWarning} 의 「거리 제한을 끄고 보낸다」)
- * 전부 긴 형태로 보낸다. 소리도 같은 이유로 <b>사람마다 그 자리에서</b> 울린다 — 바닐라 소리
- * 사거리는 볼륨 1 이하면 16칸이다.
+ * <p>고리는 75칸까지 간다. 파티클 짧은 형태는 <b>32칸</b>에서 잘리므로({@link TrialWarning} 의
+ * 「거리 제한을 끄고 보낸다」) 전부 긴 형태로 보낸다. 소리도 같은 이유로 <b>사람마다 그
+ * 자리에서</b> 울린다 — 바닐라 소리 사거리는 볼륨 1 이하면 16칸이다.
+ *
+ * <h2>점 예산을 고리 수로 나눈다</h2>
+ *
+ * <p>한 틱 예산은 400~440 인데 고리가 셋이라 그대로 두면 1200 이 나갈 수 있다. 그래서
+ * {@link #ringAllowance} 가 <b>고리마다 바라는 만큼에 비례해</b> 예산을 나눈다 — 몇 개가 겹쳐
+ * 날든 합이 {@link #MAX_POINTS_PER_TICK} 을 넘지 않고, 작은 고리가 큰 고리의 몫을 빼앗지도
+ * 않는다. 통째로 허공 위를 도는 고리는 {@link #touchesGround} 가 미리 빼 준다.
  */
 public final class TrialLandingShock {
 
@@ -205,35 +246,91 @@ public final class TrialLandingShock {
 	/** 이보다 가까이 중앙에 겹쳐 있으면 「바깥쪽」이라는 방향이 없다. 그때는 밀지 않는다. */
 	private static final double PUSH_MIN_REACH = 1.0E-4;
 
+	/**
+	 * ⚠ 섬 경계에서 이만큼 <b>안쪽</b>까지만 민다.
+	 *
+	 * <p>{@code TrialRisks.ARENA_RADIUS}(40)에 딱 세우면 안 되는 까닭이 둘이다.
+	 *
+	 * <ul>
+	 *   <li>거기 세워진 사람은 <b>한 걸음이 곧 낙사</b>다. 밀린 직후에는 화면이 돌아가 있고
+	 *       방향도 모르는데, 그 상태에서 실수 한 번의 값이 팀 전멸이면 카드가 아니라 함정이다</li>
+	 *   <li>40 은 「아무 곳이나 고를 때 쓰는 원」이지 <b>섬의 실제 가장자리가 아니다.</b> 중앙
+	 *       섬은 둥글지 않아 그 원 안에도 허공이 있다({@code TrialRisks.pickSpot} 의 설명)</li>
+	 * </ul>
+	 *
+	 * <p>6 인 근거는 <b>스프린트 점프 한 번</b>이다. 바닐라에서 4.3칸쯤 나가므로 그것보다 한
+	 * 걸음 더 남긴다. 그 이상은 사람이 스스로 걸어 나간 것이고 이 카드가 책임질 거리가 아니다.
+	 */
+	static final double EDGE_MARGIN = 6.0;
+	/**
+	 * {@link #groundedReach} 가 미는 길을 짚는 간격(블록).
+	 *
+	 * <p>0.5 인 것은 <b>한 칸짜리 구멍을 반드시 밟기</b> 위해서다. 1.0 으로 짚으면 폭 1 인
+	 * 구멍이 두 점 사이에 통째로 들어가 없는 것이 된다.
+	 *
+	 * <p>이 값이 작을수록 묻는 횟수가 는다. 지금 넉백(16)이면 사람당 32번이고 맞은 사람에게만
+	 * 한 번 도므로 한 착지에 백여 번이다 — 청크 기억이 붙어 있어 대부분 하이트맵 한 번씩이다.
+	 */
+	private static final double GROUND_PROBE_STEP = 0.5;
+	/**
+	 * {@link #touchesGround} 가 고리를 찔러 보는 갈래 수.
+	 *
+	 * <p>「통째로 허공인가」만 가르면 되는 물음이라 여덟이면 넉넉하다. 늘려도 얻는 것은 사람이
+	 * 허공에 세워 둔 발판을 조금 더 자주 찾는 것뿐인데, 그 값이 고리 셋에 매 틱 곱해진다.
+	 */
+	private static final int RING_PROBE_SPOKES = 8;
+
 	// ------------------------------------------------------------------ 표식
 
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다({@code TrialWarning} 과 같은 값). */
 	private static final double GROUND_OFFSET = 0.15;
+	/**
+	 * 한 틱에 이 카드가 쓸 수 있는 점 수의 상한.
+	 *
+	 * <p>이 판의 예산은 400~440 이다 — 「낙뢰」가 반경 3 짜리 고리 열 개로 400,
+	 * 「연쇄 포격」이 반경 3.5 짜리 열 개로 440 을 쓴다. 고리가 여럿인 이 카드는 그 <b>합</b>이
+	 * 여기를 넘지 않게 {@link #edgeBudget}·{@link #wakeBudget} 이 나눠 쓴다.
+	 */
+	static final int MAX_POINTS_PER_TICK = 440;
+	/**
+	 * ⚠ 고리 한 바퀴를 나눠 그릴 수 있는 <b>가장 긴 틱 수</b>({@link #stride}).
+	 *
+	 * <p>「종말의 비」는 먼지 수명 하한 8틱을 보고 6 으로 묶었다. 이 카드는 더 작다 —
+	 * <b>앞머리에 쓰는 {@code CRIT} 의 수명이 최소 4틱</b>이기 때문이다(26.3
+	 * {@code CritParticle} 이 {@code max(1, 6.0 / (굴림×0.8 + 0.6))} 으로 4~10틱을 잡는다).
+	 * 4틱에 나눠 그리면 마지막 몫을 찍는 그 틱에 첫 몫이 죽어 <b>고리가 영영 안 닫힌다.</b>
+	 *
+	 * <p>3 은 그 하한 바로 아래다. 고리가 틱당 0.5칸으로 나아가므로 세 몫이 <b>1.5칸 안에</b>
+	 * 흩어지는데, {@code CRIT} 자국이 어차피 2~5칸 남으므로 눈에는 그 두께 안에 묻힌다.
+	 */
+	static final int MAX_STRIDE = 3;
 
 	// ------------------------------------------------------------------ 상태
 
 	/**
-	 * 지금 퍼지고 있는 고리 하나.
+	 * 착지 한 번이 여는 <b>고리 한 벌</b>.
 	 *
 	 * <p>중심을 <b>좌표로</b> 든다. 드래곤을 들고 있으면 매 틱 그 자리를 다시 읽게 되고, 드래곤이
 	 * 날아오른 순간 고리가 따라 움직여 예고가 거짓말을 한다.
 	 *
-	 * @param center    고리가 출발한 자리. 드래곤이 앉은 포탈 꼭대기다
-	 * @param startedAt 착지를 잡은 틱
+	 * <p>고리마다 틱을 따로 세지 않는다. <b>출발 틱 하나</b>와 몇 번째 고리인가로
+	 * {@link #stepOf} 가 나이를 구한다 — 고리마다 제 시계를 들면 하나가 어긋나기 시작해도
+	 * 나머지는 멀쩡해서 알아채지 못한다.
+	 *
+	 * @param center    고리들이 출발한 자리. 드래곤이 앉은 포탈 꼭대기다
+	 * @param startedAt 착지를 잡은 틱. <b>첫 고리</b>의 출발 틱이다
+	 * @param crossed   고리마다 <b>뒷자락이 이미 지나간</b> 사람들. 목록 순서가 고리 순서다.
+	 *                  <b>이 집합들은 고쳐 쓴다.</b> 없으면 두 가지가 곧바로 깨진다 — 우리가
+	 *                  민 사람이 다음 틱에 뒷자락 앞으로 나가 또 맞고, 뛰어서 피한 사람이
+	 *                  착지한 다음 틱에 다시 판정당해 <b>점프가 회피가 아니게</b> 된다.
+	 *                  고리마다 따로인 것은 <b>고리 셋이 각자 한 번씩</b> 지나가야 하기
+	 *                  때문이다. 하나로 합치면 두 번째·세 번째 고리가 아무도 안 때린다
 	 */
-	private record Wave(Vec3 center, long startedAt) {
+	private record Wave(Vec3 center, long startedAt, List<Set<UUID>> crossed) {
 	}
 
 	/** 아레나도 팀도 하나뿐이라 칸 하나로 둔다. {@link #clearState()} 가 반드시 비운다. */
 	private static @Nullable Wave wave;
-	/**
-	 * 이번 고리의 뒷자락이 <b>이미 지나간</b> 사람들.
-	 *
-	 * <p>고리는 한 사람을 <b>한 번만</b> 지나간다. 없으면 두 가지가 곧바로 깨진다 — 우리가 민
-	 * 사람이 다음 틱에 뒷자락 앞으로 나가 또 맞고, 뛰어서 피한 사람이 착지한 다음 틱에 다시
-	 * 판정당해 <b>점프가 회피가 아니게</b> 된다. 「엔더 파동」의 {@code crossed} 와 같은 장치다.
-	 */
-	private static final Set<UUID> CROSSED = new HashSet<>();
 	/**
 	 * 사람마다 <b>마지막으로 공중에 있던 틱.</b>
 	 *
@@ -296,7 +393,7 @@ public final class TrialLandingShock {
 		List<ServerPlayer> present = present(end, members);
 		// 고리가 없는 동안에도 적는다. 판정 창이 과거를 보므로 기록이 끊기면 창이 비어 버린다.
 		recordAirborne(present, now);
-		watchLanding(end, dragon, now);
+		watchLanding(end, dragon, now, risk);
 		spread(end, present, now, risk);
 	}
 
@@ -311,8 +408,8 @@ public final class TrialLandingShock {
 	 * — 파티클과 소리는 그 틱에 끝나고 블록은 한 칸도 건드리지 않는다.
 	 */
 	public static void clearState() {
+		// 지나간 사람 명단은 고리 한 벌 안에 들어 있으므로 벌을 버리면 함께 버려진다.
 		wave = null;
-		CROSSED.clear();
 		LAST_AIRBORNE.clear();
 		lastDragonAt = null;
 		sitting = null;
@@ -343,7 +440,8 @@ public final class TrialLandingShock {
 	 * <p>드래곤이 없거나 죽었으면 기록을 놓는다. 다시 나타나면 {@link #sitting} 이 {@code null}
 	 * 부터 다시 시작하므로, 죽는 연출 중에 좌표가 멈춘 것이 착지로 읽히지 않는다.
 	 */
-	private static void watchLanding(ServerLevel end, @Nullable EnderDragon dragon, long now) {
+	private static void watchLanding(ServerLevel end, @Nullable EnderDragon dragon, long now,
+			TrialCatalog.Risk.LandingShock risk) {
 		Vec3 podium = podiumOf(end, dragon);
 		if (dragon == null || podium == null) {
 			lastDragonAt = null;
@@ -363,7 +461,7 @@ public final class TrialLandingShock {
 		if (!touchdown(was, down)) {
 			return;
 		}
-		open(end, podium, now);
+		open(end, podium, now, ringCount(risk.ringCount()));
 	}
 
 	/**
@@ -410,19 +508,25 @@ public final class TrialLandingShock {
 	}
 
 	/**
-	 * 고리를 놓는다.
+	 * 고리 한 벌을 놓는다.
 	 *
-	 * <p>앞 고리가 아직 퍼지고 있으면 <b>놓지 않는다.</b> 바닐라에는 고리 수명 안에 앉았다
-	 * 일어났다 다시 앉는 길이 없어 실제로는 오지 않는 갈래지만, 그때 새 고리로 갈아 끼우면 이미
+	 * <p>앞 벌이 아직 퍼지고 있으면 <b>놓지 않는다.</b> 바닐라에는 고리 수명 안에 앉았다
+	 * 일어났다 다시 앉는 길이 없어 실제로는 오지 않는 갈래지만, 그때 새 벌로 갈아 끼우면 이미
 	 * 보여 준 고리가 공중에서 사라진다 — <b>그려 놓은 표식을 무르지 않는 것</b>이 이 전투의
-	 * 약속이다.
+	 * 약속이다. 고리가 셋이 되어 한 벌이 사는 시간이 길어졌으므로 이 문이 전보다 자주 닫힌다.
+	 *
+	 * <p>명단을 여기서 <b>고리 수만큼</b> 만든다. 나중에 세면 카드 값이 바뀌는 순간 이미 날고
+	 * 있던 벌의 명단 수와 어긋나 자리를 벗어난다.
 	 */
-	private static void open(ServerLevel end, Vec3 podium, long now) {
+	private static void open(ServerLevel end, Vec3 podium, long now, int rings) {
 		if (wave != null) {
 			return;
 		}
-		wave = new Wave(podium, now);
-		CROSSED.clear();
+		List<Set<UUID>> crossed = new ArrayList<>(rings);
+		for (int index = 0; index < rings; index++) {
+			crossed.add(new HashSet<>());
+		}
+		wave = new Wave(podium, now, crossed);
 		// 착지 자체가 이 카드의 유일한 예고다. 가운데에서 한 번 크게 터뜨려 「지금부터다」를
 		// 말한다. 소리는 warn 이 사람마다 제자리에서 울린다 — 한 점에서 울리면 16칸 밖은
 		// 아무것도 못 듣는다.
@@ -433,13 +537,21 @@ public final class TrialLandingShock {
 	// ------------------------------------------------------------------ 고리가 퍼진다
 
 	/**
-	 * 고리를 한 칸 넓혀 그리고, 경고를 올리고, 뒷자락이 지나간 사람을 가른다.
+	 * 살아 있는 고리마다 한 칸 넓혀 그리고, 경고를 올리고, 뒷자락이 지나간 사람을 가른다.
 	 *
-	 * <p>순서가 「엔더 파동」과 같다 — 그리고, 알리고, 판정한다. 고리의 수명도 그쪽
+	 * <p>순서가 「엔더 파동」과 같다 — 그리고, 알리고, 판정한다. 고리 하나의 수명도 그쪽
 	 * {@link TrialEnderPulse#lifetime} 에서 가져온다. 주기가 없는 카드라 간격 자리에 0 을 넣는데,
 	 * 그러면 {@code travelTicks + 창} 이 그대로 나온다. <b>앞머리가 끝까지 간 뒤에도 창만큼
 	 * 남는 것</b>이 중요하다 — 깎으면 가장 바깥에 선 사람만 창을 못 받아 그 사람에게만 옛날의
 	 * 한 틱짜리 판정이 적용된다.
+	 *
+	 * <p>고리를 도는 것이 <b>두 바퀴</b>다. 첫 바퀴는 그릴 고리마다 「점이 몇 개 필요한가」만
+	 * 세고, 둘째 바퀴가 그 합으로 나눈 몫을 들고 실제로 그린다. 나눌 합을 모른 채 첫 고리부터
+	 * 그리면 그 고리가 예산을 다 쓴다. 세는 바퀴는 산수와 {@link #touchesGround} 의 여덟 번
+	 * 뿐이라 값이 없다.
+	 *
+	 * <p>지표를 묻는 기억({@link TrialEnderPulse.Ground})은 <b>한 틱에 하나</b>를 모든 고리가
+	 * 함께 쓴다. 고리마다 만들면 겹쳐 나는 동안 같은 청크를 몇 번씩 다시 찾는다.
 	 */
 	private static void spread(ServerLevel end, List<ServerPlayer> present, long now,
 			TrialCatalog.Risk.LandingShock risk) {
@@ -447,53 +559,118 @@ public final class TrialLandingShock {
 		if (run == null) {
 			return;
 		}
+		int rings = run.crossed().size();
+		int interval = ringInterval(risk.ringIntervalTicks());
+		int life = TrialEnderPulse.lifetime(0, risk.travelTicks());
 		long age = now - run.startedAt();
-		if (age < 0L || age > TrialEnderPulse.lifetime(0, risk.travelTicks())) {
-			// 뒷자락까지 다 지나갔거나 시간이 되감겼다. 남는 것은 없다 — 지나간 자리는 그 틱부터
-			// 안전하다.
+		if (age < 0L || age > lastTick(rings, interval, life)) {
+			// 마지막 고리의 뒷자락까지 다 지나갔거나 시간이 되감겼다. 남는 것은 없다 — 지나간
+			// 자리는 그 틱부터 안전하다. 명단도 벌과 함께 버려진다.
 			wave = null;
-			CROSSED.clear();
 			return;
 		}
 
-		int step = (int) age;
-		if (step <= risk.travelTicks()) {
-			draw(end, run.center(),
-					TrialEnderPulse.radiusAt(step, risk.travelTicks(), risk.maxRadius()));
+		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
+		double[] radii = new double[rings];
+		int[] want = new int[rings];
+		int wanted = 0;
+		for (int index = 0; index < rings; index++) {
+			int step = stepOf(age, index, interval);
+			if (step < 1 || step > risk.travelTicks()) {
+				// 아직 안 태어났거나(반경 0 이라 그릴 것이 없다) 앞머리가 이미 멈췄다.
+				continue;
+			}
+			double radius = TrialEnderPulse.radiusAt(step, risk.travelTicks(), risk.maxRadius());
+			if (!touchesGround(end, ground, run.center(), radius)) {
+				// 통째로 허공 위를 도는 고리다. 어차피 한 점도 안 나가므로 예산에서도 뺀다 —
+				// 안 빼면 반경 70 짜리 유령 고리가 섬 위를 도는 고리의 몫을 반으로 줄인다.
+				continue;
+			}
+			radii[index] = radius;
+			want[index] = ringWant(radius);
+			wanted += want[index];
 		}
-		warn(end, present, run.center(), step, risk);
-		judge(end, present, run.center(), step, now, risk);
+
+		for (int index = 0; index < rings; index++) {
+			int step = stepOf(age, index, interval);
+			if (step < 0 || step > life) {
+				// 아직 안 태어났거나 이미 다 지나갔다. 판정도 경고도 없다.
+				continue;
+			}
+			// 위상을 고리마다 어긋나게 준다. 같은 위상이면 셋이 늘 같은 각만 찍어, 나눠 그리는
+			// 동안 비어 있는 각이 세 고리에서 나란히 비어 「부챗살」로 읽힌다.
+			draw(end, ground, run.center(), radii[index], ringAllowance(want[index], wanted),
+					now + index);
+			warn(end, present, run.center(), step, risk);
+			judge(end, ground, present, run.center(), run.crossed().get(index), step, now, risk);
+		}
+	}
+
+	/**
+	 * 이 고리가 <b>땅에 닿는 데가 한 군데라도</b> 있는가.
+	 *
+	 * <p>반경 75 짜리 고리는 대부분의 시간을 허공 위에서 돈다(섬은 반경 40 언저리다). 그런
+	 * 고리는 한 점도 안 찍히는데, 예산을 나눌 때까지 몰라 주면 <b>실제로 그려지는 고리의 몫을
+	 * 빼앗는다.</b>
+	 *
+	 * <p>여덟 갈래만 찔러 본다. 통째로 허공인지 아닌지를 가르는 데는 그만하면 되고, 점마다 세는
+	 * 것은 이미 {@link #ring} 이 한다. 사람이 허공 위에 세워 둔 <b>한 칸짜리 발판</b>은 여기서
+	 * 놓칠 수 있다 — 그 위에는 고리가 안 그려진다. 거기 설 수 있는 사람이 거의 없고, 놓쳐서
+	 * 잃는 것이 점 몇 개인 반면 안 걸러서 잃는 것은 <b>섬 위 고리의 선명함</b>이라 이쪽을 골랐다.
+	 */
+	private static boolean touchesGround(ServerLevel end, TrialEnderPulse.Ground ground,
+			Vec3 center, double radius) {
+		for (int spoke = 0; spoke < RING_PROBE_SPOKES; spoke++) {
+			double angle = (Math.PI * 2.0 * spoke) / RING_PROBE_SPOKES;
+			if (ground.surfaceAt(end, center.x + Math.cos(angle) * radius,
+					center.z + Math.sin(angle) * radius) != TrialEnderPulse.NO_GROUND) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
 	 * 고리 뒷자락이 지나간 사람을 가른다.
 	 *
 	 * <p>경계를 <b>{@code (지난 틱 뒷자락, 이번 틱 뒷자락]}</b> 반열린 구간으로 잡는다. 고리는 한
-	 * 틱에 0.375칸씩 건너뛰므로 「반경과 거리가 같은가」로 물으면 대부분의 사람이 <b>그냥
-	 * 건너뛰어진다.</b> 구간으로 물으면 0 부터 {@code maxRadius} 까지 어느 거리든 정확히 한 번
-	 * 덮인다. 「엔더 파동」이 쓰는 그 구간이고 같은 함수에서 나온다.
+	 * 틱에 {@code maxRadius / travelTicks} 칸씩 건너뛰므로 「반경과 거리가 같은가」로 물으면
+	 * 대부분의 사람이 <b>그냥 건너뛰어진다.</b> 구간으로 물으면 0 부터 {@code maxRadius} 까지
+	 * 어느 거리든 정확히 한 번 덮인다. 「엔더 파동」이 쓰는 그 구간이고 같은 함수에서 나온다.
+	 *
+	 * <p><b>거리만으로는 부족하다.</b> 고리가 지형을 타므로 같은 거리라도 내 발밑을 지나갔는지는
+	 * 높이를 봐야 안다({@link TrialEnderPulse#atRingHeight}). 그 검사가 없으면 지붕 밑이나 굴
+	 * 속에 선 사람이 <b>머리 위로 지나간 고리</b>에 맞고 밀려난다.
+	 *
+	 * @param crossed 이 고리의 명단. 고리마다 따로다 — 합치면 두 번째 고리가 아무도 안 때린다
 	 */
-	private static void judge(ServerLevel end, List<ServerPlayer> present, Vec3 center, int step,
-			long now, TrialCatalog.Risk.LandingShock risk) {
+	private static void judge(ServerLevel end, TrialEnderPulse.Ground ground,
+			List<ServerPlayer> present, Vec3 center, Set<UUID> crossed, int step, long now,
+			TrialCatalog.Risk.LandingShock risk) {
 		double outer = TrialEnderPulse.judgeRadius(step, risk.travelTicks(), risk.maxRadius());
 		double inner = TrialEnderPulse.judgeRadius(step - 1, risk.travelTicks(), risk.maxRadius());
 		for (ServerPlayer member : present) {
 			UUID memberId = member.getUUID();
-			if (CROSSED.contains(memberId)) {
+			if (crossed.contains(memberId)) {
 				continue;
 			}
-			double distance = flatDistance(member.position(), center);
+			Vec3 at = member.position();
+			double distance = flatDistance(at, center);
 			if (!(distance > inner) || !(distance <= outer)) {
 				continue;
 			}
 			// 지나간 것은 뛰었든 아니든 지나간 것이다. 안 적으면 우리가 민 사람이 다음 틱에
-			// 뒷자락 앞으로 나가 같은 고리에 두 번 맞는다.
-			CROSSED.add(memberId);
+			// 뒷자락 앞으로 나가 같은 고리에 두 번 맞는다. 높이로 빠진 사람도 적는다 — 고리는
+			// 그 사람의 칸을 이미 지나갔다.
+			crossed.add(memberId);
+			if (!TrialEnderPulse.atRingHeight(at.y, ground.surfaceAt(end, at.x, at.z))) {
+				continue;
+			}
 			if (jumpedThrough(memberId, now)) {
 				dodged(end, member);
 				continue;
 			}
-			strike(end, member, center, risk);
+			strike(end, ground, member, center, risk);
 		}
 	}
 
@@ -575,17 +752,17 @@ public final class TrialLandingShock {
 	 * 고리에 맞았다. 피해와 바깥 넉백이 함께 들어간다.
 	 *
 	 * <p>피해원에 <b>가해 개체를 달지 않는다.</b> 실체가 붙은 피해원이면 {@code LivingEntity} 가
-	 * 스스로 밀어내는데, 그 밀기는 우리가 정한 방향도 거리도 아니다 — 클래스 설명의 「23칸」이
-	 * 그 한 줄로 깨진다. 넉백은 {@link #push} 하나만 준다. 폭발 피해형이라 폭발 보호는 그대로
+	 * 스스로 밀어내는데, 그 밀기는 우리가 정한 방향도 거리도 아니다 — {@link #outwardLimit} 의
+	 * 천장이 그 한 줄로 무너진다. 넉백은 {@link #push} 하나만 준다. 폭발 피해형이라 폭발 보호는 그대로
 	 * 들으므로 대비한 사람이 손해 보지 않는다.
 	 *
 	 * <p>블록은 한 칸도 건드리지 않고 불도 붙이지 않는다.
 	 */
-	private static void strike(ServerLevel end, ServerPlayer member, Vec3 center,
-			TrialCatalog.Risk.LandingShock risk) {
+	private static void strike(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
+			Vec3 center, TrialCatalog.Risk.LandingShock risk) {
 		Vec3 at = member.position();
 		member.hurtServer(end, end.damageSources().explosion(null, null), risk.damage());
-		push(member, center, risk);
+		push(end, ground, member, center, risk);
 		end.sendParticles(ParticleTypes.GUST, true, false, at.x, at.y + 0.1, at.z, 1,
 				0.0, 0.0, 0.0, 0.0);
 		// 맞은 사람 자리에서 울린다. 밀려나는 소리라 파랑 표식과 같은 뜻을 귀로도 말한다.
@@ -602,14 +779,21 @@ public final class TrialLandingShock {
 	 * 이라, 같은 처음 속도라도 떠 있는 동안은 훨씬 멀리 간다. 「미는 거리」의 천장을 지키는 가장
 	 * 싼 방법이 아예 안 띄우는 것이고, 덤으로 낙하 피해를 면제할 상태도 들지 않아도 된다.
 	 *
-	 * <p>그래서 실제로 밀리는 거리는 적힌 8칸보다 <b>훨씬 짧다</b>({@link #pushVelocity} 참고).
+	 * <p>그래서 실제로 밀리는 거리는 적힌 값보다 <b>훨씬 짧다</b>({@link #pushVelocity} 참고).
 	 * 어긋나는 방향이 이 카드에서는 중요하다 — <b>반드시 덜 미는 쪽으로만</b> 어긋나야 한다.
+	 *
+	 * <h2>천장이 둘이다</h2>
+	 *
+	 * <p>{@link #pushDistance} 가 {@link #outwardLimit} 으로 <b>거리</b>를 자르고, 그 뒤
+	 * {@link #groundedReach} 가 그 길을 한 칸씩 짚어 <b>땅이 끊기기 전</b>에서 한 번 더 자른다.
+	 * 앞의 것은 월드 없이도 답이 정해져 시험이 훑을 수 있고, 뒤의 것은 실제 섬이 둥글지 않다는
+	 * 것을 안다. 둘 중 어느 하나도 빼지 말 것 — <b>낙사 한 번이 월드 삭제</b>다.
 	 *
 	 * <p>{@code syncVelocity} 를 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 제자리로 되돌아간다
 	 * ({@code TrialRisks.launch} 와 같은 이유). 세로 속도는 건드리지 않고 그대로 둔다.
 	 */
-	private static void push(ServerPlayer member, Vec3 center,
-			TrialCatalog.Risk.LandingShock risk) {
+	private static void push(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
+			Vec3 center, TrialCatalog.Risk.LandingShock risk) {
 		double dx = member.getX() - center.x;
 		double dz = member.getZ() - center.z;
 		double from = Math.sqrt(dx * dx + dz * dz);
@@ -617,15 +801,69 @@ public final class TrialLandingShock {
 			// 중심에 정확히 겹쳐 있다. 「바깥쪽」이 없으므로 밀지 않는다.
 			return;
 		}
-		double distance = pushDistance(from, risk.knockback(),
+		double stepX = dx / from;
+		double stepZ = dz / from;
+		double distance = pushDistance(fromCenter(member.getX(), member.getZ()), risk.knockback(),
 				outwardLimit(risk.maxRadius(), risk.knockback()));
+		distance = groundedReach(
+				(x, z) -> ground.surfaceAt(end, x, z) != TrialEnderPulse.NO_GROUND,
+				member.getX(), member.getZ(), stepX, stepZ, distance);
 		if (!(distance > 0.0)) {
 			return;
 		}
 		double speed = pushVelocity(distance);
 		Vec3 motion = member.getDeltaMovement();
-		member.setDeltaMovement(dx / from * speed, motion.y, dz / from * speed);
+		member.setDeltaMovement(stepX * speed, motion.y, stepZ * speed);
 		member.syncVelocity = true;
+	}
+
+	/**
+	 * 미는 길에 <b>땅이 이어져 있는 데까지</b>의 거리.
+	 *
+	 * <p>{@link #outwardLimit} 은 중앙에서 잰 반경으로만 막는다. 그런데 중앙 섬은 둥글지 않아
+	 * 그 반경 안에도 허공이 있고({@code TrialRisks.pickSpot} 의 설명), 사람이 파 놓은 구멍도
+	 * 있다. 그런 자리로 밀면 천장을 지켰는데도 낙사다.
+	 *
+	 * <p>그래서 길을 <b>한 칸씩</b> 짚는다. 땅이 없는 칸을 만나면 <b>그 앞에서</b> 멈춘다 —
+	 * 건너편에 다시 땅이 있어도 건너뛰지 않는다. 중간이 비어 있으면 밀려가는 몸은 그 구멍으로
+	 * 떨어지지 건너가지 않는다.
+	 *
+	 * <p>값은 {@code wanted} 를 넘지 않으므로 짚는 횟수는 <b>{@code wanted} 칸 남짓</b>이다.
+	 * 맞은 사람에게만 한 번 도는 것이고 팀은 넷이라, 한 착지에 예순 번쯤 묻는 것이 전부다.
+	 *
+	 * <p>월드를 직접 묻지 않고 {@link GroundProbe} 를 받는다. <b>낙사를 막는 함수라 시험이
+	 * 월드 없이 훑을 수 있어야</b> 하기 때문이다 — 전멸하면 월드가 지워지는 게임이라 이 계산을
+	 * 실제로 굴려 보고 확인할 수는 없다.
+	 *
+	 * @param probe  그 자리에 설 땅이 있는가
+	 * @param stepX  미는 방향의 x 성분. <b>단위 벡터여야 한다</b>
+	 * @param stepZ  미는 방향의 z 성분
+	 * @param wanted 여기까지 밀고 싶다는 거리
+	 */
+	static double groundedReach(GroundProbe probe, double x, double z, double stepX, double stepZ,
+			double wanted) {
+		if (!(wanted > 0.0)) {
+			return 0.0;
+		}
+		double reached = 0.0;
+		for (double along = GROUND_PROBE_STEP; ; along += GROUND_PROBE_STEP) {
+			double at = Math.min(along, wanted);
+			if (!probe.hasGround(x + stepX * at, z + stepZ * at)) {
+				// 구멍을 만났다. 건너편에 다시 땅이 있어도 건너뛰지 않는다 — 밀려가는 몸은
+				// 구멍을 건너가지 않고 그리로 떨어진다.
+				return reached;
+			}
+			reached = at;
+			if (at >= wanted) {
+				return reached;
+			}
+		}
+	}
+
+	/** 그 자리에 설 땅이 있는가. {@link #groundedReach} 를 월드에서 떼어 놓는 자리다. */
+	@FunctionalInterface
+	interface GroundProbe {
+		boolean hasGround(double x, double z);
 	}
 
 	// ------------------------------------------------------------------ 그리기
@@ -636,14 +874,15 @@ public final class TrialLandingShock {
 	 * <h2>먼지 하나로는 고리가 안 된다 — 수명 때문이다</h2>
 	 *
 	 * <p>26.3 {@code DustParticleBase} 의 수명은 {@code max(1, 8.0 / (굴림×0.8 + 0.2))} 라
-	 * <b>8~40틱</b>이다. 이 고리는 틱당 0.375칸으로 나아가므로, 파랑 먼지만으로 그리면 지나간
-	 * 자국이 3~15칸 남아 <b>「고리」가 아니라 「퍼지는 원판」</b>으로 보인다. 앞머리가 어디인지
-	 * 안 읽히면 언제 뛰어야 하는지도 안 읽힌다.
+	 * <b>8~40틱</b>이다. 지금 값에서 이 고리는 틱당 1.875칸으로 나아가므로, 파랑 먼지만으로
+	 * 그리면 지나간 자국이 15~75칸 남아 <b>「고리」가 아니라 「퍼지는 원판」</b>으로 보인다.
+	 * 앞머리가 어디인지 안 읽히면 언제 뛰어야 하는지도 안 읽힌다. 반경을 다섯 배로 늘리면서
+	 * 고리도 그만큼 빨라졌으니 <b>이 갈라 그리기가 전보다 더 중요해졌다.</b>
 	 *
 	 * <p>그래서 「엔더 파동」과 <b>같은 문법</b>으로 두 벌을 겹쳐 찍는다. 앞머리는 수명 4~10틱짜리
-	 * {@code CRIT}(흰 불티)이라 자국이 1.5~3.75칸에서 끝나 <b>선으로 남고</b>, 몸통은 파랑 먼지가
-	 * 지나간 자리를 채운다. 두 카드의 고리가 같은 모양으로 읽혀야 사람이 「고리는 뛰면 피한다」를
-	 * 한 번만 배운다.
+	 * {@code CRIT}(흰 불티)이라 자국이 7.5~18.75칸에서 끝나 <b>선으로 남고</b>, 몸통은 파랑
+	 * 먼지가 지나간 자리를 채운다. 두 카드의 고리가 같은 모양으로 읽혀야 사람이 「고리는 뛰면
+	 * 피한다」를 한 번만 배운다.
 	 *
 	 * <h2>몸통이 파랑인 것이 이 카드의 이름표다</h2>
 	 *
@@ -656,53 +895,90 @@ public final class TrialLandingShock {
 	 * <b>판정이 내려지는 뒷자락까지는 반드시 파랑으로 덮여 있다</b> — 맞는 자리가 안 그려진 채로
 	 * 맞는 일이 없다.
 	 *
-	 * <p>점 수도 「엔더 파동」의 것을 그대로 부른다. 반경 15 에서 앞머리 189점·몸통 160점으로
-	 * 합쳐 349점이라 한 틱 예산(400~440) 안이고, 앞머리는 간격 0.5칸을 온전히 지킨다.
+	 * <h2>점 수는 「엔더 파동」에서 가져오되 예산으로 한 번 더 자른다</h2>
+	 *
+	 * <p>고리가 셋이라 그쪽 값을 그대로 쓰면 한 틱에 1200점이 나갈 수 있다. 그래서
+	 * {@link #ringAllowance} 가 <b>바라는 만큼에 비례해</b> 예산을 나눠 준다.
+	 *
+	 * <p>그런데 몫을 그대로 점 수로 쓰면 <b>고리가 성겨진다</b> — 셋이 함께 섬 위를 돌 때 반경
+	 * 42 짜리 앞머리가 2.2칸 간격이 되어 점선으로 읽힌다. 언제 뛰어야 하는지를 말하는 줄이 그
+	 * 꼴이면 카드가 제 일을 못 한다.
+	 *
+	 * <p>그래서 「종말의 비」가 먼저 푼 답을 그대로 쓴다 — <b>시간축으로 나눈다</b>
+	 * ({@link TrialWarning#markGround(ServerLevel, Vec3, double, ParticleOptions, int, int)}).
+	 * 고리의 점자리는 온전히 {@code edgePoints} 개로 두고 한 틱에 {@link #stride} 개마다 하나씩만
+	 * 찍되, 다음 틱에 위상을 한 칸 옮겨 빈자리를 메운다. 먼저 찍은 점이 아직 살아 있으므로
+	 * <b>눈에는 촘촘한 고리 하나</b>로 보인다.
+	 *
+	 * <p>그쪽 함수를 그냥 부르지 못하는 것은 <b>높이</b> 때문이다. {@code markGround} 는 한 바퀴를
+	 * {@code center.y} 한 값에 찍는데, 이 카드의 고리는 칸마다 제 지표를 따라가야 한다. 발상만
+	 * 가져오고 {@code stride}·{@code phase} 라는 이름을 그대로 쓴다.
+	 *
+	 * @param allowance 이 고리가 이번 틱에 쓸 수 있는 점 수({@link #ringAllowance})
+	 * @param now       위상을 뽑을 틱. 받은 값을 쓴다 — {@code getGameTime} 은 얼어붙은 판에서
+	 *                  멈춰 위상이 한자리에 고정되고, 그러면 고리가 영영 안 닫힌다
 	 */
-	private static void draw(ServerLevel end, Vec3 center, double radius) {
-		if (!(radius > 0.0)) {
+	private static void draw(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center,
+			double radius, int allowance, long now) {
+		if (!(radius > 0.0) || allowance <= 0) {
 			// 출발 틱에는 그릴 것이 없다. 중앙 한 점에 수백 발을 쏘아 봐야 덩어리 하나다.
 			return;
 		}
-		double y = groundY(end, center, radius) + GROUND_OFFSET;
-		ring(end, ParticleTypes.CRIT, center, y, radius, TrialEnderPulse.edgePoints(radius));
-		ring(end, TrialWarning.dust(markColor()), center, y, radius,
-				TrialEnderPulse.wakePoints(radius));
+		int edgeRoom = edgeShare(allowance);
+		stroke(end, ground, ParticleTypes.CRIT, center, radius,
+				TrialEnderPulse.edgePoints(radius), edgeRoom, now);
+		stroke(end, ground, TrialWarning.dust(markColor()), center, radius,
+				TrialEnderPulse.wakePoints(radius), allowance - edgeRoom, now);
 	}
 
 	/**
-	 * 중심을 도는 점들을 찍는다.
+	 * 고리 한 바퀴 가운데 <b>이번 틱 몫</b>을 찍는다.
+	 *
+	 * <p>{@code room} 개를 넘지 않도록 {@link #stride} 를 고르고, 그래도 넘치면 점자리 자체를
+	 * 줄인다. 두 장치가 함께 있어야 <b>예산이 반드시 지켜진다</b> — {@code stride} 는 8보다
+	 * 작아야 해서(아래) 그것만으로는 아무리 큰 고리도 담을 수 없기 때문이다.
+	 */
+	private static void stroke(ServerLevel end, TrialEnderPulse.Ground ground, ParticleOptions type,
+			Vec3 center, double radius, int wholeRing, int room, long now) {
+		if (wholeRing <= 0 || room <= 0) {
+			return;
+		}
+		int step = stride(wholeRing, room);
+		int points = Math.min(wholeRing, room * step);
+		ring(end, ground, type, center, radius, points, step, Math.floorMod(now, step));
+	}
+
+	/**
+	 * 중심을 도는 점들을 <b>각자 제 자리의 지표 위에</b> 찍는다.
 	 *
 	 * <p><b>첫 {@code boolean} 을 {@code false} 로 되돌리지 말 것.</b> 짧은 형태는 서버에서
 	 * 32칸으로 잘리고 클라이언트가 한 번 더 거른다({@link TrialWarning} 의 「거리 제한을 끄고
-	 * 보낸다」). 이 고리는 지름으로 30칸이 넘고 보는 사람은 그 바깥에 있을 수 있어, 되돌리면
-	 * 반대편에 선 팀원에게는 <b>아무 일도 안 일어나는 것</b>으로 보인다.
+	 * 보낸다」). 이 고리는 75칸까지 가므로 되돌리면 바깥쪽이 <b>아무에게도 안 그려진다.</b>
+	 *
+	 * <p>허공에 걸린 점은 건너뛴다. 섬이 끝나는 자리에서 고리도 함께 끊겨 「여기서부터 땅이
+	 * 없다」가 그대로 읽히고, 반경 75 의 바깥쪽 절반은 어차피 허공 위라 실제로 나가는 점은
+	 * 세는 수보다 훨씬 적다.
+	 *
+	 * <p>각을 도는 순서를 뒤섞지 말 것 — {@link TrialEnderPulse.Ground} 의 청크 기억이 이어
+	 * 도는 것을 전제로 한다. {@code step} 만큼 건너뛰어도 순서는 한 방향 그대로다.
+	 *
+	 * @param points 고리 한 바퀴의 점자리 수
+	 * @param step   그 가운데 몇 개마다 하나씩 찍을지
+	 * @param phase  이번 틱에 찍을 몫. {@code 0..step-1}
 	 */
-	private static void ring(ServerLevel end, ParticleOptions type, Vec3 center, double y,
-			double radius, int points) {
-		for (int index = 0; index < points; index++) {
+	private static void ring(ServerLevel end, TrialEnderPulse.Ground ground, ParticleOptions type,
+			Vec3 center, double radius, int points, int step, int phase) {
+		for (int index = phase; index < points; index += step) {
 			double angle = (Math.PI * 2.0 * index) / points;
-			end.sendParticles(type, true, false,
-					center.x + Math.cos(angle) * radius, y, center.z + Math.sin(angle) * radius,
+			double x = center.x + Math.cos(angle) * radius;
+			double z = center.z + Math.sin(angle) * radius;
+			int surface = ground.surfaceAt(end, x, z);
+			if (surface == TrialEnderPulse.NO_GROUND) {
+				continue;
+			}
+			end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
 					1, 0.0, 0.0, 0.0, 0.0);
 		}
-	}
-
-	/**
-	 * 고리를 얹을 높이. <b>매 틱 고리 위의 한 점</b>만 잰다.
-	 *
-	 * <p>중앙에서 한 번만 재면 안 된다. 이 고리의 중심은 아레나 바닥이 아니라 <b>포탈 꼭대기</b>라,
-	 * 그 높이를 한 바퀴에 쓰면 고리가 포탈 단을 벗어난 뒤로 섬 위를 떠서 지나간다. 반대로 점마다
-	 * 재면 한 틱에 하이트맵을 삼백 번 넘게 두드린다.
-	 *
-	 * <p>그래서 한 점만 잰다. 중앙 섬은 평평해서 한 바퀴가 같은 높이이고, 값이 실제로 바뀌는 것은
-	 * <b>포탈 단을 내려오는 몇 틱</b>뿐이다. 그 한 점이 허공이면 중심 높이를 쓴다 — 고리에 구멍을
-	 * 뚫는 것보다 낫다.
-	 */
-	private static double groundY(ServerLevel end, Vec3 center, double radius) {
-		BlockPos ground = end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-				BlockPos.containing(center.x + radius, 0.0, center.z));
-		return ground.getY() > end.getMinY() ? ground.getY() : center.y;
 	}
 
 	// ------------------------------------------------------------------ 사람 고르기
@@ -776,20 +1052,143 @@ public final class TrialLandingShock {
 	}
 
 	/**
-	 * ⚠ 이 카드가 사람을 밀어 놓을 수 있는 <b>중앙에서의 가장 먼 거리.</b>
+	 * ⚠⚠ 이 카드가 사람을 밀어 놓을 수 있는 <b>중앙에서의 가장 먼 거리.</b>
 	 *
-	 * <p>클래스 설명의 {@code 15 + 8 = 23} 을 산수가 아니라 <b>코드로</b> 적은 것이다. 산수는
-	 * 값을 고치는 사람이 안 볼 수 있지만 이 함수는 못 피한다. 여기에 걸리면 넉백이 그냥 짧아진다 —
-	 * 밀려서 허공으로 나가는 것보다 덜 밀리는 쪽이 언제나 싸다.
+	 * <p><b>이 함수가 지금 이 카드를 살려 두는 장치다.</b> 예전에는 {@code 15 + 8 = 23} 이
+	 * 저절로 섬 안이라 이 함수가 산수를 옮겨 적은 것에 지나지 않았는데, 지금 값
+	 * ({@code 75 + 16 = 91})에서는 <b>이것 말고 사람을 섬 안에 붙들어 두는 것이 없다.</b>
 	 *
-	 * <p>{@code ARENA_RADIUS} 를 함께 물리는 것은 다음에 값을 만질 사람 몫이다. 누가 반경이나
-	 * 넉백을 올려 둘의 합이 섬을 넘기면, 그때도 이 함수가 섬 경계에서 잘라 준다 — 다만 그때는
-	 * 카드가 이미 「섬 안에 머문다」는 제 근거를 잃은 상태이므로 <b>여기에 기대지 말고 값을
-	 * 되돌릴 것.</b>
+	 * <p>천장은 섬 경계가 아니라 {@link #EDGE_MARGIN} 만큼 <b>안쪽</b>이다. 경계에 딱 세우면
+	 * 거기서 한 걸음이 곧 낙사이고, 공유 체력이라 그 한 걸음이 팀 전체를 끝낸다.
+	 *
+	 * <p>여기에 걸리면 넉백이 그냥 짧아진다 — 밀려서 허공으로 나가는 것보다 덜 밀리는 쪽이
+	 * 언제나 싸다. 카드에 어떤 값을 적어도 이 함수는 못 피한다.
 	 */
 	static double outwardLimit(double maxRadius, double knockback) {
 		double reach = Math.max(0.0, maxRadius) + Math.max(0.0, knockback);
-		return Math.min(TrialRisks.ARENA_RADIUS, reach);
+		return Math.max(0.0, Math.min(TrialRisks.ARENA_RADIUS - EDGE_MARGIN, reach));
+	}
+
+	/** 아레나 중앙 {@code (0, 0)} 에서 잰 거리. 천장이 재는 것이 이 거리다. */
+	static double fromCenter(double x, double z) {
+		return Math.sqrt(x * x + z * z);
+	}
+
+	/**
+	 * 몇 번째 고리가 <b>몇 틱째</b>인가. 음수면 아직 안 태어났다는 뜻이다.
+	 *
+	 * <p>고리마다 시계를 따로 들지 않고 <b>벌의 출발 틱 하나</b>에서 뺀다. 따로 들면 하나가
+	 * 어긋나기 시작해도 나머지가 멀쩡해 알아채지 못한다.
+	 *
+	 * @param age          벌이 출발한 뒤 지난 틱
+	 * @param ringIndex    몇 번째 고리인가. 0 이 첫 고리다
+	 * @param intervalTicks 고리 사이 간격. {@link #ringInterval} 을 거친 값이어야 한다
+	 */
+	static int stepOf(long age, int ringIndex, int intervalTicks) {
+		return (int) (age - (long) ringIndex * intervalTicks);
+	}
+
+	/** 마지막 고리의 뒷자락까지 다 지나가는 틱. 벌은 그 틱을 넘기면 사라진다. */
+	static long lastTick(int rings, int intervalTicks, int ringLifetime) {
+		return (long) Math.max(0, rings - 1) * intervalTicks + Math.max(0, ringLifetime);
+	}
+
+	/**
+	 * 실제로 돌릴 고리 수.
+	 *
+	 * <p>0 이하로 적힌 카드는 <b>아무 일도 안 일어나는 카드</b>가 되는데, 착지가 발동 조건이라
+	 * 그때는 「드래곤이 앉았는데 조용하다」가 되어 버그로 읽힌다. 최소 하나는 돌린다.
+	 */
+	static int ringCount(int ringCount) {
+		return Math.max(1, ringCount);
+	}
+
+	/**
+	 * 실제로 쓸 고리 간격.
+	 *
+	 * <p>0 이하로 적히면 고리 전부가 <b>같은 틱에 겹쳐</b> 한 사람이 한 번에 {@code ringCount}
+	 * 번 맞는다 — 지금 값에서 한 틱에 12, 팀 합계 48 이라 그 자리에서 전멸이다. 최소 1 틱은
+	 * 벌린다. 벌린다고 안전해지는 것은 아니지만 적어도 <b>한 틱에 다 들어오지는 않는다.</b>
+	 */
+	static int ringInterval(int ringIntervalTicks) {
+		return Math.max(1, ringIntervalTicks);
+	}
+
+	/**
+	 * 고리 하나가 이번 틱에 쓸 수 있는 점 수.
+	 *
+	 * <h2>고리 수로 똑같이 나누지 않는다</h2>
+	 *
+	 * <p>고리 셋이 함께 날 때 반경이 40·20·0.5 인 순간이 있다. 똑같이 나누면 갓 태어난 반경
+	 * 0.5 짜리가 146점을 받아 <b>한 점을 서른 번 겹쳐 찍고</b>, 정작 둘레 251칸짜리 바깥 고리가
+	 * 같은 146점으로 2.9칸씩 벌어져 점선이 된다.
+	 *
+	 * <p>그래서 <b>바라는 만큼에 비례해</b> 나눈다. 바라는 수는 둘레에서 나오므로 결국 반경에
+	 * 비례하고, 작은 고리는 제가 필요한 만큼만 가져간다. 셋이 다 땅 위에 있는 그 순간
+	 * (둘레 합 380칸)에 440점이면 점 사이가 0.86칸이라 <b>「엔더 파동」의 가장 성긴
+	 * 자리(1.1칸)보다도 촘촘하다.</b>
+	 *
+	 * <p>합이 예산 안이면 그냥 바라는 대로 준다 — 고리 하나만 날 때가 그렇고, 그때는 예전과
+	 * 똑같이 400점이다.
+	 *
+	 * <p>내림 나눗셈이라 <b>몫의 합이 예산을 넘을 수 없다</b>. 그것이 이 함수가 있는 이유다.
+	 *
+	 * @param want   이 고리가 바라는 점 수
+	 * @param wanted 이번 틱에 그리는 고리들이 바라는 점 수의 합
+	 */
+	static int ringAllowance(int want, int wanted) {
+		if (want <= 0 || wanted <= 0) {
+			return 0;
+		}
+		if (wanted <= MAX_POINTS_PER_TICK) {
+			return want;
+		}
+		return (int) ((long) want * MAX_POINTS_PER_TICK / wanted);
+	}
+
+	/**
+	 * 몫 가운데 <b>앞머리</b>에 돌아가는 수. 나머지가 몸통이다.
+	 *
+	 * <p>가르는 비율을 숫자로 적지 않고 「엔더 파동」의 상한(240:160)에서 뽑는다. 그쪽이 바뀌면
+	 * 이 카드의 고리도 같은 모양으로 따라가야 하기 때문이다 — 두 고리가 다르게 보이면 사람이
+	 * 「고리는 뛰면 피한다」를 두 번 배운다.
+	 */
+	static int edgeShare(int allowance) {
+		if (allowance <= 0) {
+			return 0;
+		}
+		return (int) ((long) allowance * TrialEnderPulse.EDGE_MAX_POINTS
+				/ TrialEnderPulse.MAX_POINTS_PER_TICK);
+	}
+
+	/** 그 반경의 고리가 <b>바라는</b> 점 수. 예산을 나누는 저울이다. */
+	static int ringWant(double radius) {
+		return TrialEnderPulse.edgePoints(radius) + TrialEnderPulse.wakePoints(radius);
+	}
+
+	/**
+	 * 고리 한 바퀴를 <b>몇 틱에 나눠</b> 그릴지.
+	 *
+	 * <p>{@code room} 개만 쓸 수 있는데 점자리가 {@code wholeRing} 개면, 한 틱에
+	 * {@code ceil(wholeRing / room)} 개마다 하나씩 찍고 다음 틱에 위상을 옮겨 메운다. 예산은
+	 * 지키면서 <b>눈에 보이는 촘촘함은 온전히</b> 남는다.
+	 *
+	 * <h2>⚠ {@link #MAX_STRIDE} 를 넘기지 않는다</h2>
+	 *
+	 * <p>나눠 그려도 고리가 고리로 보이는 것은 <b>먼저 찍은 점이 아직 살아 있기</b> 때문이다.
+	 * 이 카드는 두 입자를 겹쳐 쓰는데 <b>짧은 쪽이 앞머리의 {@code CRIT} 이고 수명이 최소
+	 * 4틱</b>이다({@code CritParticle} 의 {@code max(1, 6.0 / (굴림×0.8 + 0.6))}). 먼지의
+	 * 하한 8틱보다 이쪽이 먼저 걸리므로 <b>「종말의 비」의 6 이 아니라 더 작은 수</b>를 쓴다.
+	 *
+	 * <p>여기서 담기지 않는 나머지는 {@link #stroke} 가 점자리를 줄여 받는다. 고리가 성겨지는
+	 * 것보다는 낫지만 그쪽이 마지막 수단이라는 뜻이다.
+	 */
+	static int stride(int wholeRing, int room) {
+		if (wholeRing <= 0 || room <= 0) {
+			return 1;
+		}
+		int need = (wholeRing + room - 1) / room;
+		return Math.max(1, Math.min(MAX_STRIDE, need));
 	}
 
 	/**
@@ -816,46 +1215,74 @@ public final class TrialLandingShock {
 	 *
 	 * <p><b>공중 감쇠로 계산한다.</b> 처음 속도 {@code v} 인 몸이 계속 떠 있다면 총 이동은
 	 * {@code v + 0.91v + 0.91²v + … = v / (1 - 0.91)} 이라, 거꾸로 {@code v = 거리 × 0.09} 다.
-	 * 8칸이면 0.72 칸/틱.
+	 * 16칸이면 1.44 칸/틱.
 	 *
-	 * <p>바닥 모델(마찰 0.546)로 잡으면 안 된다. 같은 8칸을 맞추려면 3.6 칸/틱을 실어야 하는데,
-	 * 그 속도로 <b>한 틱이라도 떠 있으면 40칸을 날아</b> 섬 밖 허공이다 — 경사 한 칸, 다른 카드의
+	 * <p>바닥 모델(마찰 0.546)로 잡으면 안 된다. 같은 16칸을 맞추려면 7.2 칸/틱을 실어야 하는데,
+	 * 그 속도로 <b>한 틱이라도 떠 있으면 80칸을 날아</b> 섬 밖 허공이다 — 경사 한 칸, 다른 카드의
 	 * 띄우기 한 번이면 그 일이 일어난다. 공중 모델은 반대다. 어느 상황에서도 적힌 거리를
 	 * <b>넘을 수 없고</b>, 바닥에 붙어 있으면 마찰이 먼저 먹어 5분의 1 남짓만 밀린다.
 	 *
-	 * <p>그래서 「최대 8칸」은 말 그대로 <b>천장</b>이고, 이 카드가 허용된 예외인 근거
-	 * ({@code 15 + 8 < 40})는 언제나 안전한 쪽으로 어긋난다.
+	 * <p>그래서 적힌 넉백은 말 그대로 <b>천장</b>이고, 밀리는 거리는 언제나 안전한 쪽으로
+	 * 어긋난다. 다만 <b>이 모델은 거리를 줄이는 장치이지 섬 안에 붙드는 장치가 아니다</b> —
+	 * 그것은 {@link #outwardLimit} 과 {@link #groundedReach} 가 한다.
 	 */
 	static double pushVelocity(double distance) {
 		return Math.max(0.0, distance) * (1.0 - AIR_DRAG);
 	}
 
 	/**
-	 * 한 고리가 팀에 넣을 수 있는 <b>가장 큰 합계 피해.</b>
+	 * 고리 한 벌이 팀에 넣을 수 있는 <b>가장 큰 합계 피해.</b>
 	 *
-	 * <p>공유 체력에서 범위 피해는 팀원별로 그대로 합산된다. 이 카드는 전원을 때리므로 넷이 다
-	 * 실패하면 {@code damage × 4} 가 거의 같은 틱에 들어간다 — 그 값이 팀 체력 20 을 넘는지를
-	 * 카드 값에서 직접 세어 두는 자리다.
+	 * <p>공유 체력에서 범위 피해는 팀원별로 그대로 합산된다. 이 카드는 전원을 때리고 고리가
+	 * {@code rings} 개라 — 명단을 고리마다 따로 들기 때문에 — 한 사람이 최대 {@code rings} 번
+	 * 맞는다. 넷이 매번 실패한 판이 {@code perHit × 4 × rings} 다.
 	 *
-	 * <p>고리는 한 사람을 한 번만 지나가므로({@link #CROSSED}) 사람당 몫은 언제나 {@code damage}
-	 * 하나다. {@code TrialRisks.worstCaseTickDamage} 가 이 위험을 {@code hits(damage, 1)} 로
-	 * 세는 것이 그 이야기다 — 그쪽은 <b>한 사람</b>이 받는 값이고 이쪽은 <b>팀 합계</b>다.
+	 * <p>⚠ <b>{@code perHit} 은 카드에 적힌 날값이 아니라 감쇠를 지난 한 대</b>여야 한다.
+	 * 방어·보호 감쇠는 <b>한 방마다</b> 걸리는 비선형이라, 곱해 놓고 감쇠하면 실제보다 아프게
+	 * 나온다. 곱하는 것이 이 함수의 몫이고 감쇠는 부르는 쪽 몫이다 — 시험 쪽
+	 * {@code GearedDamage} 가 그 한 대를 만든다.
+	 *
+	 * <p>{@code TrialRisks.worstCaseTickDamage} 가 이 위험을 {@code hits(damage, 1)} 로 세는
+	 * 것과 어긋나지 않는다. 그쪽은 <b>한 틱</b>에 한 사람이 받는 값이고, 고리들은
+	 * {@code ringIntervalTicks} 만큼 떨어져 지나가므로 한 틱에 겹치지 않는다.
+	 *
+	 * @param perHit  감쇠를 지난 한 대
+	 * @param members 팀 인원
+	 * @param rings   고리 수
 	 */
-	static float worstCaseTeamDamage(float damage, int members) {
-		if (damage <= 0.0F || members <= 0) {
+	static float worstCaseTeamDamage(float perHit, int members, int rings) {
+		if (perHit <= 0.0F || members <= 0 || rings <= 0) {
 			return 0.0F;
 		}
-		return damage * members;
+		return perHit * members * rings;
 	}
 
 	/**
-	 * 한 틱에 이 고리가 쓰는 점 수. 「예산 안인가」를 숫자로 묻는 값이다.
+	 * 한 틱에 고리 하나가 쓰는 점 수의 <b>상한</b>. 「예산 안인가」를 숫자로 묻는 값이다.
 	 *
-	 * <p>앞머리와 몸통을 더한다. 숫자를 따로 박지 않고 「엔더 파동」의 두 함수에서 뽑으므로,
-	 * 그쪽 상한이 바뀌면 이 값도 따라온다.
+	 * <p>{@link #stroke} 가 실제로 하는 셈을 그대로 따라간다 — 점자리를 {@link #stride} 로
+	 * 나눈 몫이다. 위상에 따라 하나 적을 수 있으므로 올림으로 돌려준다
+	 * ({@code TrialWarning.strokePoints} 와 같은 까닭).
+	 *
+	 * <p>이것은 <b>세는 수</b>이지 실제로 나가는 수가 아니다. 허공에 걸린 점은 안 찍히므로
+	 * 실제는 이보다 적다 — 반경 40 을 넘어가면 대부분의 점이 섬 밖이라 거의 안 나간다.
+	 *
+	 * @param allowance 이 고리가 이번 틱에 쓸 수 있는 점 수({@link #ringAllowance})
 	 */
-	static int markPoints(double radius) {
-		return TrialEnderPulse.edgePoints(radius) + TrialEnderPulse.wakePoints(radius);
+	static int markPoints(double radius, int allowance) {
+		int edgeRoom = edgeShare(allowance);
+		return strokePoints(TrialEnderPulse.edgePoints(radius), edgeRoom)
+				+ strokePoints(TrialEnderPulse.wakePoints(radius), allowance - edgeRoom);
+	}
+
+	/** {@link #stroke} 한 번에 나가는 점 수의 상한. */
+	static int strokePoints(int wholeRing, int room) {
+		if (wholeRing <= 0 || room <= 0) {
+			return 0;
+		}
+		int step = stride(wholeRing, room);
+		int points = Math.min(wholeRing, room * step);
+		return (points + step - 1) / step;
 	}
 
 	/** 위에서 본 거리. 고리는 바닥에 그려지므로 높이를 묻지 않는다. */

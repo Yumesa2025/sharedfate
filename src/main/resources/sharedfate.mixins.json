@@ -20,6 +20,7 @@
     "LivingEntityHurtSoundMixin",
     "ServerLevelSanctuaryTickMixin",
     "EndCrystalGuardMixin",
+    "EndCrystalSealMixin",
     "LivingEntityPerkDamageMixin",
     "LivingEntitySharedHealMixin",
     "MobEffectInstanceSharedTickMixin",

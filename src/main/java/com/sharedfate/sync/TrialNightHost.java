@@ -13,8 +13,10 @@ import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,8 +26,18 @@ import java.util.Set;
  *
  * <h2>무엇을 해야 하는가</h2>
  *
- * <p><b>한 번만</b> 터진다. 엔드에 있는 엔더맨 <b>전원</b>이 20초({@code hostileTicks}) 동안
- * 적대가 된다 — 쳐다보지 않아도 달려온다. 20초가 지나면 원래대로 돌아간다.
+ * <p><b>한 번만</b> 터진다. 팀원에게서 20칸({@code radius}) 안에 있는 엔더맨을 가까운 순으로
+ * <b>다섯 마리까지</b>({@code maxMobs}) 골라 20초({@code hostileTicks}) 동안 적대로 만든다 —
+ * 쳐다보지 않아도 달려온다. 20초가 지나면 원래대로 돌아간다.
+ *
+ * <h2>「전부」에서 「가까운 몇 마리」로 바뀌었다</h2>
+ *
+ * <p>처음에는 <b>엔드에 있는 엔더맨 전부</b>였다. 사람이 플레이해 보고 「전원은 너무 빡세다」고
+ * 했다 — 엔드는 엔더맨이 끝없이 깔린 곳이라 <b>「전부」가 사실상 무한</b>이었고, 공유 체력 20
+ * 짜리 팀에 바닐라 근접 7 짜리가 수십 마리 붙는 것은 대응할 수 있는 양이 아니다.
+ *
+ * <p>숫자는 <b>전부 카드 값에서 온다</b>({@code radius} · {@code maxMobs}). 20 이나 5 를 여기에
+ * 적어 두면 사람이 다시 손볼 때 카드와 실행기가 갈라진다.
  *
  * <h2>⚠ 이 카드는 금지 목록에서 조건부로 풀려난 것이다</h2>
  *
@@ -35,7 +47,7 @@ import java.util.Set;
  * <blockquote><b>지속 시간이 정해져 있고 되풀이되지 않는다.</b> 끝이 보이지 않는 어그로만
  * 금지다 — 20초는 버티면 끝나는 시간이라 팀에 대응할 수단이 있다.</blockquote>
  *
- * <p>그러므로 이 파일을 고치는 사람은 넷을 반드시 지켜야 한다. 하나라도 어기면 이 카드는
+ * <p>그러므로 이 파일을 고치는 사람은 다섯을 반드시 지켜야 한다. 하나라도 어기면 이 카드는
  * 허용된 적이 없는 카드가 된다.
  *
  * <ul>
@@ -44,6 +56,9 @@ import java.util.Set;
  *   <li><b>드래곤이 죽거나 전투가 끝나거나 판이 리셋되면 그 자리에서 푼다</b></li>
  *   <li><b>엔더맨을 새로 소환하지 않는다.</b> 이미 엔드에 있는 것을 적대로 만드는 카드이지
  *       수를 늘리는 카드가 아니다</li>
+ *   <li><b>깨우는 수에 천장이 있다.</b> 사람이 카드를 되돌린 이유가 천장이 없다는 것 하나였다
+ *       (아래 「전부에서 가까운 몇 마리로 바뀌었다」). 빈자리를 채우거나 도중에 더 거는 코드는
+ *       천장을 없애는 코드다</li>
  * </ul>
  *
  * <h2>바닐라는 이 카드를 저절로 끝내 주지 않는다</h2>
@@ -100,20 +115,41 @@ import java.util.Set;
  * {@code updatePersistentAnger} 가 {@code stopBeingAngry} 로 간다 — <b>바닐라가 대신 풀어
  * 준다.</b> 못 박지 않았다면 그때 남아 있는 것은 바닐라가 굴린 20~39초다.
  *
- * <h2>도중에 새로 스폰된 엔더맨도 적대로 만든다</h2>
+ * <h2>⚠ 명단을 딱 한 번 고르고 20초 내내 얼려 둔다</h2>
  *
- * <p>카드 설명의 「엔드의 엔더맨 전원」을 <b>20초 동안 차원의 성질</b>로 읽는다. 뽑힌 순간의
- * 명단이 아니다. 근거가 둘이다.
+ * <p>전에는 <b>매 틱 「지금 엔드에 있는 놈 전부」를 훑어</b> 걸었고, 그 근거가 「거는 조회와
+ * 푸는 명단이 같은 곳에서 나오므로 어긋날 자리가 없다」였다. <b>그 전제가 깨졌다.</b> 이제
+ * 조회가 사람의 자리에 달려 있어서, 사람이 걸어 다니면 범위 안의 엔더맨이 매 틱 바뀐다.
+ *
+ * <p>그래서 둘을 정했다. 둘 다 <b>「20초 뒤 반드시 전부 풀린다」</b>를 지키는 쪽으로 기울였다 —
+ * 그것이 이 카드가 금지 목록에서 풀려난 유일한 근거이기 때문이다.
  *
  * <ul>
- *   <li><b>기억할 것이 없어진다.</b> 명단을 얼려 두면 그 명단을 20초 동안 들고 있어야 하는데,
- *       엔더맨은 순간이동하고 청크는 내려간다 — 「그놈을 다시 찾기」가 이 카드가 실패하는 첫째
- *       길이다. 매 틱 <b>지금 있는 놈 전부</b>를 훑으면 거는 쪽과 푸는 쪽이 <b>같은 조회</b>에서
- *       나오므로 어긋날 자리가 없다</li>
- *   <li><b>수가 늘어 보이지 않는다.</b> 우리는 한 마리도 소환하지 않는다. 20초 동안 자연
- *       스폰으로 몇 마리가 더 생기는 것은 이 카드가 없어도 일어날 일이고, 늦게 온 놈은 남은
- *       시간만큼만 적대라 <b>창이 길어지지도 않는다</b></li>
+ *   <li><b>한 번 깨운 놈은 20초 내내 적대다.</b> 범위를 벗어나도 그 자리에서 풀지 않는다.
+ *       {@code radius} 는 <b>고르는 조건</b>이지 <b>유지 조건</b>이 아니다. 벗어나면 푼다고
+ *       하면 (ㄱ) 엔더맨이 표적에게 <b>순간이동으로 붙는</b> 바닐라 동작 때문에 거리가 매 틱
+ *       요동쳐 적대가 깜빡이고, (ㄴ) 무엇보다 사람이 뛰면 그 자리에서 다 풀려 <b>도망이 곧
+ *       해제</b>가 된다 — 20초를 버티는 카드가 아니게 된다</li>
+ *   <li><b>다섯 자리가 비어도 채우지 않는다.</b> 죽거나 사라져도 새로 뽑지 않는다. 채우기
+ *       시작하면 20초 동안 실제로 상대한 마리 수에 <b>천장이 없어지고</b>, 사람이 고친 것이
+ *       바로 그 「사실상 무한」이다. {@code maxMobs} 는 <b>한 번에 다섯</b>이 아니라 <b>이
+ *       카드가 통틀어 다섯</b>이다</li>
  * </ul>
+ *
+ * <p>다만 <b>한 마리도 못 고른 동안</b>에는 매 틱 다시 고른다({@link #tick} 의 {@code waking}).
+ * 그 틱에는 카드가 아직 터진 것이 아니라서다 — 팀이 마침 엔더맨 없는 자리에 서 있었다는 이유로
+ * 카드가 통째로 불발되면 안 된다. 첫 한 마리를 깨우는 순간 명단이 얼어붙는다.
+ *
+ * <h2>얼린 명단으로도 「다시 찾기」 문제가 생기지 않는다</h2>
+ *
+ * <p>명단이 드는 것은 <b>좌표도 번호도 아니고 엔티티 객체</b>다. 엔더맨이 순간이동해도 같은
+ * 객체이고, 청크가 내려가도 우리 손에 남는다. 푸는 일은 그 객체의 필드 몇 개를 쓰는 것뿐이라
+ * 월드를 다시 뒤질 일이 없다 — <b>「걸었는데 못 푸는」 엔더맨이 생길 수 없다</b>는 성질은
+ * 명단을 얼리기 전과 똑같이 성립한다.
+ *
+ * <p>도중에 새로 스폰된 엔더맨은 <b>이제 깨우지 않는다.</b> 전에는 「엔드의 엔더맨 전원」을
+ * 20초 동안 차원의 성질로 읽어 늦게 온 놈도 걸었지만, 카드가 「가까운 다섯」이 된 이상 늦게
+ * 온 놈을 더 거는 것은 천장을 없애는 일이다.
  *
  * <h2>이미 화가 나 있던 놈도 조건 없이 푼다</h2>
  *
@@ -156,9 +192,10 @@ public final class TrialNightHost {
 	/**
 	 * 터지는 틱에 표시를 붙이는 엔더맨 수의 상한. 곧 그 틱에 나가는 <b>패킷 수</b>다.
 	 *
-	 * <p>엔드의 엔더맨 수는 우리가 정하지 않는다 — 스폰 규칙과 사람이 엔드에 얼마나 오래
-	 * 있었는지가 정한다. 상한이 없으면 붐비는 판에서 한 틱에 패킷 수백 장이 나가고, 하필 그 틱이
-	 * 카드가 터지는 틱이다.
+	 * <p>이제는 명단이 {@code maxMobs} 에서 이미 잘려 오므로 <b>실제로는 여기에 안 걸린다</b>
+	 * (지금 카드 값이 5 다). 그래도 남겨 둔 것은 이 상한이 <b>카드 값과 무관하게</b> 「몇 장이
+	 * 나가는가」에 답을 주는 자리이기 때문이다 — 누가 {@code maxMobs} 를 크게 적어도 연출은
+	 * 여기서 멈춘다. {@code TrialNightHostTest} 가 그 답을 숫자로 묻는다.
 	 *
 	 * <p>64 인 이유. 이 저장소가 쓰는 한 틱 예산은 400 점이고
 	 * ({@link TrialEnderPulse#MAX_POINTS_PER_TICK}), <b>시련은 전투가 끝날 때까지 쌓이므로</b>
@@ -186,6 +223,10 @@ public final class TrialNightHost {
 	 *
 	 * <p>{@code Entity.equals} 는 엔티티 번호로 같음을 보므로 집합이 그대로 중복을 걸러 준다.
 	 * 순간이동해도 같은 객체라 <b>「그놈을 다시 찾기」 문제가 생기지 않는다.</b>
+	 *
+	 * <p>{@link LinkedHashSet} 인 것은 <b>고른 순서(가까운 순)를 잃지 않기 위해서</b>다.
+	 * {@link #flare} 가 상한에 걸려 자를 때 잘려 나가는 쪽이 먼 놈이어야 하고, 무엇보다 명단을
+	 * 눈으로 따라갈 때 순서가 뒤섞이지 않는 편이 낫다.
 	 *
 	 * <p>정적 맵인 이유는 위험이 값(레코드)이라 상태를 들 수 없기 때문이다. 월드가 바뀌면
 	 * 지난 판의 엔더맨을 붙들고 있으므로 {@link #clearState()} 로 반드시 비운다.
@@ -239,7 +280,7 @@ public final class TrialNightHost {
 			@Nullable List<ServerPlayer> members, String key, long granted, long now,
 			@Nullable TrialCatalog.Risk.NightHost risk) {
 		if (end == null || members == null || members.isEmpty() || risk == null
-				|| risk.hostileTicks() <= 0) {
+				|| !usable(risk)) {
 			return;
 		}
 
@@ -263,16 +304,19 @@ public final class TrialNightHost {
 		}
 
 		if (host == null) {
-			host = new HashSet<>();
+			host = new LinkedHashSet<>();
 			NIGHTS.put(nightKey, host);
 		}
 		// 터지는 첫 순간인가. 「명단이 비어 있다」로 묻는 것은 엔더맨이 한 마리도 없는 판에서
 		// 아무도 안 달려오는데 비명만 울리는 것을 막기 위해서다 — 첫 한 마리를 실제로 깨우는
-		// 틱에 울린다.
+		// 틱에 울린다. 명단이 얼어붙는 자리도 여기다: 비어 있는 동안만 다시 고른다.
 		boolean waking = host.isEmpty();
-		int woken = enrage(end, members, host, calmAt(now, elapsed, risk.hostileTicks()));
-		if (waking && woken > 0) {
-			announce(end, members);
+		if (waking) {
+			wake(end, members, host, risk);
+		}
+		hold(members, host, calmAt(now, elapsed, risk.hostileTicks()));
+		if (waking && !host.isEmpty()) {
+			announce(end, members, host);
 		}
 	}
 
@@ -296,7 +340,42 @@ public final class TrialNightHost {
 	// ------------------------------------------------------------------ 적대로 만들기
 
 	/**
-	 * 지금 엔드에 있는 엔더맨을 전부 적대로 만든다. 새로 소환하지 않는다.
+	 * 명단을 <b>딱 한 번</b> 고른다. 새로 소환하지 않는다.
+	 *
+	 * <p>고르는 조건이 둘이다 — <b>팀원 아무에게서 {@code radius} 안</b>이고,
+	 * <b>가까운 순으로 {@code maxMobs} 마리까지</b>. 거리는 <b>노릴 수 있는 사람</b>까지만 잰다
+	 * ({@link #huntable}). 관전자 옆에 선 엔더맨을 「가깝다」고 뽑아 봐야 바닐라가 그 틱에
+	 * 분노를 지운다.
+	 *
+	 * <p>차원 전체를 훑는다. {@code ServerLevel} 에 상자로 좁히는 조회
+	 * ({@code getEntities(EntityTypeTest, AABB, Predicate)})가 26.3 에 <b>없고</b>,
+	 * {@code getEntitiesOfClass} 로 사람마다 상자를 치면 겹치는 자리의 엔더맨이 두 번 나와
+	 * 합치는 일이 새로 생긴다. 어차피 <b>명단이 빌 동안에만</b> 도는 조회라 보통 한 판에 한 번
+	 * 뿐이다 — 전에는 이것을 20초 내내 매 틱 돌렸다.
+	 *
+	 * <p>가까운 순으로 자르는 것이 사람 말의 「20블럭 + 5마리 최대」다. 아무 다섯이나 고르면
+	 * 20칸 끝의 놈이 뽑히고 발밑의 놈이 빠지는 판이 생겨, <b>「가까이 있는 것이 깨어난다」</b>가
+	 * 화면에서 성립하지 않는다.
+	 */
+	private static void wake(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host,
+			TrialCatalog.Risk.NightHost risk) {
+		List<Nearby> candidates = new ArrayList<>();
+		for (Enderman enderman : end.getEntities(EntityTypes.ENDERMAN, Enderman::isAlive)) {
+			double distance = nearestSqr(members, enderman);
+			// 시험이 보는 것과 같은 함수로 자른다. 여기에 부등식을 다시 적으면 둘이 갈라진다.
+			if (inReach(distance, risk.radius())) {
+				candidates.add(new Nearby(enderman, distance));
+			}
+		}
+		candidates.sort(Comparator.comparingDouble(Nearby::distanceSqr));
+		int wanted = wakeCount(candidates.size(), risk.maxMobs());
+		for (int index = 0; index < wanted; index++) {
+			host.add(candidates.get(index).mob());
+		}
+	}
+
+	/**
+	 * 얼린 명단의 적대를 이번 틱에도 붙들어 둔다.
 	 *
 	 * <p>표적을 <b>이미 팀원을 노리고 있으면 그대로 둔다.</b> 매 틱 가장 가까운 사람으로 다시
 	 * 찍으면 두 사람 사이에서 표적이 깜빡이고, 그때마다
@@ -307,13 +386,17 @@ public final class TrialNightHost {
 	 * <p>분노 대상과 만료 시각은 <b>매 틱</b> 다시 쓴다. 바닐라가 매 틱 지우기 때문이고, 그
 	 * 까닭과 이득은 클래스 설명의 「만료 시각을 매 틱 다시 못 박는 이유」에 있다.
 	 *
+	 * <p>죽었거나 노릴 사람이 없는 놈은 건너뛸 뿐 <b>명단에서 빼지 않는다.</b> 빼면 그놈에게
+	 * {@link #calm} 이 안 가고, 「죽은 줄 알았는데 살아 있었다」 한 번이면 적대가 남는다 —
+	 * 명단은 <b>손댄 적이 있는 놈 전부</b>의 목록이어야 한다.
+	 *
 	 * @param calmAt 우리가 푸는 바로 그 틱. 여기까지가 분노의 수명이다
-	 * @return 이번 틱에 실제로 손댄 엔더맨 수
 	 */
-	private static int enrage(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host,
-			long calmAt) {
-		int touched = 0;
-		for (Enderman enderman : end.getEntities(EntityTypes.ENDERMAN, Enderman::isAlive)) {
+	private static void hold(List<ServerPlayer> members, Set<Enderman> host, long calmAt) {
+		for (Enderman enderman : host) {
+			if (!enderman.isAlive()) {
+				continue;
+			}
 			ServerPlayer target = hunted(members, enderman);
 			if (target == null) {
 				// 노릴 사람이 아무도 없다(전부 관전이거나 죽어 있다). 아무나 찍으면 바닐라가
@@ -329,12 +412,28 @@ public final class TrialNightHost {
 			// 목표가 정상적으로 돈다 — 16칸 밖에서 순간이동으로 붙는 동작이 여기서 나온다.
 			enderman.setPersistentAngerTarget(EntityReference.<LivingEntity>of(target));
 			enderman.setPersistentAngerEndTime(calmAt);
-			// 푸는 쪽이 보는 명단이 여기서 만들어진다. 거는 쪽과 같은 조회에서 나오므로
-			// 「걸었는데 못 푸는」 엔더맨이 생길 수 없다.
-			host.add(enderman);
-			touched++;
 		}
-		return touched;
+	}
+
+	/** 고를 때 쓰는 한 쌍. 거리를 함께 들어 두어야 정렬하며 매번 다시 재지 않는다. */
+	private record Nearby(Enderman mob, double distanceSqr) {
+	}
+
+	/**
+	 * 노릴 수 있는 팀원 중 가장 가까운 사람까지의 거리(제곱).
+	 *
+	 * <p>노릴 사람이 하나도 없으면 {@link Double#MAX_VALUE} 라 어떤 {@code radius} 로도 안
+	 * 걸린다 — 전부 관전인 팀 옆에서 엔더맨이 깨어나는 일이 없다.
+	 */
+	private static double nearestSqr(List<ServerPlayer> members, Enderman enderman) {
+		double best = Double.MAX_VALUE;
+		for (ServerPlayer member : members) {
+			if (!huntable(member)) {
+				continue;
+			}
+			best = Math.min(best, enderman.distanceToSqr(member));
+		}
+		return best;
 	}
 
 	/**
@@ -411,13 +510,13 @@ public final class TrialNightHost {
 	 * 봤다」</b>이기 때문이다 — 새로 배울 것이 없고, 넷이 동시에 들으면 「전부 깨어났다」로
 	 * 읽힌다.
 	 */
-	private static void announce(ServerLevel end, List<ServerPlayer> members) {
+	private static void announce(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host) {
 		for (ServerPlayer member : members) {
 			Vec3 at = member.position();
 			end.playSound(null, at.x, at.y, at.z, SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE,
 					1.0F, 0.6F);
 		}
-		flare(end);
+		flare(end, host);
 	}
 
 	/**
@@ -431,20 +530,25 @@ public final class TrialNightHost {
 	 * 보낸다」), 엔더맨은 아레나 반경 40 어디에나 있고 기둥 위에도 선다 — 되돌리면 <b>가까운
 	 * 한두 마리만 표시되고 나머지는 소리 없이 달려온다.</b>
 	 *
-	 * <p>여기서 조회를 한 번 더 하는 것은 {@link #enrage} 가 이미 훑은 목록을 넘겨받지 않기
-	 * 위해서다. 이 조회는 <b>카드가 터지는 한 틱에만</b> 돈다.
+	 * <p><b>깨운 명단만</b> 그린다. 전에는 여기서 「지금 엔드에 있는 엔더맨」을 한 번 더 조회해
+	 * 그렸는데, 그때는 명단이 곧 그 조회 결과라 같은 말이었다. 이제는 다르다 — 그 조회로
+	 * 되돌리면 <b>깨우지도 않은 놈 머리 위에 성난 표시가 뜬다.</b> 사람이 그것을 보고 비키거나
+	 * 맞서면 표식이 거짓말한 것이 된다.
 	 *
 	 * <p>몇 장을 보낼지는 {@link #flarePackets} 에게 묻는다. 여기서 직접 세면 시험이 보는 값과
 	 * 실제로 나가는 양이 갈라질 수 있고, 갈라지면 시험이 지키는 것이 아무것도 아니게 된다.
 	 */
-	private static void flare(ServerLevel end) {
-		List<? extends Enderman> present = end.getEntities(EntityTypes.ENDERMAN, Enderman::isAlive);
-		int packets = flarePackets(present.size());
-		for (int index = 0; index < packets; index++) {
-			Enderman enderman = present.get(index);
+	private static void flare(ServerLevel end, Set<Enderman> host) {
+		int packets = flarePackets(host.size());
+		int drawn = 0;
+		for (Enderman enderman : host) {
+			if (drawn >= packets) {
+				break;
+			}
 			end.sendParticles(ParticleTypes.ANGRY_VILLAGER, true, false,
 					enderman.getX(), enderman.getEyeY() + 0.6, enderman.getZ(),
 					FLARE_PARTICLES, 0.25, 0.1, 0.25, 0.0);
+			drawn++;
 		}
 	}
 
@@ -467,6 +571,43 @@ public final class TrialNightHost {
 	}
 
 	// ------------------------------------------------------------------ 월드 없이 도는 계산
+
+	/**
+	 * 값이 이 카드를 돌릴 수 있는 모양인가.
+	 *
+	 * <p>셋 중 하나라도 0 이하면 <b>아무 일도 하지 않는다.</b> 「범위 0」이나 「0마리」를 「제한
+	 * 없음」으로 읽지 않는 것이 일부러다 — 그렇게 읽으면 값을 잘못 적은 판에서 되살아나는 것이
+	 * 하필 <b>옛 「엔드의 엔더맨 전부」</b>이고, 그것이 사람이 없앤 바로 그 카드다.
+	 */
+	static boolean usable(TrialCatalog.Risk.NightHost risk) {
+		return risk.hostileTicks() > 0 && risk.radius() > 0.0 && risk.maxMobs() > 0;
+	}
+
+	/**
+	 * 범위 안에 {@code candidates} 마리가 있을 때 실제로 깨우는 수.
+	 *
+	 * <p>「최대 몇 마리인가」를 <b>숫자로 물을 수 있는</b> 유일한 자리다. 엔드의 엔더맨 수는
+	 * 우리가 정하지 않으므로, 여기가 없으면 「사람이 정한 다섯이 지켜지는가」에 답이 없다.
+	 */
+	static int wakeCount(int candidates, int maxMobs) {
+		if (candidates <= 0 || maxMobs <= 0) {
+			return 0;
+		}
+		return Math.min(candidates, maxMobs);
+	}
+
+	/**
+	 * 이 거리(제곱)가 깨우는 범위 안인가.
+	 *
+	 * <p>제곱으로 재는 것은 제곱근을 피하려는 것뿐이고, 경계({@code 거리 == radius})는
+	 * <b>안</b>으로 본다 — 바닥 고리의 {@code TrialRisks.insideMark} 와 같은 쪽이다.
+	 *
+	 * <p>{@code radius} 가 0 이하면 언제나 거짓이다. {@link #usable} 이 이미 막지만, 「범위
+	 * 없음 = 전부」로 새는 길을 한 군데도 남기지 않는다.
+	 */
+	static boolean inReach(double distanceSqr, double radius) {
+		return radius > 0.0 && distanceSqr <= radius * radius;
+	}
 
 	/**
 	 * 아직 전투가 서 있는가.

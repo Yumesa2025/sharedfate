@@ -187,7 +187,15 @@ class TrialFireballTest {
 		assertEquals(INTERVAL, card.interval());
 		assertEquals(TRACE, card.traceTicks(), "궤적 5초를 2.5배 빠르게 한 값이다");
 		assertEquals(4.35, card.radius(), "반경 3 에서 45% 넓혔다");
-		assertEquals(14.0F, card.damage(), "「아예 안 아픈」 6 에서 올린 값이다");
+		// 6 → 14 → 23. 앞의 둘은 맨몸 날값으로 팀 체력 20 과 견준 값이었고, 사람이
+		// 「다이아셋 + 보호 인챈트까지 하고 맞는 것까지 고려해야 한다」고 정해 다시 잡혔다.
+		// 이 카드는 explosion(null, null) 을 써서 하드 곱 1.5배가 먼저 걸리므로,
+		// 「3대에 죽는다」(무장 기준 한 대 6.67)를 만드는 값이 23 이다.
+		assertEquals(23.0F, card.damage(), "무장 기준으로 14 는 4.1 이라 「3대」에 한참 못 미쳤다");
+		assertTrue(GearedDamage.wipesInThree(
+						GearedDamage.afterGear(card.damage(), GearedDamage.Source.EXPLOSION)),
+				"사람이 정한 것은 「큰자리는 3대맞으면 죽는거로」다 — 두 대로는 안 죽고"
+						+ " 세 대에는 죽어야 한다");
 		assertEquals(1, card.count());
 		assertTrue(card.traceTicks() <= card.interval(),
 				"적힌 값이 깎이면 카드 설명의 「2초 동안」이 거짓말이 된다");

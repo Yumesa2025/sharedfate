@@ -30,7 +30,13 @@ class TrialCrystalOverchargeTest {
 	private static final int FUSE = 300;
 	private static final int BEAM = 200;
 	private static final int REST = 400;
-	private static final float DPS = 1.0F;
+	/**
+	 * 초당 피해. <b>1 에서 3 으로 올렸다</b> — 사람이 실제로 플레이하고 「딜이 너무 낮다」고 했다.
+	 *
+	 * <p>다 맞아도 10(무장 기준 1.3)이라 <b>크리스탈을 우선할 이유가 안 됐다.</b> 카드의 위협은
+	 * 여전히 피해가 아니라 「크리스탈로 끌려가는 것」이지만, 무시해도 되는 값이면 끌려가지 않는다.
+	 */
+	private static final float DPS = 3.0F;
 
 	// ------------------------------------------------------------------ 카드에 적힌 무게
 
@@ -40,25 +46,37 @@ class TrialCrystalOverchargeTest {
 		assertEquals(FUSE, risk.fuseTicks(), "도화선 15초");
 		assertEquals(BEAM, risk.beamTicks(), "빔 10초");
 		assertEquals(REST, risk.restTicks(), "쉼 20초");
-		assertEquals(DPS, risk.damagePerSecond(), "초당 1");
+		assertEquals(DPS, risk.damagePerSecond(), "초당 3");
 	}
 
 	/**
-	 * <b>다 맞아도 팀이 죽지 않는다.</b>
+	 * <b>다 맞으면 팀 체력을 넘지만 한 틱에 오는 것은 한 몫뿐이다.</b>
 	 *
-	 * <p>이 카드의 위협은 피해가 아니라 「크리스탈로 끌려가는 것」이다. 여기가 팀 공유 체력을
-	 * 넘기는 순간 카드의 뜻이 통째로 바뀌고, 그때는 <b>도망칠 방법이 블록 뒤뿐인 즉사 카드</b>가
-	 * 된다.
+	 * <h2>⚠ 「합계가 20 미만」에서 기준이 바뀌었다</h2>
+	 *
+	 * <p>초당 1 이던 때는 합계가 10 이라 <b>다 맞아도 안 죽는다</b>가 이 카드의 안전 근거였다.
+	 * 초당 3 이 되면서 합계가 <b>30</b> 이라 그 근거는 없다.
+	 *
+	 * <p>그래도 즉사 카드가 아닌 것은 <b>대응 수단이 회피가 아니라 「블록 뒤에 숨기」</b>이기
+	 * 때문이다. 숨으면 그 초는 통째로 빠지므로 30 은 <b>열 초를 한 번도 안 가린 사람</b>의
+	 * 값이다. 한 틱에 들어오는 것은 언제나 <b>한 몫(3)</b>이고, 그것을 보는 것은
+	 * {@code TrialRisksTest} 의 무장 기준 안전 시험이다.
+	 *
+	 * <p>그래서 여기서는 <b>합계가 아니라 한 몫</b>을 팀 체력과 견준다. 합계는 「안 가리면
+	 * 얼마인가」를 적어 두는 값으로만 남긴다.
 	 */
 	@Test
-	void 빔을_끝까지_다_맞아도_팀_체력을_넘지_않는다() {
+	void 빔은_한_몫으로_팀을_죽이지_않는다() {
 		TrialCatalog.Risk.CrystalOvercharge risk = card();
 		float total = TrialCrystalOvercharge.beamTotalDamage(risk);
 		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
 
-		assertEquals(10.0F, total, "초당 1 × 10초 = 10 이다");
-		assertTrue(total < teamHealth,
-				"팀 공유 체력이 " + teamHealth + " 다. 여기를 넘기면 이 카드가 즉사 카드가 된다");
+		assertEquals(30.0F, total, "초당 3 × 10초 = 30 이다");
+		assertTrue(total > teamHealth,
+				"합계가 팀 체력 아래로 내려왔다면 초당 피해가 1 로 되돌아간 것이 아닌지 볼 것");
+		assertTrue(risk.damagePerSecond() < teamHealth,
+				"한 몫이 팀 체력을 넘으면 블록 뒤에 숨어도 소용없는 즉사 카드가 된다."
+						+ " 실제 " + risk.damagePerSecond());
 	}
 
 	@Test

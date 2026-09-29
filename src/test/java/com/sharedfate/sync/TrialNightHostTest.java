@@ -21,6 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>이 카드는 {@code docs/드래곤-시련-카드.md} 의 「쓰지 않습니다」에서 <b>조건부로</b> 풀려난
  * 것이고 그 조건이 「지속 시간이 정해져 있고 되풀이되지 않는다」뿐이다. 조건이 깨지면 카드가
  * 나쁜 것이 아니라 <b>있어서는 안 되는 카드</b>가 되므로, 돌려 보고 발견할 일이 아니다.
+ *
+ * <p>「전부」에서 「가까운 몇 마리」로 좁혀지면서 볼 것이 하나 늘었다 — <b>천장이 실제로
+ * 있는가.</b> 이 카드가 「너무 빡세다」였던 이유가 깨우는 수에 천장이 없었다는 것 하나이고,
+ * 천장이 없는 상태로 되돌아가는 길은 여러 갈래다(값을 0 으로 적기 · 실행기에 숫자 박기 ·
+ * 빈자리 채우기). 앞의 둘은 여기서 막고, 셋째는 {@code TrialNightHost} 의
+ * 「명단을 딱 한 번 고르고 20초 내내 얼려 둔다」가 코드로 막는다.
  */
 class TrialNightHostTest {
 
@@ -117,6 +123,78 @@ class TrialNightHostTest {
 		}
 	}
 
+	// ------------------------------------------------------------------ 가까운 몇 마리
+
+	/**
+	 * 사람이 정한 <b>20칸 · 다섯 마리</b>.
+	 *
+	 * <p>처음에는 「엔드의 엔더맨 전부」였고, 사람이 플레이해 보고 「전원은 너무 빡세다,
+	 * 플레이어 주위 20블럭 + 5마리 최대」로 정했다. 엔드는 엔더맨이 끝없이 깔린 곳이라 「전부」가
+	 * 사실상 무한이었다 — 되돌아가려는 사람이 여기서 먼저 걸린다.
+	 */
+	@Test
+	void 범위와_마리_수가_사람이_정한_값이다() {
+		TrialCatalog.Risk.NightHost host = card();
+		assertEquals(20.0, host.radius(), "「플레이어 주위 20블럭」");
+		assertEquals(5, host.maxMobs(), "「5마리 최대」");
+		assertTrue(TrialNightHost.usable(host), "카드 목록의 값은 돌릴 수 있어야 한다");
+	}
+
+	/**
+	 * 값이 비어 있으면 <b>아무 일도 하지 않는다.</b>
+	 *
+	 * <p>「범위 0」이나 「0마리」를 「제한 없음」으로 읽지 않는 것이 핵심이다. 그렇게 읽으면 값을
+	 * 잘못 적은 판에서 되살아나는 것이 하필 <b>옛 「엔드의 엔더맨 전부」</b>이고, 그것이 사람이
+	 * 없앤 바로 그 카드다.
+	 */
+	@Test
+	void 값이_비면_옛_전원_카드로_되돌아가지_않는다() {
+		assertFalse(TrialNightHost.usable(new TrialCatalog.Risk.NightHost(0, 20.0, 5)),
+				"적대 시간이 없으면 뜻이 없다");
+		assertFalse(TrialNightHost.usable(new TrialCatalog.Risk.NightHost(400, 0.0, 5)),
+				"범위 0 은 「제한 없음」이 아니다");
+		assertFalse(TrialNightHost.usable(new TrialCatalog.Risk.NightHost(400, -1.0, 5)));
+		assertFalse(TrialNightHost.usable(new TrialCatalog.Risk.NightHost(400, 20.0, 0)),
+				"0마리는 「전부」가 아니다");
+		assertFalse(TrialNightHost.usable(new TrialCatalog.Risk.NightHost(400, 20.0, -3)));
+	}
+
+	/**
+	 * 몇 마리가 널려 있어도 카드에 적힌 수를 넘기지 않는다.
+	 *
+	 * <p>이 카드가 「너무 빡세다」였던 이유가 <b>깨우는 수에 천장이 없었다</b>는 것 하나다.
+	 * 엔드의 엔더맨 수는 우리가 정하지 않으므로, 천장을 숫자로 묻는 자리가 여기뿐이다.
+	 */
+	@Test
+	void 깨우는_수가_카드에_적힌_천장을_넘지_않는다() {
+		int maxMobs = card().maxMobs();
+		assertEquals(0, TrialNightHost.wakeCount(0, maxMobs), "범위 안에 없으면 아무도 안 깨운다");
+		assertEquals(2, TrialNightHost.wakeCount(2, maxMobs), "적게 있으면 있는 만큼만");
+		for (int candidates = 0; candidates < 5_000; candidates += 3) {
+			assertTrue(TrialNightHost.wakeCount(candidates, maxMobs) <= maxMobs,
+					"엔더맨 " + candidates + " 마리가 범위 안에 있을 때 천장을 넘는다");
+		}
+		assertEquals(0, TrialNightHost.wakeCount(100, 0), "0마리를 「전부」로 읽지 않는다");
+		assertEquals(0, TrialNightHost.wakeCount(100, -1));
+	}
+
+	/**
+	 * 범위 검사가 경계를 <b>안</b>으로 본다. 바닥 고리의 {@code TrialRisks.insideMark} 와 같은 쪽이다.
+	 *
+	 * <p>제곱으로 재는 것은 제곱근을 피하려는 것뿐이다 — 20칸이 400 이고, 거기서 한 톨만 넘으면
+	 * 밖이다.
+	 */
+	@Test
+	void 범위_경계는_안쪽이다() {
+		double radius = card().radius();
+		double edge = radius * radius;
+		assertTrue(TrialNightHost.inReach(0.0, radius), "발밑은 당연히 안이다");
+		assertTrue(TrialNightHost.inReach(edge, radius), "정확히 경계에 선 놈은 안이다");
+		assertFalse(TrialNightHost.inReach(Math.nextUp(edge), radius), "한 톨만 넘어도 밖이다");
+		assertFalse(TrialNightHost.inReach(0.0, 0.0), "범위 0 은 「전부」가 아니라 「아무도」다");
+		assertFalse(TrialNightHost.inReach(0.0, -5.0));
+	}
+
 	// ------------------------------------------------------------------ 연출 예산
 
 	/**
@@ -135,6 +213,23 @@ class TrialNightHostTest {
 		}
 	}
 
+	/**
+	 * 지금 카드에서는 깨운 놈이 <b>한 마리도 표시를 잃지 않는다.</b>
+	 *
+	 * <p>표식은 「어디에서 오는가」를 말하는 유일한 갈래다(소리는 사람 자리에서 나므로 방향을 못
+	 * 준다). 다섯 마리뿐인 카드에서 그중 하나가 조용히 빠지면 사람은 없는 방향을 보게 된다.
+	 * {@code FLARE_MAX_MOBS} 는 카드 값이 커졌을 때를 위한 천장으로 남겨 두는 것이지, 지금
+	 * 걸리라고 있는 것이 아니다.
+	 */
+	@Test
+	void 깨운_놈은_전부_표시가_붙는다() {
+		int maxMobs = card().maxMobs();
+		assertTrue(maxMobs <= TrialNightHost.FLARE_MAX_MOBS,
+				"깨우는 수(" + maxMobs + ")가 연출 상한(" + TrialNightHost.FLARE_MAX_MOBS
+						+ ")보다 많다 — 뒤쪽 엔더맨은 표시 없이 달려온다");
+		assertEquals(maxMobs, TrialNightHost.flarePackets(maxMobs));
+	}
+
 	// ------------------------------------------------------------------ 클래스 파일이 말하는 것
 
 	/**
@@ -151,6 +246,25 @@ class TrialNightHostTest {
 				"적대를 되돌리는 호출이 없다 — 20초가 지나도 안 풀린다");
 		assertTrue(references(compiled, "setPersistentAngerEndTime"),
 				"분노 만료를 못 박지 않으면 언로드된 엔더맨이 바닐라가 굴린 20~39초를 들고 간다");
+	}
+
+	/**
+	 * 범위와 마리 수를 <b>카드에서 읽는다.</b> 숫자를 박지 않는다.
+	 *
+	 * <p>사람이 한 번 「20블럭 · 5마리」로 정했다고 그 숫자가 굳은 것이 아니다. 실행기에 박아
+	 * 두면 카드 값을 고치는 사람이 <b>바뀌지 않는 실행기</b>를 상대하게 되고, 그때 고장 난 것을
+	 * 알려 주는 것은 아무것도 없다 — 컴파일도 로그도 조용하다.
+	 *
+	 * <p>레코드 접근자를 부르면 그 이름이 상수 풀에 남는다. 없다는 것은 값을 안 읽는다는 뜻이다.
+	 */
+	@Test
+	void 범위와_마리_수를_카드에서_읽는다() {
+		byte[] compiled = classBytes(TrialNightHost.class);
+		assertTrue(references(compiled, "maxMobs"),
+				"maxMobs 를 한 번도 안 읽는다 — 마리 수를 숫자로 박았다");
+		assertTrue(references(compiled, "radius"),
+				"radius 를 한 번도 안 읽는다 — 범위를 숫자로 박았다");
+		assertTrue(references(compiled, "hostileTicks"), "적대 시간도 값에서 온다");
 	}
 
 	/**

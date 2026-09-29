@@ -21,12 +21,15 @@ import static org.junit.jupiter.api.Assertions.fail;
  * 「엔더폭풍」에서 월드 없이 답이 정해지는 것만 본다.
  *
  * <p>소용돌이를 실제로 굴리려면 {@code ServerLevel} 이 있어야 해서 여기서 돌려 볼 수 없다.
- * 그래도 이 카드가 망가지는 길은 거의 전부 여기서 잡힌다 — <b>바깥으로 민다</b>(공허 낙사 =
+ * 그래도 이 카드가 망가지는 길은 거의 전부 여기서 잡힌다 — <b>섬 밖으로 민다</b>(공허 낙사 =
  * 월드 삭제), <b>같은 사람을 매 틱 때린다</b>, <b>넷이 다 맞으면 죽는다</b>, <b>파티클이 32칸에서
  * 잘린다</b>. 전멸하면 월드가 지워지는 게임이라 이것들은 실제로 굴려 보고 발견할 수 없다.
  *
- * <p>가장 중요한 것이 첫 묶음이다. 이 저장소는 강한 넉백을 <b>원칙적으로 금지</b>하고 이 카드는
- * 방향이 안쪽이라서 예외로 허용됐다. 그 근거가 코드에서 사라지면 카드가 아니라 월드 삭제 장치다.
+ * <p>⚠ 가장 중요한 것이 첫 묶음이다. 이 카드는 <b>바깥으로</b> 민다 — 전에는 안쪽이었고, 그
+ * 「안쪽으로만 민다」가 이 카드를 강한 넉백 금지의 예외로 만든 조건이었다. 사람이 플레이해 보고
+ * 「한번 밀쳐지면 끝」이라 해서 방향을 뒤집었으므로, 이제 사람이 허공으로 나가는 것을 막는 장치는
+ * <b>{@code pushDistance} 의 천장 하나뿐</b>이다. 그 천장이 코드에서 사라지면 카드가 아니라
+ * 월드 삭제 장치다.
  */
 class TrialEnderStormTest {
 
@@ -34,38 +37,82 @@ class TrialEnderStormTest {
 	private static final int COUNT = 2;
 	private static final double SPEED_PER_SECOND = 2.0;
 	private static final float DAMAGE = 2.0F;
-	private static final double KNOCKBACK = 1.0;
+	/** 사람이 플레이해 보고 1.0 에서 올린 값이다. 방향이 바깥이 된 것과 한 묶음이다. */
+	private static final double KNOCKBACK = 3.0;
 	private static final int REST = 500;
 	/** 팀 인원 상한. 공유 체력에서 범위 피해는 팀원별로 합산된다. */
 	private static final int TEAM = 4;
 
-	// ------------------------------------------------------------------ 넉백은 언제나 안쪽이다
+	// ------------------------------------------------------------------ 천장: 목적지는 언제나 섬 안
 
 	/**
 	 * ⚠ <b>이 시험이 이 파일에서 가장 중요하다.</b>
 	 *
-	 * <p>{@code pushDistance} 는 「밀린 뒤가 밀리기 전보다 중앙에 가깝다」를 <b>세기와 무관하게</b>
-	 * 약속한다. 그 약속이 이 카드가 예외로 허용된 근거 전부다.
+	 * <p>{@code pushDistance} 는 「밀린 목적지가 섬 안」을 <b>세기와 무관하게</b> 약속한다. 방향이
+	 * 바깥으로 뒤집힌 지금 그 약속이 이 카드의 안전장치 전부다.
 	 *
-	 * <p>아레나 안팎의 자리와 온갖 방향을 훑으면서, 카드 값의 100배짜리 넉백으로도 중앙에서
-	 * 멀어지는 목적지가 나오지 않는지 본다.
+	 * <p>아레나 <b>안팎</b>의 자리 × 72 방향 × 카드 값의 <b>1·3·100배</b> 넉백을 훑는다. 목적지가
+	 * 한 번이라도 천장 밖이면 그 자리는 허공이고, 공유 체력이라 그대로 월드 삭제다.
 	 */
 	@Test
-	void 아무리_세게_밀어도_중앙에서_멀어지지_않는다() {
-		double wanted = TrialEnderStorm.PUSH_BLOCKS * KNOCKBACK * 100.0;
-		for (int spoke = 0; spoke < 72; spoke++) {
-			Vec3 inward = new Vec3(Math.cos(spoke * Math.PI / 36.0), 0.0,
-					Math.sin(spoke * Math.PI / 36.0));
-			for (int px = -48; px <= 48; px += 3) {
-				for (int pz = -48; pz <= 48; pz += 3) {
-					double pushed = TrialEnderStorm.pushDistance(px, pz, inward, wanted);
-					assertTrue(pushed >= 0.0, "음수만큼 밀면 방향이 뒤집힌다");
-					double before = Math.sqrt((double) px * px + (double) pz * pz);
-					double after = Math.hypot(px + inward.x * pushed, pz + inward.z * pushed);
-					assertTrue(after <= before + 1.0E-9,
-							"(" + px + ", " + pz + ") 에 선 사람이 " + before + " 에서 "
-									+ after + " 로 밀려났다 — 바깥으로 민 것이고,"
-									+ " 엔드 섬 밖은 허공이라 그대로 월드 삭제다");
+	void 아무리_세게_밀어도_목적지가_섬_안이다() {
+		double limit = TrialEnderStorm.pushLimitRadius();
+		for (double factor : new double[] {1.0, 3.0, 100.0}) {
+			double wanted = TrialEnderStorm.PUSH_BLOCKS * KNOCKBACK * factor;
+			for (int spoke = 0; spoke < 72; spoke++) {
+				Vec3 outward = new Vec3(Math.cos(spoke * Math.PI / 36.0), 0.0,
+						Math.sin(spoke * Math.PI / 36.0));
+				for (int px = -48; px <= 48; px += 3) {
+					for (int pz = -48; pz <= 48; pz += 3) {
+						double pushed = TrialEnderStorm.pushDistance(px, pz, outward, wanted);
+						assertTrue(pushed >= 0.0, "음수만큼 밀면 방향이 뒤집힌다");
+						double before = Math.sqrt((double) px * px + (double) pz * pz);
+						double after = Math.hypot(px + outward.x * pushed, pz + outward.z * pushed);
+						assertTrue(after <= Math.max(limit, before) + 1.0E-9,
+								"(" + px + ", " + pz + ") 에 선 사람이 " + before + " 에서 "
+										+ after + " 로 밀려났다 — 천장은 " + limit
+										+ " 다. 엔드 섬 밖은 허공이고 공유 체력이라 그대로"
+										+ " 월드 삭제다");
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * ⚠ <b>여러 번 연속으로 밀려도</b> 섬 안이다.
+	 *
+	 * <p>넉백이 「닿아 있는 동안 계속」으로 바뀐 뒤 새로 필요해진 시험이다. 한 번이 안전해도 계속
+	 * 밀리면 누적되어 조금씩 밖으로 나갈 수 있다 — 소용돌이 하나를 통과하는 데 80틱이 걸리고
+	 * {@code SHOVE_INTERVAL_TICKS} 마다 미므로 <b>한 소용돌이에 여덟 번</b>, 소용돌이가 둘이고
+	 * 폭풍이 반복되므로 한 전투에서는 훨씬 여러 번이다.
+	 *
+	 * <p>그래서 목적지를 도로 출발점에 넣어 <b>스무 번 연속</b>으로 민다. 누적되지 않는 것이
+	 * {@code pushDistance} 가 「출발점 기준 거리」가 아니라 <b>「목적지가 천장 안」</b>으로
+	 * 자르기 때문이라는 것을 여기서 확인한다.
+	 */
+	@Test
+	void 여러_번_연속으로_밀어도_섬_안이다() {
+		double limit = TrialEnderStorm.pushLimitRadius();
+		double wanted = TrialEnderStorm.PUSH_BLOCKS * KNOCKBACK;
+		for (int spoke = 0; spoke < 36; spoke++) {
+			Vec3 outward = new Vec3(Math.cos(spoke * Math.PI / 18.0), 0.0,
+					Math.sin(spoke * Math.PI / 18.0));
+			for (int px = -45; px <= 45; px += 5) {
+				for (int pz = -45; pz <= 45; pz += 5) {
+					double x = px;
+					double z = pz;
+					double start = Math.hypot(x, z);
+					for (int shove = 1; shove <= 20; shove++) {
+						double pushed = TrialEnderStorm.pushDistance(x, z, outward, wanted);
+						x += outward.x * pushed;
+						z += outward.z * pushed;
+						assertTrue(Math.hypot(x, z) <= Math.max(limit, start) + 1.0E-9,
+								"(" + px + ", " + pz + ") 에서 " + shove + "번째로 밀린 뒤"
+										+ " 중앙에서 " + Math.hypot(x, z) + " 다 — 천장 "
+										+ limit + " 을 넘었다. 계속 미는 카드라 한 번만"
+										+ " 안전해서는 안 된다");
+					}
 				}
 			}
 		}
@@ -74,56 +121,130 @@ class TrialEnderStormTest {
 	/**
 	 * 밀리는 <b>도중</b>도 안전하다.
 	 *
-	 * <p>목적지만 가까우면 되는 것이 아니다. 경사에 걸리거나 다른 카드가 끼어들어 중간에 멈출 수
-	 * 있으므로, 지나가는 어느 점도 출발점보다 멀면 안 된다. {@code [0, s*]} 구간에서 거리가
-	 * 단조 감소한다는 것이 {@code pushDistance} 의 근거이고 그것을 여기서 확인한다.
+	 * <p>목적지만 안이면 되는 것이 아니다. 경사에 걸리거나 다른 카드가 끼어들어 중간에 멈출 수
+	 * 있으므로, 지나가는 어느 점도 천장 밖이면 안 된다. 이차식 {@code q(s)} 가 {@code [0, s⁺]}
+	 * 에서 0 이하라는 것이 {@code pushDistance} 의 근거이고 그것을 여기서 확인한다.
 	 */
 	@Test
-	void 밀리는_도중에도_멀어지는_순간이_없다() {
-		Vec3 inward = new Vec3(-1.0, 0.0, 0.0);
-		double pushed = TrialEnderStorm.pushDistance(12.0, 5.0, inward, 100.0);
-		double previous = Math.hypot(12.0, 5.0);
-		for (int tenth = 1; tenth <= 10; tenth++) {
-			double along = pushed * tenth / 10.0;
-			double now = Math.hypot(12.0 - along, 5.0);
-			assertTrue(now <= previous + 1.0E-9, "밀리는 도중에 중앙에서 멀어졌다");
-			previous = now;
+	void 밀리는_도중에도_천장_밖으로_나가지_않는다() {
+		double limit = TrialEnderStorm.pushLimitRadius();
+		for (int spoke = 0; spoke < 36; spoke++) {
+			Vec3 outward = new Vec3(Math.cos(spoke * Math.PI / 18.0), 0.0,
+					Math.sin(spoke * Math.PI / 18.0));
+			for (int px = -30; px <= 30; px += 6) {
+				for (int pz = -30; pz <= 30; pz += 6) {
+					double pushed = TrialEnderStorm.pushDistance(px, pz, outward, 100.0);
+					for (int tenth = 0; tenth <= 20; tenth++) {
+						double along = pushed * tenth / 20.0;
+						double now = Math.hypot(px + outward.x * along, pz + outward.z * along);
+						assertTrue(now <= Math.max(limit, Math.hypot(px, pz)) + 1.0E-9,
+								"밀리는 도중 " + now + " 까지 나갔다 — 천장은 " + limit + " 다");
+					}
+				}
+			}
 		}
 	}
 
 	/**
-	 * 이미 지나쳐 선 사람은 <b>한 칸도</b> 밀지 않는다.
+	 * 이미 천장 밖에 선 사람은 <b>한 칸도</b> 밀지 않는다.
 	 *
-	 * <p>소용돌이가 중앙 가까이 왔을 때 그 <b>너머</b>에 선 사람이 이 경우다. 미는 방향은 여전히
-	 * 안쪽(= 소용돌이가 가는 쪽)이지만, 그 사람에게는 그 방향이 곧 바깥이다.
+	 * <p>다른 카드의 넉백이나 경사가 먼저 데려다 놓은 경우다. 거기서 또 밀면 이 카드가 남의 사고를
+	 * 완성시킨다. 천장에 정확히 서 있는 사람도 같다 — 한 칸이라도 더 밀면 밖이다.
 	 */
 	@Test
-	void 소용돌이_너머에_선_사람은_밀지_않는다() {
-		Vec3 inward = new Vec3(-1.0, 0.0, 0.0);
-		// 소용돌이는 +x 에서 와서 -x 쪽으로 간다. 중앙 너머(-x)에 선 사람을 더 밀면 반대편
-		// 가장자리로 나간다.
-		assertEquals(0.0, TrialEnderStorm.pushDistance(-3.0, 0.0, inward, 8.0),
-				"중앙을 지나친 사람을 더 밀면 반대편 허공으로 보낸다");
-		assertEquals(0.0, TrialEnderStorm.pushDistance(0.0, 0.0, inward, 8.0),
-				"중앙에 정확히 선 사람은 어느 쪽으로 밀어도 멀어지기만 한다");
-		assertEquals(3.0, TrialEnderStorm.pushDistance(3.0, 0.0, inward, 8.0), 1.0E-9,
-				"중앙까지 3칸 남은 사람은 3칸만 밀린다 — 넘기면 반대편으로 나간다");
-		assertEquals(8.0, TrialEnderStorm.pushDistance(30.0, 0.0, inward, 8.0), 1.0E-9,
-				"여유가 넉넉하면 카드가 시킨 만큼 다 민다");
+	void 천장_밖에_선_사람은_밀지_않는다() {
+		double limit = TrialEnderStorm.pushLimitRadius();
+		Vec3 outward = new Vec3(1.0, 0.0, 0.0);
+		assertEquals(0.0, TrialEnderStorm.pushDistance(limit, 0.0, outward, 24.0),
+				"천장 위에 선 사람을 더 밀면 그 자리가 곧 천장 밖이다");
+		assertEquals(0.0, TrialEnderStorm.pushDistance(limit + 0.5, 0.0, outward, 24.0),
+				"이미 나가 있는 사람을 또 미는 것은 남의 사고를 완성시키는 일이다");
+		assertEquals(0.0, TrialEnderStorm.pushDistance(0.0, limit + 5.0, outward, 24.0),
+				"미는 방향과 상관없이, 천장 밖이면 한 칸도 밀지 않는다");
+		assertEquals(0.0, TrialEnderStorm.pushDistance(0.0, 0.0, outward, 0.0),
+				"카드가 0 을 적었으면 아무 일도 없다");
+		assertEquals(0.0, TrialEnderStorm.pushDistance(0.0, 0.0, outward, -5.0),
+				"음수는 방향을 뒤집는다 — 밀지 않는다");
+	}
+
+	/**
+	 * 천장이 카드를 무력화하지는 않는다.
+	 *
+	 * <p>안전하게 만드는 가장 쉬운 방법은 아무도 안 미는 것이고, 그러면 사람이 고쳐 달라고 한
+	 * 것이 사라진다. 중앙 쪽에 선 사람은 카드가 시킨 만큼 <b>다</b> 밀려야 한다.
+	 */
+	@Test
+	void 여유가_있으면_카드가_시킨_만큼_다_민다() {
+		double limit = TrialEnderStorm.pushLimitRadius();
+		Vec3 outward = new Vec3(1.0, 0.0, 0.0);
+		double wanted = TrialEnderStorm.PUSH_BLOCKS * KNOCKBACK;
+		assertEquals(wanted, TrialEnderStorm.pushDistance(0.0, 0.0, outward, wanted), 1.0E-9,
+				"중앙에 선 사람은 24칸을 다 밀려야 한다 — 천장은 " + limit + " 이라 여유가 있다");
+		assertEquals(limit - 2.0, TrialEnderStorm.pushDistance(2.0, 0.0, outward, 100.0), 1.0E-9,
+				"천장까지 남은 만큼만 밀린다");
+		assertEquals(wanted, TrialEnderStorm.pushDistance(2.0, 0.0, outward, wanted), 1.0E-9,
+				"천장에 닿지 않는 자리에서는 카드가 시킨 거리가 그대로 나온다");
+		assertTrue(TrialEnderStorm.pushDistance(0.0, 0.0, outward, wanted) > 0.0,
+				"아무도 안 밀면 「계속 밀쳐지게」가 통째로 사라진다");
+	}
+
+	/**
+	 * ⚠ 천장이 <b>섬 경계보다 안쪽</b>이다.
+	 *
+	 * <p>경계에 딱 세우면 밀려 넘어진 자리가 곧 벼랑이라, 그 다음은 사람의 한 걸음이다.
+	 */
+	@Test
+	void 천장은_섬_경계보다_안쪽이다() {
+		assertTrue(TrialEnderStorm.PUSH_LIMIT_MARGIN > 0.0,
+				"여유가 0 이면 천장이 섬 경계와 같아져 밀린 사람이 벼랑 끝에 선다");
+		assertTrue(TrialEnderStorm.pushLimitRadius() < TrialRisks.ARENA_RADIUS,
+				"천장이 아레나 경계 밖이면 천장이 아니다");
+		assertTrue(TrialEnderStorm.pushLimitRadius() > 0.0,
+				"천장이 0 이면 아무도 안 밀린다 — 사람이 고쳐 달라고 한 것이 사라진다");
+		assertTrue(TrialEnderStorm.PUSH_LIMIT_MARGIN >= TrialEnderStorm.PUSH_BLOCKS,
+				"여유는 「강한 넉백」 한 번 치(" + TrialEnderStorm.PUSH_BLOCKS + ")보다 넓어야"
+						+ " 한다 — 다른 카드가 한 번 더 밖으로 밀어도 섬 안이어야 하고,"
+						+ " 달려서 벗어나는 데 옆으로 비킬 시간만큼은 걸려야 한다");
+		assertEquals(TrialRisks.ARENA_RADIUS - TrialEnderStorm.PUSH_LIMIT_MARGIN,
+				TrialEnderStorm.pushLimitRadius(), 1.0E-9,
+				"천장을 아레나 반경에서 뽑지 않고 숫자로 박으면 아레나가 바뀔 때 갈라진다");
+	}
+
+	/**
+	 * ⚠ 미는 방향이 <b>소용돌이가 나아가는 쪽의 반대</b>다.
+	 *
+	 * <p>전에는 나아가는 쪽(안쪽)이었다. 부호 하나가 이 카드의 성격 전부고, 뒤집히면 빌드도
+	 * 로그도 조용한 채로 사람이 고쳐 달라고 한 것이 도로 원래대로 돌아간다.
+	 */
+	@Test
+	void 미는_방향이_폭풍이_가는_쪽의_반대다() {
+		for (int spoke = 0; spoke < 8; spoke++) {
+			Vec3 outward = TrialEnderStorm.outwardOf(spoke * Math.PI / 4.0, 0, 1);
+			Vec3 travel = outward.scale(-1.0);
+			Vec3 shove = TrialEnderStorm.shoveDirection(outward);
+			assertEquals(-1.0, shove.x * travel.x + shove.z * travel.z, 1.0E-9,
+					"미는 방향이 소용돌이가 나아가는 쪽과 반대가 아니다 — 안쪽으로 되돌아갔다면"
+							+ " 「한번 밀쳐지면 끝」으로 돌아간 것이고, 그 사이 다른 방향이면"
+							+ " 사람 좌표가 섞여 들어간 것이다");
+			assertEquals(1.0, shove.length(), 1.0E-9,
+					"단위 벡터가 아니면 미는 세기가 방향마다 달라진다");
+			assertEquals(0.0, shove.y, "세로로 띄우면 낙하 피해가 붙고 훨씬 멀리 날아간다");
+		}
 	}
 
 	/**
 	 * 사람을 움직이는 길이 하나뿐이다.
 	 *
-	 * <p>사람과 가해자의 상대 위치로 방향을 잡는 밀기가 이 카드에 섞이면, 소용돌이보다 바깥에 선
-	 * 사람이 <b>바깥으로</b> 밀린다. 가장 흔한 길이 <b>가해 개체가 붙은 피해원</b>이다 —
-	 * {@code LivingEntity} 가 맞는 쪽에서 스스로 밀어내고, 그 방향은 우리가 정한 것이 아니다.
+	 * <p>사람과 가해자의 상대 위치로 방향을 잡는 밀기가 이 카드에 섞이면, 그 거리는 우리가 정한
+	 * 것이 아니라 <b>{@code pushDistance} 의 천장을 지나쳐 간다.</b> 가장 흔한 길이 <b>가해 개체가
+	 * 붙은 피해원</b>이다 — {@code LivingEntity} 가 맞는 쪽에서 스스로 밀어낸다.
 	 *
 	 * <p>바닐라 {@code knockback}·{@code push} 를 이름으로 막지는 못한다. 카드의 값 접근자가
 	 * 하필 {@code knockback} 이고 이 파일의 도우미가 {@code pushDistance}·{@code pushVelocity} 라
 	 * 상수 풀에서 구별되지 않는다. 그쪽을 지키는 것은 위의
-	 * {@link #아무리_세게_밀어도_중앙에서_멀어지지_않는다} 다 — <b>어떤 길로 밀든</b> 목적지가
-	 * 중앙에 가까운지를 값에서 직접 센다.
+	 * {@link #아무리_세게_밀어도_목적지가_섬_안이다} 와
+	 * {@link #여러_번_연속으로_밀어도_섬_안이다} 다 — <b>어떤 길로 밀든</b> 목적지가 섬 안인지를
+	 * 값에서 직접 센다.
 	 */
 	@Test
 	void 사람을_움직이는_길이_하나뿐이다() {
@@ -180,10 +301,54 @@ class TrialEnderStormTest {
 		assertEquals(0.0, TrialEnderStorm.pushVelocity(-1.0), "음수 거리는 밀지 않는다");
 	}
 
-	// ------------------------------------------------------------------ 한 번 지나갈 때 한 번만
+	// -------------------------------------------------- 피해는 한 번, 넉백은 계속
 
 	/**
-	 * 통과하는 데 여러 틱이 걸린다 — 그래서 명단이 없으면 즉사한다.
+	 * ⚠ <b>넉백이 피해와 같은 명단에 걸리면 안 된다.</b>
+	 *
+	 * <p>사람이 고쳐 달라고 한 것이 이것이다 — 「한번 밀쳐지면 끝」. 넉백을 {@code swept} 에 도로
+	 * 넣으면 그 상태로 돌아간다. 반대로 피해를 명단에서 빼면 80틱 통과에서 160 이 들어가 즉사다.
+	 *
+	 * <p>여기서는 <b>간격</b>을 값으로 센다. 통과 시간(80틱) 안에 여러 번 들어가야 「계속」이고,
+	 * 매 틱은 아니어야 사람이 조작을 할 수 있다.
+	 */
+	@Test
+	void 닿아_있는_동안_여러_번_밀린다() {
+		double perTick = TrialEnderStorm.blocksPerTick(SPEED_PER_SECOND);
+		double crossing = TrialEnderStorm.VORTEX_RADIUS * 2.0 / perTick;
+		int interval = TrialEnderStorm.SHOVE_INTERVAL_TICKS;
+		assertTrue(interval > 1,
+				"매 틱 밀면 사람이 조작을 아예 못 한다 — 이 카드가 요구하는 「옆으로 빠져나가기」를"
+						+ " 할 수 없는 카드가 된다");
+		assertTrue(crossing / interval >= 4.0,
+				"통과하는 " + crossing + "틱 동안 " + (crossing / interval) + "번밖에 안 밀린다 —"
+						+ " 「닿아 있는 동안 계속」이라 하기 어렵다");
+		// 한 번 밀린 몸은 바닥 마찰 0.546 으로 다섯 틱이면 이동량의 95% 를 쓴다. 그보다 자주 밀면
+		// 앞의 밀림이 살아 있는 채로 덮어써 속도가 끊기지 않고, 그것이 곧 조작 불능이다.
+		double leftAfterFive = Math.pow(0.546, 5);
+		assertTrue(leftAfterFive < 0.05, "0.546⁵ = " + leftAfterFive);
+		assertTrue(interval >= 5 + TrialEnderPulse.JUMP_WINDOW_TICKS,
+				"밀림이 멎는 데 5틱, 사람이 반응하는 데 "
+						+ TrialEnderPulse.JUMP_WINDOW_TICKS + "틱이다. 그보다 짧으면 반응이"
+						+ " 들어갈 자리가 없다");
+	}
+
+	/** 처음 닿은 틱에 밀고, 그 뒤로는 간격마다 민다. */
+	@Test
+	void 미는_간격을_틱으로_센다() {
+		int interval = TrialEnderStorm.SHOVE_INTERVAL_TICKS;
+		assertTrue(TrialEnderStorm.dueToShove(null, 100L),
+				"처음 닿은 틱에 안 밀면 「닿으면 밀린다」가 아니다");
+		assertFalse(TrialEnderStorm.dueToShove(100L, 100L), "같은 틱에 두 번 밀지 않는다");
+		assertFalse(TrialEnderStorm.dueToShove(100L, 100L + interval - 1),
+				"간격이 차기 전에 밀면 앞의 밀림을 덮어써 속도가 끊기지 않는다");
+		assertTrue(TrialEnderStorm.dueToShove(100L, 100L + interval), "간격이 차면 다시 민다");
+		assertTrue(TrialEnderStorm.dueToShove(100L, 50L),
+				"시간이 되감긴 판에서 그 사람만 영영 넉백에서 빠지면 조용한 고장이다");
+	}
+
+	/**
+	 * 통과하는 데 여러 틱이 걸린다 — 그래서 <b>피해</b> 명단이 없으면 즉사한다.
 	 *
 	 * <p>지름 8칸을 초당 2칸으로 지나가므로 80틱이다. 매 틱 2씩 들어가면 160 이고 팀 공유 체력은
 	 * 20 이다. 이 시험은 그 숫자를 값에서 직접 세어, 「무적시간이 알아서 걸러 주겠지」로 명단을

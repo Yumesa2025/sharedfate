@@ -204,29 +204,125 @@ class TrialEndRainTest {
 				"열쇠를 스스로 만들고 있다. 두 곳에서 만든 열쇠는 언젠가 갈라진다");
 	}
 
+	// ------------------------------------------------------------------ 사람이 정한 값
+
+	/**
+	 * 지점 수가 <b>세 배</b>다.
+	 *
+	 * <p>사람이 플레이해 보고 「종말의 비를 생성이 지금의 3배여도 괜찮을 것 같다」고 해서 10~15
+	 * 에서 30~45 가 됐다. 여기에 못 박아 두는 것은 <b>패킷이 무서워서 슬그머니 되돌리는 일</b>을
+	 * 막기 위해서다 — 점 예산은 지점 수가 아니라 「한 틱에 얼마나 그리는가」로 푼다
+	 * ({@link #한_틱_표식_점_수가_예산_안이다}).
+	 */
+	@Test
+	void 지점_수가_사람이_정한_세_배다() {
+		TrialCatalog.Risk.EndRain rain = card();
+		assertEquals(30, rain.minSpots(), "10 의 세 배다");
+		assertEquals(45, rain.maxSpots(), "15 의 세 배다");
+	}
+
 	// ------------------------------------------------------------------ 패킷
 
 	/**
-	 * 한 틱에 바닥 표식으로 나가는 점 수.
+	 * 한 틱에 바닥 표식으로 나가는 점 수가 예산 안이다.
 	 *
-	 * <p>점 하나가 패킷 한 장이고 고리는 예고 30틱 내내 매 틱 그려진다. 값에서 직접 뽑아 두면
+	 * <p>점 하나가 패킷 한 장이고 고리는 예고 30틱 내내 매 틱 나간다. 값에서 직접 뽑아 두면
 	 * 지점 수나 반경을 고치는 사람이 패킷을 함께 보게 된다.
 	 *
-	 * <p>⚠ <b>지금 값은 이 저장소가 쓰던 예산보다 크다.</b> 「낙뢰」가 반경 3 짜리 열 곳으로 400,
-	 * 「연쇄 포격」이 반경 3.5 짜리 열 곳으로 440 이고 그쪽은 상한을 500 으로 적어 두었다. 이
-	 * 카드는 반경 2.5 지만 <b>{@code TrialWarning.ringPoints} 의 하한이 40</b> 이라 고리가 작아도
-	 * 점이 줄지 않고, 15곳이면 600 이다. 줄이려면 지점 수나 하한을 손봐야 하는데 둘 다 이 파일의
-	 * 것이 아니라 여기서는 <b>숫자를 드러내 놓기만</b> 한다.
+	 * <p>⚠ <b>전에는 이 시험이 「예산을 넘는다」를 적어 두기만 했다.</b> 반경 2.5 인데
+	 * {@code TrialWarning.ringPoints} 의 하한이 40 이라 15곳에 <b>600점</b>이었고, 지점이 세
+	 * 배가 되면서 <b>1800점</b>이 될 자리였다 — 「낙뢰」 400 · 「연쇄 포격」 440 과 견줄 수준이
+	 * 아니다. 고리를 {@link TrialEndRain#markStride} 틱에 나눠 그려 예산 안으로 들어왔다.
 	 */
 	@Test
-	void 한_틱_표식_점_수를_값에서_센다() {
+	void 한_틱_표식_점_수가_예산_안이다() {
 		TrialCatalog.Risk.EndRain rain = card();
 		int perRing = TrialWarning.ringPoints(rain.radius());
-		assertEquals(rain.maxSpots() * perRing, TrialEndRain.markPoints(rain));
 		assertEquals(40, perRing,
 				"반경 2.5 의 둘레는 40점을 채우지 못한다 — ringPoints 의 하한이 그대로 나온다");
-		assertEquals(600, TrialEndRain.markPoints(rain),
-				"한 볼리가 15곳이면 600점이다. 낙뢰 400 · 연쇄 포격 440 보다 크다");
+		assertEquals(rain.maxSpots() * TrialWarning.strokePoints(rain.radius(),
+						TrialEndRain.markStride(rain)),
+				TrialEndRain.markPoints(rain),
+				"세는 법이 실제로 그리는 법과 갈라지면 이 시험이 아무것도 안 지킨다");
+		assertTrue(TrialEndRain.markPoints(rain) <= TrialEndRain.MARK_BUDGET,
+				"한 틱에 " + TrialEndRain.markPoints(rain) + "점이 나간다 — 예산 "
+						+ TrialEndRain.MARK_BUDGET + " 을 넘는다");
+		assertTrue(TrialEndRain.markPoints(rain) > 0, "한 점도 안 그리면 예고가 통째로 없다");
+		assertEquals(1800, rain.maxSpots() * perRing,
+				"나눠 그리지 않으면 한 틱에 이만큼이다 — 이 숫자가 고리를 나눈 까닭이다");
+	}
+
+	/**
+	 * ⚠ <b>고리는 반드시 닫힌다.</b>
+	 *
+	 * <p>나눠 그리는 것이 성립하는 유일한 근거는 <b>먼저 찍은 점이 아직 살아 있다</b>는 것이다.
+	 * 26.3 {@code DustParticleBase} 의 수명이
+	 * {@code max(1, (int)(8.0 / (nextDouble() * 0.8 + 0.2)) * scale)} 이고 {@code scale} 이
+	 * 1.0 이라 <b>최소 8틱</b>이다. 한 바퀴를 8틱 이상에 걸쳐 그리면 마지막 점을 찍기 전에 첫
+	 * 점이 죽어 고리가 영영 안 닫힌다 — 그러면 이 카드의 유일한 대응 수단이 사라진다.
+	 *
+	 * <p>고리가 완성되는 데 걸리는 시간이 예고보다 짧아야 하는 것도 함께 본다. 완성 전에
+	 * 착탄하면 사람이 본 것은 고리가 아니라 흩뿌려진 점이다.
+	 */
+	@Test
+	void 고리가_파티클이_죽기_전에_닫힌다() {
+		TrialCatalog.Risk.EndRain rain = card();
+		int stride = TrialEndRain.markStride(rain);
+		assertTrue(stride >= 1, "0 이하로 나누면 아무것도 안 그린다");
+		assertEquals(6, TrialEndRain.MARK_MAX_STRIDE, "먼지 파티클의 최소 수명 8틱에서 둘을 뺀 값이다");
+		assertTrue(stride <= TrialEndRain.MARK_MAX_STRIDE, "나눈 틱: " + stride);
+		assertTrue(TrialEndRain.MARK_MAX_STRIDE < 8,
+				"먼지 파티클은 8틱이면 죽는다. 8 이상으로 나누면 고리가 영영 안 닫힌다");
+		assertTrue(stride < rain.warnTicks(),
+				"고리가 완성되기 전에 착탄한다 — 예고 " + rain.warnTicks() + "틱, 완성 " + stride + "틱");
+	}
+
+	/**
+	 * {@code stride} 틱이 지나면 <b>한 점도 빠짐없이</b> 찍혀 있다.
+	 *
+	 * <p>{@code markGround} 의 번호 고르기를 여기서 다시 적어 본다. 위상이 한 바퀴 도는 동안
+	 * 어떤 번호가 한 번도 안 나오면 고리에 영영 구멍이 남고, 그 구멍이 하필 사람이 빠져나가려던
+	 * 쪽일 수 있다.
+	 */
+	@Test
+	void 위상이_한_바퀴_돌면_고리가_다_찍힌다() {
+		TrialCatalog.Risk.EndRain rain = card();
+		int stride = TrialEndRain.markStride(rain);
+		int points = TrialWarning.ringPoints(rain.radius());
+		// 되감긴 판의 음수 시각까지 포함해 여러 출발점에서 확인한다.
+		for (long start : new long[] {0L, 1L, 12_345L, -7L}) {
+			int[] drawn = new int[points];
+			for (long now = start; now < start + stride; now++) {
+				int phase = TrialEndRain.markPhase(now, stride);
+				assertTrue(phase >= 0 && phase < stride, "위상이 범위 밖이다: " + phase);
+				for (int index = phase; index < points; index += stride) {
+					drawn[index]++;
+				}
+			}
+			for (int index = 0; index < points; index++) {
+				assertEquals(1, drawn[index],
+						"출발 " + start + " 에서 " + index + "번 점이 " + drawn[index]
+								+ "번 찍힌다 — 0 이면 고리에 구멍이고 2 면 예산을 두 번 쓴 것이다");
+			}
+		}
+	}
+
+	/**
+	 * 고리를 나눠 그리는 것이 <b>{@code TrialWarning} 의 하한을 건드리지 않고</b> 된 일이다.
+	 *
+	 * <p>반경 2.5 에 40점은 점 간격 0.39칸으로 지나치게 촘촘하지만, 그 하한
+	 * ({@code TrialWarning.ringPoints} 의 {@code BASE_POINTS})은 <b>바닥 고리를 쓰는 카드
+	 * 전부</b>의 모습을 정한다 — 낙뢰(반경 3) · 연쇄 포격(3.5) · 기둥 화염구(4.35)가 전부 거기서
+	 * 점 수를 받는다. 한 카드의 예산 때문에 남의 연출을 바꾸지 않았고, 되돌아가려는 사람이 이
+	 * 시험에서 먼저 걸린다.
+	 */
+	@Test
+	void 남의_카드_고리는_그대로다() {
+		assertEquals(40, TrialWarning.ringPoints(3.0), "「낙뢰」의 고리가 달라졌다");
+		assertEquals(44, TrialWarning.ringPoints(3.5), "「연쇄 포격」의 고리가 달라졌다");
+		assertEquals(55, TrialWarning.ringPoints(4.35), "「기둥 화염구」의 고리가 달라졌다");
+		assertEquals(TrialWarning.ringPoints(2.5), TrialWarning.strokePoints(2.5, 1),
+				"stride 1 은 예전과 같아야 한다 — 인자를 안 넘긴 호출자가 그 길로 간다");
 	}
 
 	// ------------------------------------------------------------------ 도우미

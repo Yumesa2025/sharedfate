@@ -211,6 +211,65 @@ class TrialEnderPulseTest {
 		assertEquals(5.0, TrialEnderPulse.distanceFromCenter(new Vec3(3.0, 0.0, -4.0)), 1.0E-9);
 	}
 
+	// ------------------------------------------------------------------ 지형을 탄다
+
+	/**
+	 * 고리가 지나는 칸마다 그 자리의 지표 위에 찍힌다.
+	 *
+	 * <p>사람이 「y좌표가 달라지면 아예 이상해진다」고 말한 자리다. 중앙에서 한 번 재어 한
+	 * 바퀴에 쓰면 높이가 달라지는 데서 고리가 파묻히거나 뜬다.
+	 */
+	@Test
+	void 고리는_점마다_그_자리의_지표를_묻는다() throws IOException {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("surfaceAt"),
+				"한 높이로 그리면 높이가 달라지는 자리에서 고리가 파묻히거나 뜬다");
+		assertFalse(bytes.contains("getHeightmapPos"),
+				"월드 쪽 조회는 부를 때마다 청크를 다시 찾고 BlockPos 를 하나씩 만든다."
+						+ " 한 틱에 사백 번 부르면 그 둘이 사백 배가 된다");
+
+		String ground = bytesOf("/com/sharedfate/sync/TrialEnderPulse$Ground.class");
+		assertTrue(ground.contains("getChunkNow"),
+				"올라온 청크만 보지 않으면 표식을 그리자고 청크를 불러오게 된다 —"
+						+ " 이 카드에서 그것이 가장 비싸다");
+	}
+
+	/**
+	 * ⚠ 판정도 고리를 따라 올라간다.
+	 *
+	 * <p>보이는 고리가 지형을 타는데 판정이 평평하면 <b>지붕 밑에 선 사람이 머리 위로 지나간
+	 * 고리에 묶인다.</b> 사람이 고쳐 달라고 한 것이 정확히 그 어긋남이다.
+	 */
+	@Test
+	void 판정은_내_발밑을_지나간_고리만_센다() {
+		assertTrue(TrialEnderPulse.atRingHeight(64.0, 64), "지표에 서 있으면 걸린다");
+		assertTrue(TrialEnderPulse.atRingHeight(63.5, 64),
+				"하프 블록 위다 — 하이트맵이 한 칸 위를 돌려주므로 반 칸은 반드시 봐 줘야 한다");
+		assertTrue(TrialEnderPulse.atRingHeight(65.25, 64),
+				"점프 꼭대기다. 어차피 창이 먼저 통과시키지만 여기서 먼저 걸러도 안 된다");
+		assertFalse(TrialEnderPulse.atRingHeight(58.0, 64),
+				"굴 속이다 — 고리는 여섯 칸 위를 지나갔고 이 사람 눈에는 보이지도 않았다");
+		assertFalse(TrialEnderPulse.atRingHeight(74.0, 64),
+				"열 칸 위에 떠 있다 — 발밑을 지나간 고리가 아니다");
+
+		assertTrue(TrialEnderPulse.JUDGE_VERTICAL_REACH >= 1.0,
+				"반 블록 발판(하이트맵이 한 칸 위를 돌려준다)을 못 덮으면 계단 위에 선 사람이"
+						+ " 눈앞으로 지나가는 고리를 그냥 통과한다");
+		assertTrue(TrialEnderPulse.JUDGE_VERTICAL_REACH < 3.0,
+				"키우면 지붕 밑에 선 사람이 다시 묶인다 — 고친 어긋남이 그대로 돌아온다");
+	}
+
+	@Test
+	void 땅이_없으면_그리지도_판정하지도_않는다() {
+		// 허공에 점을 찍으면 고리가 까마득한 아래에 떠 「저기가 바닥이다」라고 거짓말을 한다.
+		// 판정만 남기면 반대로 「아무것도 안 보이는데 걸린다」가 된다.
+		assertFalse(TrialEnderPulse.atRingHeight(63.0, TrialEnderPulse.NO_GROUND),
+				"땅이 없는 칸에는 고리를 그리지도 않았다");
+		assertFalse(TrialEnderPulse.atRingHeight(TrialEnderPulse.NO_GROUND,
+						TrialEnderPulse.NO_GROUND),
+				"표시값끼리 맞아떨어져 참이 되면 안 된다");
+	}
+
 	// ------------------------------------------------------------------ 점 예산
 
 	@Test
@@ -335,10 +394,14 @@ class TrialEnderPulseTest {
 	}
 
 	private static String classBytes() throws IOException {
-		try (InputStream in = TrialEnderPulse.class
-				.getResourceAsStream("/com/sharedfate/sync/TrialEnderPulse.class")) {
+		return bytesOf("/com/sharedfate/sync/TrialEnderPulse.class");
+	}
+
+	/** 컴파일된 클래스의 바이트. 상수 풀에 무엇이 들어 있는지를 문자열로 뒤진다. */
+	private static String bytesOf(String resource) throws IOException {
+		try (InputStream in = TrialEnderPulse.class.getResourceAsStream(resource)) {
 			if (in == null) {
-				throw new IOException("TrialEnderPulse 의 클래스 파일을 찾지 못했다");
+				throw new IOException(resource + " 를 찾지 못했다");
 			}
 			return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
 		}

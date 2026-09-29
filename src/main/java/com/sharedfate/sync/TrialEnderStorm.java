@@ -13,8 +13,10 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,35 +26,47 @@ import java.util.UUID;
  * <h2>무엇을 해야 하는가</h2>
  *
  * <p>아레나 가장자리에서 중앙으로 소용돌이 둘({@code count})이 초당 2칸({@code speedPerSecond})씩
- * 전진한다. 닿으면 피해 2({@code damage}) 와 강한 넉백({@code knockback}).
+ * 전진한다. 닿으면 피해 2({@code damage}) 와 강한 넉백({@code knockback} = 3.0 배).
  *
  * <p>소용돌이가 중앙에 닿으면 25초({@code restTicks}) 뒤에 새로 둘이 시작한다.
  *
- * <h2>넉백 방향은 안쪽이다 — 값이 아니라 규칙이다</h2>
+ * <h2>⚠ 넉백 방향은 <b>바깥</b>이다 — 전에는 안쪽이었다</h2>
  *
- * <p>미는 방향은 <b>폭풍이 나아가는 쪽</b>, 즉 중앙 쪽이다. 엔드 중앙 섬은 사방이 허공이고 공유
- * 체력이라 <b>한 사람을 섬 밖으로 밀면 팀 전체가 끝난다.</b> 바깥으로 미는 구현은 카드 값을
- * 어떻게 적든 틀린 것이다.
+ * <p><b>전에는 안쪽</b>, 곧 폭풍이 나아가는 쪽으로 밀었다. 엔드 중앙 섬 바깥은 허공이고 공유
+ * 체력이라 한 사람의 낙사가 팀 전체를 끝내므로, 「안쪽으로만 민다」가 이 카드를 <b>이 저장소의
+ * 「강한 넉백 금지」에서 예외로 만든 조건</b>이었다.
  *
- * <p>이 저장소는 강한 넉백을 원칙적으로 금지하고, 이 카드는 <b>방향이 안쪽이라서</b> 예외로
- * 허용됐다. 그래서 방향은 카드가 아니라 여기서 지킨다. 지키는 방법이 셋이다.
+ * <p>그런데 사람이 실제로 플레이해 보고 <b>「한번 밀쳐지면 끝」</b>이라고 했다. 폭풍이 오는
+ * 방향으로 떠밀려 들어가니 밀린 그 틱에 이미 소용돌이 밖이고, 한 번 맞고 끝이었다. 그래서
+ * 사람이 셋을 정했다 — <b>세기 3배 · 방향 바깥 · 닿아 있는 동안 계속.</b> 여기 적힌 것은 그
+ * 결정을 받아 적은 것이지 이 파일이 고른 것이 아니다.
+ *
+ * <p>방향이 바깥이면 폭풍 앞에서 계속 떠밀리므로 <b>옆으로 빠져나가야</b> 살아남는다. 대신
+ * <b>「안쪽으로만 민다」는 보호가 통째로 사라졌다.</b> 폭풍은 가장자리에서 중앙으로 오므로
+ * 바깥은 곧 허공이고, 계속 밀리면 반드시 넘어간다.
+ *
+ * <h2>⚠⚠ 그래서 <b>천장</b>이 이제 유일한 안전장치다</h2>
+ *
+ * <p>지키는 방법이 셋이고, <b>첫째가 전부</b>다.
  *
  * <ol>
+ *   <li><b>미는 자리에 천장을 건다.</b> {@link #pushDistance} 가 <b>목적지가 섬 안</b>인
+ *       거리까지만 돌려준다. 어떤 세기를 넣어도, 몇 번을 연속으로 밀려도, 밀리는 도중의 어느
+ *       점도 {@link #pushLimitRadius} 안이다. 산수는 값을 고치는 사람이 안 볼 수 있지만 이
+ *       함수는 못 피한다. <b>지우면 이 카드는 그날로 전멸 카드다</b></li>
  *   <li><b>방향을 사람에게서 구하지 않는다.</b> {@link #push} 가 쓰는 벡터는 <b>소용돌이가
- *       나아가는 방향</b>({@code -outward}) 하나뿐이고, 사람의 좌표는 한 번도 들어가지 않는다.
- *       「사람과 소용돌이의 상대 위치」로 방향을 잡으면 <b>소용돌이보다 바깥에 선 사람이 바깥으로
- *       밀려난다</b> — 그 계산은 이 파일에 한 줄도 없다</li>
- *   <li><b>세로로 한 칸도 띄우지 않는다.</b> 띄우면 낙하 피해가 붙고, 공중에서는 방향을 못 바꿔
- *       훨씬 멀리 날아간다(바닥 마찰 0.546 대 공중 감쇠 0.91). {@link #push} 는 세로 속도를
- *       읽어 그대로 돌려놓는다</li>
- *   <li><b>산수가 아니라 함수로 막는다.</b> {@link #pushDistance} 가 「밀린 뒤가 밀리기 전보다
- *       중앙에서 멀어지지 않는」 거리까지만 돌려준다. 세기를 아무리 올려도, 다른 카드가 이미
- *       사람을 가장자리로 데려다 놓았어도, <b>이 카드가 미는 목적지는 출발점보다 중앙에
- *       가깝다.</b> 산수는 값을 고치는 사람이 안 볼 수 있지만 이 함수는 못 피한다</li>
+ *       나아가는 방향의 반대</b>({@code +outward}) 하나뿐이고, 사람의 좌표는 한 번도 들어가지
+ *       않는다. 「사람과 소용돌이의 상대 위치」로 방향을 잡으면 소용돌이보다 안쪽에 선 사람이
+ *       <b>중앙을 가로질러</b> 반대편으로 날아가 예측이 불가능해진다 — 그 계산은 이 파일에 한
+ *       줄도 없다</li>
+ *   <li><b>세로로 한 칸도 띄우지 않는다.</b> 띄우면 낙하 피해가 붙고, 바닥 마찰(0.546)이 안
+ *       먹어 공중 감쇠(0.91)만 남으므로 적힌 거리를 <b>끝까지</b> 날아간다. {@link #push} 는
+ *       세로 속도를 읽어 그대로 돌려놓는다</li>
  * </ol>
  *
- * <p><b>여기서 멈출 것.</b> 위 셋 중 하나라도 무르면 이 카드가 예외로 허용된 근거가 사라진다.
- * 그때는 넉백을 손보는 것이 아니라 카드를 금지 쪽으로 되돌려야 한다.
+ * <p>천장이 실제로 얼마나 일하는지 세어 두면 이렇다. 배율 3.0 이면 적히는 거리가 24칸이고,
+ * 바닥에 붙어 있으면 마찰이 먹어 <b>4.8칸</b>만 밀리지만 <b>점프해 있으면 24칸을 그대로
+ * 날아간다.</b> 아레나 반경이 40 이므로 천장이 없으면 그 한 번으로 허공이다.
  *
  * <h2>소용돌이의 모양 — 바닥 원에 기둥을 얹는다</h2>
  *
@@ -63,9 +77,9 @@ import java.util.UUID;
  * <p>고른 이유보다 <b>고르지 않은 이유</b>가 길다.
  *
  * <ul>
- *   <li><b>벽</b>(아레나를 가로지르는 띠) — 비킬 곳이 옆이 아니라 <b>뒤</b>뿐이다. 폭풍이
- *       가장자리에서 중앙으로 오므로 뒤로 물러나는 길은 <b>반대편 가장자리</b>, 곧 허공 쪽이다.
- *       이 카드가 예외로 허용된 근거(안쪽으로만 민다)와 정면으로 어긋나므로 쓰지 않는다</li>
+ *   <li><b>벽</b>(아레나를 가로지르는 띠) — 비킬 곳이 옆이 아니라 <b>뒤</b>뿐이다. 그런데 이
+ *       카드는 바깥으로 미는 쪽으로 바뀌었고, <b>옆으로 빠지는 것이 남은 유일한 생존 수단</b>
+ *       이다. 옆을 막아 놓고 바깥으로 밀면 요구하는 행동이 아예 없는 카드가 된다</li>
  *   <li><b>기둥만</b> — 세로로 선 것은 <b>발밑 어디까지가 닿는지</b>를 말해 주지 못한다. 옆에서
  *       보면 바닥과 만나는 자리가 가려지고, 이 저장소가 다섯 장의 카드에서 가르쳐 온 「바닥 고리 =
  *       서 있으면 안 되는 자리」와도 말이 달라진다</li>
@@ -94,19 +108,32 @@ import java.util.UUID;
  *       전원 타격인 것과 같은 까닭이다</li>
  * </ul>
  *
- * <p>그 대신 천장이 낮다. {@link #worstCaseTeamDamage} 가 <b>넷이 소용돌이 둘에 다 맞는</b> 값을
+ * <p>그 대신 <b>피해</b> 천장이 낮다(미는 거리의 천장과는 다른 이야기다).
+ * {@link #worstCaseTeamDamage} 가 <b>넷이 소용돌이 둘에 다 맞는</b> 값을
  * 직접 센다 — {@code 2 × 2 × 4 = 16} 으로 팀 공유 체력 20 아래다. 소용돌이 둘은 중앙 근처에서만
  * 겹치므로 16 은 <b>네 사람이 20초 내내 중앙에 서 있었다</b>는 뜻이고, 그러고도 살아남는다.
  * <b>피해 2 는 전원 타격을 전제로만 설명되는 값</b>이니 여기를 올리려는 사람은 그 곱부터 볼 것.
  *
- * <p>넉백을 넷이 다 받는 것도 이 카드에서는 위험하지 않다. <b>넷이 통째로 굴러가는 방향이
- * 중앙</b>이기 때문이다 — 금지가 막으려던 것과 정반대다.
+ * <p>넉백을 넷이 다 받는 것도 이 카드에서는 위험하지 않다. 넷이 통째로 굴러가는 방향이
+ * <b>바깥</b>이지만, 굴러가는 자리가 {@link #pushLimitRadius} 안으로 잘리기 때문이다. 넷이
+ * 같은 방향으로 밀리는 것 자체는 막지 않는다 — 소용돌이가 마주 보고 오므로 한쪽에 밀린 팀은
+ * 반대쪽 소용돌이에서 멀어진다.
  *
- * <h2>같은 사람을 매 틱 때리지 않는다</h2>
+ * <h2>⚠ 피해는 한 번, 넉백은 계속 — <b>둘을 갈라 센다</b></h2>
  *
  * <p>소용돌이가 사람을 통과하는 데 여러 틱이 걸린다(지름 8칸을 초당 2칸으로 지나가므로 <b>80틱</b>
- * 이다). 매 틱 2씩 넣으면 10틱이면 20 이라 즉사다. 그래서 <b>소용돌이마다 명단</b>을 들고
- * ({@code Storm.swept}) 한 번 판정한 사람은 그 소용돌이가 다시 묻지 않는다.
+ * 이다).
+ *
+ * <ul>
+ *   <li><b>피해는 소용돌이당 한 번</b>이다({@code Storm.swept}). 매 틱 2씩이면
+ *       {@code 2 × 80 = 160} 으로 팀 체력 20 의 여덟 배라 그 자리에서 전멸이다</li>
+ *   <li><b>넉백은 닿아 있는 동안 계속</b>이다({@code Storm.shoved}). 사람이 「계속 밀쳐지게」
+ *       하라고 정한 것이 이 카드의 수정 내용 전부다. 다만 <b>매 틱은 아니고</b>
+ *       {@link #SHOVE_INTERVAL_TICKS} 마다다 — 까닭은 그 상수에 적어 두었다</li>
+ * </ul>
+ *
+ * <p><b>이 둘을 다시 하나로 묶지 말 것.</b> 넉백을 명단에 도로 넣으면 사람이 고쳐 달라고 한
+ * 「한번 밀쳐지면 끝」으로 돌아가고, 피해를 명단에서 빼면 즉사 카드가 된다.
  *
  * <p>바닐라 피격 무적시간(10틱)에 기대지 않는다. 기대면 80틱짜리 통과에서 여덟 번이 들어가
  * 「피해 2」가 조용히 16 이 되고, 무적시간이 다른 카드에 먼저 쓰이면 그마저 어긋난다.
@@ -114,6 +141,10 @@ import java.util.UUID;
  * <p>명단이 한 <b>주기</b>가 아니라 한 <b>소용돌이</b>마다인 것이 중요하다. 둘이 중앙에서 겹치는
  * 자리는 각각 한 번씩 물어 2 + 2 = 4 이고, 그것이 {@code TrialRisks.worstCaseTickDamage} 가
  * 이 위험을 {@code hits(damage, count)} 로 세는 값과 같다.
+ *
+ * <p>넉백 쪽 명단은 반대로 <b>소용돌이마다가 아니라 폭풍마다</b> 하나다. 소용돌이 둘이 겹친
+ * 자리에서 같은 틱에 두 번 밀면 방향이 서로 반대(마주 보고 오므로)라 사람이 제자리에서 떨리기만
+ * 한다 — 밀린 것도 안 밀린 것도 아닌 상태가 된다.
  *
  * <h2>파티클과 소리는 멀리 보낸다</h2>
  *
@@ -224,15 +255,76 @@ public final class TrialEnderStorm {
 	 * {@code knockback} 8). 파랑 표식과 밀려나는 소리는 두 카드가 같은 것을 쓰므로, 세기까지 같아야
 	 * 플레이어가 <b>하나만 배운다.</b> 다른 숫자를 새로 만들면 같은 신호에 두 가지 세기가 붙는다.
 	 *
+	 * <p>카드가 적는 배율은 지금 <b>3.0</b> 이라 이 카드가 실제로 부탁하는 거리는 24칸이다. 그
+	 * 값은 사람이 플레이해 보고 정했고 <b>여기서 바꾸지 않는다</b> — 받은 값을 그대로 쓴다.
+	 *
 	 * <p>적힌 값은 <b>천장</b>이지 실제로 밀리는 거리가 아니다. {@link #pushVelocity} 가 공중
-	 * 감쇠로 속도를 잡으므로 바닥에 붙어 있으면 마찰(0.546)이 먼저 먹어 <b>1.6칸 남짓</b>만 밀리고,
-	 * 8 에 가까워지는 것은 공중에 떠 있을 때뿐이다. 어긋나는 방향이 언제나 <b>덜 미는 쪽</b>이다.
+	 * 감쇠로 속도를 잡으므로 바닥에 붙어 있으면 마찰(0.546)이 먼저 먹어 적힌 값의 <b>5분의 1
+	 * 남짓</b>만 밀린다 — 배율 3.0 에서 24칸을 실어도 발이 땅에 붙어 있으면 4.8칸이다. 적힌
+	 * 거리를 다 날아가는 것은 <b>점프해 있을 때뿐</b>이고, 그때를 막는 것이
+	 * {@link #pushDistance} 의 천장이다.
 	 *
 	 * <p><b>이 값이 안전을 지키는 것이 아니다.</b> 안전은 {@link #pushDistance} 가 지킨다 — 여기를
-	 * 몇으로 올리든 밀린 사람이 중앙에서 멀어지는 일은 없다. 그러니 여기를 만지는 사람이 물어야 할
-	 * 것은 「위험한가」가 아니라 「같은 신호에 세기가 둘이 되는가」다.
+	 * 몇으로 올리든, 카드 배율을 몇으로 올리든, 밀린 사람의 목적지는 섬 안이다. 그러니 여기를
+	 * 만지는 사람이 물어야 할 것은 「위험한가」가 아니라 「같은 신호에 세기가 둘이 되는가」다.
 	 */
 	static final double PUSH_BLOCKS = 8.0;
+	/**
+	 * ⚠ 천장을 섬 경계에서 이만큼 안쪽에 둔다(칸). {@link #pushLimitRadius} 가 쓴다.
+	 *
+	 * <h2>왜 경계에 딱 세우면 안 되는가</h2>
+	 *
+	 * <p>천장은 <b>우리가 실은 속도만</b> 센다. 바닐라는 밀리는 동안에도 사람의 이동 입력을 그대로
+	 * 받으므로, 밀리는 방향으로 같이 달리면 계산한 목적지보다 조금 더 나간다. 무엇보다 <b>경계에
+	 * 세워 놓으면 그 다음은 사람의 한 걸음</b>이다 — 밀려 넘어진 자리가 곧 벼랑이면 이 카드는
+	 * 낙사를 「직접」 시키지만 않을 뿐 낙사 장치다.
+	 *
+	 * <h2>왜 8 인가</h2>
+	 *
+	 * <p>같은 수가 세 방향에서 나온다.
+	 *
+	 * <ul>
+	 *   <li>이 저장소가 「강한 넉백」 한 번 치로 쓰는 거리가 {@link #PUSH_BLOCKS}(8)다. 다른
+	 *       카드가 배율 1.0 으로 한 번 더 밖으로 밀어도 여전히 섬 안이다</li>
+	 *   <li>달리기는 초당 5.6칸(0.28 칸/틱)이라 8칸이 <b>29틱</b>이다. 이 판이 「옆으로 비킬
+	 *       시간」으로 쓰는 {@code TrialWarning.TICKS_SIDESTEP}(30)과 거의 같다 — 천장에
+	 *       떨궈진 사람에게 <b>정신 차리고 돌아설 시간이 한 번치</b> 남는다</li>
+	 *   <li>소용돌이 지름이 8칸이다. 천장에 붙은 사람이 소용돌이 하나를 통째로 옆으로 흘려보낼
+	 *       만큼은 남는다</li>
+	 * </ul>
+	 *
+	 * <p>줄이려는 사람은 위 셋을 함께 볼 것. <b>0 으로 두면 천장이 섬 경계와 같아져</b> 밀린
+	 * 사람이 벼랑 끝에 선다.
+	 */
+	static final double PUSH_LIMIT_MARGIN = 8.0;
+	/**
+	 * ⚠ 닿아 있는 동안 <b>몇 틱마다</b> 미는가.
+	 *
+	 * <h2>매 틱이면 안 되는 이유</h2>
+	 *
+	 * <p>매 틱 밀면 사람이 조작을 아예 못 한다. 이 카드가 요구하는 행동이 <b>「옆으로 빠져나가기」
+	 * 하나</b>인데, 매 틱 속도를 덮어쓰면 옆으로 가려는 입력이 한 번도 살아남지 못해 요구한 행동을
+	 * 할 수 없는 카드가 된다.
+	 *
+	 * <h2>왜 10 인가</h2>
+	 *
+	 * <p>한 번 밀린 몸이 <b>멈추는 데 드는 시간</b>과 <b>사람이 반응하는 데 드는 시간</b>을 더한
+	 * 값이다.
+	 *
+	 * <ul>
+	 *   <li><b>앞의 5틱</b> — 바닥 마찰 0.546 이라 {@code 0.546⁵ ≈ 0.049}, 곧 한 번의 밀림이
+	 *       가진 이동량의 <b>95%</b> 가 5틱 안에 끝난다. 그보다 자주 밀면 앞의 밀림이 아직
+	 *       살아 있는 채로 덮어써 <b>속도가 끊기지 않는다</b> — 그것이 곧 조작 불능이다</li>
+	 *   <li><b>뒤의 5틱</b> — {@code TrialEnderPulse.JUMP_WINDOW_TICKS}(5틱 = 0.25초)이고,
+	 *       {@code TrialWarning.TICKS_SIDESTEP} 의 설명이 「사람의 지각·판단·입력에만 0.25초가
+	 *       든다」고 적어 둔 그 시간이다. 밀림이 멎은 뒤 <b>딱 한 번의 반응</b>이 들어갈 자리를
+	 *       남긴다</li>
+	 * </ul>
+	 *
+	 * <p>그래도 <b>계속 밀린다</b>는 말은 지켜진다 — 통과에 80틱이 걸리므로 가만히 있으면 최대
+	 * 여덟 번 밀리고, 실제로는 두세 번 만에 소용돌이 뒤로 빠진다.
+	 */
+	static final int SHOVE_INTERVAL_TICKS = 10;
 	/**
 	 * 공중 수평 감쇠. 26.3 {@code LivingEntity} 의 공중 이동이 매 틱 수평 속도에 곱하는 값이다.
 	 *
@@ -290,10 +382,16 @@ public final class TrialEnderStorm {
 	 *
 	 * @param index     몇 번째 폭풍인가. 주기가 넘어갔는지 판단한다
 	 * @param baseAngle 첫 소용돌이가 서 있는 각. 나머지는 여기서 고르게 나눠 놓는다
-	 * @param swept     소용돌이마다 <b>이미 판정한</b> 사람들. 목록 순서가 소용돌이 순서다.
-	 *                  <b>이 집합들은 고쳐 쓴다</b> — 없으면 통과하는 80틱 동안 매 틱 맞는다
+	 * @param swept     소용돌이마다 <b>이미 피해를 준</b> 사람들. 목록 순서가 소용돌이 순서다.
+	 *                  <b>이 집합들은 고쳐 쓴다</b> — 없으면 통과하는 80틱 동안 매 틱 맞는다.
+	 *                  ⚠ <b>넉백은 여기에 걸리지 않는다</b>
+	 * @param shoved    사람마다 <b>마지막으로 민 틱</b>. 넉백은 피해와 달리 닿아 있는 동안
+	 *                  계속 들어가고, 그 간격을 이것으로 센다
+	 *                  ({@link #SHOVE_INTERVAL_TICKS}). 소용돌이마다가 아니라
+	 *                  <b>폭풍마다 하나</b>인 까닭은 클래스 설명에 있다
 	 */
-	private record Storm(long index, double baseAngle, List<Set<UUID>> swept) {
+	private record Storm(long index, double baseAngle, List<Set<UUID>> swept,
+			Map<UUID, Long> shoved) {
 	}
 
 	private TrialEnderStorm() {
@@ -358,7 +456,7 @@ public final class TrialEnderStorm {
 		long index = elapsed / cycle;
 		Storm run = storm;
 		if (run == null || run.index() != index) {
-			run = new Storm(index, baseAngle(granted, index), sweptSets(count));
+			run = new Storm(index, baseAngle(granted, index), sweptSets(count), new HashMap<>());
 			storm = run;
 			// 출발을 알린다. 가장자리는 반대편 사람에게서 80칸이라 한 점에서 울리면 아무것도
 			// 안 들린다 — 사람마다 그 자리에서 울린다.
@@ -368,7 +466,7 @@ public final class TrialEnderStorm {
 		double distance = distanceAt(step, perTick);
 		for (int vortex = 0; vortex < count; vortex++) {
 			Vec3 outward = outwardOf(run.baseAngle(), vortex, count);
-			sweep(end, present, run.swept().get(vortex), outward, distance, risk);
+			sweep(end, present, run.swept().get(vortex), run.shoved(), outward, distance, now, risk);
 		}
 		warn(end, present, run, distance, perTick, count);
 	}
@@ -380,7 +478,8 @@ public final class TrialEnderStorm {
 	 * 빠뜨리면 지난 판의 소용돌이가 다음 판에서 이어 돈다. 컴파일도 시험도 조용한 사고다.
 	 *
 	 * <p>사람에게 되돌릴 것은 없다. 이 실행기가 사람에게 하는 일은 <b>그 틱에 끝나는</b> 피해와
-	 * 속도 한 번뿐이라 상태이상도, 띄워 둔 몸도, 면제해 줄 낙하 거리도 없다. 판에 남기는 것도 없다 —
+	 * 속도뿐이라(넉백이 여러 번 들어가도 한 번마다 그 틱에 끝난다) 상태이상도, 띄워 둔 몸도,
+	 * 면제해 줄 낙하 거리도 없다. 판에 남기는 것도 없다 —
 	 * 파티클과 소리는 그 틱에 끝나고 블록은 한 칸도 건드리지 않는다.
 	 */
 	public static void clearState() {
@@ -411,41 +510,65 @@ public final class TrialEnderStorm {
 	// ------------------------------------------------------------------ 소용돌이 하나
 
 	/**
-	 * 소용돌이 하나를 그리고, 이번 틱에 그 안에 <b>처음</b> 들어온 사람을 처리한다.
+	 * 소용돌이 하나를 그리고, 지금 그 안에 서 있는 사람을 처리한다.
 	 *
 	 * <p>판정은 바닥 원 하나다({@link TrialRisks#insideMark} — 세로를 묻지 않는다. 표식이 바닥에
 	 * 그려지는데 「원 위에 떠 있었으니 안 맞는다」가 되면 표식이 거짓말한 것이 된다).
 	 *
-	 * <p>한 번 판정한 사람은 {@code swept} 에 넣고 <b>이 소용돌이가 다시 묻지 않는다.</b> 지름
-	 * 8칸을 초당 2칸으로 지나가므로 통과에 80틱이 걸리는데, 매 틱 물으면 {@code 2 × 80 = 160} 이
-	 * 들어간다. 밀려난 사람이 앞쪽으로 밀려 여전히 원 안에 있는 것도 같은 문제라, 명단 없이는
-	 * 넉백 자체가 즉사 장치가 된다.
+	 * <p>⚠ <b>피해와 넉백을 갈라 센다.</b> 같은 원 안에 서 있는 같은 사람인데도 묻는 것이 다르다.
+	 *
+	 * <ul>
+	 *   <li><b>피해</b> — {@code swept} 에 없을 때 한 번뿐이다. 지름 8칸을 초당 2칸으로
+	 *       지나가므로 통과에 80틱이 걸리는데, 매 틱 물으면 {@code 2 × 80 = 160} 이 들어가
+	 *       팀 체력 20 의 여덟 배다</li>
+	 *   <li><b>넉백</b> — {@code swept} 를 보지 않는다. {@link #SHOVE_INTERVAL_TICKS} 마다
+	 *       다시 민다. 사람이 「닿아 있는 동안 계속 밀쳐지게」 하라고 정한 그 동작이다</li>
+	 * </ul>
 	 */
 	private static void sweep(ServerLevel end, List<ServerPlayer> present, Set<UUID> swept,
-			Vec3 outward, double distance, TrialCatalog.Risk.EnderStorm risk) {
+			Map<UUID, Long> shoved, Vec3 outward, double distance, long now,
+			TrialCatalog.Risk.EnderStorm risk) {
 		Vec3 center = onGround(end, outward.scale(distance));
 		draw(end, center, distance);
 		for (ServerPlayer member : present) {
 			UUID memberId = member.getUUID();
-			if (swept.contains(memberId)) {
-				continue;
-			}
 			if (!TrialRisks.insideMark(member.position(), center, VORTEX_RADIUS)) {
 				continue;
 			}
-			// 이 소용돌이에서는 이것이 마지막 판정이다.
-			swept.add(memberId);
-			strike(end, member, outward, risk);
+			if (swept.add(memberId)) {
+				// 이 소용돌이가 이 사람에게 피해를 주는 것은 이번 한 번뿐이다.
+				strike(end, member, risk);
+			}
+			if (!dueToShove(shoved.get(memberId), now)) {
+				continue;
+			}
+			shoved.put(memberId, now);
+			shove(end, member, outward, risk.knockback());
 		}
 	}
 
 	/**
-	 * 소용돌이에 닿았다. 피해와 <b>안쪽</b> 넉백이 함께 들어간다.
+	 * 지금 이 사람을 밀 차례인가.
+	 *
+	 * <p>처음 닿은 틱에는 반드시 민다({@code last} 가 {@code null}). 그 뒤로는
+	 * {@link #SHOVE_INTERVAL_TICKS} 마다다 — 매 틱 밀면 사람이 조작을 아예 못 한다.
+	 *
+	 * <p>시간이 되감긴 판({@code now < last})에서도 민다. 그때 안 밀면 폭풍이 끝날 때까지 그
+	 * 사람만 조용히 넉백에서 빠진다 — 조용한 종류의 고장이다.
+	 *
+	 * @param last 마지막으로 민 틱. 이 폭풍에서 아직 한 번도 안 밀었으면 {@code null}
+	 */
+	static boolean dueToShove(@Nullable Long last, long now) {
+		return last == null || now < last || now - last >= SHOVE_INTERVAL_TICKS;
+	}
+
+	/**
+	 * 소용돌이에 닿았다. <b>피해만</b> 들어간다 — 넉백은 {@link #shove} 가 따로 센다.
 	 *
 	 * <p>피해원에 <b>가해 개체를 달지 않는다.</b> 실체가 붙은 피해원이면 {@code LivingEntity} 가
-	 * 스스로 밀어내는데, 그 밀기는 <b>사람과 가해자의 상대 위치</b>로 방향을 잡는다 — 이 카드가
-	 * 절대 하면 안 되는 바로 그 계산이고, 엔드 섬 가장자리에서 그 방향은 허공이다. 넉백은
-	 * {@link #push} 하나만 준다.
+	 * 스스로 밀어내는데, 그 밀기는 <b>사람과 가해자의 상대 위치</b>로 방향을 잡고 거리도 우리가
+	 * 정한 것이 아니다 — {@link #pushDistance} 의 천장을 통째로 지나쳐 가는 길이고, 바깥으로
+	 * 미는 카드에서 그것은 곧 허공이다. 넉백은 {@link #push} 하나만 준다.
 	 *
 	 * <p>피해형은 폭발이다. 26.3 에서 {@code magic} 과 {@code dragonBreath} 는 {@code bypasses_armor}
 	 * 태그에 들어 있어 방어구가 통째로 무시되고, 그러면 카드에 적힌 2 보다 실제로 더 아파진다.
@@ -454,11 +577,10 @@ public final class TrialEnderStorm {
 	 *
 	 * <p>블록은 한 칸도 건드리지 않고 불도 붙이지 않는다.
 	 */
-	private static void strike(ServerLevel end, ServerPlayer member, Vec3 outward,
+	private static void strike(ServerLevel end, ServerPlayer member,
 			TrialCatalog.Risk.EnderStorm risk) {
 		Vec3 at = member.position();
 		member.hurtServer(end, end.damageSources().explosion(null, null), risk.damage());
-		push(member, outward, risk.knockback());
 		// 긴 형태다. 맞은 사람만 보고 나머지가 못 보면 「저 사람이 물렸다」가 팀에 공유되지 않아
 		// 다음 소용돌이를 못 읽는다.
 		end.sendParticles(ParticleTypes.PORTAL, true, false, at.x, at.y + 0.1, at.z, 20,
@@ -470,30 +592,79 @@ public final class TrialEnderStorm {
 	}
 
 	/**
-	 * ⚠ <b>안쪽으로만 민다.</b> 이 메서드가 이 카드의 안전장치다.
+	 * 한 번 민다. 닿아 있는 동안 {@link #SHOVE_INTERVAL_TICKS} 마다 다시 불린다.
 	 *
-	 * <p>쓰는 방향은 {@code outward} 를 뒤집은 것, 곧 <b>소용돌이가 나아가는 방향</b> 하나뿐이다.
-	 * <b>사람의 좌표가 방향 계산에 한 번도 들어가지 않는다</b> — 「사람과 소용돌이의 상대 위치」로
-	 * 잡으면 소용돌이보다 바깥에 선 사람이 바깥으로, 곧 허공 쪽으로 밀린다.
+	 * <p><b>소리를 내지 않는다.</b> 첫 타격의 밀려나는 소리는 {@link #strike} 가 한 번 울렸다.
+	 * 0.5초마다 같은 소리를 여덟 번 더 울리면 <b>다른 카드의 경고음이 그 밑에 깔려</b> 안 들린다 —
+	 * 이 판에 남은 신호가 소리와 바닥 표식 둘뿐이라 소리 하나가 비싸다. 대신 발밑에 엔더 입자를
+	 * 조금 띄워 「또 밀렸다」를 눈으로 말한다.
 	 *
-	 * <p>세로 속도는 읽어서 그대로 돌려놓는다. 띄우면 낙하 피해가 붙고, 공중에서는 방향을 못 바꿔
-	 * 훨씬 멀리 날아간다 — 「미는 거리」의 천장을 지키는 가장 싼 방법이 아예 안 띄우는 것이고,
-	 * 덤으로 낙하 피해를 면제할 상태도 들지 않아도 된다.
+	 * <p>점 몇 개는 예산 밖이 아니다. {@link #MAX_POINTS_PER_TICK} 은 <b>바닥 표식</b> 예산이고
+	 * ({@link #markPoints} 가 세는 값), 이쪽은 밀린 사람에게만 나가므로 팀 인원만큼이 상한이다.
+	 */
+	private static void shove(ServerLevel end, ServerPlayer member, Vec3 outward, double knockback) {
+		if (!push(member, outward, knockback)) {
+			return;
+		}
+		Vec3 at = member.position();
+		// 긴 형태다. 짧은 형태면 32칸 밖에 선 팀원에게는 아무도 안 밀린 것으로 보인다.
+		end.sendParticles(ParticleTypes.PORTAL, true, false, at.x, at.y + 0.1, at.z, 6,
+				0.3, 0.05, 0.3, 0.0);
+	}
+
+	/**
+	 * ⚠ <b>바깥으로 민다 — 목적지는 {@link #pushDistance} 가 섬 안으로 자른다.</b>
+	 *
+	 * <p>쓰는 방향은 {@code outward} 그대로, 곧 <b>소용돌이가 나아가는 방향의 반대</b> 하나뿐이다.
+	 * <b>전에는 이 자리에서 {@code outward.scale(-1)} 로 뒤집어 안쪽으로 밀었다</b> — 그래야
+	 * 섬 밖으로 나가지 않기 때문이었다. 사람이 플레이해 보고 「한번 밀쳐지면 끝」이라 해서 부호를
+	 * 뒤집었고, 그 대신 안전은 전부 {@link #pushDistance} 의 천장으로 옮겼다. 까닭은 클래스
+	 * 설명에 있다.
+	 *
+	 * <p><b>사람의 좌표가 방향 계산에 한 번도 들어가지 않는다.</b> 「사람과 소용돌이의 상대
+	 * 위치」로 잡으면 같은 소용돌이가 사람마다 다른 쪽으로 밀어 예측이 안 되고, 소용돌이 안쪽에
+	 * 선 사람은 중앙을 가로질러 반대편으로 날아간다.
+	 *
+	 * <p>속도를 <b>더하지 않고 덮어쓴다</b>({@code setDeltaMovement}). 더하면 이미 들고 있던
+	 * 수평 속도가 얹혀 천장이 계산한 목적지를 넘는다.
+	 *
+	 * <p>세로 속도는 읽어서 그대로 돌려놓는다. 띄우면 낙하 피해가 붙고, 공중에서는 바닥 마찰이
+	 * 안 먹어 적힌 거리를 끝까지 날아간다 — 그때 천장을 지키는 것이
+	 * {@link #pushDistance} 뿐이므로 여기서 한 칸도 띄우지 않는다.
 	 *
 	 * <p>{@code syncVelocity} 를 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 클라이언트가 보고한
 	 * 제자리로 되돌아간다({@code TrialRisks.launch} 와 같은 이유).
+	 *
+	 * @return 실제로 밀었으면 {@code true}. 천장에 걸려 한 칸도 못 밀면 {@code false}
 	 */
-	private static void push(ServerPlayer member, Vec3 outward, double knockback) {
-		Vec3 inward = outward.scale(-1.0);
-		double distance = pushDistance(member.getX(), member.getZ(), inward,
+	private static boolean push(ServerPlayer member, Vec3 outward, double knockback) {
+		Vec3 away = shoveDirection(outward);
+		double distance = pushDistance(member.getX(), member.getZ(), away,
 				PUSH_BLOCKS * Math.max(0.0, knockback));
 		if (!(distance > 0.0)) {
-			return;
+			return false;
 		}
 		double speed = pushVelocity(distance);
 		Vec3 motion = member.getDeltaMovement();
-		member.setDeltaMovement(inward.x * speed, motion.y, inward.z * speed);
+		member.setDeltaMovement(away.x * speed, motion.y, away.z * speed);
 		member.syncVelocity = true;
+		return true;
+	}
+
+	/**
+	 * ⚠ 미는 방향. <b>소용돌이가 나아가는 방향의 반대</b>, 곧 바깥이다.
+	 *
+	 * <p>한 줄짜리를 메서드로 빼 둔 것은 <b>시험이 부호를 물을 수 있게</b> 하기 위해서다
+	 * ({@link #markColor} 가 같은 이유로 있다). 부호 하나가 이 카드의 성격 전부이고, 뒤집히면
+	 * 빌드도 로그도 조용한 채로 <b>사람이 고쳐 달라고 한 것이 도로 원래대로</b> 돌아간다.
+	 *
+	 * @param outward 중앙에서 소용돌이를 가리키는 단위 벡터. 소용돌이는 그 <b>반대</b>로 나아간다
+	 */
+	static Vec3 shoveDirection(Vec3 outward) {
+		// 전에는 여기서 outward.scale(-1) 로 뒤집어 안쪽(= 소용돌이가 가는 쪽)으로 밀었다.
+		// 사람이 플레이해 보고 「한번 밀쳐지면 끝」이라 해서 바깥으로 되돌렸다. 안전은 부호가
+		// 아니라 pushDistance 의 천장이 지킨다.
+		return outward;
 	}
 
 	// ------------------------------------------------------------------ 예고
@@ -523,8 +694,9 @@ public final class TrialEnderStorm {
 	 * 되면 그 경험 하나가 다음 경고까지 무시하게 만든다({@code TrialEnderPulse.warn} 와 같은 판단).
 	 *
 	 * <p>소용돌이가 둘이라 <b>가장 먼저 닿는 쪽</b>만 센다. 둘을 따로 울리면 같은 틱에 두 번 울려
-	 * 층이 소음이 된다. 이미 판정이 끝난 소용돌이는 빼고 본다 — 지나간 것이 계속 경고하면 다음
-	 * 폭풍의 예고와 섞인다.
+	 * 층이 소음이 된다. 이미 <b>피해를 준</b> 소용돌이는 빼고 본다({@code swept}) — 지나간 것이
+	 * 계속 경고하면 다음 폭풍의 예고와 섞인다. 넉백이 아직 남아 있어도 그렇다. 경고가 말하는
+	 * 것은 「아직 안 맞았다」이고, 이미 맞은 사람에게 그 말은 거짓이다.
 	 *
 	 * <p>소리는 사람마다 그 자리에서 울린다. 한 점에서 울리면 16칸 밖에는 안 들린다.
 	 */
@@ -784,44 +956,74 @@ public final class TrialEnderStorm {
 	}
 
 	/**
-	 * ⚠ 실제로 밀 거리. <b>중앙에서 멀어지지 않는 만큼만</b> 돌려준다.
+	 * ⚠⚠ <b>이 카드의 천장.</b> 밀려 나갈 수 있는 중앙에서의 가장 먼 거리(칸).
 	 *
-	 * <h2>이 함수가 이 카드를 허용된 예외로 만든다</h2>
+	 * <p>아레나 반경({@code TrialRisks.ARENA_RADIUS} = 40)에서 {@link #PUSH_LIMIT_MARGIN} 만큼
+	 * 안쪽이다. <b>섬 경계에 딱 세우지 않는 까닭</b>은 그 상수에 적어 두었다 — 경계에 서 있으면
+	 * 그 다음은 사람의 한 걸음이다.
 	 *
-	 * <p>미는 방향 {@code inward} 는 사람과 무관하게 <b>소용돌이가 나아가는 쪽</b>이다. 그래도
-	 * 사람이 어디에 서 있느냐에 따라 그 방향이 <b>중앙에서 멀어지는 쪽</b>일 수 있다 — 소용돌이가
-	 * 중앙 가까이 왔을 때 그 <b>너머</b>에 선 사람이 그렇다. 거기서 밀면 이 카드가 남의 사고를
-	 * 완성시킨다.
+	 * <p>{@code ARENA_RADIUS} 를 그대로 쓰는 것이 중요하다. 아레나가 좁아지거나 넓어지면 천장이
+	 * 따라온다 — 여기 숫자를 따로 적으면 두 곳이 갈라지고, 갈라진 쪽이 <b>허공</b>이다.
+	 */
+	static double pushLimitRadius() {
+		return Math.max(0.0, TrialRisks.ARENA_RADIUS - PUSH_LIMIT_MARGIN);
+	}
+
+	/**
+	 * ⚠⚠ 실제로 밀 거리. <b>목적지가 {@link #pushLimitRadius} 안</b>인 만큼만 돌려준다.
 	 *
-	 * <p>그래서 산수가 아니라 함수로 막는다. 중앙에서 잰 거리의 제곱
-	 * {@code |p + s·d|² = |p|² + 2s(p·d) + s²} 는 {@code s} 에 대한 아래로 볼록한 이차식이고
-	 * <b>{@code s* = -(p·d)} 에서 가장 작다.</b> 곧 {@code [0, s*]} 구간에서는 밀리는 내내 거리가
-	 * 줄기만 한다. 여기서 자르면
+	 * <h2>이 함수 하나가 이 카드의 안전장치 전부다</h2>
+	 *
+	 * <p>전에는 「밀린 뒤가 밀리기 전보다 중앙에 가깝다」로 잘랐다({@code s ≤ -(p·d)}). 그 증명은
+	 * <b>안쪽으로 밀 때만</b> 성립한다 — 미는 방향이 바깥으로 뒤집힌 지금은 그 조건이 <b>언제나
+	 * 거짓</b>이라 아무도 못 밀거나, 조건을 빼면 아무도 못 막는다. 그래서 새로 짰다.
+	 *
+	 * <h2>무엇을 약속하는가</h2>
+	 *
+	 * <p>중앙에서 잰 거리의 제곱은 밀린 거리 {@code s} 에 대해
+	 * {@code q(s) = |p + s·d|² - R² = s² + 2s(p·d) + (|p|² - R²)} 이고, 이것은 위로 열린
+	 * 이차식이라 <b>두 근 사이에서만 0 이하</b>다. 지금 서 있는 자리가 천장 안이면
+	 * ({@code |p| < R}) {@code q(0) < 0} 이므로 0 이 두 근 사이에 있고, 큰 근
+	 * {@code s⁺ = √((p·d)² - (|p|² - R²)) - (p·d)} 가 <b>천장 원과 만나는 바로 그 점</b>이다.
+	 * {@code [0, s⁺]} 에서 자르면
 	 *
 	 * <ul>
-	 *   <li>밀린 <b>뒤</b>가 밀리기 <b>전</b>보다 중앙에 가깝다</li>
-	 *   <li>밀리는 <b>도중</b>의 어느 점도 출발점보다 멀지 않다 — 경사에 걸려 멈춰도 안전하다</li>
-	 *   <li>{@code s*} 가 0 이하면 한 칸도 밀지 않는다. 이미 지나쳐 선 사람이다</li>
+	 *   <li><b>목적지</b>가 천장 안이다 — 어떤 세기를 넣어도 그렇다</li>
+	 *   <li>밀리는 <b>도중</b>의 어느 점도 천장 안이다. {@code q} 가 그 구간에서 0 이하이므로
+	 *       경사에 걸려 중간에 멈춰도 안전하다</li>
+	 *   <li><b>몇 번을 연속으로 밀려도</b> 그대로다. 한 번 밀린 뒤의 자리가 다시 천장 안이라
+	 *       다음 번의 {@code q(0)} 도 0 이하다 — <b>누적되지 않는다.</b> 「닿아 있는 동안 계속
+	 *       민다」가 안전할 수 있는 근거가 이것이다</li>
+	 *   <li>이미 천장 밖에 선 사람은 <b>한 칸도</b> 밀지 않는다({@code q(0) ≥ 0}). 다른 카드나
+	 *       경사가 먼저 데려다 놓은 경우인데, 거기서 또 밀면 이 카드가 남의 사고를 완성시킨다</li>
 	 * </ul>
 	 *
-	 * <p><b>세기와 무관하다.</b> {@link #PUSH_BLOCKS} 를 몇으로 올리든, 다른 카드의 넉백이 먼저
-	 * 사람을 가장자리로 데려다 놓았든, 이 카드가 미는 목적지는 언제나 출발점 이내다. 산수는 값을
-	 * 고치는 사람이 안 볼 수 있지만 이 함수는 못 피한다.
+	 * <p><b>세기와 무관하다.</b> {@link #PUSH_BLOCKS} 를 몇으로 올리든, 카드 배율을 3 이 아니라
+	 * 30 으로 적든, 다른 카드의 넉백이 먼저 사람을 가장자리로 데려다 놓았든, 이 카드가 미는
+	 * 목적지는 언제나 섬 안이다. 산수는 값을 고치는 사람이 안 볼 수 있지만 이 함수는 못 피한다.
 	 *
-	 * @param x      사람의 x. 아레나 중앙이 {@code (0, 0)} 이다
-	 * @param z      사람의 z
-	 * @param inward 미는 방향. <b>단위 벡터여야 한다</b>
-	 * @param wanted 카드가 시킨 거리
+	 * <p><b>이 함수를 지우거나 헐겁게 하지 말 것.</b> 방향이 바깥인 이상 이것 말고는 사람이 허공
+	 * 으로 나가는 것을 막는 장치가 하나도 없다. 천장을 무르려면 방향을 안쪽으로 되돌려야 한다.
+	 *
+	 * @param x       사람의 x. 아레나 중앙이 {@code (0, 0)} 이다
+	 * @param z       사람의 z
+	 * @param outward 미는 방향. <b>단위 벡터여야 하고 높이는 보지 않는다</b>
+	 * @param wanted  카드가 시킨 거리({@code PUSH_BLOCKS × knockback})
 	 */
-	static double pushDistance(double x, double z, Vec3 inward, double wanted) {
+	static double pushDistance(double x, double z, Vec3 outward, double wanted) {
 		if (!(wanted > 0.0)) {
 			return 0.0;
 		}
-		double closest = -(x * inward.x + z * inward.z);
-		if (!(closest > 0.0)) {
+		double limit = pushLimitRadius();
+		double outside = x * x + z * z - limit * limit;
+		if (outside >= 0.0) {
+			// 이미 천장 위이거나 밖이다. 어느 쪽으로 밀어도 더 나빠지기만 한다.
 			return 0.0;
 		}
-		return Math.min(wanted, closest);
+		double along = x * outward.x + z * outward.z;
+		// outside < 0 이라 판별식은 반드시 양수고, 큰 근은 반드시 0 보다 크다.
+		double reach = Math.sqrt(along * along - outside) - along;
+		return Math.min(wanted, Math.max(0.0, reach));
 	}
 
 	/**
@@ -835,9 +1037,12 @@ public final class TrialEnderStorm {
 	 * 그 속도로 한 틱이라도 떠 있으면 40칸을 날아간다. 공중 모델은 반대로 <b>적힌 거리를 넘을 수
 	 * 없고</b>, 바닥에 붙어 있으면 마찰이 먼저 먹어 5분의 1 남짓만 밀린다.
 	 *
-	 * <p>이 카드에서 밀리는 방향은 안쪽이라 「멀리 날아가는 것」 자체가 위험은 아니지만, 그래도
-	 * 언제나 <b>덜 미는 쪽</b>으로 어긋나는 모델을 쓴다 — 「착지 충격」과 같은 식이라 두 카드가 같은
-	 * 세기로 같은 만큼 민다.
+	 * <p>⚠ 밀리는 방향이 <b>바깥</b>으로 뒤집힌 뒤로 이 선택이 안전과 직결된다. 바닥 모델을 쓰면
+	 * 점프한 사람이 적힌 거리의 <b>다섯 배</b>를 날아가 {@link #pushDistance} 가 잡아 둔 목적지를
+	 * 지나쳐 버린다 — 천장은 「얼마나 밀지」를 자를 뿐 「실은 속도가 그보다 멀리 가지 않는다」는
+	 * 이 모델이 지킨다. 어긋나는 방향이 언제나 <b>덜 미는 쪽</b>이어야 한다.
+	 *
+	 * <p>「착지 충격」과 같은 식이라 두 카드가 같은 세기로 같은 만큼 민다.
 	 */
 	static double pushVelocity(double distance) {
 		return Math.max(0.0, distance) * (1.0 - AIR_DRAG);

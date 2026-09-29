@@ -1,14 +1,23 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.TestBootstrap;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -19,14 +28,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>보호막이 카드에 적힌 것보다 오래 간다</b>, <b>영영 안 풀린다</b>, 그리고 <b>걸렸는데 아무것도
  * 안 보인다</b>. 전멸하면 월드가 지워지는 게임이라 이것들은 돌려 보고 발견할 수 없다.
  *
- * <p>무적은 개체에 거는 것이라 여기서 개체를 만들 수 없지만 <b>거는 값</b>은 순수 계산이다. 그
- * 값이 언제나 유한한 카운트다운이라는 것만 붙들면 「영영 안 깨지는 크리스탈」은 구조적으로
- * 불가능해진다 — {@code Entity.commonTick} 이 매 틱 1씩 깎기 때문이다.
+ * <p>보호막은 이제 바닐라 무적 칸이 아니라 <b>이 클래스가 들고 있는 봉인</b>이다
+ * ({@code TrialCrystalLink.sealedCrystal}). 그래서 <b>아무도 깎아 주지 않는다</b> — 「영영 안
+ * 깨지는 크리스탈」을 막는 것이 {@code guardTicks} 로 미루는 유효기한 하나뿐이라, 그 값이 언제나
+ * 유한하고 {@code sealFresh} 가 기한이 지난 봉인을 반드시 열어 준다는 것을 여기서 붙든다.
  */
 class TrialCrystalLinkTest {
 
-	/** 실제 카드 값. 시험이 현실과 붙어 있어야 값을 바꿀 때 여기가 먼저 운다. */
-	private static final int SHIELD_TICKS = 160;
+	@BeforeAll
+	static void bootstrap() {
+		TestBootstrap.ensureInitialized();
+	}
+
+	/** 실제 카드 값(30초). 시험이 현실과 붙어 있어야 값을 바꿀 때 여기가 먼저 운다. */
+	private static final int SHIELD_TICKS = 600;
 
 	/** 바닐라 엔드 기둥의 배치 — 반경 42 원 위에 열 개. {@code EndSpikeFeature} 와 같은 수다. */
 	private static final double SPIKE_RADIUS = 42.0;
@@ -150,7 +165,7 @@ class TrialCrystalLinkTest {
 	@Test
 	void 시간이_뒤로_가도_보호막이_길어지지_않는다() {
 		long endsAt = 500L + SHIELD_TICKS;
-		// 세션을 복원하면 흐른 시간이 뒤로 갈 수 있다. 자르지 않으면 8초짜리가 그만큼 늘어난다.
+		// 세션을 복원하면 흐른 시간이 뒤로 갈 수 있다. 자르지 않으면 30초짜리가 그만큼 늘어난다.
 		assertEquals(SHIELD_TICKS, TrialCrystalLink.remainingShield(0L, endsAt, SHIELD_TICKS));
 	}
 
@@ -159,12 +174,12 @@ class TrialCrystalLinkTest {
 		long endsAt = 500L + SHIELD_TICKS;
 		for (long elapsed = endsAt; elapsed < endsAt + 1000L; elapsed++) {
 			assertEquals(0, TrialCrystalLink.remainingShield(elapsed, endsAt, SHIELD_TICKS),
-					"남은 시간이 음수로 흐르면 그 값으로 무적을 다시 거는 순간 뜻이 뒤집힌다");
+					"남은 시간이 음수로 흐르면 그 값으로 봉인 기한을 다시 미루는 순간 뜻이 뒤집힌다");
 		}
 	}
 
 	@Test
-	void 거는_무적은_언제나_유한하고_남은_시간보다_길다() {
+	void 미루는_기한은_언제나_유한하고_남은_시간보다_길다() {
 		for (int remaining = -5; remaining <= SHIELD_TICKS; remaining++) {
 			int guard = TrialCrystalLink.guardTicks(remaining);
 			assertTrue(guard > 0, "0 을 걸면 그 틱에 보호막이 없다: " + remaining);
@@ -176,6 +191,73 @@ class TrialCrystalLinkTest {
 		// 우리가 부르기를 멈춘 뒤 스스로 풀리는 데 걸리는 시간이 곧 여유다. 「부활」과 같은 값을
 		// 빌려 쓰므로 한쪽만 고치면 여기가 운다.
 		assertEquals(TrialCrystalRevive.GUARD_MARGIN_TICKS, TrialCrystalLink.guardTicks(0));
+	}
+
+	// ------------------------------------------------------------------ 봉인이 스스로 열리는가
+
+	/**
+	 * 죽은 사람 스위치가 이 파일에서 가장 중요한 시험이다.
+	 *
+	 * <p>봉인은 개체가 아니라 정적 칸에 있으므로 {@code Entity.commonTick} 이 깎아 주지 않는다.
+	 * 실행기가 기한을 미루기를 멈추면 <b>반드시</b> 열려야 하고, 그러지 않으면 드래곤이 죽어
+	 * 세션만 사라지는 길에서 영영 안 깨지는 크리스탈이 남는다.
+	 */
+	@Test
+	void 기한이_지난_봉인은_열린다() {
+		UUID sealed = UUID.randomUUID();
+		long freshUntil = 1000L;
+		assertTrue(TrialCrystalLink.sealFresh(sealed, freshUntil, 999L));
+		assertFalse(TrialCrystalLink.sealFresh(sealed, freshUntil, 1000L),
+				"기한과 같은 눈금이면 열리는 쪽으로 기울여야 한다");
+		assertFalse(TrialCrystalLink.sealFresh(sealed, freshUntil, 1001L));
+		assertFalse(TrialCrystalLink.sealFresh(null, freshUntil, 0L),
+				"봉인이 없는데 기한만 남아 있으면 판의 모든 크리스탈이 잠긴다");
+	}
+
+	/**
+	 * 봉인을 미루는 값이 곧 「우리가 죽고 나서 열릴 때까지」다.
+	 *
+	 * <p>바닐라 무적 칸이 공짜로 주던 성질을 손으로 되찾은 자리라, 산수가 어긋나면 조용히
+	 * 사라진다.
+	 */
+	@Test
+	void 부르기를_멈추면_여유만큼_뒤에_열린다() {
+		long now = 5000L;
+		long freshUntil = now + TrialCrystalLink.guardTicks(SHIELD_TICKS);
+		UUID sealed = UUID.randomUUID();
+		// 마지막으로 미룬 그 틱에 실행기가 죽었다고 치면, 보호막이 다 닳는 시각까지는 잠겨 있고
+		assertTrue(TrialCrystalLink.sealFresh(sealed, freshUntil, now + SHIELD_TICKS));
+		// 여유까지 지나면 아무도 부르지 않아도 스스로 열린다.
+		assertFalse(TrialCrystalLink.sealFresh(sealed, freshUntil,
+				now + SHIELD_TICKS + TrialCrystalRevive.GUARD_MARGIN_TICKS));
+	}
+
+	/** 판이 끝나면 봉인이 남아 있어서는 안 된다. 월드도 개체도 없이 지나는 길이다. */
+	@Test
+	void 비우면_봉인이_남지_않는다() {
+		TrialCrystalLink.clearState();
+		assertNull(TrialCrystalLink.sealedCrystal(),
+				"봉인이 남으면 다음 판에 이유 없이 안 깨지는 크리스탈이 생긴다");
+		assertFalse(TrialCrystalLink.sealHolds(0L));
+		assertFalse(TrialCrystalLink.sealHolds(Long.MAX_VALUE));
+	}
+
+	/**
+	 * 운영자 탈출구 둘이 26.3 에 그대로 있다.
+	 *
+	 * <p>{@code EndCrystalSealMixin} 은 {@code Entity.isInvulnerableToBase} 가 무적을 뚫어 주는
+	 * 경우를 <b>글자 그대로</b> 흉내 낸다. 둘 중 하나라도 이름이 바뀌면 봉인이 바닐라 무적보다
+	 * 촘촘해져 <b>운영자가 치울 길이 없어진다.</b> 믹스인은 refmap 이 없어 그런 어긋남을 빌드가
+	 * 잡아 주지 않는다.
+	 */
+	@Test
+	void 운영자_탈출구_둘이_그대로_있다() {
+		assertDoesNotThrow(() -> DamageSource.class.getDeclaredMethod("isCreativePlayer"),
+				"크리에이티브가 통과하는 길이 없어졌다");
+		assertNotNull(DamageTypeTags.BYPASSES_INVULNERABILITY,
+				"무적을 뚫는 태그가 없어졌다 — /kill 로도 못 치우게 된다");
+		assertDoesNotThrow(() -> Entity.class.getDeclaredMethod("getUUID"),
+				"봉인이 어느 개체인지 물을 길이 없어졌다");
 	}
 
 	// ------------------------------------------------------------------ 눈에 보이는가
@@ -208,7 +290,75 @@ class TrialCrystalLinkTest {
 		// 카드 값이 0 이면 실행기가 아예 돌지 않지만, 계산이 0 으로 나누면 그 사실을 숨긴 채
 		// 다른 시련까지 멈추는 예외가 된다.
 		assertEquals(TrialCrystalLink.SHELL_MIN, TrialCrystalLink.shellRadius(0, 0), 1.0E-9);
+		assertEquals(TrialCrystalLink.ARC_MIN, TrialCrystalLink.shellArc(0, 0), 1.0E-9);
 		assertEquals(0, TrialCrystalLink.remainingShield(0L, 0L, 0));
+	}
+
+	@Test
+	void 적도_호는_온전한_고리에서_조각까지_단조롭게_닫힌다() {
+		assertEquals(1.0, TrialCrystalLink.shellArc(SHIELD_TICKS, SHIELD_TICKS), 1.0E-9,
+				"갓 걸렸을 때는 고리가 닫혀 있어야 「아직 온전하다」로 읽힌다");
+		assertEquals(TrialCrystalLink.ARC_MIN, TrialCrystalLink.shellArc(0, SHIELD_TICKS), 1.0E-9);
+		assertTrue(TrialCrystalLink.ARC_MIN > 0.0,
+				"다 닫히면 「이미 풀렸다」로 읽혀 한 번 더 헛되이 쏘게 된다");
+
+		double previous = Double.MAX_VALUE;
+		for (int remaining = SHIELD_TICKS; remaining >= 0; remaining--) {
+			double arc = TrialCrystalLink.shellArc(remaining, SHIELD_TICKS);
+			assertTrue(arc <= previous,
+					"중간에 다시 커지면 「얼마나 남았는가」를 거짓말하는 것이다: " + remaining);
+			previous = arc;
+		}
+	}
+
+	/**
+	 * 30초를 버티는 초읽기가 실제로 읽히는가.
+	 *
+	 * <p>8초짜리를 그대로 30초로 늘렸더니 반경이 <b>초당 0.037 블록</b>이 됐다. 크리스탈은 반경
+	 * 42 기둥 꼭대기라 그 1.1 블록이 40 블록 밖에서 1.6도다 — 사람 눈에는 멈춰 있다. 그래서
+	 * 초읽기를 호로 옮겼고, 이 시험은 <b>옮긴 쪽이 실제로 더 큰 폭을 쓰는지</b>를 붙든다.
+	 *
+	 * <p>반경도 남겨 두었지만 이제는 거드는 신호다. 둘 중 하나라도 폭이 사라지면 이 카드는 다시
+	 * 「왜 안 깨지지」가 된다.
+	 */
+	@Test
+	void 초읽기는_반경이_아니라_호가_한다() {
+		double arcSpan = TrialCrystalLink.shellArc(SHIELD_TICKS, SHIELD_TICKS)
+				- TrialCrystalLink.shellArc(0, SHIELD_TICKS);
+		assertTrue(arcSpan >= 0.8,
+				"호가 쓰는 폭이 좁으면 30초짜리 초읽기를 멀리서 읽을 수 없다: " + arcSpan);
+
+		// 40 블록 밖에서 반경 변화가 만드는 각(도). 사람 눈이 못 잡는 크기라는 것을 숫자로 남긴다.
+		double radiusSpan = TrialCrystalLink.SHELL_MAX - TrialCrystalLink.SHELL_MIN;
+		double degrees = Math.toDegrees(Math.atan2(radiusSpan, 40.0));
+		assertTrue(degrees < 3.0,
+				"반경이 이만큼이나 움직인다면 호로 옮긴 근거가 거짓이다: " + degrees);
+	}
+
+	@Test
+	void 점은_호의_길이에_비례하고_결코_사라지지_않는다() {
+		double radius = TrialCrystalLink.SHELL_MAX;
+		double full = Math.PI * 2.0;
+		// 온전한 적도가 기준값 그대로다.
+		assertEquals(TrialCrystalLink.SHELL_POINTS,
+				TrialCrystalLink.bandPoints(radius, radius, full));
+		// 위아래 띠는 둘레가 cos(π/4) 배라 그만큼만 찍는다. 같은 수를 찍으면 위아래만 촘촘해져
+		// 공이 아니라 통으로 보인다.
+		int tilted = TrialCrystalLink.bandPoints(radius * Math.cos(Math.PI / 4.0), radius, full);
+		assertTrue(tilted < TrialCrystalLink.SHELL_POINTS && tilted > TrialCrystalLink.SHELL_MIN_POINTS,
+				"위아래 띠의 점 수가 적도와 같으면 밀도가 어긋난다: " + tilted);
+
+		// 호가 아무리 짧아져도 조각은 보여야 한다 — 그 조각이 「아직 못 깬다」의 마지막 신호다.
+		for (int remaining = SHIELD_TICKS; remaining >= 0; remaining--) {
+			double span = full * TrialCrystalLink.shellArc(remaining, SHIELD_TICKS);
+			double ring = TrialCrystalLink.shellRadius(remaining, SHIELD_TICKS);
+			assertTrue(TrialCrystalLink.bandPoints(ring, ring, span) >= TrialCrystalLink.SHELL_MIN_POINTS,
+					"남은 조각이 점 한둘이 되면 화면에서 사라진다: " + remaining);
+		}
+		// 값이 망가져 들어와도 0 으로 나누거나 점 0 개를 돌려주지 않는다. 껍질이 사라지는 것보다
+		// 나쁜 것은 그 자리에서 예외가 나 그 틱의 다른 시련까지 멈추는 것이다.
+		assertEquals(TrialCrystalLink.SHELL_MIN_POINTS, TrialCrystalLink.bandPoints(0.0, 0.0, full));
+		assertEquals(TrialCrystalLink.SHELL_MIN_POINTS, TrialCrystalLink.bandPoints(1.0, 1.0, 0.0));
 	}
 
 	// ------------------------------------------------------------------ 시험이 쓰는 배치

@@ -20,9 +20,14 @@ import java.util.Map;
  * <h2>무엇을 해야 하는가</h2>
  *
  * <p><b>한 번만</b> 터진다. 30초({@code durationTicks}) 동안
- * 2~3초({@code minInterval}~{@code maxInterval})마다 10~15곳({@code minSpots}~{@code maxSpots})에
+ * 2~3초({@code minInterval}~{@code maxInterval})마다 30~45곳({@code minSpots}~{@code maxSpots})에
  * 표시가 뜨고, 1.5초({@code warnTicks}) 뒤에 착탄한다. 반경 2.5({@code radius}) ·
  * 피해 10({@code damage}).
+ *
+ * <p>지점 수는 <b>10~15 였다.</b> 사람이 플레이해 보고 「생성이 지금의 3배여도 괜찮을 것
+ * 같다」고 해서 세 배가 됐다. 피해도 반경도 그대로이므로 <b>한 사람이 한 볼리에 한 발</b>은
+ * 변하지 않는다({@link TrialRisks#reserveSpots} 가 고리끼리 떼어 놓는다) — 늘어난 것은
+ * 「비킬 곳을 고르기」의 어려움이지 한 방의 크기가 아니다.
  *
  * <h2>겹침 금지 규칙을 반드시 태울 것</h2>
  *
@@ -78,6 +83,28 @@ import java.util.Map;
  * ({@link DragonFireBarrage} 의 「팀에게 한 번만」).
  */
 public final class TrialEndRain {
+
+	/**
+	 * 이 카드가 한 틱에 바닥 표식으로 쓸 수 있는 점 수.
+	 *
+	 * <p>400 은 이 저장소가 쓰는 한 틱 예산이다 — 「낙뢰」가 반경 3 짜리 고리 열 개로 쓰는 값이고
+	 * ({@code TrialEnderPulse.MAX_POINTS_PER_TICK} · {@code TrialEnderStorm.MAX_POINTS_PER_TICK}
+	 * 도 같은 400 이다), 그 값을 여기서도 그대로 쓴다.
+	 *
+	 * <p>이 값은 <b>이 카드 혼자</b>의 몫이다. 시련은 전투가 끝날 때까지 쌓이므로 같은 틱에 남의
+	 * 고리도 함께 그려진다는 것을 잊지 말 것.
+	 */
+	static final int MARK_BUDGET = 400;
+	/**
+	 * 고리 한 바퀴를 나눠 그릴 수 있는 <b>최대 틱 수</b>.
+	 *
+	 * <p>{@code TrialWarning.dust} 가 만드는 먼지 파티클의 수명이 <b>최소 8틱</b>이다(26.3
+	 * {@code DustParticleBase} 의 생성자 —
+	 * {@code max(1, (int)(8.0 / (nextDouble() * 0.8 + 0.2)) * scale)}, 우리는 {@code scale} 이
+	 * 1.0 이다). 한 바퀴를 8틱 이상에 걸쳐 그리면 마지막 점을 찍기 전에 첫 점이 죽어
+	 * <b>고리가 영영 안 닫힌다.</b> 6 은 그 8 에서 두 틱을 뺀 자리다.
+	 */
+	static final int MARK_MAX_STRIDE = 6;
 
 	/**
 	 * 지금 내리고 있는 비. 열쇠는 분배기가 넘겨주는 위험 열쇠({@code 카드 id + '#' + 순번})다.
@@ -252,6 +279,15 @@ public final class TrialEndRain {
 	 * 고리들 때문에 자리를 못 찾은 것이고, 그건 정상이다 — 겹치느니 한 발 빠지는 쪽이다. 한 자리도
 	 * 못 얻으면 이번 볼리는 통째로 건너뛰고 <b>다음 볼리 시각은 그대로 굴린다</b>. 매 틱 다시
 	 * 시도하면 아레나가 붐빌 때 예고 없이 뜬금없는 틱에 열린다.
+	 *
+	 * <p>지점이 3배가 되면서 「불러도 안 나오는」 일이 늘어날 자리라 재 봤다. 반경 40 아레나에
+	 * 반경 2.5 짜리 45곳은 넓이로 17.6% 라 아직 널널하다 — 20만 판을 굴려 <b>평균 44.94곳</b>이
+	 * 나왔고(45곳이 94%, 최소 42곳), 「낙뢰」의 고리 열 개가 이미 서 있어도 <b>44.65곳</b>이다.
+	 * 사람이 정한 3배가 실제로도 3배로 일어난다.
+	 *
+	 * <p>⚠ 대신 <b>반대쪽이 조금 얇아진다.</b> 우리 45곳이 떠 있는 동안 「낙뢰」가 열 곳을 부르면
+	 * 평균 9.44곳만 받는다(열 곳이 다 서는 판이 55%). 겹치느니 빠지는 것이 이 저장소의 규칙이라
+	 * 그대로 두지만, 낙뢰가 드물게 한두 발 빠지는 것은 이 카드가 만든 일이다.
 	 */
 	private static Downpour openVolley(ServerLevel end, String key, Downpour run, long now,
 			long elapsed, TrialCatalog.Risk.EndRain risk) {
@@ -278,13 +314,36 @@ public final class TrialEndRain {
 	 *
 	 * <p>색은 규약의 <b>빨강</b>({@link TrialWarning.Colors#DEADLY})이다 — 이 카드의 고리가 뜻하는
 	 * 것이 정확히 「서 있으면 죽는다」이기 때문이다. 색을 새로 만들지 않는다. 색을 넘기지 않는
-	 * {@link TrialWarning#markGround(ServerLevel, Vec3, double)} 가 그 빨강을 쓰므로 여기서 색을
-	 * 적을 일도 없고, 그래서 어긋날 수도 없다.
+	 * {@link TrialWarning#markGround(ServerLevel, Vec3, double, int, int)} 가 그 빨강을 쓰므로
+	 * 여기서 색을 적을 일도 없고, 그래서 어긋날 수도 없다 — 나눠 그리게 되면서도 <b>색을 넘기지
+	 * 않는 형태를 골랐다.</b> 색 인자를 받는 쪽으로 가면 이 파일에 빨강이 적히고, 그때부터
+	 * 어긋날 자리가 생긴다.
 	 *
-	 * <p>고리는 예고 내내 매 틱 그린다. 표식이 남은 신호의 절반이고(자막은 걷어냈다) 사람이 자기
-	 * 발밑을 보고 비키는 것이 이 카드의 전부라 성기게 둘 수 없다. {@link TrialWarning#markGround}
-	 * 는 거리 제한을 끈 <b>긴 형태</b>로 보낸다 — 짧은 형태는 32칸에서 잘리는데 아레나 반경이 40
-	 * 이라, 되돌리는 순간 흩어진 팀원에게는 고리의 절반이 없는 것이 된다.
+	 * <p>고리는 예고 내내 매 틱 손을 댄다. 표식이 남은 신호의 절반이고(자막은 걷어냈다) 사람이
+	 * 자기 발밑을 보고 비키는 것이 이 카드의 전부라 성기게 둘 수 없다.
+	 * {@link TrialWarning#markGround} 는 거리 제한을 끈 <b>긴 형태</b>로 보낸다 — 짧은 형태는
+	 * 32칸에서 잘리는데 아레나 반경이 40 이라, 되돌리는 순간 흩어진 팀원에게는 고리의 절반이
+	 * 없는 것이 된다.
+	 *
+	 * <h2>한 바퀴를 한 틱에 다 그리지 않는다 — 지점이 3배가 되면서 바뀐 것</h2>
+	 *
+	 * <p>전에는 한 틱에 고리 전체를 그렸다. 10~15곳일 때도 15 × 40 = <b>600점/틱</b>으로 이미
+	 * 예산(400)을 넘고 있었고, 45곳이면 <b>1800점</b>이다. 점 하나가 패킷 한 장이고 예고 30틱
+	 * 내내 나가므로 그대로 두면 이 카드 하나가 파티클만으로 틱을 민다.
+	 *
+	 * <p>줄일 수 있는 것이 셋인데 앞의 둘이 막혀 있다. <b>지점 수</b>는 사람이 3배로 정한 값이고,
+	 * <b>반경</b>은 피해 범위라 연출 사정으로 못 건드린다. 남은 것이 <b>「한 틱에 얼마나
+	 * 그리는가」</b>라서 시간축으로 나눈다 — {@link #markStride} 틱에 걸쳐 한 바퀴를 채우고,
+	 * 그 사이 먼저 찍은 점은 아직 살아 있다({@link #MARK_MAX_STRIDE} 에 근거).
+	 *
+	 * <p>⚠ <b>{@code TrialWarning.ringPoints} 의 하한(40)은 건드리지 않았다.</b> 반경 2.5 에
+	 * 40점이면 점 간격 0.39칸으로 지나치게 촘촘한 것이 맞지만, 그 하한은 낙뢰·연쇄 포격·기둥
+	 * 화염구를 비롯해 바닥 고리를 쓰는 카드 <b>전부</b>의 모습을 정한다. 한 카드의 예산 때문에
+	 * 남의 연출을 바꾸지 않는다.
+	 *
+	 * <p>고리가 <b>완전해지는 데 {@link #markStride} 틱이 걸린다.</b> 예고가 30틱이라 첫 1/6 만
+	 * 성기고 나머지는 예전과 같은 고리다. 첫 틱에도 점은 한 바퀴에 고루 찍히므로 「어디인가」는
+	 * 그 틱부터 읽힌다 — 비어 보이는 틱은 없다.
 	 *
 	 * <p>소리는 <b>사람마다 그 자리에서</b> 울린다. 바닐라 소리 사거리는 볼륨이 1 이하면 16칸이라
 	 * 착탄 지점에서 울리면 반대편 사람에게 닿지 않는다. 「연쇄 포격」이 선 80칸 때문에 이미 같은
@@ -307,8 +366,12 @@ public final class TrialEndRain {
 		if (remaining <= 0) {
 			return;
 		}
+		// 나눠 그린다. 위상을 now 에서 뽑으므로 매 틱 한 칸씩 옮겨 가며 빈자리가 메워진다 —
+		// level.getGameTime() 을 부르면 얼어붙은 판에서 같은 몫만 되풀이돼 고리가 안 닫힌다.
+		int stride = markStride(risk);
+		int phase = markPhase(now, stride);
 		for (Vec3 spot : volley.spots()) {
-			TrialWarning.markGround(end, spot, risk.radius());
+			TrialWarning.markGround(end, spot, risk.radius(), stride, phase);
 		}
 		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
 		if (stage == null) {
@@ -421,17 +484,56 @@ public final class TrialEndRain {
 	}
 
 	/**
-	 * 한 틱에 바닥 표식으로 나가는 점 수의 최대.
+	 * 고리 한 바퀴를 몇 틱에 나눠 그릴지.
 	 *
-	 * <p>점 하나가 패킷 한 장이고 고리는 예고 30틱 내내 매 틱 그려진다. 「상한 안인가」를 숫자로
+	 * <p>「한 바퀴 전부 ÷ 예산」을 올림한 값이고 {@link #MARK_MAX_STRIDE} 에서 멈춘다. 카드
+	 * 값에서 뽑으므로 지점 수를 다시 손대는 사람이 <b>패킷도 함께 따라오게</b> 된다.
+	 *
+	 * <p>⚠ <b>상한에 걸리면 예산을 넘을 수 있다.</b> 파티클 수명이 정한 8틱은 협상할 수 없는
+	 * 쪽이라 그 앞에서 멈추는 것이 맞다 — 넘치는지는 {@link #markPoints} 가 숫자로 드러내고
+	 * {@code TrialEndRainTest} 가 본다. 지금 값(45곳 × 40점 ÷ 400)은 5 라 상한 안이다.
+	 */
+	static int markStride(TrialCatalog.Risk.EndRain risk) {
+		int perRing = TrialWarning.ringPoints(risk.radius());
+		int spots = Math.max(0, risk.maxSpots());
+		if (perRing <= 0 || spots <= 0 || MARK_BUDGET <= 0) {
+			return 1;
+		}
+		int whole = spots * perRing;
+		int stride = (whole + MARK_BUDGET - 1) / MARK_BUDGET;
+		return Math.max(1, Math.min(MARK_MAX_STRIDE, stride));
+	}
+
+	/**
+	 * 이번 틱에 그릴 몫.
+	 *
+	 * <p>{@code now} 에서 뽑는다 — {@code level.getGameTime()} 을 부르면 {@code TrialFreeze} 가
+	 * 판을 멈춘 동안 같은 몫만 되풀이돼 고리가 영영 안 닫힌다.
+	 *
+	 * <p>{@code floorMod} 인 이유. 복원 직후에는 {@code now} 가 음수일 수 있고, 그냥 {@code %}
+	 * 로 나누면 음수 위상이 나와 {@code markGround} 의 시작 번호가 범위를 벗어난다.
+	 */
+	static int markPhase(long now, int stride) {
+		return (int) Math.floorMod(now, Math.max(1L, stride));
+	}
+
+	/**
+	 * <b>한 틱에</b> 바닥 표식으로 나가는 점 수의 최대.
+	 *
+	 * <p>점 하나가 패킷 한 장이고 고리는 예고 30틱 내내 매 틱 나간다. 「상한 안인가」를 숫자로
 	 * 물을 수 있게 값에서 직접 뽑는다 — 지점 수나 반경을 고치는 사람은 피해만 보고 패킷은 보지
 	 * 않는다.
+	 *
+	 * <p><b>한 바퀴 전부가 아니라 이번 틱에 찍는 몫</b>이다. 전에는 「지점 수 × 한 바퀴」였고
+	 * 15곳에서 600, 45곳이면 1800 이 나왔다 — 그 값이 예산을 넘은 것이 고리를 나눠 그리게 된
+	 * 까닭이다({@link #warn} 의 「한 바퀴를 한 틱에 다 그리지 않는다」).
 	 *
 	 * <p><b>볼리는 언제나 하나뿐</b>이라 이 값이 그대로 최대다. {@code minInterval}(40)이
 	 * {@code warnTicks}(30)보다 커서 앞 볼리가 터진 뒤에야 다음 볼리가 열리고,
 	 * {@code TrialRisksTest} 가 그 부등식을 카드 값에서 지킨다.
 	 */
 	static int markPoints(TrialCatalog.Risk.EndRain risk) {
-		return Math.max(0, risk.maxSpots()) * TrialWarning.ringPoints(risk.radius());
+		return Math.max(0, risk.maxSpots())
+				* TrialWarning.strokePoints(risk.radius(), markStride(risk));
 	}
 }

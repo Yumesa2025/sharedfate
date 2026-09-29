@@ -575,15 +575,36 @@ class DragonFireBarrageTest {
 
 	// ------------------------------------------------------------------ 피해
 
+	/**
+	 * 한 틱에 받을 수 있는 가장 큰 피해가 팀 체력에 못 미친다 — <b>완전무장 기준이다.</b>
+	 *
+	 * <h2>⚠ 날값 비교로 되돌리지 말 것</h2>
+	 *
+	 * <p>전에는 {@link DragonFireBarrage#worstCaseTickDamage()} 를 그대로 20 과 견줬다. 그런데
+	 * 사람이 「다이아셋 + 보호 인챈트까지 하고 맞는 것까지 고려해야 한다」고 정해 피해가 6 에서
+	 * 23 으로 올라갔고, <b>날값은 이제 팀 체력보다 크다.</b> 감쇠를 거는 것은 {@link GearedDamage}
+	 * 이고 하드 난이도 곱도 거기서 함께 태운다 — 이 패시브의 피해원이
+	 * {@code explosion(null, null)} 이라 {@code scaling: always} 로 1.5배가 먼저 걸린다.
+	 *
+	 * <p>⚠ <b>맨몸이면 34.5 가 그대로 들어가 한 발에 전멸이다.</b> 사람이 그 사실을 듣고도
+	 * 「3대」로 가자고 했으므로 값을 되돌리지 말 것.
+	 */
 	@Test
-	void 한_틱에_받을_수_있는_가장_큰_피해가_팀_체력에_못_미친다() {
-		assertTrue(DragonFireBarrage.worstCaseTickDamage() < TEAM_HEALTH,
-				"「즉사 메커닉 0개」가 깨졌다. 실제 값: " + DragonFireBarrage.worstCaseTickDamage());
+	void 한_틱에_받을_수_있는_가장_큰_피해가_무장_기준_팀_체력에_못_미친다() {
 		assertEquals(DragonFireBarrage.DAMAGE_PER_BLAST * DragonFireBarrage.MAX_CONCURRENT_BLASTS,
 				DragonFireBarrage.worstCaseTickDamage(), 1.0E-6);
-		assertTrue(DragonFireBarrage.DAMAGE_PER_BLAST < TEAM_HEALTH / 2.0F,
-				"원 하나가 팀 체력의 절반을 깎으면 두 발째가 곧 전멸이다. 실제 "
-						+ DragonFireBarrage.DAMAGE_PER_BLAST);
+		float geared = GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
+				GearedDamage.Source.EXPLOSION) * DragonFireBarrage.MAX_CONCURRENT_BLASTS;
+		assertTrue(geared < TEAM_HEALTH,
+				"「즉사 메커닉 0개」가 깨졌다. 완전무장하고도 한 틱에 " + geared);
+		assertTrue(geared < TEAM_HEALTH / 2.0F,
+				"원 하나가 팀 체력의 절반을 깎으면 두 발째가 곧 전멸이다. 무장 기준 " + geared);
+		assertTrue(GearedDamage.wipesInThree(geared),
+				"사람이 정한 것은 「큰자리는 3대맞으면 죽는거로」다. 무장 기준 한 발 " + geared
+						+ " · 두 발 " + geared * 2 + " · 세 발 " + geared * 3);
+		assertTrue(DragonFireBarrage.worstCaseTickDamage() > TEAM_HEALTH,
+				"적힌 값이 팀 체력보다 작아졌다면 무장 기준이 아니라 날값으로 되돌아간 것이다 —"
+						+ " GearedDamage 의 설명을 먼저 읽을 것");
 	}
 
 	/**
@@ -597,8 +618,8 @@ class DragonFireBarrageTest {
 		assertEquals(1, DragonFireBarrage.chainHits(0.0),
 				"안 움직이는 사람이 두 발을 맞으면 원이 겹친 것이다");
 		assertEquals(DragonFireBarrage.DAMAGE_PER_BLAST, DragonFireBarrage.chainDamage(0.0), 1.0E-6);
-		assertTrue(DragonFireBarrage.chainDamage(0.0) < TEAM_HEALTH / 2.0F,
-				"한 발에 팀 체력 절반이 날아가면 배우기 전에 죽는다");
+		assertTrue(gearedChain(0.0) < TEAM_HEALTH / 2.0F,
+				"한 발에 팀 체력 절반이 날아가면 배우기 전에 죽는다. 무장 기준 " + gearedChain(0.0));
 	}
 
 	/**
@@ -608,9 +629,12 @@ class DragonFireBarrageTest {
 	 * 세어 두어야</b> 팀 체력 20 과 견줄 수 있다. 포격은 초당 13.3칸으로 전진하는데 사람이 맨몸으로
 	 * 낼 수 있는 가장 빠른 속도가 7.13칸/초라 따라잡히고, 그때 걸리는 것이 두 발이다.
 	 *
-	 * <p>두 발은 12 로 팀 체력의 6할이다 — 아프지만 살아서 <b>「선을 따라 도망치면 안 된다」</b>를
-	 * 배운다. 원당 피해가 8 이었으면 16(8할)이라 드래곤에게 한 대만 더 맞아도 전멸이었고, 그래서
-	 * 6 으로 내렸다.
+	 * <p>두 발은 <b>무장 기준 13.5</b> 로 팀 체력의 6할 7푼이다 — 아프지만 살아서
+	 * <b>「선을 따라 도망치면 안 된다」</b>를 배운다. 이 「6할」이 처음부터 이 값이 노리던 자리였고,
+	 * 옛 6 은 무장 기준으로 재면 1할 8푼이라 그 자리를 비워 두고 있었다.
+	 *
+	 * <p>감쇠는 <b>발마다 따로</b> 건다({@link GearedDamage} 의 「감쇠는 한 방마다 걸린다」).
+	 * {@code chainDamage} 가 돌려주는 것은 적힌 값의 합이라 그대로 감쇠하면 안 된다.
 	 */
 	@Test
 	void 선을_따라_도망쳐도_두_발까지만_맞는다() {
@@ -618,12 +642,23 @@ class DragonFireBarrageTest {
 			assertEquals(2, DragonFireBarrage.chainHits(speed),
 					"속도 " + speed + "칸/초에서 " + DragonFireBarrage.chainHits(speed)
 							+ "발이다 — 간격이나 반경을 고쳤다면 DAMAGE_PER_BLAST 를 함께 내릴 것");
-			assertTrue(DragonFireBarrage.chainDamage(speed) < TEAM_HEALTH,
-					"도망치다 전멸하면 도망칠 이유가 없다. 속도 " + speed + " 에서 "
-							+ DragonFireBarrage.chainDamage(speed));
+			assertTrue(gearedChain(speed) < TEAM_HEALTH,
+					"도망치다 전멸하면 도망칠 이유가 없다. 속도 " + speed + " 에서 무장 기준 "
+							+ gearedChain(speed));
 		}
-		assertEquals(12.0F, DragonFireBarrage.chainDamage(SPRINT_JUMP), 1.0E-6,
-				"카드 문서에 적은 값과 같아야 한다");
+		assertEquals(13.5F, gearedChain(SPRINT_JUMP), 0.1F,
+				"카드 문서에 적은 「6할」이 이 값이다");
+	}
+
+	/**
+	 * 그 속도로 도망친 사람이 <b>완전무장하고</b> 실제로 받는 합계.
+	 *
+	 * <p>{@code chainDamage} 는 적힌 값의 합이라 그대로 감쇠하면 실제보다 아프게 나온다. 발 수를
+	 * 받아 <b>한 발씩</b> 감쇠한 뒤 더한다.
+	 */
+	private static float gearedChain(double blocksPerSecond) {
+		return GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
+				GearedDamage.Source.EXPLOSION) * DragonFireBarrage.chainHits(blocksPerSecond);
 	}
 
 	@Test
@@ -638,11 +673,17 @@ class DragonFireBarrageTest {
 	}
 
 	@Test
-	void 열_개를_다_맞으면_팀_체력의_세_배다() {
-		// 원을 하나씩 밟아 가며 일부러 다 맞는 경우다. 옛 장판에 15초를 서 있던 값과 같다 —
-		// 막을 수 없고 막을 것도 아니지만, 숫자를 적어 두면 다음 사람이 보고 판단할 수 있다.
-		assertEquals(60.0F, DragonFireBarrage.SHELL_COUNT * DragonFireBarrage.DAMAGE_PER_BLAST,
+	void 열_개를_다_맞으면_무장하고도_팀_체력의_세_배다() {
+		// 원을 하나씩 밟아 가며 일부러 다 맞는 경우다. 막을 수 없고 막을 것도 아니지만, 숫자를
+		// 적어 두면 다음 사람이 보고 판단할 수 있다. 적힌 값으로는 230 이고 완전무장해도 67.7 —
+		// 어느 쪽으로 재든 팀 체력 20 의 세 배를 넘는다.
+		assertEquals(230.0F, DragonFireBarrage.SHELL_COUNT * DragonFireBarrage.DAMAGE_PER_BLAST,
 				1.0E-6);
+		float geared = GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
+				GearedDamage.Source.EXPLOSION) * DragonFireBarrage.SHELL_COUNT;
+		assertTrue(geared > TEAM_HEALTH * 3.0F,
+				"무장 기준 합계 " + geared + " 다. 세 배 아래로 내려왔다면 값이 날값 기준으로"
+						+ " 되돌아간 것이 아닌지 볼 것");
 	}
 
 	@Test

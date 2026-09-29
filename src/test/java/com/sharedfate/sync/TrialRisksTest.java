@@ -372,14 +372,37 @@ class TrialRisksTest {
 
 	// ------------------------------------------------------------------ 카드에 적힌 무게
 
+	/**
+	 * 「자리 폭격」이 <b>무장한</b> 팀을 한 대로 죽이지 않는다.
+	 *
+	 * <h2>⚠ 적힌 값은 이제 팀 체력보다 크다 — 그것을 알고 고른 값이다</h2>
+	 *
+	 * <p>전에는 <b>적힌 18 이 팀 체력 20 보다 작다</b>는 것이 이 카드의 안전 근거였다. 지금은
+	 * 35 라 그 근거가 없다 — 사람이 「다이아셋 + 보호 인챈트까지 하고 맞는 것까지 고려해야 한다」고
+	 * 정했고, 완전무장을 지나면 6.93 이 들어온다.
+	 *
+	 * <p>그래서 <b>맨몸이면 한 대에 전멸</b>이다. 죽어서 장비를 잃고 돌아온 사람이 그 경우이고,
+	 * 사람은 그 사실을 듣고도 「3대」로 가자고 했다. 이 시험은 그 갈림을 <b>숫자로 적어 두는
+	 * 자리</b>다 — 값을 다시 만질 사람이 「즉사 메커닉 0개」를 날값으로 착각하지 않도록.
+	 */
 	@Test
-	void 자리_폭격은_한_대로_팀을_죽이지_않는다() {
-		float damage = onlyStrike("sharedfate:ground_strike").damage();
+	void 자리_폭격은_무장한_팀을_한_대로_죽이지_않는다() {
+		float written = onlyStrike("sharedfate:ground_strike").damage();
 		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
-		assertEquals(18.0F, damage, "약해서 맞아도 상관없던 값을 세 배로 올렸다");
-		assertTrue(damage < teamHealth,
-				"팀 공유 체력이 " + teamHealth + " 다. 여기를 넘기면 그 순간 즉사 카드가 된다 —"
+		assertEquals(35.0F, written,
+				"맨몸 기준 18 이 무장하면 2.5 로 들어와 「안 아프다」였다. 역산은 34.18 이지만"
+						+ " 내림하면 세 대에 19.83 으로 살아남아 「3대에 죽는다」가 거짓이 된다");
+		assertTrue(GearedDamage.afterGear(written, GearedDamage.Source.LIGHTNING_BOLT) * 3
+						> teamHealth,
+				"세 대에 죽지 않으면 사람이 정한 「큰자리는 3대맞으면 죽는거로」가 거짓이다."
+						+ " 34 로 내리면 19.83 이라 여기서 걸린다");
+		float geared = GearedDamage.afterGear(written, GearedDamage.Source.LIGHTNING_BOLT);
+		assertTrue(geared < teamHealth,
+				"완전무장하고도 한 대에 " + geared + " 라 팀 체력 " + teamHealth + " 를 넘는다 —"
 						+ " 이 판의 원칙은 「즉사 메커닉 0개」이고, 전멸하면 월드가 지워진다");
+		assertTrue(written > teamHealth,
+				"적힌 값이 팀 체력보다 작아졌다면 무장 기준이 아니라 날값으로 되돌아간 것이다 —"
+						+ " GearedDamage 의 설명을 먼저 읽을 것");
 	}
 
 	@Test
@@ -562,28 +585,198 @@ class TrialRisksTest {
 	}
 
 	/**
-	 * 한 사람이 두 번 맞아 즉사하는 조합이 없다.
+	 * 이 위험이 한 사람에게 <b>한 틱</b>에 어떻게 들어오는가 — 안전 시험이 보는 세 값.
 	 *
-	 * <p>카드에는 <b>피해와 개수가 따로</b> 적힌다. 개수를 보지 않고 피해만 올리거나 그 반대로
-	 * 하면 곱이 팀 공유 체력을 넘는다. {@link TrialRisks#worstCaseTickDamage} 가 그 곱을 카드
-	 * 값에서 직접 계산하므로 <b>값을 올리는 사람은 여기서 멈춘다.</b>
+	 * <p>{@link TrialRisks#worstCaseTickDamage} 는 이 셋을 이미 곱해 버린 뒤라
+	 * <b>감쇠를 걸 수 없다.</b> 방어 감쇠는 한 방마다 따로 걸리므로
+	 * ({@link GearedDamage} 의 「감쇠는 한 방마다 걸린다」) 곱하기 전의 한 방이 필요하다.
+	 *
+	 * @param perHit      한 방의 적힌 값
+	 * @param overlapping 한 틱에 겹칠 수 있는 방 수
+	 * @param source      실행기가 쓰는 피해원
+	 */
+	private record TickShape(float perHit, int overlapping, GearedDamage.Source source) {
+	}
+
+	/**
+	 * 위험 하나를 {@link TickShape} 로 푼다.
+	 *
+	 * <p>{@code default} 를 넣지 말 것. 피해를 주는 타입을 새로 만들면서 여기에 「한 방이 얼마이고
+	 * 몇 개가 겹치며 어느 피해원인가」를 적지 않으면 <b>빌드가 깨져야 한다</b> —
+	 * {@link TrialRisks#worstCaseTickDamage} 가 {@code default} 를 두지 않는 것과 같은 이유이고,
+	 * 아래 {@code 시험이_보는_모양이_실행기의_셈과_같다} 가 그 둘이 어긋나지 않게 묶는다.
+	 *
+	 * <p>피해원은 <b>카드가 아니라 실행기가 고른다.</b> 실행기에서 {@code damageSources()} 를
+	 * 바꾸면 여기도 함께 바꿀 것 — 어긋나면 시험은 계속 통과하면서 실제 피해만 달라진다.
+	 */
+	private static TickShape shapeOf(TrialCatalog.Risk risk) {
+		return switch (risk) {
+			// TrialRisks.detonate 는 연출이 폭발이든 번개든 damageSources().lightningBolt() 를
+			// 쓴다 — Impact 는 보이는 것만 가르고 피해원은 가르지 않는다.
+			case TrialCatalog.Risk.DelayedStrike strike -> new TickShape(strike.damage(),
+					switch (strike.aim()) {
+						case RANDOM_SPOT -> 1;
+						case TRAIL -> strike.count();
+					}, GearedDamage.Source.LIGHTNING_BOLT);
+			// TrialFireball — explosion(null, null)
+			case TrialCatalog.Risk.TracedProjectile shot -> new TickShape(shot.damage(),
+					shot.count(), GearedDamage.Source.EXPLOSION);
+			// TrialDragonFocus — magic(). #bypasses_armor 라 방어도가 안 듣는다.
+			case TrialCatalog.Risk.DragonFocus focus -> new TickShape(focus.damage(), 1,
+					GearedDamage.Source.MAGIC);
+			// TrialEndRain — explosion(null, null)
+			case TrialCatalog.Risk.EndRain rain -> new TickShape(rain.damage(), 1,
+					GearedDamage.Source.EXPLOSION);
+			// TrialLandingShock — explosion(null, null)
+			case TrialCatalog.Risk.LandingShock shock -> new TickShape(shock.damage(), 1,
+					GearedDamage.Source.EXPLOSION);
+			// TrialEnderStorm — explosion(null, null)
+			case TrialCatalog.Risk.EnderStorm storm -> new TickShape(storm.damage(), storm.count(),
+					GearedDamage.Source.EXPLOSION);
+			// TrialCrystalOvercharge — explosion(null, null). 초에 한 번 들어간다.
+			case TrialCatalog.Risk.CrystalOvercharge overcharge ->
+					new TickShape(overcharge.damagePerSecond(), 1, GearedDamage.Source.EXPLOSION);
+			// 아래는 우리가 적은 피해가 없다. 피해원도 없으므로 한 방이 0 이다.
+			case TrialCatalog.Risk.CrystalGuard ignored -> none();
+			case TrialCatalog.Risk.CrystalRevive ignored -> none();
+			case TrialCatalog.Risk.EnderPulse ignored -> none();
+			case TrialCatalog.Risk.CrystalLink ignored -> none();
+			case TrialCatalog.Risk.DryWorld ignored -> none();
+			// 엔더맨은 바닐라 값으로 때린다. 우리 피해원이 아니라 여기서 셀 것이 없다.
+			case TrialCatalog.Risk.NightHost ignored -> none();
+			case TrialCatalog.Risk.HotbarLock ignored -> none();
+		};
+	}
+
+	private static TickShape none() {
+		return new TickShape(0.0F, 0, GearedDamage.Source.EXPLOSION);
+	}
+
+	/**
+	 * <b>시험이 보는 모양이 실행기의 셈과 같다.</b>
+	 *
+	 * <p>{@link #shapeOf} 는 {@link TrialRisks#worstCaseTickDamage} 의 「피해 × 겹칠 수 있는 개수」를
+	 * 한 번 더 적은 것이다. 두 벌이 갈라지면 안전 시험이 <b>실행기가 세는 것과 다른 것</b>을 보게
+	 * 되므로, 곱이 같은지를 먼저 묻는다.
+	 */
+	@Test
+	void 시험이_보는_모양이_실행기의_셈과_같다() {
+		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
+			for (TrialCatalog.Risk risk : trial.risks()) {
+				TickShape shape = shapeOf(risk);
+				assertEquals(TrialRisks.worstCaseTickDamage(risk),
+						shape.perHit() * shape.overlapping(), 1.0E-4F,
+						trial.name() + " — 시험이 보는 「한 방 × 겹침」이 worstCaseTickDamage 와"
+								+ " 다르다. 한쪽만 고치면 안전 시험이 헛것을 본다");
+			}
+		}
+	}
+
+	/**
+	 * 한 사람이 두 번 맞아 즉사하는 조합이 없다 — <b>완전무장 기준이다.</b>
+	 *
+	 * <h2>⚠ 날값 비교로 되돌리지 말 것</h2>
+	 *
+	 * <p>전에는 카드에 <b>적힌 값</b>을 그대로 20 과 견줬다. 그런데 시련은 엔드까지 온 팀이 받는
+	 * <b>추가 난이도</b>이고, 사람이 「다이아셋 + 보호 인챈트까지 하고 맞는 것까지 고려해야 한다」고
+	 * 정했다. 날값으로 재면 실제로는 1/8 만 들어오는 값을 천장으로 삼게 되고, 그것이 사람이
+	 * 「안 아프다」고 한 이유였다. 지금 카드의 큰 값들(35 · 23)은 <b>날값으로는 20 을 넘는다</b> —
+	 * 이 시험을 되돌리면 그 값들이 전부 한 자리수로 끌려 내려간다.
+	 *
+	 * <p>감쇠는 {@link GearedDamage} 가 한 벌 들고 있고, 하드 난이도 곱도 거기서 함께 태운다.
+	 * <b>곱도 실제 피해의 일부</b>이고 피해 종류마다 걸리는지가 다르다.
+	 *
+	 * <p>감쇠를 <b>한 방마다</b> 거는 것이 중요하다. 겹친 고리 둘은 {@code 감쇠(35 × 2)} 가 아니라
+	 * {@code 감쇠(35) × 2} 다. 그래도 <b>겹침 금지 규칙은 그대로 둔다</b> — 무장이 약한 사람에게는
+	 * 겹친 자리가 여전히 즉사이고, 이 시험이 보는 것은 「무장한 사람도 죽는가」뿐이다.
 	 *
 	 * <p>{@code RANDOM_SPOT} 이 1 로 세어지는 근거는 최소 간격 규칙이다. 그 규칙을 지우면 이
 	 * 시험은 계속 통과하면서 게임만 즉사가 된다 — 그래서 위의 겹침 시험과 한 쌍이다.
 	 */
 	@Test
-	void 한_사람이_두_번_맞아_즉사하는_조합이_없다() {
+	void 무장_기준으로_한_사람이_한_틱에_죽는_조합이_없다() {
 		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
-		assertEquals(20.0F, teamHealth, "팀 공유 체력이 바뀌었다면 아래 판단을 전부 다시 볼 것");
+		assertEquals(GearedDamage.TEAM_HEALTH, teamHealth,
+				"팀 공유 체력이 바뀌었다면 GearedDamage 와 아래 판단을 전부 다시 볼 것");
 		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
 			for (TrialCatalog.Risk risk : trial.risks()) {
-				float worst = TrialRisks.worstCaseTickDamage(risk);
+				TickShape shape = shapeOf(risk);
+				float worst = GearedDamage.afterGear(shape.perHit(), shape.source())
+						* shape.overlapping();
 				assertTrue(worst < teamHealth,
-						trial.name() + " — 가장 나쁜 경우 한 틱에 " + worst + " 다. 팀 체력이 "
-								+ teamHealth + " 라 가득 찬 상태에서 죽는다."
+						trial.name() + " — 다이아 풀셋 + 보호 IV 를 지나고도 한 틱에 " + worst
+								+ " 다. 팀 체력이 " + teamHealth + " 라 가득 찬 상태에서 죽는다."
 								+ " 이 판의 원칙은 「즉사 메커닉 0개」이고 전멸은 곧 월드 삭제다");
 			}
 		}
+	}
+
+	/**
+	 * <b>「큰자리는 3대 맞으면 죽는거로 생각하자」가 값에 들어가 있다.</b>
+	 *
+	 * <p>사람이 정한 기준이다. 위 시험이 「죽지 않는가」의 천장이라면 이쪽은 <b>바닥</b>이다 —
+	 * 큰 카드가 너무 안 아프면 시련이 시련이 아니고, 그것이 값을 올리게 된 이유다.
+	 *
+	 * <h2>「6.67 에 얼마나 가까운가」로 묻지 않는다</h2>
+	 *
+	 * <p>{@link GearedDamage#TARGET_PER_HIT}(6.67) 은 <b>역산에 쓴 값</b>이지 카드가 맞춰야 하는
+	 * 값이 아니다. 카드에 적히는 것이 정수라 정확히 6.67 을 만드는 값이 없고, 실제로
+	 * 난이도 곱이 없는 쪽은 35(한 대 6.93), 있는 쪽은 23(한 대 6.77)으로 <b>서로 다르다.</b>
+	 * 그 차이를 허용 오차로 묶으려 들면 「얼마까지 봐 줄 것인가」라는 답 없는 물음이 된다.
+	 *
+	 * <p>그래서 사람이 말한 것을 그대로 묻는다 — <b>두 대로는 안 죽고 세 대에는 죽는가.</b>
+	 * 34 로 내리면 세 대가 19.83 이라 여기서 걸린다.
+	 */
+	@Test
+	void 큰_카드는_무장_기준_세_대에_팀을_지운다() {
+		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
+		Set<String> big = Set.of("sharedfate:ground_strike", "sharedfate:lightning_storm",
+				"sharedfate:pillar_fireball", "sharedfate:end_rain");
+		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
+			if (!big.contains(trial.id())) {
+				continue;
+			}
+			TickShape shape = shapeOf(trial.risks().getFirst());
+			float perHit = GearedDamage.afterGear(shape.perHit(), shape.source());
+			assertTrue(GearedDamage.wipesInThree(perHit),
+					trial.name() + " — 무장 기준 한 대가 " + perHit + " 라 두 대에 "
+							+ perHit * 2 + ", 세 대에 " + perHit * 3 + " 다. 사람이 정한 것은"
+							+ " 「큰자리는 3대맞으면 죽는거로」이고, 팀 체력은 " + teamHealth
+							+ " 다 — 역산값을 내림했다면 올림할 것");
+		}
+	}
+
+	/**
+	 * 감쇠 식이 26.3 에서 읽은 그 식이다.
+	 *
+	 * <p>{@link GearedDamage} 가 손으로 옮겨 적은 것이라 <b>옮기다 틀릴 수 있는 자리</b>다. 그래서
+	 * 손으로 풀어 둔 값과 맞춰 둔다 — 여기가 틀리면 위의 두 시험이 나란히 헛것을 본다.
+	 */
+	@Test
+	void 무장_감쇠가_26_3_의_식과_같다() {
+		// 35 · 난이도 곱 없음: clamp(20 - 35/4, 4, 20) = 11.25 → 35 × (1 - 0.45) = 19.25
+		//                      → × (1 - 16/25) = 6.93
+		assertEquals(6.93F, GearedDamage.afterGear(35.0F, GearedDamage.Source.LIGHTNING_BOLT),
+				0.01F, "번개 피해원에는 하드 곱이 안 걸린다 — 가해 개체가 없다");
+		// 34 로 내렸을 때 무슨 일이 일어나는지도 적어 둔다. 6.61 × 3 = 19.83 이라 살아남는다 —
+		// 이 한 줄이 「34 로 충분하지 않나」를 다음 사람이 다시 묻지 않게 한다.
+		assertEquals(6.61F, GearedDamage.afterGear(34.0F, GearedDamage.Source.LIGHTNING_BOLT),
+				0.01F);
+		assertTrue(GearedDamage.afterGear(34.0F, GearedDamage.Source.LIGHTNING_BOLT) * 3
+						< GearedDamage.TEAM_HEALTH,
+				"34 는 세 대에 19.83 이라 살아남는다. 그래서 역산값을 올림해 35 를 쓴다");
+		// 23 · 하드 곱 있음: 34.5 → clamp(20 - 34.5/4, 4, 20) = 11.375 → 18.80 → 6.77
+		assertEquals(6.77F, GearedDamage.afterGear(23.0F, GearedDamage.Source.EXPLOSION),
+				0.01F, "explosion 은 scaling 이 always 라 하드에서 1.5배가 먼저 걸린다");
+		// magic 은 방어도를 지나치고 보호만 듣는다. 6 × 0.36 = 2.16
+		assertEquals(2.16F, GearedDamage.afterGear(6.0F, GearedDamage.Source.MAGIC),
+				0.01F, "magic 은 #bypasses_armor 라 방어도가 하나도 안 듣는다");
+		// 곱한 뒤 감쇠하는 것과 한 방씩 감쇠하는 것이 다르다는 것을 숫자로 적어 둔다.
+		float twoSeparately = GearedDamage.afterGear(34.0F, GearedDamage.Source.LIGHTNING_BOLT)
+				* 2.0F;
+		float onceTogether = GearedDamage.afterGear(68.0F, GearedDamage.Source.LIGHTNING_BOLT);
+		assertTrue(onceTogether > twoSeparately,
+				"합쳐서 감쇠하면 실제보다 아프게 나온다 — 감쇠는 한 방마다 걸린다");
 	}
 
 	@Test
@@ -593,15 +786,15 @@ class TrialRisksTest {
 				"최소 간격이 겹침 구역을 없애므로 열 곳이어도 한 사람은 한 발만 맞는다");
 
 		// 최소 간격이 없는 발자국 쪽은 개수가 그대로 곱해진다. 「자리 폭격」을 두 발로 늘리는
-		// 사람이 여기서 멈춘다.
+		// 사람이 여기서 멈춘다 — 무장 기준으로도 13.9 라 팀 체력의 7할이 한 틱에 날아간다.
 		TrialCatalog.Risk.DelayedStrike twoTrails = new TrialCatalog.Risk.DelayedStrike(
 				TrialCatalog.Risk.Aim.TRAIL, TrialCatalog.Risk.Impact.EXPLOSION,
-				240, 40, 18.0F, 2.0, 4.0, 2);
-		assertEquals(36.0F, TrialRisks.worstCaseTickDamage(twoTrails),
+				240, 40, 35.0F, 2.0, 4.0, 2);
+		assertEquals(70.0F, TrialRisks.worstCaseTickDamage(twoTrails),
 				"둘이 나란히 서 있었으면 그 자리에 남은 사람이 두 발을 다 맞는다");
-		assertTrue(TrialRisks.worstCaseTickDamage(twoTrails)
-						>= PerkHealthRules.effectiveMaxHealth(null),
-				"이런 카드가 들어오면 위 시험이 멈춰야 한다");
+		assertTrue(GearedDamage.afterGear(35.0F, GearedDamage.Source.LIGHTNING_BOLT) * 2
+						> PerkHealthRules.effectiveMaxHealth(null) / 2.0F,
+				"두 발이 겹치면 무장하고도 팀 체력의 절반이 넘는다");
 
 		// 상태를 거는 카드는 피해가 없다.
 		assertEquals(0.0F, TrialRisks.worstCaseTickDamage(
