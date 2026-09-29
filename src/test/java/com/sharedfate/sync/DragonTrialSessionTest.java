@@ -3,11 +3,14 @@ package com.sharedfate.sync;
 import com.sharedfate.sync.TrialCatalog.Trigger;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -70,7 +73,7 @@ class DragonTrialSessionTest {
 		assertEquals(Trigger.HEALTH_80, session.beginChoice());
 		assertFalse(session.shouldOfferTrial(), "고르는 중에 다음 창이 겹쳐 뜨면 전투 중에 감당이 안 된다");
 
-		session.choose("a");
+		session.choose("a", 1000L);
 
 		assertTrue(session.shouldOfferTrial(), "앞을 끝냈으면 다음이 와야 한다");
 		assertEquals(Trigger.HEALTH_50, session.peekTrigger());
@@ -81,7 +84,7 @@ class DragonTrialSessionTest {
 		DragonTrialSession session = session();
 		session.fire(Trigger.ENTRY);
 		session.beginChoice();
-		session.choose("a");
+		session.choose("a", 1000L);
 
 		assertFalse(session.shouldOfferTrial());
 		assertNull(session.peekTrigger());
@@ -92,12 +95,12 @@ class DragonTrialSessionTest {
 		DragonTrialSession session = session();
 		session.fire(Trigger.ENTRY);
 		session.beginChoice();
-		assertTrue(session.choose("a"));
+		assertTrue(session.choose("a", 1000L));
 
 		session.fire(Trigger.HEALTH_80);
 		session.beginChoice();
 
-		assertFalse(session.choose("a"), "같은 카드가 두 장 쌓이면 효과가 두 번 걸린다");
+		assertFalse(session.choose("a", 2000L), "같은 카드가 두 장 쌓이면 효과가 두 번 걸린다");
 		assertEquals(1, session.trialCount());
 	}
 
@@ -126,7 +129,8 @@ class DragonTrialSessionTest {
 	@Test
 	void 서버가_재시작해도_터진_자리와_줄이_이어진다() {
 		DragonTrialSession session = session();
-		session.restore(List.of("a"), List.of("ENTRY", "HEALTH_80"), List.of("HEALTH_80"), false);
+		session.restore(List.of("a"), List.of("ENTRY", "HEALTH_80"), List.of("HEALTH_80"), false,
+				Map.of("a", 1200L));
 
 		assertEquals(1, session.trialCount());
 		assertEquals(2, session.fired().size());
@@ -138,7 +142,8 @@ class DragonTrialSessionTest {
 	@Test
 	void 복원할_때_모르는_이름은_버린다() {
 		DragonTrialSession session = session();
-		session.restore(List.of(), List.of("ENTRY", "없어진_트리거"), List.of("없어진_트리거"), false);
+		session.restore(List.of(), List.of("ENTRY", "없어진_트리거"), List.of("없어진_트리거"), false,
+				null);
 
 		assertEquals(1, session.fired().size(), "옛 저장 파일에 없어진 자리가 있어도 서버를 막지 않는다");
 		assertFalse(session.shouldOfferTrial());
@@ -147,7 +152,7 @@ class DragonTrialSessionTest {
 	@Test
 	void 터진_적_없는_자리는_줄에_서지_못한다() {
 		DragonTrialSession session = session();
-		session.restore(List.of(), List.of("ENTRY"), List.of("HEALTH_30"), false);
+		session.restore(List.of(), List.of("ENTRY"), List.of("HEALTH_30"), false, null);
 
 		assertFalse(session.shouldOfferTrial(),
 				"저장이 어긋나도 유령 선택창을 띄우면 안 된다");
@@ -167,8 +172,103 @@ class DragonTrialSessionTest {
 		DragonTrialSession session = session();
 		session.fire(Trigger.ENTRY);
 		session.beginChoice();
-		session.choose("a");
+		session.choose("a", 1000L);
 
 		assertThrows(UnsupportedOperationException.class, () -> session.chosen().add("b"));
+	}
+
+	@Test
+	void 카드를_받은_틱이_기록된다() {
+		DragonTrialSession session = session();
+		session.fire(Trigger.ENTRY);
+		session.beginChoice();
+
+		assertTrue(session.choose("a", 1440L));
+
+		assertEquals(1440L, session.grantedTick("a"));
+		assertEquals(Map.of("a", 1440L), session.grantedTicks());
+	}
+
+	@Test
+	void 기록이_없는_카드는_전투_시작_틱을_돌려준다() {
+		DragonTrialSession session = session();
+
+		assertEquals(1000L, session.grantedTick("없는_카드"), "전투 시작이 기준이다");
+		assertNotEquals(0L, session.grantedTick("없는_카드"),
+				"0 이면 위상이 월드 시간과 같아져 고치려던 문제로 되돌아간다");
+	}
+
+	@Test
+	void 주기가_같은_카드도_위상이_어긋난다() {
+		DragonTrialSession session = session();
+		session.fire(Trigger.ENTRY);
+		session.beginChoice();
+		session.choose("a", 1100L);
+		session.fire(Trigger.HEALTH_80);
+		session.beginChoice();
+		session.choose("b", 1730L);
+
+		assertNotEquals(session.grantedTick("a"), session.grantedTick("b"),
+				"기준이 같으면 주기가 같은 카드 둘이 영원히 같은 틱에 함께 터진다");
+	}
+
+	@Test
+	void 고르지_못한_카드의_틱은_남지_않는다() {
+		DragonTrialSession session = session();
+		session.fire(Trigger.ENTRY);
+		session.beginChoice();
+		session.choose("a", 1100L);
+		session.fire(Trigger.HEALTH_80);
+		session.beginChoice();
+
+		assertFalse(session.choose("a", 2500L), "이미 고른 카드다");
+
+		assertEquals(1100L, session.grantedTick("a"), "거절당한 두 번째 호출이 기록을 덮어쓰면 안 된다");
+		assertEquals(1, session.grantedTicks().size(), "고른 목록과 어긋나면 안 된다");
+	}
+
+	@Test
+	void 복원하면_받은_틱도_이어받는다() {
+		DragonTrialSession session = session();
+		session.restore(List.of("a", "b"), List.of("ENTRY"), List.of(), false,
+				Map.of("a", 1100L, "b", 1730L));
+
+		assertEquals(1100L, session.grantedTick("a"));
+		assertEquals(1730L, session.grantedTick("b"),
+				"재시작마다 위상이 초기화되면 예고 없이 맞는 일이 재시작할 때마다 되돌아온다");
+	}
+
+	@Test
+	void 고른_적_없는_카드의_틱은_복원에서_버린다() {
+		DragonTrialSession session = session();
+		Map<String, Long> marks = new HashMap<>();
+		marks.put("a", 1100L);
+		marks.put("고른_적_없다", 1200L);
+		marks.put("값이_없다", null);
+		session.restore(List.of("a"), List.of("ENTRY"), List.of(), false, marks);
+
+		assertEquals(Map.of("a", 1100L), session.grantedTicks(),
+				"저장이 어긋나도 고른 목록에 없는 카드의 틱을 들고 있으면 안 된다");
+	}
+
+	@Test
+	void 받은_틱이_없던_옛_저장도_되살아난다() {
+		DragonTrialSession session = session();
+		session.restore(List.of("a"), List.of("ENTRY"), List.of(), false, null);
+
+		assertTrue(session.grantedTicks().isEmpty());
+		assertEquals(1000L, session.grantedTick("a"),
+				"이 칸이 없던 파일을 읽으면 전투 시작이 기준이다");
+	}
+
+	@Test
+	void 받은_틱_목록은_밖에서_고칠_수_없다() {
+		DragonTrialSession session = session();
+		session.fire(Trigger.ENTRY);
+		session.beginChoice();
+		session.choose("a", 1100L);
+
+		assertThrows(UnsupportedOperationException.class,
+				() -> session.grantedTicks().put("b", 1200L));
 	}
 }

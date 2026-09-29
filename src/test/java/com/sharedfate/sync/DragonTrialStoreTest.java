@@ -8,10 +8,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -114,10 +117,65 @@ class DragonTrialStoreTest {
 		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
 		DragonTrialSession session = new DragonTrialSession(
 				java.util.UUID.fromString(loaded.teamId), loaded.startedTick);
-		session.restore(loaded.chosen, loaded.fired, loaded.queued, loaded.awaitingChoice);
+		session.restore(loaded.chosen, loaded.fired, loaded.queued, loaded.awaitingChoice,
+				loaded.grantedTicks);
 
 		assertEquals(1, session.trialCount());
 		assertTrue(session.shouldOfferTrial(), "줄에 남아 있던 자리는 재시작 뒤에도 떠야 한다");
 		assertEquals(TrialCatalog.Trigger.HEALTH_80, session.peekTrigger());
+	}
+
+	@Test
+	void 카드를_받은_틱이_저장되고_복원된다(@TempDir Path dir) throws IOException {
+		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
+		DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
+		entry.teamId = "cccccccc-0000-0000-0000-000000000001";
+		entry.startedTick = 1000L;
+		entry.chosen = new ArrayList<>(List.of("a", "b"));
+		entry.grantedTicks = new LinkedHashMap<>(Map.of("a", 1100L, "b", 1730L));
+		DragonTrialStore.save(file, List.of(entry));
+
+		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
+
+		assertEquals(Map.of("a", 1100L, "b", 1730L), loaded.grantedTicks);
+
+		DragonTrialSession session = new DragonTrialSession(
+				java.util.UUID.fromString(loaded.teamId), loaded.startedTick);
+		session.restore(loaded.chosen, loaded.fired, loaded.queued, loaded.awaitingChoice,
+				loaded.grantedTicks);
+
+		assertEquals(1100L, session.grantedTick("a"));
+		assertEquals(1730L, session.grantedTick("b"),
+				"위상이 재시작마다 초기화되면 예고 없이 맞는 일이 재시작할 때마다 되돌아온다");
+	}
+
+	@Test
+	void 받은_틱_칸이_없는_옛_파일도_읽힌다(@TempDir Path dir) throws IOException {
+		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
+		Files.writeString(file,
+				"{\"sessions\":[{\"teamId\":\"cccccccc-0000-0000-0000-000000000001\","
+						+ "\"startedTick\":1000,\"chosen\":[\"a\"]}]}",
+				StandardCharsets.UTF_8);
+
+		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
+
+		assertNotNull(loaded.grantedTicks, "null 이 그대로 나가면 되살릴 때 터진다");
+		assertTrue(loaded.grantedTicks.isEmpty(),
+				"이 칸이 생기기 전에 저장된 파일 하나에 서버 기동을 걸 수는 없다");
+	}
+
+	@Test
+	void 받은_틱의_빈_키와_빈_값은_버린다(@TempDir Path dir) throws IOException {
+		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
+		Files.writeString(file,
+				"{\"sessions\":[{\"teamId\":\"cccccccc-0000-0000-0000-000000000001\","
+						+ "\"startedTick\":1000,\"chosen\":[\"a\"],"
+						+ "\"grantedTicks\":{\"a\":1100,\"b\":null,\"\":1200}}]}",
+				StandardCharsets.UTF_8);
+
+		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
+
+		assertEquals(Map.of("a", 1100L), loaded.grantedTicks,
+				"손으로 고친 파일이 들어와도 되살리는 쪽이 터지면 안 된다");
 	}
 }

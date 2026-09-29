@@ -1,0 +1,577 @@
+package com.sharedfate.sync;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * 고른 시련 카드의 위험을 실제로 돌린다.
+ *
+ * <h2>왜 값으로 도는가</h2>
+ *
+ * <p>앞선 구현은 카드 id 를 코드 안에서 문자열로 직접 비교하고 주기·피해를 클래스 상수로 들고
+ * 있었다. 그래서 <b>두 장째 카드를 만들 수 없었다</b> — 「같은 패턴인데 주기만 다른 카드」를
+ * 넣으려면 클래스를 통째로 복사해야 했다. 여기서는 {@link TrialCatalog.Risk} 값을 읽어 돌리므로
+ * 카드를 늘리는 일이 {@code TrialCatalog} 에 줄 하나 더 적는 일이 된다.
+ *
+ * <h2>실행을 빠뜨리면 컴파일이 거절한다</h2>
+ *
+ * <p>위험 분기는 {@code default} 없는 패턴 switch 다. {@code Risk} 는 봉인 인터페이스라 자바가
+ * 모든 갈래를 덮었는지 검사한다. 타입을 하나 더하고 여기에 실행을 안 붙이면 <b>빌드가 깨진다.</b>
+ * {@code default} 를 넣는 순간 이 보호가 사라지고, 새 위험은 조용히 아무 일도 하지 않는 카드가
+ * 된다 — 이 게임은 전멸하면 월드가 지워지므로 「예고만 나오고 안 터지는」 것보다 「빌드가 깨지는」
+ * 쪽이 훨씬 싸다. 넣지 말 것.
+ *
+ * <h2>주기는 카드를 받은 틱부터 센다</h2>
+ *
+ * <p>월드 시간({@code now % interval})으로 세면 카드를 받은 순간이 마침 발동 위상일 때 예고를
+ * 하나도 못 본 채 맞고, 주기가 같은 카드 둘은 영원히 같은 틱에 함께 터진다. 시련이 전투가 끝날
+ * 때까지 쌓이는 것이 이 기능의 전부라 그냥 둘 수 없다. {@link DragonTrialSession#grantedTick} 을
+ * 기준으로 삼으면 카드마다 위상이 저절로 어긋나고, 받은 직후 한 주기는 온전히 예고에 쓰인다.
+ *
+ * <h2>왜 계산을 순수 함수로 떼는가</h2>
+ *
+ * <p>위상·대상 수·아레나 좌표는 {@code ServerLevel} 없이 답이 정해지는 계산이다. 떼어 두면
+ * 월드를 띄우지 않고 시험할 수 있고, 「받자마자 터진다」·「음수 위상」 같은 사고를 돌려 보지 않고
+ * 잡을 수 있다. 이 저장소가 {@code PerkOfferScreen.isSelectClick} 에서 이미 쓰는 방식이다.
+ * 패키지 밖에 내보내지 않으려고 {@code static} 패키지 전용으로 둔다.
+ */
+public final class TrialRisks {
+
+	/**
+	 * 아무 곳을 고를 때 쓰는 아레나 반경.
+	 *
+	 * <p>엔드 중앙 섬 바깥은 허공이다. 거기에 떨어뜨리면 예고도 피해도 아무 뜻이 없으므로 중앙
+	 * {@code (0, ?, 0)} 기준으로 이 안에서만 고른다. 팀을 내려놓는 자리
+	 * ({@code DragonTrialManager} 의 도착 반경)와 같은 크기다.
+	 */
+	private static final double ARENA_RADIUS = 40.0;
+	/** 허공을 뽑았을 때 다시 굴리는 횟수. 여기까지 실패하면 이번 지점은 포기한다. */
+	private static final int SPOT_TRIES = 8;
+
+	/** 플레이어 중력(블록/틱²). 띄울 높이를 속도로 바꿀 때 쓴다. */
+	private static final double GRAVITY_PER_TICK = 0.08;
+	/** 띄운 뒤 낙하 피해를 면제하는 여유 틱. 착지가 늦어져도 면제가 먼저 끊기지 않게 한다. */
+	private static final int FALL_GRACE_MARGIN = 20;
+
+	/**
+	 * 사람마다의 발자국. 오래된 것이 앞이다.
+	 *
+	 * <p>정적 맵인 이유는 위험이 값(레코드)이라 상태를 들 수 없기 때문이다. 월드가 바뀌면 남은
+	 * 좌표가 새 판의 사람에게 붙을 수 있으므로 {@link #clearState()} 로 반드시 비운다.
+	 */
+	private static final Map<UUID, List<Vec3>> TRAILS = new HashMap<>();
+	/** 위험마다 이번 주기에 노리기로 한 사람. */
+	private static final Map<String, Cycle<UUID>> TRAIL_PICKS = new HashMap<>();
+	/** 위험마다 이번 주기에 터지기로 한 자리. */
+	private static final Map<String, Cycle<Vec3>> SPOT_PICKS = new HashMap<>();
+	/** 띄워진 사람과 낙하 피해 면제가 끝나는 시각. */
+	private static final Map<UUID, Long> FALL_GRACE = new HashMap<>();
+
+	/**
+	 * 한 주기 동안 붙잡아 두는 대상.
+	 *
+	 * <p>매 틱 다시 뽑으면 경고 표식이 사람들 사이를 뛰어다녀 아무도 피할 수 없다. 주기 번호가
+	 * 바뀔 때만 다시 뽑는다.
+	 */
+	private record Cycle<T>(long index, List<T> targets) {
+	}
+
+	/** 지금 돌고 있는 위험 하나. 카드 id 와 카드 안 순번으로 열쇠를 만든다. */
+	private record Active(String key, String trialId, TrialCatalog.Risk risk) {
+	}
+
+	private TrialRisks() {
+	}
+
+	/**
+	 * 매 틱. 고른 카드들의 위험을 모두 돌린다.
+	 *
+	 * <p>카드가 한 장도 없으면 발자국조차 쌓지 않는다 — 시련 없이 드래곤만 잡는 판에서 매 틱
+	 * 좌표를 쌓아 둘 이유가 없다.
+	 */
+	public static void tick(@Nullable ServerLevel end, @Nullable List<ServerPlayer> members,
+			@Nullable DragonTrialSession session, long now) {
+		if (end == null || session == null || members == null || members.isEmpty()) {
+			return;
+		}
+
+		List<Active> active = activeRisks(session);
+		if (active.isEmpty()) {
+			forget();
+			return;
+		}
+		// 카드가 빠지는 길은 없지만, 되살린 세션에 없어진 카드가 들어 있을 수 있다. 남은 열쇠를
+		// 그대로 두면 옛 주기 번호 때문에 첫 발동이 한 번 건너뛰어진다.
+		Set<String> keys = new HashSet<>();
+		for (Active entry : active) {
+			keys.add(entry.key());
+		}
+		TRAIL_PICKS.keySet().retainAll(keys);
+		SPOT_PICKS.keySet().retainAll(keys);
+
+		recordTrails(members, lookbackNeeded(active));
+		relieveFalls(members, now);
+
+		for (Active entry : active) {
+			long granted = session.grantedTick(entry.trialId());
+			// default 를 넣지 말 것. 이 switch 가 위험 타입과 실행을 묶어 두는 유일한 장치다.
+			switch (entry.risk()) {
+				case TrialCatalog.Risk.DelayedStrike strike ->
+						runDelayedStrike(end, members, entry.key(), granted, now, strike);
+			}
+		}
+	}
+
+	/** 월드가 바뀌거나 서버가 내려갈 때. 사람에게 붙은 것이 다음 판으로 새지 않게 한다. */
+	public static void clearState() {
+		forget();
+	}
+
+	private static void forget() {
+		TRAILS.clear();
+		TRAIL_PICKS.clear();
+		SPOT_PICKS.clear();
+		FALL_GRACE.clear();
+	}
+
+	// ------------------------------------------------------------------ 카드 읽기
+
+	/**
+	 * 고른 카드들이 걸고 있는 위험을 펼친다.
+	 *
+	 * <p>목록에 없는 id 는 조용히 건너뛴다. 옛 저장 파일에 없어진 카드가 들어 있다고 전투가
+	 * 멈추면 안 된다.
+	 */
+	private static List<Active> activeRisks(DragonTrialSession session) {
+		List<Active> active = new ArrayList<>();
+		for (String id : session.chosen()) {
+			TrialCatalog.Trial trial = TrialCatalog.byId(id);
+			if (trial == null) {
+				continue;
+			}
+			List<TrialCatalog.Risk> risks = trial.risks();
+			for (int index = 0; index < risks.size(); index++) {
+				// 한 카드가 위험 둘을 걸 수 있으므로 카드 id 만으로는 열쇠가 겹친다.
+				active.add(new Active(id + '#' + index, id, risks.get(index)));
+			}
+		}
+		return active;
+	}
+
+	/** 지금 도는 위험 중 가장 멀리 거슬러 올라가는 발자국. 발자국 기록은 이만큼만 남긴다. */
+	private static int lookbackNeeded(List<Active> active) {
+		int deepest = 0;
+		for (Active entry : active) {
+			switch (entry.risk()) {
+				case TrialCatalog.Risk.DelayedStrike strike -> {
+					if (strike.aim() == TrialCatalog.Risk.Aim.TRAIL) {
+						deepest = Math.max(deepest, strike.lookback());
+					}
+				}
+			}
+		}
+		return deepest;
+	}
+
+	// ------------------------------------------------------------------ 예고 있는 폭격
+
+	private static void runDelayedStrike(ServerLevel end, List<ServerPlayer> members, String key,
+			long granted, long now, TrialCatalog.Risk.DelayedStrike strike) {
+		if (strike.interval() <= 0 || strike.count() <= 0 || !(strike.radius() > 0.0)) {
+			return;
+		}
+		// 받은 바로 그 틱에는 아직 아무 주기도 시작되지 않았다.
+		if (elapsedSinceGrant(now, granted) <= 0L) {
+			return;
+		}
+
+		long cycle = strikeIndex(now, granted, strike.interval());
+		int remaining = remainingTicks(now, granted, strike.interval());
+
+		List<ServerPlayer> marked = new ArrayList<>();
+		List<Vec3> spots = switch (strike.aim()) {
+			case TRAIL -> trailSpots(end, members, key, cycle, strike, marked);
+			case RANDOM_SPOT -> spotsInArena(end, key, cycle, strike);
+		};
+		if (spots.isEmpty()) {
+			return;
+		}
+
+		warn(end, spots, marked.isEmpty() ? members : marked, remaining, strike);
+		if (firesAt(now, granted, strike.interval())) {
+			for (Vec3 spot : spots) {
+				detonate(end, spot, strike, now);
+			}
+		}
+	}
+
+	/**
+	 * 세 층을 올린다.
+	 *
+	 * <p>경고 없이 터지는 길을 만들지 않는다. 층이 바뀌는 순간에만 소리를 내는 것은
+	 * {@link TrialWarning#sound} 가 호출자에게 맡긴 몫이다 — 매 틱 부르면 그 층 내내 울린다.
+	 */
+	private static void warn(ServerLevel end, List<Vec3> spots, List<ServerPlayer> audience,
+			int remaining, TrialCatalog.Risk.DelayedStrike strike) {
+		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
+		if (stage == null) {
+			return;
+		}
+		boolean changed = stageJustChanged(remaining);
+		for (Vec3 spot : spots) {
+			if (stage != TrialWarning.Stage.APPROACH) {
+				TrialWarning.markGround(end, spot, strike.radius());
+			}
+			if (changed) {
+				TrialWarning.sound(end, spot, stage);
+			}
+		}
+		if (remaining == TrialWarning.TICKS_SIDESTEP) {
+			TrialWarning.shout(audience, Component.literal(strike.aim() == TrialCatalog.Risk.Aim.TRAIL
+					? "발밑을 보십시오"
+					: "표시된 자리에서 벗어나십시오"));
+		}
+	}
+
+	private static void detonate(ServerLevel end, Vec3 at, TrialCatalog.Risk.DelayedStrike strike,
+			long now) {
+		end.sendParticles(ParticleTypes.EXPLOSION, at.x, at.y + 0.2, at.z, 1, 0.0, 0.0, 0.0, 0.0);
+		end.playSound(null, at.x, at.y, at.z, SoundEvents.LIGHTNING_BOLT_IMPACT,
+				SoundSource.HOSTILE, 2.0F, 1.0F);
+		// 피해는 반경 안에 남아 있는 사람에게만 들어간다. 움직였으면 빗나간 것이다.
+		for (ServerPlayer nearby : end.getEntitiesOfClass(ServerPlayer.class,
+				new AABB(at, at).inflate(strike.radius()))) {
+			if (!insideMark(nearby.position(), at, strike.radius())) {
+				continue;
+			}
+			nearby.hurtServer(end, end.damageSources().lightningBolt(), strike.damage());
+			launch(nearby, strike.launch(), now);
+		}
+	}
+
+	// ------------------------------------------------------------------ 자리 고르기
+
+	/**
+	 * 발자국을 노리는 자리들.
+	 *
+	 * <p>대상은 주기마다 새로 뽑는다. 한 사람만 계속 노리면 그 사람만 게임을 하게 된다. 다만
+	 * <b>뽑은 대상은 그 주기 동안 유지</b>한다 — 매 틱 다시 뽑으면 표식이 사람들 사이를 뛰어다닌다.
+	 *
+	 * <p>표식이 가리키는 <b>자리</b>는 매 틱 갱신된다. 그 사람이 {@code lookback} 틱 전에 있던
+	 * 자리를 쫓아오므로, 멈춰 서면 맞고 계속 움직이면 빗나간다. 이것이 이 카드의 전부다.
+	 *
+	 * @param marked 노려진 사람을 담아 돌려준다. 자막을 그 사람들에게만 띄우려고 쓴다
+	 */
+	private static List<Vec3> trailSpots(ServerLevel end, List<ServerPlayer> members, String key,
+			long cycle, TrialCatalog.Risk.DelayedStrike strike, List<ServerPlayer> marked) {
+		Cycle<UUID> picked = TRAIL_PICKS.get(key);
+		if (picked == null || picked.index() != cycle) {
+			List<UUID> ids = new ArrayList<>();
+			for (int index : pickIndexes(strike.count(), members.size(), end.getRandom())) {
+				ids.add(members.get(index).getUUID());
+			}
+			picked = new Cycle<>(cycle, ids);
+			TRAIL_PICKS.put(key, picked);
+		}
+
+		List<Vec3> spots = new ArrayList<>();
+		for (ServerPlayer member : members) {
+			if (!picked.targets().contains(member.getUUID())) {
+				continue;
+			}
+			Vec3 past = trailPosition(member.getUUID(), strike.lookback());
+			if (past == null) {
+				// 아직 발자국이 그만큼 쌓이지 않았다. 지금 자리를 노리면 예고가 무의미해진다.
+				continue;
+			}
+			marked.add(member);
+			spots.add(past);
+		}
+		return spots;
+	}
+
+	/**
+	 * 아레나 안 아무 자리들.
+	 *
+	 * <p>자리는 주기마다 한 번만 굴리고 그대로 들고 간다. 매 틱 다시 굴리면 예고가 예고가 아니다.
+	 */
+	private static List<Vec3> spotsInArena(ServerLevel end, String key, long cycle,
+			TrialCatalog.Risk.DelayedStrike strike) {
+		Cycle<Vec3> picked = SPOT_PICKS.get(key);
+		if (picked != null && picked.index() == cycle) {
+			return picked.targets();
+		}
+		List<Vec3> spots = new ArrayList<>();
+		for (int index = 0; index < strike.count(); index++) {
+			Vec3 spot = groundSpot(end);
+			if (spot != null) {
+				spots.add(spot);
+			}
+		}
+		SPOT_PICKS.put(key, new Cycle<>(cycle, spots));
+		return spots;
+	}
+
+	/**
+	 * 아레나 안에서 발 디딜 수 있는 자리 하나.
+	 *
+	 * <p>허공을 뽑으면 다시 굴린다. 중앙 섬은 둥글지 않아 반경 안에도 빈 곳이 있다.
+	 *
+	 * @return 끝내 못 찾으면 {@code null}
+	 */
+	private static @Nullable Vec3 groundSpot(ServerLevel end) {
+		RandomSource random = end.getRandom();
+		for (int attempt = 0; attempt < SPOT_TRIES; attempt++) {
+			Vec3 offset = arenaOffset(random.nextDouble(), random.nextDouble(), ARENA_RADIUS);
+			BlockPos ground = end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+					BlockPos.containing(offset.x, 0.0, offset.z));
+			// 허공이면 하이트맵이 월드 바닥을 돌려준다.
+			if (ground.getY() > end.getMinY()) {
+				return new Vec3(offset.x, ground.getY(), offset.z);
+			}
+		}
+		return null;
+	}
+
+	// ------------------------------------------------------------------ 발자국
+
+	private static void recordTrails(List<ServerPlayer> members, int lookback) {
+		int keep = Math.max(1, lookback + 1);
+		Set<UUID> present = new HashSet<>();
+		for (ServerPlayer member : members) {
+			UUID memberId = member.getUUID();
+			present.add(memberId);
+			List<Vec3> trail = TRAILS.computeIfAbsent(memberId, key -> new ArrayList<>());
+			trail.add(member.position());
+			while (trail.size() > keep) {
+				trail.removeFirst();
+			}
+		}
+		// 접속을 끊은 사람의 좌표를 들고 있어 봐야 다시 들어오면 순간이동한 발자국이 된다.
+		TRAILS.keySet().retainAll(present);
+	}
+
+	private static @Nullable Vec3 trailPosition(UUID memberId, int lookback) {
+		List<Vec3> trail = TRAILS.get(memberId);
+		if (trail == null || trail.size() <= Math.max(0, lookback)) {
+			return null;
+		}
+		return trail.get(trail.size() - 1 - Math.max(0, lookback));
+	}
+
+	// ------------------------------------------------------------------ 띄우기
+
+	/**
+	 * 맞은 사람을 띄운다.
+	 *
+	 * <p>서버가 실은 속도는 {@code syncVelocity} 를 켜야 클라이언트에 내려간다. 켜지 않으면 서버만
+	 * 혼자 띄운 것이 되어, 잠시 뒤 클라이언트가 보고한 제자리로 되돌아간다.
+	 *
+	 * <p>낙하 피해는 면제한다. 이 카드의 위험은 <b>띄워져 회피가 막히는 것</b>이지 낙사가 아니다.
+	 * 4블록만 띄워도 착지 피해가 붙으면 카드 설명과 실제가 달라지고, 공유 체력이라 한 사람의
+	 * 낙사가 팀 전체를 깎는다.
+	 */
+	private static void launch(ServerPlayer player, double height, long now) {
+		if (!(height > 0.0)) {
+			return;
+		}
+		Vec3 motion = player.getDeltaMovement();
+		player.setDeltaMovement(motion.x, launchVelocity(height), motion.z);
+		player.syncVelocity = true;
+		player.fallDistance = 0.0;
+		player.resetFallDistance();
+		FALL_GRACE.put(player.getUUID(), now + fallGraceTicks(height));
+	}
+
+	/**
+	 * 띄워져 있는 동안 쌓이는 낙하 거리를 계속 지운다.
+	 *
+	 * <p>띄우는 순간 한 번 지우는 것으로는 부족하다. 낙하 거리는 떨어지는 매 틱 쌓이므로, 착지할
+	 * 때까지 지워 주지 않으면 결국 착지 피해가 들어간다.
+	 */
+	private static void relieveFalls(List<ServerPlayer> members, long now) {
+		if (FALL_GRACE.isEmpty()) {
+			return;
+		}
+		for (ServerPlayer member : members) {
+			Long until = FALL_GRACE.get(member.getUUID());
+			if (until == null) {
+				continue;
+			}
+			if (now > until) {
+				FALL_GRACE.remove(member.getUUID());
+				continue;
+			}
+			member.fallDistance = 0.0;
+			member.resetFallDistance();
+		}
+	}
+
+	// ------------------------------------------------------------------ 월드 없이 도는 계산
+
+	/**
+	 * 카드를 받은 뒤 흐른 틱.
+	 *
+	 * <p>복원 직후에는 {@code now} 가 받은 틱보다 작을 수 있다 — 세션은 저장 파일에서 오고 게임
+	 * 시각은 월드에서 온다. 그대로 나누면 위상이 음수가 되어 예고 없이 터진다.
+	 */
+	static long elapsedSinceGrant(long now, long grantedTick) {
+		return Math.max(0L, now - grantedTick);
+	}
+
+	/**
+	 * 지금 예고하고 있는 발동이 몇 번째인가. 0 부터 센다.
+	 *
+	 * <p>발동하는 그 틱까지 같은 번호를 유지해야 한다. 「예고 중에는 N, 터지는 순간 N+1」이 되면
+	 * 뽑아 둔 대상이 정작 필요한 틱에 버려진다.
+	 */
+	static long strikeIndex(long now, long grantedTick, int interval) {
+		if (interval <= 0) {
+			return 0L;
+		}
+		return (Math.max(1L, elapsedSinceGrant(now, grantedTick)) - 1L) / interval;
+	}
+
+	/** 발동까지 남은 틱. 0 이면 이번 틱에 터진다. */
+	static int remainingTicks(long now, long grantedTick, int interval) {
+		if (interval <= 0) {
+			return Integer.MAX_VALUE;
+		}
+		long into = (Math.max(1L, elapsedSinceGrant(now, grantedTick)) - 1L) % interval;
+		return interval - 1 - (int) into;
+	}
+
+	/**
+	 * 이번 틱에 터지는가.
+	 *
+	 * <p>받은 직후 한 주기는 온전히 예고에 쓴다. 받자마자 터지면 카드 설명을 읽는 중에 맞는다.
+	 */
+	static boolean firesAt(long now, long grantedTick, int interval) {
+		if (interval <= 0) {
+			return false;
+		}
+		long elapsed = elapsedSinceGrant(now, grantedTick);
+		return elapsed >= interval && elapsed % interval == 0L;
+	}
+
+	/**
+	 * 층이 방금 바뀌었는가.
+	 *
+	 * <p>{@link TrialWarning#sound} 는 부를 때마다 울리므로 호출자가 직전 층과 비교해야 한다.
+	 * 남은 틱은 1씩 줄어드니 직전 틱의 층은 {@code remaining + 1} 로 구하면 된다 — 지난 층을
+	 * 따로 저장하지 않아도 되고, 저장하지 않으니 어긋날 일도 없다.
+	 */
+	static boolean stageJustChanged(int remaining) {
+		TrialWarning.Stage now = TrialWarning.stageFor(remaining);
+		return now != null && now != TrialWarning.stageFor(remaining + 1);
+	}
+
+	/**
+	 * 실제로 뽑을 수.
+	 *
+	 * <p>인원보다 많이 적힌 카드를 인원 넷짜리 팀이 받을 수 있다. 그때 넷을 다 노리는 것은 맞지만
+	 * 없는 다섯째를 뽑으려다 터지면 안 된다.
+	 */
+	static int targetCount(int requested, int available) {
+		if (requested <= 0 || available <= 0) {
+			return 0;
+		}
+		return Math.min(requested, available);
+	}
+
+	/** 겹치지 않게 뽑은 자리 번호들. 같은 사람을 두 번 노리면 그 주기가 한 발로 줄어든다. */
+	static List<Integer> pickIndexes(int count, int size, RandomSource random) {
+		int wanted = targetCount(count, size);
+		List<Integer> picked = new ArrayList<>();
+		if (wanted <= 0) {
+			return picked;
+		}
+		List<Integer> pool = new ArrayList<>();
+		for (int index = 0; index < size; index++) {
+			pool.add(index);
+		}
+		while (picked.size() < wanted && !pool.isEmpty()) {
+			picked.add(pool.remove(random.nextInt(pool.size())));
+		}
+		return picked;
+	}
+
+	/**
+	 * 중앙에서 잰 아레나 안의 한 점. {@code y} 는 0 이고 지면 높이는 호출자가 찾는다.
+	 *
+	 * <p>거리를 제곱근으로 펴는 이유는 원의 넓이가 반지름의 제곱에 비례하기 때문이다. 그냥 곱하면
+	 * 지점이 중앙에 몰려 가장자리가 안전지대가 된다.
+	 *
+	 * @param angleRoll    0~1 의 굴림. 각도가 된다
+	 * @param distanceRoll 0~1 의 굴림. 중앙에서의 거리가 된다
+	 */
+	static Vec3 arenaOffset(double angleRoll, double distanceRoll, double radius) {
+		double angle = clamped(angleRoll) * Math.PI * 2.0;
+		double distance = Math.sqrt(clamped(distanceRoll)) * Math.max(0.0, radius);
+		return new Vec3(Math.cos(angle) * distance, 0.0, Math.sin(angle) * distance);
+	}
+
+	private static double clamped(double roll) {
+		if (!(roll > 0.0)) {
+			return 0.0;
+		}
+		return Math.min(1.0, roll);
+	}
+
+	/**
+	 * 바닥 고리 안에 서 있는가.
+	 *
+	 * <p>{@link AABB#inflate} 는 정육면체를 만든다. 반경 2 짜리 고리라면 모서리가 2.8 칸이라
+	 * <b>표식 밖에 서 있는데 맞는다.</b> 「같은 표식은 언제나 같은 결과」가 이 전투가 플레이어와
+	 * 맺은 약속이므로, 상자로 후보를 추린 뒤 고리로 다시 거른다.
+	 *
+	 * <p>세로는 보지 않는다. 표식은 바닥에 그려지는데 「고리 위에 떠 있었으니 안 맞는다」가 되면
+	 * 표식이 거짓말한 것이 된다 — 띄우는 카드와 겹치면 곧바로 드러난다.
+	 */
+	static boolean insideMark(Vec3 position, Vec3 center, double radius) {
+		double dx = position.x - center.x;
+		double dz = position.z - center.z;
+		return dx * dx + dz * dz <= radius * radius;
+	}
+
+	/**
+	 * 그 높이까지 뜨는 데 필요한 처음 속도.
+	 *
+	 * <p>공기 저항을 뺀 근사({@code v = √(2gh)})다. 실제로는 저항 때문에 적힌 것보다 조금 낮게
+	 * 뜬다. 카드의 위험은 「떠 있는 동안 못 피한다」이지 정확한 높이가 아니므로 이 정도면 된다.
+	 */
+	static double launchVelocity(double height) {
+		return Math.sqrt(2.0 * GRAVITY_PER_TICK * Math.max(0.0, height));
+	}
+
+	/**
+	 * 띄운 뒤 낙하 피해를 면제할 틱 수. 올라갔다 내려오는 시간에 여유를 더한다.
+	 *
+	 * <p>짧게 잡으면 착지 직전에 면제가 끊겨 결국 낙하 피해가 들어간다. 길게 잡아 손해 보는 것은
+	 * 「스스로 절벽에서 뛰어내렸을 때 한 번 봐 주는 것」뿐이라 넉넉한 쪽으로 기울인다.
+	 */
+	static int fallGraceTicks(double height) {
+		if (!(height > 0.0)) {
+			return 0;
+		}
+		return (int) Math.ceil(2.0 * launchVelocity(height) / GRAVITY_PER_TICK) + FALL_GRACE_MARGIN;
+	}
+}

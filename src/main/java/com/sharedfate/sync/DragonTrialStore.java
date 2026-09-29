@@ -14,7 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 진행 중인 엔드 전투를 파일에 남긴다.
@@ -48,6 +50,13 @@ public final class DragonTrialStore {
 		/** 터졌지만 아직 고르지 않은 자리들. 순서가 곧 줄이다. */
 		public List<String> queued = new ArrayList<>();
 		public boolean awaitingChoice;
+		/**
+		 * 카드마다 받은 틱. 위험의 주기를 여기서부터 센다.
+		 *
+		 * <p>재시작마다 위상을 0 으로 되돌리면 「받자마자 예고 없이 맞는다」가 재시작할 때마다
+		 * 되살아난다. 그래서 누적 목록과 같이 저장한다.
+		 */
+		public Map<String, Long> grantedTicks = new LinkedHashMap<>();
 	}
 
 	private static final class Payload {
@@ -83,6 +92,19 @@ public final class DragonTrialStore {
 					if (entry.queued == null) {
 						entry.queued = new ArrayList<>();
 					}
+					// 이 칸이 없던 옛 파일을 읽어도 빈 맵이어야 한다. null 이 그대로 나가면
+					// 되살릴 때 터지고, 그러면 깨진 파일 하나에 서버 기동이 걸린다.
+					Map<String, Long> marks = new LinkedHashMap<>();
+					if (entry.grantedTicks != null) {
+						for (Map.Entry<String, Long> mark : entry.grantedTicks.entrySet()) {
+							String id = mark.getKey();
+							Long tick = mark.getValue();
+							if (id != null && !id.isBlank() && tick != null) {
+								marks.put(id, tick);
+							}
+						}
+					}
+					entry.grantedTicks = marks;
 					clean.add(entry);
 				}
 			}
