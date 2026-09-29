@@ -117,12 +117,49 @@ public final class TrialWarning {
 	 * 색 규약. 같은 색은 언제나 같은 뜻이어야 플레이어가 표식을 언어로 배운다.
 	 *
 	 * <p>패턴을 늘릴 때 여기 없는 색을 새로 만들지 말 것. 색이 늘어나는 순간 규약이 아니게 된다.
+	 *
+	 * <h2>노랑의 뜻을 한 번 바꿨다</h2>
+	 *
+	 * <p>노랑은 원래 「여기 서 있어야 한다」({@code REQUIRED})였다. 색이 <b>무엇을 해야 하는가</b>를
+	 * 뜻한다는 원칙에서 보면 「번개가 내리친다」는 그 자리에 들어갈 말이 아니다 — 피하라는 뜻은
+	 * 이미 빨강이 들고 있다. 그런데도 바꾼 이유는 둘이다.
+	 *
+	 * <ul>
+	 *   <li>사람이 실제로 플레이하고 <b>번개 표식은 노랑이어야 한다</b>고 정했다. 빨강 고리가 아레나
+	 *       열 곳에 동시에 뜨면 「자리 폭격」의 빨강과 구별되지 않아, 무엇이 떨어지는지 모른 채
+	 *       빨강만 잔뜩 보인다</li>
+	 *   <li>{@code REQUIRED} 를 쓰는 <b>카드가 하나도 없었다.</b> 아무도 배우지 않은 뜻을 지키느라
+	 *       실제로 필요한 뜻을 못 쓰는 것은 규약이 아니라 장식이다</li>
+	 * </ul>
+	 *
+	 * <p><b>나중에 「여기 서 있어야 함」이 필요해지면 그때 새 색을 고른다.</b> 그 자리는 지금 비어
+	 * 있고, 노랑을 도로 가져가지 말 것 — 그때는 번개가 이미 노랑으로 배워져 있다.
 	 */
 	public static final class Colors {
 		/** 서 있으면 죽는다. */
 		public static final int DEADLY = 0xFF3333;
-		/** 여기 서 있어야 한다. */
-		public static final int REQUIRED = 0xFFD54A;
+		/**
+		 * 번개가 내리친다.
+		 *
+		 * <p>피하라는 뜻은 빨강과 같다. 색을 따로 둔 것은 <b>무엇이 떨어지는지</b>를 가르기 위해서다 —
+		 * 「낙뢰」는 한 번에 열 곳이라, 「자리 폭격」·「기둥 화염구」의 빨강과 같은 색이면 화면이 빨강
+		 * 고리로 뒤덮여 어느 것이 무엇인지 읽히지 않는다.
+		 *
+		 * <p>카드마다 이 색을 손으로 적지 말 것. {@code TrialRisks.markColor} 가
+		 * {@link TrialCatalog.Risk.Impact} 에서 끌어내므로 <b>연출과 색이 어긋날 수 없다.</b>
+		 */
+		public static final int LIGHTNING = 0xFFD54A;
+		/**
+		 * 옛 이름. 값은 {@link #LIGHTNING} 과 같은 노랑이다.
+		 *
+		 * <p>「여기 서 있어야 한다」를 뜻했고 <b>지금은 그 뜻이 없다.</b> 남겨 둔 것은
+		 * {@code TrialRouletteScreen} 이 룰렛 글자색으로 아직 이 이름을 쓰기 때문뿐이다. 그쪽은
+		 * 바닥 표식이 아니라 화면 글자라 규약과 무관하다 — <b>새 표식에는 쓰지 말 것.</b>
+		 *
+		 * @deprecated 표식이면 {@link #LIGHTNING}, 화면 글자면 그쪽에 색을 따로 둘 것.
+		 */
+		@Deprecated
+		public static final int REQUIRED = LIGHTNING;
 		/** 밀려난다. */
 		public static final int SHOVE = 0x4AA3FF;
 		/** 너 하나를 노린다. */
@@ -137,6 +174,9 @@ public final class TrialWarning {
 
 	/**
 	 * 위험한 자리를 바닥 고리로 그린다. 「서 있으면 죽는다」는 뜻의 빨강이다.
+	 *
+	 * <p>연출에 따라 색이 갈리는 위험은 이것을 쓰지 않고 색을 직접 넘긴다 —
+	 * {@code TrialRisks.markColor} 가 {@link TrialCatalog.Risk.Impact} 에서 색을 끌어낸다.
 	 *
 	 * @param center 위험 지점
 	 * @param radius 반경(블록)

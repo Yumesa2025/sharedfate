@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -65,10 +66,40 @@ public final class TrialRisks {
 	 * <p>엔드 중앙 섬 바깥은 허공이다. 거기에 떨어뜨리면 예고도 피해도 아무 뜻이 없으므로 중앙
 	 * {@code (0, ?, 0)} 기준으로 이 안에서만 고른다. 팀을 내려놓는 자리
 	 * ({@code DragonTrialManager} 의 도착 반경)와 같은 크기다.
+	 *
+	 * <p>패키지 전용인 것은 {@code TrialRisksTest} 가 겹침을 같은 조건으로 굴려 보기 위해서다 —
+	 * 시험이 제 숫자를 따로 들면 실제와 다른 아레나에서 확인한 것이 된다.
 	 */
-	private static final double ARENA_RADIUS = 40.0;
-	/** 허공을 뽑았을 때 다시 굴리는 횟수. 여기까지 실패하면 이번 지점은 포기한다. */
-	private static final int SPOT_TRIES = 8;
+	static final double ARENA_RADIUS = 40.0;
+	/**
+	 * 허공이거나 이미 뽑은 지점과 너무 가까울 때 다시 굴리는 횟수.
+	 *
+	 * <p>여기까지 실패하면 이번 지점은 <b>포기한다</b>. 겹치느니 한 발 빠지는 쪽이다 — 카드에 적힌
+	 * 개수를 맞추려고 겹쳐 놓으면 그 순간 즉사 카드가 된다.
+	 *
+	 * <p>반경 3 짜리 열 곳을 반경 40 아레나에 놓는 지금 카드에서는 5백만 판을 굴려 포기가 8번
+	 * 나왔다(지점 5천만 개 중 8개). 실질적으로 늘 열 곳이 다 선다.
+	 */
+	static final int SPOT_TRIES = 8;
+	/**
+	 * 지점끼리 지켜야 하는 최소 간격을 반경의 몇 배로 볼 것인가.
+	 *
+	 * <h2>이 숫자가 「즉사 메커닉 0개」를 지키는 자리다</h2>
+	 *
+	 * <p>고리 둘의 중심이 <b>반경의 두 배보다 가까우면</b> 두 원이 겹치고, 그 겹친 구역에 선 사람은
+	 * 한 틱에 두 번 맞는다. 「낙뢰」가 피해 12 · 열 곳이므로 겹치면 24 — 팀 공유 체력 20 을 넘어
+	 * <b>가득 찬 상태에서 즉사</b>다. 전멸은 곧 월드 삭제다.
+	 *
+	 * <p>그냥 굴리면 그 일이 얼마나 자주 나는지: 반경 40 아레나에 반경 3 짜리 지점을 무작위로
+	 * 놓을 때 <b>겹침 구역이 하나라도 생길 확률이 두 곳이면 2.1%, 열 곳이면 62.8%</b>다
+	 * (세 겹까지 생기는 판도 2.9%, 그건 36 피해다). 이 규칙을 넣으면 0% 가 된다.
+	 *
+	 * <p><b>카드 값이 아니라 여기에 건 이유.</b> 값을 고치는 사람은 피해와 개수만 본다. 규칙을
+	 * 카드마다 적어 두면 다음에 개수를 늘리는 사람이 그것을 빠뜨리고, 그때는 아무도 안 죽어 보다가
+	 * 어느 판에서 한 번 전멸한다. 그래서 {@link TrialCatalog.Risk.Aim#RANDOM_SPOT} <b>전체</b>에
+	 * 건다 — 값이 무엇이든 겹침 구역은 생기지 않는다.
+	 */
+	private static final double SPOT_MIN_GAP_FACTOR = 2.0;
 
 	/** 플레이어 중력(블록/틱²). 띄울 높이를 속도로 바꿀 때 쓴다. */
 	private static final double GRAVITY_PER_TICK = 0.08;
@@ -260,6 +291,9 @@ public final class TrialRisks {
 	 *
 	 * <p>경고 없이 터지는 길을 만들지 않는다. 층이 바뀌는 순간에만 소리를 내는 것은
 	 * {@link TrialWarning#sound} 가 호출자에게 맡긴 몫이다 — 매 틱 부르면 그 층 내내 울린다.
+	 *
+	 * <p>고리 색은 {@link #markColor} 가 연출 값에서 뽑는다. 파티클을 고리 밖에서 한 번만 만드는
+	 * 것은 「낙뢰」가 한 번에 열 곳이라 매 틱 열 번 새로 만들 이유가 없어서다.
 	 */
 	private static void warn(ServerLevel end, List<Vec3> spots, List<ServerPlayer> audience,
 			int remaining, TrialCatalog.Risk.DelayedStrike strike) {
@@ -268,9 +302,10 @@ public final class TrialRisks {
 			return;
 		}
 		boolean changed = stageJustChanged(remaining);
+		ParticleOptions mark = TrialWarning.dust(markColor(strike.impact()));
 		for (Vec3 spot : spots) {
 			if (stage != TrialWarning.Stage.APPROACH) {
-				TrialWarning.markGround(end, spot, strike.radius());
+				TrialWarning.markGround(end, spot, strike.radius(), mark);
 			}
 			if (changed) {
 				TrialWarning.sound(end, spot, stage);
@@ -409,6 +444,9 @@ public final class TrialRisks {
 	 * 아레나 안 아무 자리들.
 	 *
 	 * <p>자리는 주기마다 한 번만 굴리고 그대로 들고 간다. 매 틱 다시 굴리면 예고가 예고가 아니다.
+	 *
+	 * <p>앞에서 뽑은 자리를 넘겨 주며 굴린다 — <b>고리끼리 겹치면 그 겹친 구역이 즉사 구역</b>이기
+	 * 때문이다. 까닭은 {@link #SPOT_MIN_GAP_FACTOR} 에 적어 두었다.
 	 */
 	private static List<Vec3> spotsInArena(ServerLevel end, String key, long cycle,
 			TrialCatalog.Risk.DelayedStrike strike) {
@@ -418,7 +456,7 @@ public final class TrialRisks {
 		}
 		List<Vec3> spots = new ArrayList<>();
 		for (int index = 0; index < strike.count(); index++) {
-			Vec3 spot = groundSpot(end);
+			Vec3 spot = groundSpot(end, spots, strike.radius());
 			if (spot != null) {
 				spots.add(spot);
 			}
@@ -428,16 +466,30 @@ public final class TrialRisks {
 	}
 
 	/**
-	 * 아레나 안에서 발 디딜 수 있는 자리 하나.
+	 * 아레나 안에서 발 디딜 수 있고 이미 뽑은 자리와 겹치지 않는 자리 하나.
 	 *
-	 * <p>허공을 뽑으면 다시 굴린다. 중앙 섬은 둥글지 않아 반경 안에도 빈 곳이 있다.
+	 * <p>다시 굴리는 까닭이 둘이다.
 	 *
-	 * @return 끝내 못 찾으면 {@code null}
+	 * <ul>
+	 *   <li><b>허공</b> — 중앙 섬은 둥글지 않아 반경 안에도 빈 곳이 있다. 거기서 터지면 예고도
+	 *       피해도 뜻이 없다</li>
+	 *   <li><b>겹침</b> — 앞 고리와 너무 가까우면 겹친 구역에 선 사람이 한 틱에 두 번 맞는다.
+	 *       {@link #SPOT_MIN_GAP_FACTOR} 를 볼 것</li>
+	 * </ul>
+	 *
+	 * <p>둘 다 같은 굴림으로 거른다. 한쪽만 통과한 자리는 쓰지 않는다.
+	 *
+	 * @param taken  이번 주기에 이미 뽑아 둔 자리들
+	 * @param radius 고리 반경. 최소 간격이 여기서 나온다
+	 * @return 끝내 못 찾으면 {@code null}. 그 지점은 이번 주기에 빠진다
 	 */
-	private static @Nullable Vec3 groundSpot(ServerLevel end) {
+	private static @Nullable Vec3 groundSpot(ServerLevel end, List<Vec3> taken, double radius) {
 		RandomSource random = end.getRandom();
 		for (int attempt = 0; attempt < SPOT_TRIES; attempt++) {
 			Vec3 offset = arenaOffset(random.nextDouble(), random.nextDouble(), ARENA_RADIUS);
+			if (!clearOfTaken(taken, offset, radius)) {
+				continue;
+			}
 			BlockPos ground = end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
 					BlockPos.containing(offset.x, 0.0, offset.z));
 			// 허공이면 하이트맵이 월드 바닥을 돌려준다.
@@ -647,6 +699,102 @@ public final class TrialRisks {
 		double dx = position.x - center.x;
 		double dz = position.z - center.z;
 		return dx * dx + dz * dz <= radius * radius;
+	}
+
+	/**
+	 * 고리 둘의 중심이 이보다 가까우면 겹친다.
+	 *
+	 * <p>두 원이 한 점도 공유하지 않으려면 중심 거리가 <b>반경의 합</b>보다 커야 한다. 지금은 한
+	 * 위험의 고리가 모두 같은 반경이라 반경의 두 배다. 경계에 정확히 닿는 경우
+	 * ({@code 거리 == 반경의 두 배})도 겹침으로 본다 — {@link #insideMark} 가 경계를 「안」으로
+	 * 보므로 그 접점에 선 사람은 두 발을 다 맞는다.
+	 */
+	static double spotMinGap(double radius) {
+		return Math.max(0.0, radius) * SPOT_MIN_GAP_FACTOR;
+	}
+
+	/**
+	 * 이 후보가 이미 뽑은 자리 전부에서 충분히 멀리 있는가.
+	 *
+	 * <p>높이는 보지 않는다. 고리는 바닥에 그려지고 {@link #insideMark} 도 세로를 묻지 않으므로,
+	 * y 가 다른 두 고리도 위에서 보면 그대로 겹친다.
+	 */
+	static boolean clearOfTaken(List<Vec3> taken, Vec3 candidate, double radius) {
+		double gap = spotMinGap(radius);
+		for (Vec3 spot : taken) {
+			double dx = candidate.x - spot.x;
+			double dz = candidate.z - spot.z;
+			if (dx * dx + dz * dz <= gap * gap) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * 한 사람이 이 위험에게서 <b>한 틱에</b> 받을 수 있는 가장 큰 피해.
+	 *
+	 * <h2>값을 올리는 사람이 여기서 멈춘다</h2>
+	 *
+	 * <p>「즉사 메커닉 0개」가 이 전투의 설계 원칙인데, 카드에는 피해와 개수가 <b>따로</b> 적힌다.
+	 * 개수를 보지 않고 피해만 올리거나, 피해를 보지 않고 개수만 올리면 곱이 팀 공유 체력 20 을
+	 * 넘는다. 그 곱을 카드 값에서 직접 계산해 두면 {@code TrialRisksTest} 가 붙잡을 수 있다.
+	 *
+	 * <p>겹칠 수 있는 개수는 노리는 법에 따라 다르다.
+	 *
+	 * <ul>
+	 *   <li>{@link TrialCatalog.Risk.Aim#RANDOM_SPOT} — <b>1</b>. {@link #SPOT_MIN_GAP_FACTOR} 가
+	 *       겹침 구역을 없애므로 어느 자리에 서 있어도 고리 하나에만 든다. <b>그 규칙을 지우면 이
+	 *       숫자가 거짓이 되고, 그 순간 낙뢰는 즉사 카드다</b></li>
+	 *   <li>{@link TrialCatalog.Risk.Aim#TRAIL} — <b>{@code count}</b>. 사람마다 따로 뽑은
+	 *       발자국이라 자리가 서로 가까울 수 있다. 둘이 나란히 서 있었으면 그 자리에 남은 사람은
+	 *       두 발을 다 맞는다</li>
+	 * </ul>
+	 *
+	 * <p>{@code default} 를 넣지 말 것. 피해를 주는 위험 타입을 새로 만들면서 여기에 「가장 나쁜
+	 * 경우」를 적지 않으면 빌드가 깨져야 한다 — 적지 않은 타입은 시험이 못 본다.
+	 */
+	static float worstCaseTickDamage(TrialCatalog.Risk risk) {
+		return switch (risk) {
+			case TrialCatalog.Risk.DelayedStrike strike -> hits(strike.damage(), switch (strike.aim()) {
+				case RANDOM_SPOT -> 1;
+				case TRAIL -> strike.count();
+			});
+			// 조준점은 사람마다 따로 얼어붙지만 두 사람이 나란히 서 있었으면 그 자리에 남은
+			// 사람이 두 발을 다 맞는다. 궤적끼리는 최소 간격이 없다.
+			case TrialCatalog.Risk.TracedProjectile shot -> hits(shot.damage(), shot.count());
+			// 아래 셋은 피해를 주지 않는다. 시간을 빼앗거나 드래곤의 행동을 바꾼다.
+			case TrialCatalog.Risk.CrystalGuard ignored -> 0.0F;
+			case TrialCatalog.Risk.DragonFocus ignored -> 0.0F;
+			case TrialCatalog.Risk.CrystalRevive ignored -> 0.0F;
+		};
+	}
+
+	/** 피해와 겹칠 수 있는 개수의 곱. 어느 쪽이든 0 이하면 아무 일도 없다. */
+	private static float hits(float damage, int overlapping) {
+		if (damage <= 0.0F || overlapping <= 0) {
+			return 0.0F;
+		}
+		return damage * overlapping;
+	}
+
+	/**
+	 * 이 연출의 바닥 표식 색.
+	 *
+	 * <h2>왜 카드가 아니라 연출에서 끌어내는가</h2>
+	 *
+	 * <p>색을 카드마다 적게 하면 「낙뢰인데 빨간 고리」가 나온다 — {@link TrialCatalog.Risk.Impact}
+	 * 를 값으로 가른 이유가 바로 <b>연출과 적힌 것이 어긋나서</b>였다. 같은 실수를 색으로 한 번 더
+	 * 하지 않으려고 색도 같은 값에서 뽑는다. 카드를 늘리는 사람은 색을 고를 일이 없다.
+	 *
+	 * <p>{@code default} 를 넣지 말 것. {@code Impact} 를 늘리고 색을 안 붙이면 여기서 빌드가
+	 * 깨져야 한다.
+	 */
+	static int markColor(TrialCatalog.Risk.Impact impact) {
+		return switch (impact) {
+			case EXPLOSION -> TrialWarning.Colors.DEADLY;
+			case LIGHTNING -> TrialWarning.Colors.LIGHTNING;
+		};
 	}
 
 	/**

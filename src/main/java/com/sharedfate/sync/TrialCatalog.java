@@ -91,7 +91,12 @@ public final class TrialCatalog {
 		enum Aim {
 			/** 그 사람이 조금 전 있던 자리. 계속 움직이면 빗나간다. */
 			TRAIL,
-			/** 아레나 안의 아무 곳. 서 있던 자리와 무관하다. */
+			/**
+			 * 아레나 안의 아무 곳. 서 있던 자리와 무관하다.
+			 *
+			 * <p>지점끼리는 <b>반경의 두 배보다 멀다</b>({@code TrialRisks} 가 강제한다). 겹침
+			 * 구역이 생기면 한 사람이 한 틱에 두 번 맞아 즉사할 수 있기 때문이다.
+			 */
 			RANDOM_SPOT
 		}
 
@@ -114,6 +119,19 @@ public final class TrialCatalog {
 		/**
 		 * 예고한 자리에 무언가 떨어진다.
 		 *
+		 * <h2>피해 × 겹칠 수 있는 개수가 팀 체력을 넘으면 안 된다</h2>
+		 *
+		 * <p>이 전투의 설계 원칙은 <b>「즉사 메커닉 0개」</b>다. 팀 공유 체력은 20 이고 전멸은 곧
+		 * 월드 삭제다. 그런데 이 레코드는 <b>{@code damage} 와 {@code count} 가 따로 적히므로</b>
+		 * 한쪽만 올린 사람이 즉사 카드를 만들 수 있다 — {@code count} 가 여럿이면 한 사람이 여러
+		 * 고리에 동시에 들 수 있기 때문이다.
+		 *
+		 * <p>{@link Aim#RANDOM_SPOT} 은 {@code TrialRisks} 가 <b>지점끼리 반경의 두 배보다 멀게</b>
+		 * 강제해 겹침 구역을 없앤다. 그래서 {@code count} 를 열로 올려도 한 사람이 받는 것은 한 발
+		 * 뿐이다. <b>그 규칙을 지우면 여기 적힌 값들이 그 순간 즉사가 된다.</b>
+		 * {@code TrialRisksTest} 가 「가장 나쁜 경우의 한 틱 피해」를 카드 값에서 직접 계산해
+		 * 20 미만인지 본다 — 값을 올리는 사람은 거기서 멈춘다.
+		 *
 		 * @param aim      발자국을 노리는가 아무 곳인가
 		 * @param impact   떨어진 자리에서 무엇이 보이고 들리는가. 실행기가 이 값으로 갈린다
 		 * @param interval 떨어지는 간격(틱)
@@ -122,7 +140,9 @@ public final class TrialCatalog {
 		 * @param radius   피해 반경(블록). 바닥 고리도 이 크기로 그린다
 		 * @param launch   맞은 사람을 띄우는 높이(블록). 0 이면 띄우지 않는다.
 		 *                 띄우는 동안은 낙하 피해를 면제한다 — 이 카드의 위험은 노출이지 낙사가 아니다
-		 * @param count    한 번에 몇 군데인가. {@link Aim#TRAIL} 이면 <b>무작위로 뽑는 사람 수</b>다
+		 * @param count    한 번에 몇 군데인가. {@link Aim#TRAIL} 이면 <b>무작위로 뽑는 사람 수</b>다.
+		 *                 {@link Aim#RANDOM_SPOT} 은 최소 간격을 지킬 자리를 못 찾으면 적힌 것보다
+		 *                 적게 나올 수 있다 — 겹치느니 한 발 빠지는 쪽이다
 		 */
 		record DelayedStrike(Aim aim, Impact impact, int interval, int lookback, float damage,
 				double radius, double launch, int count) implements Risk {
@@ -230,14 +250,28 @@ public final class TrialCatalog {
 					new Risk.DelayedStrike(Risk.Aim.TRAIL, Risk.Impact.EXPLOSION,
 							240, 40, 18.0F, 2.0, 4.0, 1)),
 			new Trial("sharedfate:pillar_fireball", "기둥 화염구",
-					"10초마다 가장 가까운 흑요석 기둥에서 불덩이가 날아옵니다. 5초 동안 궤적이 보입니다.",
+					"10초마다 가장 가까운 흑요석 기둥에서 불덩이가 날아옵니다. 2초 동안 궤적이 보입니다.",
 					POOL_ENTRY,
-					new Risk.TracedProjectile(200, 100, 6.0F, 3.0, 1)),
+					// 실제로 맞아 보고 정한 값이다. 궤적 100틱(5초)은 「걸어서 비키면 되는」 속도라
+					// 위협이 아니었고 피해 6 은 「아예 안 아픈」 값이었다. 궤적을 40틱으로 줄여
+					// 속도를 2.5배로, 반경을 45% 넓히고, 피해를 14 로 올렸다.
+					//
+					// 궤적 40틱이 예고의 전부다. 이 카드가 요구하는 행동은 「제자리에서 옆으로
+					// 비키기」뿐이므로 기준은 TrialWarning.TICKS_SIDESTEP(30틱)이고 40 은 그보다
+					// 길다. 여기를 30 아래로 내리면 예고가 사후 통보가 된다.
+					new Risk.TracedProjectile(200, 40, 14.0F, 4.35, 1)),
 			new Trial("sharedfate:lightning_storm", "낙뢰",
-					"6초마다 아레나 두 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
+					"6초마다 아레나 열 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
 					POOL_MIDDLE,
+					// 실제로 맞아 보고 정한 값이다. 두 곳은 「비켜야 할 이유」가 거의 없었고 피해 5 는
+					// 약했다. 열 곳으로 늘리고 피해를 12 로 올렸다.
+					//
+					// 피해 12 짜리가 열 개다. 두 개가 겹친 자리에 서 있으면 24 로 팀 체력 20 을 한
+					// 틱에 넘긴다 — 무작위 열 곳을 그냥 굴리면 겹침 구역이 생길 확률이 63% 다.
+					// TrialRisks 가 RANDOM_SPOT 전체에 「반경의 두 배보다 멀리」를 강제해 겹침
+					// 구역 자체를 없앤다. 그 규칙이 없으면 이 값은 즉사 카드다.
 					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, Risk.Impact.LIGHTNING,
-							120, 0, 5.0F, 3.0, 0.0, 2)),
+							120, 0, 12.0F, 3.0, 0.0, 10)),
 			new Trial("sharedfate:crystal_ward", "크리스탈 보호막",
 					"남은 크리스탈이 화살에 맞지 않습니다. 올라가서 깨야 합니다.",
 					POOL_FIRST_CRYSTAL,

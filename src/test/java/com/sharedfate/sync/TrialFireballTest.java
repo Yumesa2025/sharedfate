@@ -26,7 +26,8 @@ class TrialFireballTest {
 
 	/** 「기둥 화염구」의 카드 값. 시험이 현실과 붙어 있으려면 여기 적힌 것과 같아야 한다. */
 	private static final int INTERVAL = 200;
-	private static final int TRACE = 100;
+	/** 궤적 40틱 = 2초. 5초짜리를 2.5배 빠르게 한 값이다(실제로 맞아 보고 정했다). */
+	private static final int TRACE = 40;
 	private static final long GRANTED = 1000L;
 
 	/** 카드 값으로 실제로 쓰이는 궤적 길이. */
@@ -116,8 +117,8 @@ class TrialFireballTest {
 
 	@Test
 	void 깎이지_않는_카드는_적힌_그대로_쓴다() {
-		assertEquals(TRACE, WINDOW, "「기둥 화염구」는 주기의 절반이라 깎일 일이 없다");
-		assertEquals(40, TrialFireball.traceWindow(INTERVAL, 40));
+		assertEquals(TRACE, WINDOW, "「기둥 화염구」는 주기의 5분의 1 이라 깎일 일이 없다");
+		assertEquals(120, TrialFireball.traceWindow(INTERVAL, 120));
 	}
 
 	@Test
@@ -147,24 +148,49 @@ class TrialFireballTest {
 
 	// ------------------------------------------------------------------ 카드 값
 
+	/**
+	 * 예고가 <b>이 카드가 요구하는 행동</b>에 필요한 시간보다 길다.
+	 *
+	 * <h2>기준을 흩어지기에서 옆걸음으로 바꿨다 — 낮춘 것이 아니다</h2>
+	 *
+	 * <p>예전에는 {@link TrialWarning#TICKS_SCATTER}(80틱)로 봤다. 그런데 그 값의 정의는 <b>「네
+	 * 명이 서로를 보고 각자 다른 곳으로 흩어져야 할 때」</b>다 — 서로 합의할 시간이 필요해서 긴
+	 * 것이다. 이 카드는 그 상황이 아니다. 한 주기에 <b>한 발</b>이고, 조준점은 발사 순간에
+	 * 얼어붙어 <b>움직이지 않는다.</b> 노려진 사람이 해야 하는 일은 「제자리에서 옆으로 비키기」
+	 * 하나뿐이고, 그 기준은 {@link TrialWarning#TICKS_SIDESTEP}(30틱)이다.
+	 *
+	 * <p>그래서 궤적을 40틱(2초)으로 줄인 것은 <b>기준을 낮춘 것이 아니라 맞는 기준으로 바꾼
+	 * 것</b>이다. 40 은 30 보다 길다. 이 시험이 지키는 것은 예전과 같다 — <b>보여 준 것이 예고인가,
+	 * 사후 통보인가.</b>
+	 *
+	 * <p>필요한 기준을 <b>카드 값에서 뽑는다.</b> 한 번에 여러 발을 쏘게 되면 조준점이 사람마다
+	 * 달라져 「비킨 자리가 남의 조준점」이 될 수 있고, 그때는 다시 흩어지기 기준이다 — 숫자를
+	 * 박아 두면 그 변화를 이 시험이 놓친다.
+	 */
 	@Test
-	void 카드에_적힌_예고가_흩어질_시간보다_짧지_않다() {
+	void 카드에_적힌_예고가_요구하는_행동의_최소_예고보다_길다() {
 		TrialCatalog.Risk.TracedProjectile card = card();
 		int window = TrialFireball.traceWindow(card.interval(), card.traceTicks());
-		assertTrue(window >= TrialWarning.TICKS_SCATTER,
-				"예고가 회피 행동보다 짧으면 보여 준 것이 예고가 아니라 사후 통보다. 실제 값: " + window);
+		boolean alone = card.count() <= 1;
+		int needed = alone ? TrialWarning.TICKS_SIDESTEP : TrialWarning.TICKS_SCATTER;
+		assertTrue(window >= needed,
+				(alone ? "한 발이라 옆걸음 기준이다" : "여러 발이면 흩어지기 기준이다")
+						+ " — 예고가 그보다 짧으면 보여 준 것이 예고가 아니라 사후 통보다."
+						+ " 필요 " + needed + ", 실제 " + window);
+		assertTrue(window > TrialWarning.TICKS_SIDESTEP,
+				"지금 카드는 40틱이라 옆걸음 최소 예고 30틱보다 길다. 실제 값: " + window);
 	}
 
 	@Test
 	void 카드_값이_시험이_가정한_것과_같다() {
 		TrialCatalog.Risk.TracedProjectile card = card();
 		assertEquals(INTERVAL, card.interval());
-		assertEquals(TRACE, card.traceTicks());
-		assertEquals(3.0, card.radius());
+		assertEquals(TRACE, card.traceTicks(), "궤적 5초를 2.5배 빠르게 한 값이다");
+		assertEquals(4.35, card.radius(), "반경 3 에서 45% 넓혔다");
+		assertEquals(14.0F, card.damage(), "「아예 안 아픈」 6 에서 올린 값이다");
 		assertEquals(1, card.count());
-		assertTrue(card.damage() > 0.0F);
 		assertTrue(card.traceTicks() <= card.interval(),
-				"적힌 값이 깎이면 카드 설명의 「5초 동안」이 거짓말이 된다");
+				"적힌 값이 깎이면 카드 설명의 「2초 동안」이 거짓말이 된다");
 	}
 
 	private static TrialCatalog.Risk.TracedProjectile card() {
@@ -285,13 +311,17 @@ class TrialFireballTest {
 
 	@Test
 	void 착탄_판정은_원이지_정육면체가_아니다() {
+		// 반경을 카드에서 뽑아 쓴다. 숫자를 박아 두면 반경을 45% 넓힌 이번 같은 변경에서 이 시험이
+		// 조용히 뜻을 잃는다 — 옛 반경으로는 「밖」이던 자리가 새 반경에서는 「안」이다.
 		double radius = card().radius();
 		Vec3 at = new Vec3(0.0, 64.0, 0.0);
-		// AABB.inflate(3) 은 모서리가 4.24 칸까지 걸린다. 바닥 고리는 반경 3 짜리 원이다.
-		assertFalse(TrialRisks.insideMark(new Vec3(2.9, 64.0, 2.9), at, radius),
+		// AABB.inflate(r) 은 정육면체라 모서리가 r×1.41 까지 걸린다. 여기(r×0.75, r×0.75)는
+		// 중심에서 r×1.06 이라 상자 안이고 고리 밖이다.
+		assertFalse(TrialRisks.insideMark(
+						new Vec3(radius * 0.75, 64.0, radius * 0.75), at, radius),
 				"표식 밖에 서 있는데 맞으면 「비키면 산다」가 거짓이 된다");
-		assertTrue(TrialRisks.insideMark(new Vec3(2.9, 64.0, 0.0), at, radius));
-		assertTrue(TrialRisks.insideMark(new Vec3(3.0, 64.0, 0.0), at, radius), "경계는 안이다");
-		assertFalse(TrialRisks.insideMark(new Vec3(3.01, 64.0, 0.0), at, radius));
+		assertTrue(TrialRisks.insideMark(new Vec3(radius - 0.1, 64.0, 0.0), at, radius));
+		assertTrue(TrialRisks.insideMark(new Vec3(radius, 64.0, 0.0), at, radius), "경계는 안이다");
+		assertFalse(TrialRisks.insideMark(new Vec3(radius + 0.01, 64.0, 0.0), at, radius));
 	}
 }

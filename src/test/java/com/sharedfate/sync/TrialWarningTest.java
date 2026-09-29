@@ -8,6 +8,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -109,10 +112,21 @@ class TrialWarningTest {
 
 	@Test
 	void 지금_카드가_쓰는_반경에서는_예전과_같은_고리다() {
-		// 1.5(표적 표식)·2(자리 폭격)·3(낙뢰, 화염구). 하한이 있어 모습이 달라지지 않는다.
+		// 1.5(표적 표식)·2(자리 폭격)·3(낙뢰). 하한이 있어 모습이 달라지지 않는다.
 		assertEquals(40, TrialWarning.ringPoints(1.5));
 		assertEquals(40, TrialWarning.ringPoints(2.0));
 		assertEquals(40, TrialWarning.ringPoints(3.0));
+	}
+
+	@Test
+	void 넓어진_화염구_반경에서도_고리로_읽힌다() {
+		// 「기둥 화염구」가 3 에서 4.35 로 넓어졌다. 개수를 고정해 두었다면 여기서 점이 벌어져
+		// 고리가 점선이 됐을 자리다 — 간격을 정하고 개수를 뽑는 구조라 그냥 점이 늘어난다.
+		double radius = 4.35;
+		assertTrue(TrialWarning.ringPoints(radius) > TrialWarning.ringPoints(3.0),
+				"둘레가 늘었는데 점이 그대로면 간격만 벌어진다");
+		assertTrue(TrialWarning.ringGap(radius) <= TrialWarning.POINT_GAP + 1.0E-9,
+				"실제 간격: " + TrialWarning.ringGap(radius));
 	}
 
 	@Test
@@ -151,6 +165,28 @@ class TrialWarningTest {
 					"반경 " + radius + " 에서 점이 " + TrialWarning.ringGap(radius)
 							+ " 블록씩 벌어진다 — 고리로 안 읽힌다");
 		}
+	}
+
+	// ------------------------------------------------------------------ 색 규약
+
+	/**
+	 * 노랑의 뜻을 바꾸면서 색을 늘리지 않았다.
+	 *
+	 * <p>같은 색이 언제나 같은 뜻이어야 플레이어가 표식을 언어로 배운다. 「번개」에 색이 필요해졌을
+	 * 때 다섯째 색을 만드는 대신 <b>아무 카드도 쓰지 않던 노랑의 뜻을 다시 정했다.</b> 그 결정이
+	 * 지켜지려면 팔레트는 여전히 넷이어야 하고, 넷이 서로 달라야 한다.
+	 */
+	@Test
+	@SuppressWarnings("deprecation")
+	void 색_규약은_서로_다른_넷_그대로다() {
+		Set<Integer> palette = new HashSet<>(List.of(TrialWarning.Colors.DEADLY,
+				TrialWarning.Colors.LIGHTNING, TrialWarning.Colors.SHOVE,
+				TrialWarning.Colors.MARKED));
+		assertEquals(4, palette.size(),
+				"같은 색 둘이 다른 뜻을 가지면 표식이 언어가 아니라 소음이 된다");
+		assertEquals(TrialWarning.Colors.LIGHTNING, TrialWarning.Colors.REQUIRED,
+				"REQUIRED 는 LIGHTNING 과 같은 값의 옛 이름이다 — 새 색이 아니다."
+						+ " 화면 글자에만 남아 있고 표식에는 쓰지 않는다");
 	}
 
 	// ------------------------------------------------------------------ 보이는가

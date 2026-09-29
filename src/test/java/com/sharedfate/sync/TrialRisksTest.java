@@ -14,6 +14,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -348,9 +351,12 @@ class TrialRisksTest {
 					case TrialCatalog.Risk.DelayedStrike strike -> assertTrue(
 							strike.interval() > TrialWarning.TICKS_SCATTER,
 							trial.name() + " — 주기가 예고보다 짧으면 경고가 통째로 잘린다");
+					// 궤적 카드의 기준은 흩어지기가 아니라 옆걸음이다. 조준점이 발사 순간에
+					// 얼어붙고 한 사람만 노리므로, 요구하는 행동이 「제자리에서 옆으로 비키기」
+					// 하나다. 까닭은 TrialFireballTest 의 같은 시험에 길게 적어 두었다.
 					case TrialCatalog.Risk.TracedProjectile shot -> assertTrue(
-							shot.traceTicks() >= TrialWarning.TICKS_SCATTER,
-							trial.name() + " — 궤적이 흩어질 시간보다 짧으면 피할 수 없다");
+							shot.traceTicks() >= TrialWarning.TICKS_SIDESTEP,
+							trial.name() + " — 궤적이 옆으로 비킬 시간보다 짧으면 피할 수 없다");
 					// 아래 셋은 터지는 순간이 없다. 상태를 걸거나 판을 바꾼다.
 					case TrialCatalog.Risk.CrystalGuard ignored -> {
 					}
@@ -363,6 +369,224 @@ class TrialRisksTest {
 				}
 			}
 		}
+	}
+
+	// ------------------------------------------------------------------ 겹치면 즉사다
+
+	/**
+	 * 최소 간격은 반경의 두 배다.
+	 *
+	 * <p>두 원이 한 점도 공유하지 않으려면 중심 거리가 반경의 합보다 커야 한다. 접점 하나만
+	 * 남겨도 {@link TrialRisks#insideMark} 가 경계를 「안」으로 보므로 거기 선 사람은 두 발을 다
+	 * 맞는다 — 그래서 <b>정확히 두 배인 것도 겹침</b>이다.
+	 */
+	@Test
+	void 최소_간격은_반경의_두_배다() {
+		assertEquals(6.0, TrialRisks.spotMinGap(3.0), 1.0E-9);
+		assertEquals(0.0, TrialRisks.spotMinGap(0.0));
+		assertEquals(0.0, TrialRisks.spotMinGap(-4.0), "반경이 없으면 지킬 간격도 없다");
+
+		Vec3 origin = new Vec3(0.0, 64.0, 0.0);
+		assertFalse(TrialRisks.clearOfTaken(List.of(origin), new Vec3(6.0, 70.0, 0.0), 3.0),
+				"정확히 두 배면 두 고리가 한 점에서 닿는다. 그 점에 선 사람은 두 번 맞는다");
+		assertTrue(TrialRisks.clearOfTaken(List.of(origin), new Vec3(6.01, 70.0, 0.0), 3.0));
+		assertTrue(TrialRisks.clearOfTaken(List.of(), new Vec3(0.0, 64.0, 0.0), 3.0),
+				"첫 지점은 비교할 상대가 없다");
+	}
+
+	@Test
+	void 간격_검사는_높이를_묻지_않는다() {
+		// 고리는 바닥에 그려지고 insideMark 도 세로를 보지 않는다. y 가 달라도 위에서 보면 겹친다.
+		assertFalse(TrialRisks.clearOfTaken(List.of(new Vec3(0.0, 0.0, 0.0)),
+				new Vec3(1.0, 120.0, 1.0), 3.0));
+	}
+
+	/**
+	 * 무작위 지점 둘이 겹치지 않는다.
+	 *
+	 * <p>{@code groundSpot} 은 {@code ServerLevel} 이 있어야 해서 여기서 부를 수 없다. 대신 그것이
+	 * 쓰는 순수 함수 둘({@link TrialRisks#arenaOffset}·{@link TrialRisks#clearOfTaken})을 같은
+	 * 순서로, 같은 아레나 반경과 같은 재굴림 횟수로 돌린다.
+	 *
+	 * <p><b>이 시험이 지키는 것은 「즉사 메커닉 0개」다.</b> 피해 12 짜리 고리 둘이 겹치면 24 라
+	 * 팀 체력 20 을 한 틱에 넘긴다.
+	 */
+	@Test
+	void 무작위_지점_둘이_겹치지_않는다() {
+		TrialCatalog.Risk.DelayedStrike card = onlyStrike("sharedfate:lightning_storm");
+		RandomSource random = RandomSource.create(20260929L);
+		int rounds = 3000;
+		int placed = 0;
+		for (int round = 0; round < rounds; round++) {
+			List<Vec3> spots = roll(random, card.count(), card.radius());
+			placed += spots.size();
+			for (int first = 0; first < spots.size(); first++) {
+				for (int second = first + 1; second < spots.size(); second++) {
+					double gap = flatDistance(spots.get(first), spots.get(second));
+					assertTrue(gap > TrialRisks.spotMinGap(card.radius()),
+							"두 지점이 " + gap + " 칸이다. 반경 " + card.radius()
+									+ " 짜리 고리 둘이 겹치면 그 안에 선 사람이 "
+									+ (card.damage() * 2) + " 를 한 틱에 받는다");
+				}
+			}
+		}
+		// 규칙이 지점을 통째로 잡아먹으면 카드가 조용히 약해진다. 실제로는 5백만 판에 8번
+		// 포기했으므로 여기서는 사실상 전부 선다.
+		int wanted = rounds * card.count();
+		assertTrue(placed >= wanted * 0.99,
+				"열 곳 중 " + ((double) placed / rounds) + " 곳만 섰다 — 간격 규칙이 너무 빡빡하다");
+	}
+
+	/**
+	 * 규칙을 빼면 실제로 겹친다.
+	 *
+	 * <p>위 시험만 있으면 「원래 안 겹치는 것 아닌가」로 읽힐 수 있다. 같은 굴림을 규칙 없이
+	 * 돌려 보면 <b>열 곳일 때 판의 60% 남짓에서 겹침 구역이 생긴다.</b> 규칙이 실제로 무언가를
+	 * 막고 있다는 근거를 여기 남긴다.
+	 */
+	@Test
+	void 규칙이_없으면_열_곳_중_겹치는_쌍이_실제로_나온다() {
+		TrialCatalog.Risk.DelayedStrike card = onlyStrike("sharedfate:lightning_storm");
+		RandomSource random = RandomSource.create(4242L);
+		int rounds = 3000;
+		int overlapping = 0;
+		for (int round = 0; round < rounds; round++) {
+			List<Vec3> spots = new ArrayList<>();
+			for (int index = 0; index < card.count(); index++) {
+				spots.add(TrialRisks.arenaOffset(random.nextDouble(), random.nextDouble(),
+						TrialRisks.ARENA_RADIUS));
+			}
+			if (anyPairTooClose(spots, card.radius())) {
+				overlapping++;
+			}
+		}
+		double rate = (double) overlapping / rounds;
+		assertTrue(rate > 0.5,
+				"겹침이 드물다면 이 규칙을 지울 이유가 생긴다. 실제 비율: " + rate);
+	}
+
+	/**
+	 * 한 사람이 두 번 맞아 즉사하는 조합이 없다.
+	 *
+	 * <p>카드에는 <b>피해와 개수가 따로</b> 적힌다. 개수를 보지 않고 피해만 올리거나 그 반대로
+	 * 하면 곱이 팀 공유 체력을 넘는다. {@link TrialRisks#worstCaseTickDamage} 가 그 곱을 카드
+	 * 값에서 직접 계산하므로 <b>값을 올리는 사람은 여기서 멈춘다.</b>
+	 *
+	 * <p>{@code RANDOM_SPOT} 이 1 로 세어지는 근거는 최소 간격 규칙이다. 그 규칙을 지우면 이
+	 * 시험은 계속 통과하면서 게임만 즉사가 된다 — 그래서 위의 겹침 시험과 한 쌍이다.
+	 */
+	@Test
+	void 한_사람이_두_번_맞아_즉사하는_조합이_없다() {
+		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
+		assertEquals(20.0F, teamHealth, "팀 공유 체력이 바뀌었다면 아래 판단을 전부 다시 볼 것");
+		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
+			for (TrialCatalog.Risk risk : trial.risks()) {
+				float worst = TrialRisks.worstCaseTickDamage(risk);
+				assertTrue(worst < teamHealth,
+						trial.name() + " — 가장 나쁜 경우 한 틱에 " + worst + " 다. 팀 체력이 "
+								+ teamHealth + " 라 가득 찬 상태에서 죽는다."
+								+ " 이 판의 원칙은 「즉사 메커닉 0개」이고 전멸은 곧 월드 삭제다");
+			}
+		}
+	}
+
+	@Test
+	void 가장_나쁜_경우는_피해와_개수를_함께_본다() {
+		TrialCatalog.Risk.DelayedStrike lightning = onlyStrike("sharedfate:lightning_storm");
+		assertEquals(lightning.damage(), TrialRisks.worstCaseTickDamage(lightning),
+				"최소 간격이 겹침 구역을 없애므로 열 곳이어도 한 사람은 한 발만 맞는다");
+
+		// 최소 간격이 없는 발자국 쪽은 개수가 그대로 곱해진다. 「자리 폭격」을 두 발로 늘리는
+		// 사람이 여기서 멈춘다.
+		TrialCatalog.Risk.DelayedStrike twoTrails = new TrialCatalog.Risk.DelayedStrike(
+				TrialCatalog.Risk.Aim.TRAIL, TrialCatalog.Risk.Impact.EXPLOSION,
+				240, 40, 18.0F, 2.0, 4.0, 2);
+		assertEquals(36.0F, TrialRisks.worstCaseTickDamage(twoTrails),
+				"둘이 나란히 서 있었으면 그 자리에 남은 사람이 두 발을 다 맞는다");
+		assertTrue(TrialRisks.worstCaseTickDamage(twoTrails)
+						>= PerkHealthRules.effectiveMaxHealth(null),
+				"이런 카드가 들어오면 위 시험이 멈춰야 한다");
+
+		// 상태를 거는 카드는 피해가 없다.
+		assertEquals(0.0F, TrialRisks.worstCaseTickDamage(
+				new TrialCatalog.Risk.CrystalGuard(true, false, false)));
+	}
+
+	// ------------------------------------------------------------------ 표식 색
+
+	/**
+	 * 표식 색이 <b>연출 값에서</b> 나온다.
+	 *
+	 * <p>카드마다 색을 적게 하면 「낙뢰인데 빨간 고리」가 나온다 — {@code Impact} 를 값으로 가른
+	 * 이유가 바로 연출과 적힌 것이 어긋나서였다. 같은 실수를 색으로 되풀이하지 않게 못박는다.
+	 */
+	@Test
+	void 번개_표식은_노랑이고_자리_폭격_표식은_빨강이다() {
+		assertEquals(TrialWarning.Colors.LIGHTNING,
+				TrialRisks.markColor(TrialCatalog.Risk.Impact.LIGHTNING),
+				"사람이 번개 표식을 노랑으로 정했다");
+		assertEquals(TrialWarning.Colors.DEADLY,
+				TrialRisks.markColor(TrialCatalog.Risk.Impact.EXPLOSION),
+				"「서 있으면 죽는다」의 빨강 그대로다");
+
+		// 카드에서 곧바로 뽑아 본다. 연출을 바꾸면 색이 따라간다는 것이 이 구조의 전부다.
+		assertEquals(TrialWarning.Colors.LIGHTNING,
+				TrialRisks.markColor(onlyStrike("sharedfate:lightning_storm").impact()));
+		assertEquals(TrialWarning.Colors.DEADLY,
+				TrialRisks.markColor(onlyStrike("sharedfate:ground_strike").impact()));
+		assertNotEquals(TrialRisks.markColor(TrialCatalog.Risk.Impact.LIGHTNING),
+				TrialRisks.markColor(TrialCatalog.Risk.Impact.EXPLOSION),
+				"둘이 같은 색이면 열 개 뜬 고리 중 어느 것이 무엇인지 읽을 수 없다");
+	}
+
+	@Test
+	void 모든_연출에_색이_붙어_있다() {
+		// default 없는 switch 라 빠뜨리면 빌드가 깨지지만, 「팔레트에 없는 값」까지는 막지 못한다.
+		for (TrialCatalog.Risk.Impact impact : TrialCatalog.Risk.Impact.values()) {
+			int color = TrialRisks.markColor(impact);
+			assertTrue(color == TrialWarning.Colors.DEADLY
+							|| color == TrialWarning.Colors.LIGHTNING
+							|| color == TrialWarning.Colors.SHOVE
+							|| color == TrialWarning.Colors.MARKED,
+					impact + " 의 색이 규약 밖이다. 색을 새로 만들면 규약이 아니라 장식이 된다");
+		}
+	}
+
+	// ------------------------------------------------------------------ 문서와의 짝
+
+	/**
+	 * 카드 값이 문서와 같다.
+	 *
+	 * <p>{@code docs/드래곤-시련-카드.md} 는 <b>값의 근거를 남기는 곳</b>이다. 코드만 고치고
+	 * 문서를 두면 다음 사람이 「왜 이 값인가」를 물을 곳이 사라지고, 문서만 고치면 게임과 다른
+	 * 설명이 남는다. 문서에 적어 둔 「값 —」 줄을 카드 값에서 그대로 만들어 찾는다.
+	 */
+	@Test
+	void 카드_값이_문서와_같다() {
+		String doc = cardDoc();
+
+		TrialCatalog.Risk.DelayedStrike lightning = onlyStrike("sharedfate:lightning_storm");
+		String lightningLine = "값 — 주기 " + lightning.interval() + "틱 · 반경 "
+				+ plain(lightning.radius()) + " · 피해 " + plain(lightning.damage())
+				+ " · 한 번에 " + lightning.count() + "곳";
+		assertTrue(doc.contains(lightningLine),
+				"「낙뢰」의 값이 문서와 다르다. 문서에 이 줄이 있어야 한다: " + lightningLine);
+
+		TrialCatalog.Risk.TracedProjectile fireball = fireballCard();
+		String fireballLine = "값 — 주기 " + fireball.interval() + "틱 · 궤적 "
+				+ fireball.traceTicks() + "틱 · 반경 " + plain(fireball.radius())
+				+ " · 피해 " + plain(fireball.damage()) + " · 한 번에 " + fireball.count() + "발";
+		assertTrue(doc.contains(fireballLine),
+				"「기둥 화염구」의 값이 문서와 다르다. 문서에 이 줄이 있어야 한다: " + fireballLine);
+	}
+
+	@Test
+	void 바뀐_색_규약이_문서에_적혀_있다() {
+		String doc = cardDoc();
+		assertTrue(doc.contains("노란 고리"), "「낙뢰」 표식이 노랑이라는 말이 문서에 없다");
+		assertTrue(doc.contains("LIGHTNING"), "색 규약표에 노랑의 새 이름이 없다");
+		assertTrue(doc.contains("REQUIRED"),
+				"옛 뜻을 지운 이유가 없으면 다음 사람이 노랑을 도로 가져간다");
 	}
 
 	// ------------------------------------------------------------------ 표식과 판정
@@ -445,6 +669,85 @@ class TrialRisksTest {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * {@code groundSpot} 이 지면을 찾기 전에 하는 일을 그대로 흉내 낸다.
+	 *
+	 * <p>아레나 반경과 재굴림 횟수를 {@link TrialRisks} 에서 가져오는 것이 핵심이다. 시험이 제
+	 * 숫자를 따로 들면 <b>실제와 다른 조건에서</b> 확인한 것이 된다.
+	 */
+	private static List<Vec3> roll(RandomSource random, int count, double radius) {
+		List<Vec3> spots = new ArrayList<>();
+		for (int index = 0; index < count; index++) {
+			for (int attempt = 0; attempt < TrialRisks.SPOT_TRIES; attempt++) {
+				Vec3 candidate = TrialRisks.arenaOffset(random.nextDouble(), random.nextDouble(),
+						TrialRisks.ARENA_RADIUS);
+				if (TrialRisks.clearOfTaken(spots, candidate, radius)) {
+					spots.add(candidate);
+					break;
+				}
+			}
+		}
+		return spots;
+	}
+
+	private static boolean anyPairTooClose(List<Vec3> spots, double radius) {
+		for (int first = 0; first < spots.size(); first++) {
+			for (int second = first + 1; second < spots.size(); second++) {
+				if (flatDistance(spots.get(first), spots.get(second))
+						<= TrialRisks.spotMinGap(radius)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** 위에서 본 거리. 고리는 바닥에 그려지므로 높이는 보지 않는다. */
+	private static double flatDistance(Vec3 first, Vec3 second) {
+		double dx = first.x - second.x;
+		double dz = first.z - second.z;
+		return Math.sqrt(dx * dx + dz * dz);
+	}
+
+	/** 문서에 적는 모양의 숫자. {@code 3.0} 은 「3」, {@code 4.35} 는 「4.35」다. */
+	private static String plain(double value) {
+		if (value == Math.rint(value)) {
+			return String.valueOf((long) value);
+		}
+		return String.valueOf(value);
+	}
+
+	/**
+	 * 카드 문서를 읽는다.
+	 *
+	 * <p>작업 디렉터리에서 위로 올라가며 찾는다. Gradle 의 {@code test} 는 프로젝트 폴더에서
+	 * 돌지만 IDE 는 모듈 폴더에서 돌 수 있어, 한 자리만 보면 환경에 따라 시험이 사라진다.
+	 */
+	private static String cardDoc() {
+		Path here = Path.of("").toAbsolutePath();
+		for (Path at = here; at != null; at = at.getParent()) {
+			Path candidate = at.resolve("docs").resolve("드래곤-시련-카드.md");
+			if (Files.isRegularFile(candidate)) {
+				try {
+					return Files.readString(candidate, StandardCharsets.UTF_8);
+				} catch (IOException broken) {
+					throw new AssertionError(candidate + " 를 읽지 못했다", broken);
+				}
+			}
+		}
+		throw new AssertionError("docs/드래곤-시련-카드.md 를 찾지 못했다. 작업 디렉터리: " + here);
+	}
+
+	private static TrialCatalog.Risk.TracedProjectile fireballCard() {
+		TrialCatalog.Trial trial = TrialCatalog.byId("sharedfate:pillar_fireball");
+		assertTrue(trial != null && trial.risks().size() == 1, "「기둥 화염구」 카드가 없다");
+		return switch (trial.risks().getFirst()) {
+			case TrialCatalog.Risk.TracedProjectile shot -> shot;
+			case TrialCatalog.Risk risk -> throw new AssertionError(
+					"「기둥 화염구」의 위험이 궤적 투사체가 아니다: " + risk);
+		};
 	}
 
 	private static TrialCatalog.Risk.DelayedStrike onlyStrike(String id) {
