@@ -763,9 +763,12 @@ public final class TrialRisks {
 			// 조준점은 사람마다 따로 얼어붙지만 두 사람이 나란히 서 있었으면 그 자리에 남은
 			// 사람이 두 발을 다 맞는다. 궤적끼리는 최소 간격이 없다.
 			case TrialCatalog.Risk.TracedProjectile shot -> hits(shot.damage(), shot.count());
-			// 아래 셋은 피해를 주지 않는다. 시간을 빼앗거나 드래곤의 행동을 바꾼다.
+			// 구체는 한 번에 한 발만 날고 표적 한 사람만 때린다 — TrialDragonFocus 의 비행 시간이
+			// 발사 간격을 넘지 않아 두 발이 같은 틱에 닿지 않고, 착탄도 반경 안 모두가 아니라
+			// 표적에게만 묻는다(공유 체력에서 범위 피해는 팀원별로 합산된다).
+			case TrialCatalog.Risk.DragonFocus focus -> hits(focus.damage(), 1);
+			// 아래 둘은 피해를 주지 않는다. 시간을 빼앗거나 판을 바꾼다.
 			case TrialCatalog.Risk.CrystalGuard ignored -> 0.0F;
-			case TrialCatalog.Risk.DragonFocus ignored -> 0.0F;
 			case TrialCatalog.Risk.CrystalRevive ignored -> 0.0F;
 		};
 	}

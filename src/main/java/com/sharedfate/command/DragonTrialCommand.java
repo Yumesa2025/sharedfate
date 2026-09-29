@@ -289,10 +289,11 @@ public final class DragonTrialCommand {
 				}
 				yield line.toString().trim();
 			}
-			case TrialCatalog.Risk.DragonFocus focus -> "표적 고정 · "
+			case TrialCatalog.Risk.DragonFocus focus -> "표적 · "
 					+ (focus.focus() == TrialCatalog.Risk.Focus.CRYSTAL_BREAKER
 							? "크리스탈을 깬 사람" : "무작위")
-					+ " · 재지정 " + ticks(focus.retargetTicks());
+					+ " · 표적 " + ticks(focus.markTicks()) + " · 쉼 " + ticks(focus.restTicks())
+					+ " · " + focus.shots() + "발 · 발당 " + focus.damage();
 			case TrialCatalog.Risk.CrystalRevive revive -> "크리스탈 부활 · "
 					+ revive.count() + "개 · 연출 " + ticks(revive.showTicks())
 					+ (revive.heal() > 0.0F ? " · 개당 회복 " + revive.heal() : "");

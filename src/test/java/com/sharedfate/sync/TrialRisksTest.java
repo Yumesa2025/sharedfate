@@ -361,8 +361,8 @@ class TrialRisksTest {
 					case TrialCatalog.Risk.CrystalGuard ignored -> {
 					}
 					case TrialCatalog.Risk.DragonFocus focus -> assertTrue(
-							focus.retargetTicks() >= 0,
-							trial.name() + " — 재지정 간격이 음수면 뜻이 없다");
+							focus.markTicks() >= 0,
+							trial.name() + " — 표적 시간이 음수면 뜻이 없다");
 					case TrialCatalog.Risk.CrystalRevive revive -> assertTrue(
 							revive.showTicks() >= 0,
 							trial.name() + " — 연출 길이가 음수면 뜻이 없다");

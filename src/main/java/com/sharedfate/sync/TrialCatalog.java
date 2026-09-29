@@ -194,13 +194,28 @@ public final class TrialCatalog {
 		/**
 		 * 드래곤의 공격이 한 사람에게 쏠린다.
 		 *
-		 * <p>드래곤은 일반 몹과 타겟 구조가 다르다 — 페이즈가 행동을 정한다. 그래서 「미워한다」를
-		 * 심는 것이 아니라 <b>사람을 노리는 페이즈로 밀어넣고 그 대상을 지정</b>한다.
+		 * <h2>페이즈를 건드리지 않는다 — 한 번 크게 틀린 자리다</h2>
 		 *
-		 * @param focus        대상을 고르는 법
-		 * @param retargetTicks 대상을 다시 고르는 간격. 한 사람이 영영 물리면 그 사람만 게임을 한다
+		 * <p>처음에는 드래곤을 <b>돌진 페이즈로 밀어넣어</b> 만들었다. 실제로 플레이하니 두 가지가
+		 * 드러났다. 하나는 「타겟팅만 뜨고 아무것도 안 온다」(바닐라가 이미 같은 사람을 노리고 있어
+		 * 우리 개입이 무효였다), 다른 하나가 더 나빴다 — <b>드래곤이 착지를 아예 하지 않게 됐다.</b>
+		 *
+		 * <p>바닐라는 드래곤이 원을 <b>한 바퀴 다 돌아 경로가 끝난 틱</b>에만 「착지할까」를 굴린다.
+		 * 우리가 주기적으로 끼어들면 돌아올 때마다 경로가 처음부터 다시 깔려 그 틱이 영영 오지
+		 * 않는다. 시간 비율의 문제가 아니라 <b>주기를 끊는 것</b>이 문제였다.
+		 *
+		 * <p>그래서 이제 <b>우리가 직접 구체를 날린다.</b> 페이즈를 한 번도 만지지 않으므로 착지도
+		 * 크리스탈도 바닐라 그대로다. <b>이 판단을 되돌리지 말 것.</b>
+		 *
+		 * @param focus     대상을 고르는 법
+		 * @param markTicks 한 사람을 노리는 시간. 이 동안 {@code shots} 발이 고르게 나간다
+		 * @param restTicks 그다음 쉬는 시간. 쉬는 틈이 없으면 다른 카드와 겹칠 때 버거워진다
+		 * @param shots     {@code markTicks} 동안 날리는 구체 수
+		 * @param damage    구체 한 발의 피해. <b>전부 맞으면 {@code shots × damage}</b> 라
+		 *                  팀 체력 20 을 쉽게 넘긴다 — 발 사이가 벌어져 있어 도망칠 수 있다는 전제다
 		 */
-		record DragonFocus(Focus focus, int retargetTicks) implements Risk {
+		record DragonFocus(Focus focus, int markTicks, int restTicks, int shots, float damage)
+				implements Risk {
 		}
 
 		/**
@@ -264,14 +279,19 @@ public final class TrialCatalog {
 					"6초마다 아레나 열 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
 					POOL_MIDDLE,
 					// 실제로 맞아 보고 정한 값이다. 두 곳은 「비켜야 할 이유」가 거의 없었고 피해 5 는
-					// 약했다. 열 곳으로 늘리고 피해를 12 로 올렸다.
+					// 약했다. 열 곳으로 늘리고 피해를 12 로 올렸는데, 그러고도 「아직 안 아픈 정도」라
+					// 하여 18 로 올렸다.
 					//
-					// 피해 12 짜리가 열 개다. 두 개가 겹친 자리에 서 있으면 24 로 팀 체력 20 을 한
-					// 틱에 넘긴다 — 무작위 열 곳을 그냥 굴리면 겹침 구역이 생길 확률이 63% 다.
-					// TrialRisks 가 RANDOM_SPOT 전체에 「반경의 두 배보다 멀리」를 강제해 겹침
-					// 구역 자체를 없앤다. 그 규칙이 없으면 이 값은 즉사 카드다.
+					// 18 이 이 카드의 천장이다. 팀 공유 체력이 20 이라 가득 찬 상태에서 한 대 맞으면
+					// 하트 1칸이 남는다 — 「자리 폭격」과 같은 값이고 같은 근거다. 여기서 더 올리면
+					// 그 순간 즉사 카드가 된다.
+					//
+					// 열 개짜리인데 18 을 쓸 수 있는 것은 겹침 규칙 하나 덕이다. TrialRisks 가
+					// RANDOM_SPOT 전체에 「반경의 두 배보다 멀리」를 강제해 한 사람이 한 볼리에 한
+					// 발만 맞게 만든다. 그 규칙을 지우면 두 발이 겹쳐 36 이 되고, 이 값은 그날로
+					// 즉사 카드다.
 					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, Risk.Impact.LIGHTNING,
-							120, 0, 12.0F, 3.0, 0.0, 10)),
+							120, 0, 18.0F, 3.0, 0.0, 10)),
 			new Trial("sharedfate:crystal_ward", "크리스탈 보호막",
 					"남은 크리스탈이 화살에 맞지 않습니다. 올라가서 깨야 합니다.",
 					POOL_FIRST_CRYSTAL,
@@ -281,9 +301,13 @@ public final class TrialCatalog {
 					POOL_FIRST_CRYSTAL,
 					new Risk.CrystalGuard(false, true, true)),
 			new Trial("sharedfate:dragon_mark", "표적",
-					"크리스탈을 깬 사람에게 드래곤의 공격이 집중됩니다.",
+					"크리스탈을 깬 사람이 10초 동안 표적이 되고 드래곤이 구체를 5발 날립니다. 그다음 20초는 쉽니다.",
 					POOL_FIRST_CRYSTAL,
-					new Risk.DragonFocus(Risk.Focus.CRYSTAL_BREAKER, 100)),
+					// 10초 표적 · 20초 휴식 · 5발 · 발당 6. 다 맞으면 30 이라 팀 체력 20 을 넘지만
+					// 발 사이가 2초씩 벌어져 있고 착탄 자리가 발사 시점에 얼어붙으므로, 전부 맞는
+					// 것은 「가만히 서 있었다」는 뜻이다. 한 틱에 들어오는 것은 언제나 한 발 6 이다 —
+					// 구체가 날아가는 시간이 발사 간격을 넘지 않아 두 발이 같은 틱에 닿지 않는다.
+					new Risk.DragonFocus(Risk.Focus.CRYSTAL_BREAKER, 200, 400, 5, 6.0F)),
 			new Trial("sharedfate:crystal_revival", "부활",
 					"모든 크리스탈이 되살아납니다. 드래곤이 중앙 상공에서 그것을 지켜봅니다.",
 					POOL_LATE,

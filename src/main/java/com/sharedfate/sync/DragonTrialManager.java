@@ -289,6 +289,9 @@ public final class DragonTrialManager {
 			List<ServerPlayer> members = membersOf(server, team);
 			detectTriggers(end, dragon, session);
 			openTrialWhenDue(server, end, session, members, now);
+			// 패시브는 시련과 다르다. 팀이 뽑는 것이 아니라 언제나 있는 판이므로 카드와 무관하게
+			// 돈다 — 섞으면 「이번 판이 왜 어려웠나」를 나눌 수 없다.
+			DragonPassives.tick(end, dragon, members, session.startedTick(), now);
 			TrialRisks.tick(end, dragon, members, session, now);
 		}
 		if (!finished.isEmpty()) {
@@ -483,6 +486,7 @@ public final class DragonTrialManager {
 		READY_AT.clear();
 		TrialFreeze.reset();
 		TrialRisks.clearState();
+		DragonPassives.clearState();
 	}
 
 	/** 시험·명령용. 지금 당장 전투를 연다. */

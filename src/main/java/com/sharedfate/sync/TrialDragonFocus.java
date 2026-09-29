@@ -4,114 +4,88 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
-import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
-import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhaseManager;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * {@link TrialCatalog.Risk.DragonFocus} — 드래곤의 공격을 한 사람에게 몰아준다.
+ * {@link TrialCatalog.Risk.DragonFocus} — 드래곤이 한 사람을 표적으로 잡고 구체를 날린다.
  *
- * <h2>왜 「미워한다」를 심지 않는가</h2>
+ * <h2>드래곤의 행동을 우리가 바꾸지 않는다 — 착지를 멈춘 사고</h2>
  *
- * <p>엔더 드래곤은 일반 몹과 타겟 구조가 다르다. {@code setTarget} 으로 증오 대상을 심어 두는
- * 자리가 아예 없고, <b>행동을 정하는 것은 페이즈</b>({@link EnderDragonPhase})다. 사람을 노리는
- * 페이즈는 바닐라에 둘 있다 — 불덩이를 쏘는 {@code STRAFE_PLAYER} 와 몸통으로 파고드는
- * {@code CHARGING_PLAYER}. 이 둘은 각자 「누구를」 노리는지를 자기 안에 들고 있다.
+ * <p>처음 판은 주기마다 드래곤을 <b>사람에게 돌진하는 페이즈로 밀어넣었다.</b> 실제로 플레이하니
+ * <b>드래곤이 착지를 아예 하지 않았다.</b> 까닭은 바닐라 쪽에 있다 —
+ * {@code DragonHoldingPatternPhase.findNewTarget} 은 드래곤이 원을 <b>한 바퀴 다 돌아 경로가 끝난
+ * 틱</b>에만 {@code nextInt(살아있는크리스탈 + 3) == 0} 으로 「착지할까」를 굴린다. 우리가 중간에
+ * 끼어들면 돌아올 때마다 경로가 처음부터 다시 깔려 <b>경로가 끝나는 틱이 영영 오지 않는다.</b>
+ * 개입이 차지하는 시간 비율(20%)의 문제가 아니라 <b>주기를 끊은 것</b>이 문제였다. 크리스탈을
+ * 먹으러 가는 것도 내려앉아 맞아 주는 것도 사라져 전투가 끝나지 않는 판이 됐다.
  *
- * <h2>기다리기만 하던 판 — 이 카드가 아무 일도 하지 않았던 까닭</h2>
+ * <p>그래서 <b>페이즈 개입을 전부 걷어냈다.</b> 이 파일은
+ * {@code setPhase}·{@code setTarget}·{@code getPhaseManager} 를 <b>한 번도 부르지 않는다.</b>
+ * 드래곤에게서 읽는 것은 <b>머리 좌표 하나뿐</b>이고, 그래서 착지도 크리스탈도 바닐라 그대로
+ * 돈다. {@code TrialDragonFocusTest} 가 컴파일된 클래스의 상수 풀을 뒤져 그 이름들이 <b>없는지</b>
+ * 확인한다 — 이 사고가 다시 들어오면 거기서 걸린다.
  *
- * <p>처음 판은 <b>페이즈를 우리가 바꾸지 않고</b> 드래곤이 스스로 사람을 노리는 페이즈에 들어간
- * 틱에만 대상을 바꿔 끼웠다. 그런데 26.3 바이트코드를 실제로 세어 보면 그 방식으로는 카드가
- * <b>바닐라와 구별되지 않는다.</b>
+ * <h2>그 대신 우리가 직접 날린다</h2>
  *
- * <ul>
- *   <li>{@code DragonHoldingPatternPhase.findNewTarget} 은 원을 한 바퀴 돌아 경로가 끝난 틱에만
- *       판단한다. 거기서 {@code nextInt(살아있는크리스탈 + 3) == 0} 이면 착지하러 가고, 아니면
- *       <b>광장 중앙에서 가장 가까운 사람</b>을 찾아
- *       {@code nextInt((int)(그사람까지거리²/512 + 2)) == 0 || nextInt(살아있는크리스탈 + 2) == 0}
- *       일 때 {@code STRAFE_PLAYER} 로 간다. 크리스탈 10 개가 살아 있고 사람이 중앙에서 30 블록
- *       거리면 판단 한 번마다 <b>약 36%</b>다 — 드물지 않다. 문제는 <b>그렇게 고른 사람이 이미
- *       「중앙에서 가장 가까운 사람」</b>이라는 것이다. 우리가 바꿔 끼워도 같은 사람인 일이 잦다.</li>
- *   <li>같은 클래스의 {@code onCrystalDestroyed} 는 <b>크리스탈을 깬 사람</b>을 그 자리에서
- *       {@code strafePlayer} 로 넘긴다. 이 카드의 {@code CRYSTAL_BREAKER} 가 고르는 사람과
- *       <b>정확히 같은 사람</b>이다. 즉 카드가 가장 잘 맞는 순간에 우리 개입은 완전한 무효과다.</li>
- *   <li>{@code STRAFE_PLAYER} 는 불덩이 <b>한 발</b>을 쏘고 곧바로 {@code HOLDING_PATTERN} 으로
- *       돌아간다. 드래곤이 다가오지 않는다.</li>
- *   <li>「드래곤이 나에게 날아온다」인 {@code CHARGING_PLAYER} 는 바닐라에서
- *       {@code DragonSittingScanningPhase} <b>한 곳</b>에서만 켜진다. 드래곤이 광장에 내려앉고
- *       (판단마다 크리스탈 10 개일 때 1/13), 그 뒤 <b>100 틱 동안 20 블록·높이 10 안에 아무도
- *       들어오지 않아야</b> 한다. 사람들이 내려앉은 드래곤을 때리러 가는 게임이라 이 조건은
- *       사실상 성립하지 않는다 — 옛 구현의 {@code CHARGING_PLAYER} 가지는 <b>죽은 코드</b>였다.</li>
- * </ul>
+ * <pre>
+ *   0틱      표적을 고른다 — 보라 선 + 자막 + 발밑 고리
+ *   0·40·80·120·160틱   드래곤 머리에서 표적 자리로 구체 한 발씩
+ *   200틱    표적 해제
+ *   ··· 400틱 쉼 ···
+ *   600틱    다시 고른다
+ * </pre>
  *
- * <p>그래서 자막과 보라 표식만 뜨고 아무 일도 일어나지 않았다. 카드 이름이 「표적」이고 설명이
- * 「공격이 집중됩니다」인데 <b>약속을 지키지 않았다.</b>
+ * <p>발사 간격은 {@code markTicks / shots} 에서 뽑는다({@link #shotInterval}). 따로 숫자를 박아
+ * 두면 카드 값을 고칠 때 둘이 어긋나 마지막 발이 표적 해제 뒤에 날아간다.
  *
- * <h2>지금은 우리가 민다 — 다만 {@code HOLDING_PATTERN} 에서만</h2>
+ * <h2>왜 바닐라 {@code DragonFireball} 을 쓰지 않는가</h2>
  *
- * <p>{@link #chargeInterval} 틱마다 한 번, 드래곤이 <b>원을 돌고 있을 때만</b>
- * {@code CHARGING_PLAYER} 로 밀어넣고 표적의 그 순간 좌표를 심는다. 크리스탈을 먹으러 가는
- * {@code LANDING_APPROACH}, 내려앉는 {@code LANDING}, 앉아 있는 {@code SITTING_*}, 다시 뜨는
- * {@code TAKEOFF} 에는 <b>손대지 않는다.</b> 전투의 절반인 착지·타격 구간을 그대로 남기려는
- * 것이고, 이것이 「바닐라 흐름을 죽이지 않는다」의 실제 내용이다. 대가는 원을 도는 시간의 일부를
- * 우리가 가져가므로 착지 주사위를 굴리는 횟수가 그만큼 준다는 것 — 없어지지는 않는다.
+ * <p>그 엔티티는 착탄 자리에 브레스 장판({@code AreaEffectCloud})을 남긴다. 우리 카드 어디에도
+ * 장판은 적혀 있지 않고, <b>장판을 쓰는 다른 카드가 따로 있다.</b> 둘이 같은 화면에 있으면
+ * 무엇이 무엇인지 구별할 수 없다. 그래서 {@link TrialFireball} 이 기둥 화염구에서 이미 푼 방식을
+ * 그대로 쓴다 — <b>날아오는 모습은 파티클로 그리고 착탄은 직접 계산한다.</b> 블록은 한 칸도
+ * 부수지 않고 불도 붙이지 않는다.
  *
- * <h2>갇히지 않는다 — 바이트코드에 적힌 탈출구</h2>
+ * <h2>조준은 발사 시점에 얼린다</h2>
  *
- * <p>{@link TrialCrystalRevive} 는 「페이즈를 바꾸면 우리가 되돌려야 한다」는 이유로 페이즈를
- * 건드리지 않는다. 그 걱정은 옳지만 <b>{@code CHARGING_PLAYER} 에는 해당하지 않는다.</b>
- * 26.3 의 {@code DragonChargePlayerPhase} 는 되돌려 줄 사람이 없어도 스스로 나온다.
+ * <p>출발점(드래곤 머리)도 도착점(표적의 발밑)도 <b>쏜 그 틱의 좌표</b>다. 사람을 계속 따라가면
+ * 궤적이 아무것도 알려 주지 않는 장식이 되고 회피가 불가능해진다. 이 카드가 요구하는 행동은
+ * 「제자리에서 옆으로 비키기」 하나뿐이고, 그래서 비행 시간의 기준도
+ * {@link TrialWarning#TICKS_SIDESTEP} 이다.
  *
- * <ul>
- *   <li>{@code doServerTick} 첫 줄 — 목표 좌표가 {@code null} 이면 경고 한 줄을 찍고 곧바로
- *       {@code HOLDING_PATTERN}</li>
- *   <li>목표까지 거리²가 100 미만이거나 22500 초과이거나 벽에 닿으면 {@code timeSinceCharge} 가
- *       오르고, <b>10 틱</b> 뒤 {@code HOLDING_PATTERN}. 좌표가 한 점으로 고정되어 있으므로
- *       드래곤은 반드시 그 점에 닿거나 지나친다</li>
- *   <li>드래곤이 죽으면 {@code EnderDragon} 이 {@code DYING} 으로 덮어쓴다</li>
- *   <li>서버가 내려가도 갇히지 않는다. {@code addAdditionalSaveData} 는 페이즈 <b>번호만</b>
- *       저장하고 목표 좌표는 저장하지 않는다. 다시 뜰 때 {@code setPhase} → {@code begin()} 이
- *       좌표를 {@code null} 로 두므로 첫 틱에 위의 첫 번째 탈출구로 빠진다</li>
- * </ul>
+ * <h2>맞는 사람은 표적 하나뿐이다</h2>
  *
- * <p>우리 틱이 언제 끊겨도 남는 것은 <b>몇 틱 뒤 알아서 원으로 돌아가는 드래곤</b>뿐이다.
+ * <p>착탄 자리에 있는 <b>아무나</b> 때리게 만들면 안 된다. 이 모드는 체력이 팀 공유이고
+ * {@code StatMirror.fold} 가 <b>팀원별 피해를 그대로 합산</b>하므로, 넷이 모여 있는 자리에 한
+ * 발이 떨어지면 6 × 4 = 24 가 한 틱에 들어가 팀 체력 20 을 넘긴다 — <b>한 발짜리 즉사 카드</b>가
+ * 된다. 보라색의 뜻이 「너 하나를 노린다」인 것과도 맞는다. 그래서 착탄 판정은 표적 한 사람에게만
+ * 묻는다.
  *
- * <h2>대상을 심는 값이 두 페이즈가 서로 다르다</h2>
+ * <h2>넉백을 주지 않는다</h2>
  *
- * <p>{@code DragonStrafePlayerPhase.setTarget} 은 {@code LivingEntity} 를 받아 <b>그 자리까지
- * 경로를 새로 깐다</b>. 매 틱 부르면 경로가 매 틱 버려져 드래곤이 앞으로 나가지 못한다. 반대로
- * {@code DragonChargePlayerPhase.setTarget} 은 {@code Vec3} <b>한 점</b>을 받아 넣기만 한다 —
- * 매 틱 갱신하면 돌진이 유도탄이 되어 피할 수가 없다. 그래서 둘 다 <b>페이즈에 들어갈 때 한
- * 번만</b> 심고, 특히 돌진은 <b>시작한 뒤로는 절대 다시 겨누지 않는다.</b> 비켜서면 빗나가는
- * 것이 이 카드의 유일한 대응 수단이다.
+ * <p>엔드 중앙 섬은 사방이 허공이고, 공유 체력이라 한 사람의 낙사가 팀 전체를 끝낸다. 피해원에
+ * 엔티티를 달지 않는 것이 그 장치다 — {@code LivingEntity} 는 피해원에 실체가 있을 때만 밀어낸다.
  *
- * <p>또 {@code begin()} 이 대상을 지우므로 <b>순서는 반드시 페이즈 → 대상</b>이다.
- * {@code setPhase} 는 같은 페이즈면 아무 일도 하지 않으므로({@code EnderDragonPhaseManager}
- * 첫 줄) 이미 들어가 있는 페이즈를 다시 밀어도 {@code begin()} 이 다시 돌지 않는다.
+ * <h2>파티클은 반드시 긴 형태로</h2>
  *
- * <h2>오고 있는 것이 보여야 한다</h2>
- *
- * <p>「타겟팅만 뜨고 아무 일도 없다」가 이 카드에 대한 실제 불만이었다. 그래서 드래곤이 표적을
- * 노리는 동안 <b>드래곤 머리에서 표적까지 보라색 선</b>을 긋는다. 드래곤은 y 133 까지 올라가고
- * 아레나를 가로지르면 150 블록이 넘으므로, 이 선은 <b>반드시 긴 형태</b>
- * ({@code overrideLimiter=true})로 보내야 한다 — 짧은 형태는 32 블록에서 잘려 정작 「멀리서
- * 온다」는 정보가 통째로 사라진다. 까닭은 {@link TrialWarning} 클래스 설명에 적혀 있다.
- *
- * <h2>피해는 손대지 않는다</h2>
- *
- * <p>드래곤의 몸통 피해는 하드코딩 {@code 10.0F}, 밀쳐내기는 {@code 5.0F} 인데 이 모드의 공유
- * 최대 체력은 20 에서 시작한다. <b>한 대에 팀 절반</b>이고 전멸하면 월드가 지워진다. 이 카드는
- * 「누구를 노리는가」만 바꾼다 — 여기에 피해를 한 점이라도 더하면 즉사 카드가 된다.
+ * <p>드래곤은 y 133 까지 올라가고 아레나를 가로지르면 150 블록이 넘는다. 짧은 형태는 <b>32
+ * 블록</b>에서 잘리므로({@link TrialWarning} 의 「거리 제한을 끄고 보낸다」) 되돌리는 순간 구체의
+ * 출발 구간 — 곧 「어디서 오는가」 — 가 통째로 사라진다. 이 저장소가 기둥 화염구에서 정확히 그
+ * 함정에 빠져 연출의 앞부분을 통째로 잃은 적이 있다.
  */
 public final class TrialDragonFocus {
+
+	// ------------------------------------------------------------------ 표적 이름표
 
 	/** 표적 발밑에 그리는 고리의 반경(블록). 사람 하나를 감쌀 만큼만 — 위험 범위가 아니라 이름표다. */
 	private static final double MARK_RADIUS = 1.5;
@@ -119,55 +93,23 @@ public final class TrialDragonFocus {
 	/**
 	 * 표식을 다시 그리는 간격(틱).
 	 *
-	 * <p>먼지 파티클은 1초 넘게 남으므로 매 틱 찍을 필요가 없다. 이 표식은
-	 * {@link TrialRisks} 의 예고와 달리 <b>전투 내내</b> 켜져 있어서, 매 틱 40점을 뿌리면 시련
-	 * 하나가 파티클 예산을 통째로 먹는다.
+	 * <p>먼지 파티클은 1초 넘게 남으므로 매 틱 찍을 필요가 없다. 표적으로 잡혀 있는 동안 내내
+	 * 켜져 있는 표식이라, 매 틱 40점을 뿌리면 이 카드 하나가 파티클 예산을 통째로 먹는다.
 	 */
 	private static final int MARK_REDRAW_TICKS = 5;
 
-	// ------------------------------------------------------------------ 개입 주기
+	// ------------------------------------------------------------------ 「저기서 온다」는 선
 
 	/**
-	 * 돌진 한 번 사이에 표적을 몇 번 다시 고르는가.
+	 * 표적을 잡은 뒤 드래곤과 표적을 선으로 잇는 시간(틱).
 	 *
-	 * <p>여기가 「가끔 노리러 온다」와 「영원히 사람만 쫓는다」를 가르는 값이다. 돌진 한 번은
-	 * 비행 2~3초 + {@code DragonChargePlayerPhase} 가 정해 둔 회복 10틱이라 대략 <b>3초</b>다.
-	 * 1 로 두면 「표적」 카드(재지정 100틱)에서 5초마다 3초를 돌진에 쓰게 되어 드래곤이 원을 도는
-	 * 시간이 거의 남지 않고, 그러면 착지 주사위를 굴릴 기회가 사라져 <b>전투가 끝나지 않는다.</b>
-	 * 3 이면 15초에 한 번, 시간의 20%다 — 나머지 80%는 바닐라 그대로다.
+	 * <p>표적을 잡은 순간의 문제는 「내가 물렸다」가 아니라 <b>「어디서 날아오는가」</b>다. 드래곤은
+	 * 화면 밖 하늘에 있을 수 있어서, 선 한 번이 없으면 첫 구체가 어느 방향에서 오는지 아무도 모른다.
+	 * 첫 구체가 도착하기 전까지만 그리면 충분하고, 그 뒤로는 구체 자체가 방향을 말해 준다.
 	 */
-	static final int CHARGE_CYCLES = 3;
+	static final int BEAM_TICKS = 20;
 
-	/**
-	 * 돌진 사이 최소 간격(틱).
-	 *
-	 * <p>{@link TrialCatalog.Risk.DragonFocus#retargetTicks()} 가 작게 적힌 카드가 앞으로
-	 * 생기더라도 드래곤이 쉬지 않고 파고들지 않게 막는 바닥이다. 값이 잘못 적힌 카드는
-	 * <b>심심해질 뿐</b>이어야지 대응 불가를 만들면 안 된다 — {@link #select} 의 판단과 같다.
-	 */
-	static final int CHARGE_MIN_TICKS = 200;
-
-	/**
-	 * 이보다 가까우면 돌진시키지 않는다(블록).
-	 *
-	 * <p>{@code DragonChargePlayerPhase.doServerTick} 은 목표까지 거리²가 100 미만이면
-	 * <b>이미 도착했다</b>고 보고 회복을 세기 시작한다. 즉 10 블록 안에서 밀어 봐야 10틱 뒤
-	 * 그냥 되돌아갈 뿐, 사람 눈에는 아무 일도 없다. 조금 여유를 둔 값이다.
-	 */
-	static final double CHARGE_MIN_DISTANCE = 12.0;
-
-	/**
-	 * 이보다 멀면 돌진시키지 않는다(블록).
-	 *
-	 * <p>같은 곳에서 거리²가 22500(=150 블록)을 넘으면 역시 회복을 세기 시작한다. 그 밖으로
-	 * 겨누면 돌진이 시작조차 하지 않으므로 주기만 낭비된다. 아레나가 이 안이라 평소에는 걸리지
-	 * 않고, 사람이 끝 관문 너머로 나간 경우를 위한 것이다.
-	 */
-	static final double CHARGE_MAX_DISTANCE = 140.0;
-
-	// ------------------------------------------------------------------ 오고 있다는 선
-
-	/** 선을 다시 긋는 간격(틱). 돌진 중에만 그리지만 점 하나가 패킷 한 장이라 매 틱은 과하다. */
+	/** 선을 다시 긋는 간격(틱). 점 하나가 패킷 한 장이라 매 틱은 과하다. */
 	private static final int BEAM_REDRAW_TICKS = 2;
 
 	/** 선 위 점 사이 목표 간격(블록). */
@@ -197,8 +139,39 @@ public final class TrialDragonFocus {
 	 */
 	private static final int BEAM_MAX_POINTS = (int) Math.ceil(BEAM_KEPT_LENGTH / BEAM_MAX_GAP);
 
-	/** 선이 표적의 발이 아니라 가슴에 닿게 하는 높이. 발밑 고리와 선이 겹치면 둘 다 안 읽힌다. */
-	private static final double BEAM_TARGET_LIFT = 1.0;
+	/** 선과 구체가 표적의 발이 아니라 가슴에 닿게 하는 높이. 발밑 고리와 겹치면 둘 다 안 읽힌다. */
+	private static final double TARGET_LIFT = 1.0;
+
+	// ------------------------------------------------------------------ 구체
+
+	/**
+	 * 구체가 날아가는 시간의 천장(틱).
+	 *
+	 * <p>이 카드가 요구하는 행동은 <b>「제자리에서 옆으로 비키기」 하나</b>다 — 조준점이 발사
+	 * 순간에 얼어붙고 노려지는 사람도 하나이므로 흩어질 필요가 없다. 그 최소 예고가
+	 * {@link TrialWarning#TICKS_SIDESTEP} 이고, 여기를 그보다 짧게 잡으면 구체가 예고가 아니라
+	 * 사후 통보가 된다. 거리와 무관하게 시간을 고정하는 이유는 <b>드래곤이 멀리 있을수록
+	 * 안전해지면 안 되기</b> 때문이다 — 그러면 카드가 드래곤 위치 운으로 갈린다.
+	 */
+	static final int FLIGHT_MAX_TICKS = TrialWarning.TICKS_SIDESTEP;
+
+	/**
+	 * 착탄이 닿는 반경(블록).
+	 *
+	 * <p>카드 값에 반경이 없다. 이 카드의 반경은 <b>연출이 아니라 규칙</b>이라 카드마다 달라질
+	 * 이유가 없기 때문이다 — 「비키면 안 맞는다」가 유일한 대응 수단이고, 그 「비킨다」의 크기가
+	 * 여기다. 비행 30틱(1.5초)이면 걸어서 6 블록 넘게 움직이므로 2.5 는 <b>한 걸음 반</b>이다.
+	 * 여기를 키우면 다섯 발을 전부 맞는 카드가 되고, 그때 합계는 30 이라 팀 체력 20 을 넘는다.
+	 */
+	static final double IMPACT_RADIUS = 2.5;
+
+	/** 구체 뒤에 남기는 꼬리 점 수. 선 전체를 매 틱 다시 그리면 「구체」가 아니라 「실」로 읽힌다. */
+	private static final int ORB_TAIL_POINTS = 4;
+
+	/** 꼬리 점 사이 거리(블록). */
+	private static final double ORB_TAIL_STEP = 1.0;
+
+	// ------------------------------------------------------------------ 상태
 
 	/**
 	 * 지금 노리는 사람과 그 사람을 고른 주기.
@@ -209,25 +182,45 @@ public final class TrialDragonFocus {
 	record Selection(long cycle, UUID target) {
 	}
 
+	/**
+	 * 이미 쏜 발.
+	 *
+	 * <p>쏠 틱인지를 위상만으로 판단하면 <b>같은 위상이 두 번 오는 순간 두 발이 나간다.</b>
+	 * {@link TrialRisks#elapsedSinceGrant} 가 음수를 0 으로 깎으므로, 월드 시간이 되감긴 판에서는
+	 * 위상 0 이 여러 틱 이어진다. 「몇 번째 주기의 몇 번째 발인가」를 들고 있으면 그때도 한 발이다.
+	 */
+	record Fired(long cycle, int index) {
+	}
+
+	/**
+	 * 날고 있는 구체 한 발.
+	 *
+	 * <p>{@code from}·{@code to} 가 엔티티가 아니라 <b>좌표</b>인 것이 핵심이다. 사람이나 드래곤을
+	 * 들고 있으면 매 틱 현재 위치를 읽게 되고, 그 순간 구체가 유도탄이 되어 피할 수가 없다.
+	 *
+	 * @param targetId 이 발이 노린 사람. 착탄 판정을 그 사람에게만 묻는다
+	 * @param from     발사 순간의 드래곤 머리
+	 * @param to       발사 순간의 표적 발밑
+	 * @param firedAt  쏜 틱
+	 * @param landsAt  닿는 틱
+	 */
+	private record Orb(UUID targetId, Vec3 from, Vec3 to, long firedAt, long landsAt) {
+	}
+
 	/** 이번 주기의 표적. 위험이 값(레코드)이라 상태를 들 수 없어 여기 둔다. */
 	private static @Nullable Selection active;
 
-	/**
-	 * 마지막으로 드래곤에게 실제로 심은 대상과 그때의 페이즈.
-	 *
-	 * <p>같은 값을 다시 심지 않으려고 들고 있다. 페이즈가 달라졌으면 {@code begin()} 이 대상을
-	 * 지웠다는 뜻이므로 값이 같아도 다시 심어야 한다.
-	 */
-	private static @Nullable UUID appliedTarget;
-	private static @Nullable EnderDragonPhase<?> appliedPhase;
+	/** 마지막으로 쏜 발. 아직 한 발도 안 쐈으면 {@code null}. */
+	private static @Nullable Fired lastFired;
 
 	/**
-	 * 마지막으로 돌진을 민 시각. 아직 한 번도 밀지 않았으면 {@code null}.
+	 * 지금 날고 있는 구체들.
 	 *
-	 * <p>{@code null} 을 「지금 바로 밀 차례」로 읽는다. 카드를 받자마자 첫 돌진이 오게 하려는
-	 * 것이다 — 자막이 뜨고 한참 아무 일도 없으면 그것이 바로 이번에 고친 그 결함이다.
+	 * <p>{@link #flightTicks} 가 발사 간격을 넘지 않으므로 <b>보통 한 발</b>이지만 목록으로 둔다.
+	 * 값이 이상하게 적힌 카드에서 두 발이 겹치더라도 앞 발이 조용히 사라지는 것보다 낫다 —
+	 * 그려 놓은 궤적은 반드시 착탄으로 끝나야 한다.
 	 */
-	private static @Nullable Long lastCharge;
+	private static final List<Orb> ORBS = new ArrayList<>();
 
 	private TrialDragonFocus() {
 	}
@@ -235,8 +228,8 @@ public final class TrialDragonFocus {
 	/**
 	 * 매 틱.
 	 *
-	 * <p>드래곤이 없거나 죽어 있으면 아무 일도 하지 않는다 — 죽는 연출({@code DYING})이 도는 동안
-	 * 표식을 그리면 이미 끝난 전투에 경고가 남는다.
+	 * <p>드래곤이 없거나 죽어 있으면 날고 있던 구체까지 버린다 — 죽는 연출이 도는 동안 구체가
+	 * 착탄하면 <b>이미 끝난 전투가 사람을 죽인다.</b>
 	 *
 	 * @param granted 카드를 받은 틱. 주기를 여기서부터 센다
 	 * @param now     지금 게임 시각
@@ -246,16 +239,27 @@ public final class TrialDragonFocus {
 			TrialCatalog.Risk.DragonFocus risk) {
 		if (end == null || risk == null || dragon == null || !dragon.isAlive()
 				|| dragon.isDeadOrDying()) {
+			ORBS.clear();
 			return;
 		}
+
+		// 표적이 없어도 이미 날고 있는 것은 끝까지 간다. 쏜 뒤에 표적이 관전으로 넘어갔다고
+		// 궤적이 공중에서 사라지면 예고가 거짓말을 한 것이 된다.
+		flyOrbs(end, members, risk.damage(), now);
+
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		int phase = phaseOf(elapsed, risk.markTicks(), risk.restTicks());
+		if (!marked(phase, risk.markTicks())) {
+			// 쉬는 시간. 다음 주기에는 처음부터 다시 고른다.
+			active = null;
+			return;
+		}
+
 		List<ServerPlayer> targetable = targetable(members);
 		if (targetable.isEmpty()) {
 			return;
 		}
-
-		// 위상 계산은 TrialRisks 의 순수 함수를 그대로 쓴다. 같은 규칙을 두 벌 들고 있으면
-		// 한쪽만 고쳐졌을 때 카드마다 다른 시간을 살게 된다.
-		long cycle = TrialRisks.strikeIndex(now, granted, risk.retargetTicks());
+		long cycle = cycleOf(elapsed, risk.markTicks(), risk.restTicks());
 		Selection before = active;
 		active = select(before, cycle, idsOf(targetable), risk.focus(), CrystalWatch.lastBreaker(),
 				end.getRandom());
@@ -271,123 +275,159 @@ public final class TrialDragonFocus {
 		if (changed) {
 			announce(end, target);
 		}
-		// 받은 틱부터 센다. 월드 시간으로 나누면 카드마다 그림이 같은 틱에 몰린다. 바뀐 틱에는
-		// 간격을 기다리지 않는다 — 알림과 표식이 따로 오면 누구인지가 흐려진다.
-		if (changed || TrialRisks.elapsedSinceGrant(now, granted) % MARK_REDRAW_TICKS == 0L) {
+		// 바뀐 틱에는 간격을 기다리지 않는다 — 알림과 표식이 따로 오면 누구인지가 흐려진다.
+		if (changed || phase % MARK_REDRAW_TICKS == 0) {
 			mark(end, target);
 		}
-		steer(end, dragon, target, now, chargeInterval(risk.retargetTicks()));
+		if (phase < BEAM_TICKS && phase % BEAM_REDRAW_TICKS == 0) {
+			beam(end, dragon, target);
+		}
+
+		int index = shotIndexAt(phase, risk.markTicks(), risk.shots());
+		if (index < 0) {
+			return;
+		}
+		Fired shot = new Fired(cycle, index);
+		if (!freshShot(lastFired, shot)) {
+			return;
+		}
+		lastFired = shot;
+		fire(end, dragon, target, now, flightTicks(risk.markTicks(), risk.shots()));
+		// 표적을 잡은 틱에는 알리지 않는다. 자막은 한 줄뿐이라 방금 띄운 「노립니다」를 덮어 버리고,
+		// 그러면 정작 누가 물렸는지가 사라진다. 그 틱의 문구가 이미 구체를 말하고 있다.
+		if (!changed) {
+			TrialWarning.shout(List.of(target),
+					Component.literal("구체가 날아옵니다 — 자리를 비우십시오"));
+		}
 	}
 
-	/** 월드가 바뀌거나 서버가 내려갈 때. 옛 표적이 다음 판의 사람에게 붙지 않게 한다. */
+	/** 월드가 바뀌거나 서버가 내려갈 때. 옛 표적과 옛 좌표가 다음 판으로 새지 않게 한다. */
 	public static void clearState() {
 		active = null;
-		appliedTarget = null;
-		appliedPhase = null;
-		lastCharge = null;
+		lastFired = null;
+		ORBS.clear();
 	}
 
-	// ------------------------------------------------------------------ 드래곤에 심기
+	// ------------------------------------------------------------------ 구체 날리기
 
 	/**
-	 * 드래곤을 표적 쪽으로 돌린다.
+	 * 한 발 쏜다. 출발점도 도착점도 <b>이 틱의</b> 좌표이고, 쏜 뒤로는 다시 겨누지 않는다.
 	 *
-	 * <p>페이즈마다 할 일이 다르다.
-	 *
-	 * <ul>
-	 *   <li>{@code HOLDING_PATTERN} — 원을 돌고 있다. 돌진할 차례이고 거리가 맞으면 여기서
-	 *       <b>밀어넣는다.</b> 이 카드가 실제로 개입하는 자리는 여기 하나뿐이다</li>
-	 *   <li>{@code STRAFE_PLAYER}·{@code CHARGING_PLAYER} — 이미 사람을 노리고 있다. 대상만
-	 *       우리 표적으로 바꿔 끼우고 오고 있다는 선을 긋는다</li>
-	 *   <li>그 밖 — <b>아무것도 하지 않는다.</b> 크리스탈을 먹으러 가거나 내려앉아 있거나 다시
-	 *       뜨는 중이고, 그것을 막으면 전투가 성립하지 않는다</li>
-	 * </ul>
-	 *
-	 * <p>노리는 페이즈를 벗어나면 심어 둔 기억을 지운다. 다음에 그 페이즈로 돌아올 때
-	 * {@code begin()} 이 대상을 비워 두기 때문이다 — 「이미 심었다」고 착각하면 드래곤이 대상
-	 * 없는 페이즈에서 곧바로 물러난다.
+	 * <p>소리가 셜커다. 드래곤이 쏘는데 드래곤 소리가 아닌 것은 <b>일부러</b>다 — 장판을 쓰는
+	 * 카드가 이미 {@code ENDER_DRAGON_SHOOT} 과 {@code DRAGON_FIREBALL_EXPLODE} 를 쓰고 있어서,
+	 * 같은 소리를 쓰면 화면을 안 보고 있을 때 둘을 구별할 수 없다. 색이 갈려 있는 것과 같은
+	 * 이유로 소리도 갈라 둔다. 셜커 탄은 엔드의 소리이고 <b>한 사람을 따라오는 보라색 구슬</b>이라
+	 * 이 카드의 그림과도 맞는다.
 	 */
-	private static void steer(ServerLevel end, EnderDragon dragon, ServerPlayer target, long now,
-			int chargeInterval) {
-		EnderDragonPhaseManager manager = dragon.getPhaseManager();
-		DragonPhaseInstance current = manager == null ? null : manager.getCurrentPhase();
-		EnderDragonPhase<?> phase = current == null ? null : current.getPhase();
-		if (phase == null) {
+	private static void fire(ServerLevel end, EnderDragon dragon, ServerPlayer target, long now,
+			int flightTicks) {
+		if (flightTicks <= 0) {
 			return;
 		}
+		Vec3 muzzle = dragon.head.position();
+		ORBS.add(new Orb(target.getUUID(), muzzle, target.position(), now, now + flightTicks));
+		end.playSound(null, muzzle.x, muzzle.y, muzzle.z, SoundEvents.SHULKER_SHOOT,
+				SoundSource.HOSTILE, 4.0F, 0.6F);
+	}
 
-		if (phase == EnderDragonPhase.HOLDING_PATTERN) {
-			forgetApplied();
-			if (!chargeDue(now, lastCharge, chargeInterval)
-					|| !chargeable(dragon.position().distanceTo(target.position()))) {
-				return;
+	/** 날고 있는 것들을 한 칸 옮겨 그리고, 닿은 것을 처리한다. */
+	private static void flyOrbs(ServerLevel end, List<ServerPlayer> members, float damage, long now) {
+		if (ORBS.isEmpty()) {
+			return;
+		}
+		Iterator<Orb> flying = ORBS.iterator();
+		while (flying.hasNext()) {
+			Orb orb = flying.next();
+			if (now >= orb.landsAt()) {
+				land(end, members, orb, damage);
+				flying.remove();
+				continue;
 			}
-			// 순서가 규칙이다. begin() 이 좌표를 지우므로 페이즈를 먼저 세우고 좌표를 넣는다.
-			manager.setPhase(EnderDragonPhase.CHARGING_PLAYER);
-			manager.getPhase(EnderDragonPhase.CHARGING_PLAYER).setTarget(target.position());
-			appliedPhase = EnderDragonPhase.CHARGING_PLAYER;
-			appliedTarget = target.getUUID();
-			lastCharge = now;
-			announceDive(end, dragon, target);
-			beam(end, dragon, target);
-			return;
-		}
-
-		if (phase != EnderDragonPhase.STRAFE_PLAYER && phase != EnderDragonPhase.CHARGING_PLAYER) {
-			forgetApplied();
-			return;
-		}
-
-		// 같은 페이즈에서 같은 대상을 다시 심지 않는다. 불덩이 쪽은 심을 때마다 경로를 새로 깔아
-		// 매 틱 부르면 드래곤이 앞으로 나가지 못하고, 돌진 쪽은 표적을 따라다니는 유도탄이 된다.
-		if (phase != appliedPhase || !target.getUUID().equals(appliedTarget)) {
-			if (phase == EnderDragonPhase.STRAFE_PLAYER) {
-				manager.getPhase(EnderDragonPhase.STRAFE_PLAYER).setTarget(target);
-				appliedPhase = phase;
-				appliedTarget = target.getUUID();
-			} else if (appliedPhase != EnderDragonPhase.CHARGING_PLAYER) {
-				// 바닐라가 스스로 시작한 돌진이다. 겨냥은 한 번만 바꾼다 — 표적이 주기마다
-				// 바뀐다고 날아가는 중에 다시 겨누면 비켜설 방법이 없어진다.
-				manager.getPhase(EnderDragonPhase.CHARGING_PLAYER).setTarget(target.position());
-				appliedPhase = phase;
-				appliedTarget = target.getUUID();
-			}
-		}
-		if (now % BEAM_REDRAW_TICKS == 0L) {
-			beam(end, dragon, target);
+			drawOrb(end, orb, now);
+			// 착탄 자리를 바닥에 그린다. 궤적은 방향을 주지만 끝점은 원근 때문에 안 읽힌다.
+			TrialWarning.markGround(end, orb.to(), IMPACT_RADIUS,
+					TrialWarning.dust(TrialWarning.Colors.MARKED));
 		}
 	}
 
-	private static void forgetApplied() {
-		appliedPhase = null;
-		appliedTarget = null;
+	/**
+	 * 닿았다. 블록은 건드리지 않고 불도 붙이지 않는다.
+	 *
+	 * <p>맞는 사람은 <b>표적 하나</b>다. 주변을 긁어모아 때리면 넷이 모여 있는 자리에서 한 발에
+	 * {@code 피해 × 4} 가 공유 체력에 들어간다 — 클래스 설명의 「맞는 사람은 표적 하나뿐이다」가
+	 * 그 이야기다.
+	 *
+	 * <p>피해원에 엔티티를 달지 않는 것이 <b>넉백을 막는 장치</b>다. 실체가 붙은 피해원이면
+	 * {@code LivingEntity} 가 스스로 밀어내는데, 엔드 섬 가장자리에서 밀리면 대응 불가 즉사다.
+	 *
+	 * <p>연출용 피해 종류를 {@code dragonBreath} 가 아니라 {@code magic} 으로 고른 것은
+	 * <b>사망 메시지</b> 때문이다. 브레스 장판을 쓰는 카드가 따로 있어서 같은 종류를 쓰면 채팅에
+	 * 뜨는 한 줄로 둘을 구별할 수 없다. 두 종류 모두 {@code bypasses_armor} 라 방어구 계산은
+	 * 어차피 같다.
+	 */
+	private static void land(ServerLevel end, List<ServerPlayer> members, Orb orb, float damage) {
+		Vec3 at = orb.to();
+		ParticleOptions dust = TrialWarning.dust(TrialWarning.Colors.MARKED);
+		end.sendParticles(dust, true, false, at.x, at.y + TARGET_LIFT, at.z, 24,
+				IMPACT_RADIUS * 0.4, 0.4, IMPACT_RADIUS * 0.4, 0.0);
+		end.playSound(null, at.x, at.y, at.z, SoundEvents.SHULKER_BULLET_HIT,
+				SoundSource.HOSTILE, 2.0F, 0.7F);
+		if (damage <= 0.0F) {
+			return;
+		}
+		ServerPlayer target = memberOf(members, orb.targetId());
+		if (target == null || !target.isAlive() || target.isSpectator()) {
+			return;
+		}
+		// 높이는 묻지 않는다. 고리가 바닥에 그려지므로 뛰어서 피하는 것은 회피가 아니다.
+		if (!TrialRisks.insideMark(target.position(), at, IMPACT_RADIUS)) {
+			return;
+		}
+		target.hurtServer(end, end.damageSources().magic(), damage);
+	}
+
+	/**
+	 * 날아가는 중인 구체를 그린다.
+	 *
+	 * <p><b>세 줄 모두 긴 형태다.</b> 첫 {@code boolean} 을 {@code false} 로 되돌리면 구체는 보는
+	 * 사람 발밑 32 블록 안에서만 존재한다 — 드래곤은 그 밖에 있으므로 <b>출발 구간이 통째로
+	 * 사라지고</b> 구체는 코앞에서 갑자기 나타난다. 그러면 예고가 아니다.
+	 *
+	 * <p>둘째 {@code boolean}({@code alwaysShow}) 은 「파티클 줄이기」 설정을 무시할지다. 첫
+	 * 깃발이 켜져 있으면 그 검사를 건너뛰므로 값이 무의미하고, 사용자의 설정을 우리가 뒤집을
+	 * 이유도 없어 {@code false} 로 둔다.
+	 */
+	private static void drawOrb(ServerLevel end, Orb orb, long now) {
+		Vec3 to = orb.to().add(0.0, TARGET_LIFT, 0.0);
+		Vec3 head = orb.from().add(to.subtract(orb.from())
+				.scale(flightProgress(now, orb.firedAt(), orb.landsAt())));
+		ParticleOptions dust = TrialWarning.dust(TrialWarning.Colors.MARKED);
+		end.sendParticles(dust, true, false, head.x, head.y, head.z, 12, 0.35, 0.35, 0.35, 0.0);
+		// 꼬리는 「어느 쪽에서 왔는가」만 말하면 되므로 몇 점이면 충분하다.
+		Vec3 back = orb.from().subtract(head);
+		if (back.lengthSqr() <= 0.0) {
+			return;
+		}
+		Vec3 step = back.normalize().scale(ORB_TAIL_STEP);
+		for (int index = 1; index <= ORB_TAIL_POINTS; index++) {
+			Vec3 point = head.add(step.scale(index));
+			end.sendParticles(dust, true, false, point.x, point.y, point.z, 1, 0.0, 0.0, 0.0, 0.0);
+		}
 	}
 
 	// ------------------------------------------------------------------ 알리기
 
 	/**
-	 * 표적이 바뀌었다고 알린다.
+	 * 표적이 잡혔다고 알린다.
 	 *
 	 * <p>이 게임은 전멸하면 월드가 지워진다. <b>누가 물렸는지 모르면 대응할 수 없다</b> — 물린
 	 * 사람은 떨어져 나가야 하고 나머지는 그 틈에 때려야 한다. 색은
 	 * {@link TrialWarning.Colors#MARKED}(「너 하나를 노린다」)이고, 여기서 새 색을 만들지 않는다.
 	 */
 	private static void announce(ServerLevel end, ServerPlayer target) {
-		TrialWarning.shout(List.of(target), Component.literal("드래곤이 당신을 노립니다"));
+		TrialWarning.shout(List.of(target), Component.literal("드래곤이 당신을 노립니다 — 구체가 옵니다"));
 		// 본인 자막만으로는 나머지가 모른다. 소리는 표적 자리에서 나므로 누구인지가 함께 전해진다.
 		TrialWarning.sound(end, target.position(), TrialWarning.Stage.MARK);
-	}
-
-	/**
-	 * 돌진이 시작됐다고 알린다.
-	 *
-	 * <p>「노립니다」와 다른 사실이라 문구를 나눈다 — 표식은 전투 내내 붙어 있지만 돌진은
-	 * {@link #chargeInterval} 틱에 한 번뿐이다. 소리는 <b>드래곤 자리</b>에서 낸다. 어디서
-	 * 오는지가 피할 방향을 정하는 정보이고, 표적 자리에서 울리면 그것을 못 준다.
-	 */
-	private static void announceDive(ServerLevel end, EnderDragon dragon, ServerPlayer target) {
-		TrialWarning.shout(List.of(target), Component.literal("드래곤이 당신에게 날아옵니다"));
-		TrialWarning.sound(end, dragon.position(), TrialWarning.Stage.APPROACH);
 	}
 
 	/** 표적 발밑에 보라색 고리를 그린다. 위험 범위가 아니라 「이 사람이다」라는 이름표다. */
@@ -399,17 +439,15 @@ public final class TrialDragonFocus {
 	/**
 	 * 드래곤 머리에서 표적까지 보라색 선을 긋는다.
 	 *
-	 * <p><b>세 줄 모두 긴 형태다.</b> 첫 {@code boolean} 을 {@code false} 로 되돌리면 이 선은
-	 * 보는 사람 발밑 32 블록 안에서만 존재한다 — 드래곤은 그 밖에 있으므로 <b>선의 출발점,
-	 * 곧 「어디서 오는가」가 통째로 사라진다.</b> 그러면 고친 것이 다시 원래대로 돌아간다.
+	 * <p>표적을 잡은 직후에만 그린다. 「내가 물렸다」는 자막이 주지만 <b>「어디서 날아오는가」</b>는
+	 * 이 선밖에 주지 못한다 — 드래곤은 화면 밖 하늘에 있을 수 있다.
 	 *
-	 * <p>둘째 {@code boolean}({@code alwaysShow}) 은 「파티클 줄이기」 설정을 무시할지다. 첫
-	 * 깃발이 켜져 있으면 그 검사를 건너뛰므로 값이 무의미하고, 사용자의 설정을 우리가 뒤집을
-	 * 이유도 없어 {@code false} 로 둔다.
+	 * <p>여기도 <b>긴 형태</b>다. 짧은 형태로 되돌리면 선의 출발점, 곧 드래곤 쪽이 사라져 남는
+	 * 것은 발밑의 짧은 토막뿐이다.
 	 */
 	private static void beam(ServerLevel end, EnderDragon dragon, ServerPlayer target) {
 		Vec3 from = dragon.head.position();
-		Vec3 to = target.position().add(0.0, BEAM_TARGET_LIFT, 0.0);
+		Vec3 to = target.position().add(0.0, TARGET_LIFT, 0.0);
 		int points = beamPoints(from.distanceTo(to));
 		ParticleOptions dust = TrialWarning.dust(TrialWarning.Colors.MARKED);
 		for (int index = 0; index < points; index++) {
@@ -426,52 +464,102 @@ public final class TrialDragonFocus {
 	// ------------------------------------------------------------------ 월드 없이 도는 계산
 
 	/**
-	 * 이 카드의 돌진 간격(틱).
+	 * 한 주기의 길이(틱). 표적으로 잡혀 있는 시간과 쉬는 시간의 합이다.
 	 *
-	 * <p>{@code retargetTicks} 에 묶어 둔다. 재지정과 무관한 숫자를 따로 박으면 표적이 바뀌는
-	 * 박자와 드래곤이 오는 박자가 어긋나 「누가 물렸는지」가 흐려진다.
-	 *
-	 * <p>{@code retargetTicks} 가 0 이하면 표적이 영영 고정되지만({@link TrialRisks#strikeIndex})
-	 * 돌진까지 멈추면 카드가 통째로 죽는다. 그때는 바닥값으로 돈다.
+	 * <p>0 을 돌려주지 않는다. 나머지 연산의 밑이라 0 이면 그 자리에서 터진다 — 값이 잘못 적힌
+	 * 카드는 <b>심심해질 뿐</b>이어야지 서버를 멈추면 안 된다.
 	 */
-	static int chargeInterval(int retargetTicks) {
-		if (retargetTicks <= 0) {
-			return CHARGE_MIN_TICKS;
-		}
-		// int 로 곱하면 큰 값이 음수로 넘어가 바닥값 검사를 그대로 통과한다.
-		long wanted = (long) retargetTicks * CHARGE_CYCLES;
-		return (int) Math.max(CHARGE_MIN_TICKS, Math.min(Integer.MAX_VALUE, wanted));
+	static int period(int markTicks, int restTicks) {
+		long wanted = (long) Math.max(0, markTicks) + Math.max(0, restTicks);
+		return (int) Math.max(1L, Math.min(Integer.MAX_VALUE, wanted));
+	}
+
+	/** 지금이 주기의 몇 번째 틱인가. 0 이 표적을 잡는 틱이다. */
+	static int phaseOf(long elapsed, int markTicks, int restTicks) {
+		return (int) (Math.max(0L, elapsed) % period(markTicks, restTicks));
+	}
+
+	/** 몇 번째 주기인가. 0 부터 센다. 표적을 다시 고르는 단위가 이것이다. */
+	static long cycleOf(long elapsed, int markTicks, int restTicks) {
+		return Math.max(0L, elapsed) / period(markTicks, restTicks);
 	}
 
 	/**
-	 * 지금이 돌진을 밀 차례인가.
+	 * 지금 표적을 잡고 있는가.
 	 *
-	 * <p>「마지막으로 민 때부터 간격이 지났는가」이지 「주기 경계 틱인가」가 아니다. 드래곤이
-	 * 내려앉아 있는 동안 경계 틱이 지나가 버려도 <b>다시 뜨는 순간</b> 돌진이 온다 — 경계 틱만
-	 * 보면 착지가 길어진 판에서 카드가 한 번도 발동하지 않을 수 있다.
-	 *
-	 * @param lastCharge 마지막으로 민 시각. 아직 없으면 {@code null} 이고 그때는 바로 차례다
+	 * <p>{@code markTicks} 가 0 이하인 카드는 <b>영영 거짓</b>이다. 잡는 시간이 없으면 쏠 자리도
+	 * 없으므로 카드가 통째로 조용해진다.
 	 */
-	static boolean chargeDue(long now, @Nullable Long lastCharge, int interval) {
-		if (lastCharge == null) {
-			return true;
-		}
-		// 월드 시간이 되감기면(판을 다시 시작했는데 상태가 남았다면) 영영 차례가 오지 않는다.
-		if (now < lastCharge) {
-			return true;
-		}
-		return now - lastCharge >= interval;
+	static boolean marked(int phase, int markTicks) {
+		return markTicks > 0 && phase >= 0 && phase < markTicks;
 	}
 
 	/**
-	 * 그 거리에서 돌진이 실제로 일어나는가.
+	 * 발사 간격(틱).
 	 *
-	 * <p>두 끝값 모두 {@code DragonChargePlayerPhase.doServerTick} 이 「도착했다」로 보는
-	 * 경계에서 왔다. 그 밖에서 밀면 드래곤은 10틱 뒤 그냥 원으로 돌아가고, 사람 눈에는 이 카드가
-	 * <b>또</b> 아무 일도 하지 않은 것으로 보인다.
+	 * <p><b>카드 값에서 뽑는다.</b> 따로 숫자를 박아 두면 {@code markTicks} 나 {@code shots} 를
+	 * 고칠 때 둘이 어긋나, 마지막 발이 표적 해제 뒤에 날아가거나 다섯 발을 적어 놓고 세 발만
+	 * 나가는 카드가 된다.
 	 */
-	static boolean chargeable(double distance) {
-		return distance >= CHARGE_MIN_DISTANCE && distance <= CHARGE_MAX_DISTANCE;
+	static int shotInterval(int markTicks, int shots) {
+		if (markTicks <= 0 || shots <= 0) {
+			return 0;
+		}
+		return Math.max(1, markTicks / shots);
+	}
+
+	/**
+	 * 이 위상에서 쏘는 발의 번호. 쏘지 않으면 {@code -1}.
+	 *
+	 * <p>번호로 잘라 내는 것이 규칙이다. {@code markTicks} 가 {@code shots} 로 나누어떨어지지 않는
+	 * 카드({@code 10 / 3 = 3})에서는 간격만 보면 위상 0·3·6·9 에 <b>네 발</b>이 나간다 — 카드에
+	 * 적힌 수보다 많이 쏘는 것은 값을 적은 사람이 예상할 수 없는 피해다.
+	 */
+	static int shotIndexAt(int phase, int markTicks, int shots) {
+		int interval = shotInterval(markTicks, shots);
+		if (interval <= 0 || !marked(phase, markTicks) || phase % interval != 0) {
+			return -1;
+		}
+		int index = phase / interval;
+		return index < shots ? index : -1;
+	}
+
+	/**
+	 * 구체 한 발이 날아가는 시간(틱).
+	 *
+	 * <p>발사 간격을 넘기지 않는다. 넘기면 <b>앞 발이 아직 날고 있는데 다음 발이 출발</b>해 한
+	 * 틱에 두 발이 닿을 수 있고, 그러면 카드 값 하나가 두 배로 들어간다.
+	 */
+	static int flightTicks(int markTicks, int shots) {
+		int interval = shotInterval(markTicks, shots);
+		if (interval <= 0) {
+			return 0;
+		}
+		return Math.max(1, Math.min(FLIGHT_MAX_TICKS, interval));
+	}
+
+	/**
+	 * 지금까지 날아온 비율. 0 이 발사점, 1 이 조준점.
+	 *
+	 * <p>1 을 넘겨 그리면 구체가 조준점을 지나쳐 날아가고, 사람들은 「지나간 자리」에서 착탄을
+	 * 본다. 자르는 것은 안전장치가 아니라 규칙이다.
+	 */
+	static double flightProgress(long now, long firedAt, long landsAt) {
+		long span = landsAt - firedAt;
+		if (span <= 0L) {
+			return 1.0;
+		}
+		double along = (double) (now - firedAt) / span;
+		return Math.max(0.0, Math.min(1.0, along));
+	}
+
+	/**
+	 * 아직 안 쏜 발인가.
+	 *
+	 * <p>{@link Fired} 설명에 적은 「같은 위상이 두 번 오는 판」을 막는 자리다.
+	 */
+	static boolean freshShot(@Nullable Fired last, Fired now) {
+		return last == null || !last.equals(now);
 	}
 
 	/** 그 길이의 선에 찍을 점 수. 상한에 걸리면 성겨질 뿐 선은 남는다. */
@@ -501,12 +589,6 @@ public final class TrialDragonFocus {
 
 	/**
 	 * 이번 틱의 표적. 주기가 그대로면 들고 있던 사람을 그대로 돌려준다.
-	 *
-	 * <p><b>{@code retargetTicks} 가 0 이하면 한 번 고른 사람을 영영 유지한다.</b>
-	 * {@link TrialRisks#strikeIndex} 가 그때 언제나 0 을 돌려주기 때문이다. 「매 틱 다시 고른다」로
-	 * 정하지 않은 이유는 그쪽이 훨씬 나쁘기 때문이다 — 표식이 사람들 사이를 뛰어다니고 자막이 매 틱
-	 * 떠서 아무도 자기가 물렸는지 알 수 없다. 값이 잘못 적힌 카드는 <b>심심해질 뿐</b>이어야지
-	 * 못 읽을 화면을 만들면 안 된다.
 	 *
 	 * <p>주기 중간이라도 들고 있던 사람이 명단에 없으면 다시 고른다. 접속을 끊었거나 관전으로
 	 * 넘어간 사람을 계속 노리면 <b>아무도 안 노리는 것</b>과 같고, 그러면 카드가 죽는다.
@@ -559,7 +641,7 @@ public final class TrialDragonFocus {
 	/**
 	 * 지금 노릴 수 있는 사람들.
 	 *
-	 * <p>죽어 있거나 관전 중인 사람을 노리면 드래곤이 시체를 쫓는다. 그 사이 살아 있는 사람은
+	 * <p>죽어 있거나 관전 중인 사람을 노리면 구체가 시체로 날아간다. 그 사이 살아 있는 사람은
 	 * 아무 위협도 받지 않으므로 카드가 꺼진 것과 같다.
 	 */
 	private static List<ServerPlayer> targetable(@Nullable List<ServerPlayer> members) {
@@ -583,9 +665,12 @@ public final class TrialDragonFocus {
 		return ids;
 	}
 
-	private static @Nullable ServerPlayer memberOf(List<ServerPlayer> members, UUID id) {
+	private static @Nullable ServerPlayer memberOf(@Nullable List<ServerPlayer> members, UUID id) {
+		if (members == null) {
+			return null;
+		}
 		for (ServerPlayer member : members) {
-			if (member.getUUID().equals(id)) {
+			if (member != null && member.getUUID().equals(id)) {
 				return member;
 			}
 		}

@@ -1,11 +1,15 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.perk.PerkHealthRules;
 import net.minecraft.util.RandomSource;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -21,17 +25,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * 드래곤 표적 고르기에서 월드 없이 답이 정해지는 계산만 본다.
+ * 「표적」 카드에서 월드 없이 답이 정해지는 것만 본다.
  *
- * <p>페이즈에 대상을 심는 것은 {@code EnderDragon} 이 있어야 해서 여기서 볼 수 없다. 그런데 이
- * 카드가 망가지는 길은 거의 전부 「누구를 고르는가」 쪽이다 — <b>한 사람이 영영 물린다</b>,
- * <b>깬 사람이 없어서 아무도 안 물린다</b>, <b>나간 사람을 계속 노린다</b>. 전멸하면 월드가
- * 지워지는 게임이라 이것들은 실제로 굴려 보고 발견할 수 없다.
+ * <p>구체를 실제로 날리는 것은 {@code EnderDragon} 이 있어야 해서 여기서 볼 수 없다. 그래도 이
+ * 카드가 망가지는 길은 거의 전부 여기서 잡힌다 — <b>한 사람이 영영 물린다</b>, <b>깬 사람이
+ * 없어서 아무도 안 물린다</b>, <b>쉬는 시간에도 쏜다</b>, <b>카드에 적힌 것보다 많이 쏜다</b>.
+ * 전멸하면 월드가 지워지는 게임이라 이것들은 실제로 굴려 보고 발견할 수 없다.
+ *
+ * <p>그리고 하나 더 — <b>드래곤의 페이즈를 건드리지 않는다</b>를 여기서 못박는다. 그것이 실제로
+ * 플레이하다 터진 사고였고, 컴파일도 로그도 조용한 종류다.
  */
 class TrialDragonFocusTest {
-	/** 「표적」 카드의 재지정 간격. 실제 카드 값과 같게 둬야 시험이 현실과 붙어 있다. */
-	private static final int RETARGET = 100;
-	private static final long GRANTED = 1000L;
+	/** 「표적」 카드의 값. 실제 카드·문서와 같게 둬야 시험이 현실과 붙어 있다. */
+	private static final int MARK = 200;
+	private static final int REST = 400;
+	private static final int SHOTS = 5;
+	private static final float DAMAGE = 6.0F;
+	/** 한 주기. 표적 10초 + 쉼 20초. */
+	private static final int PERIOD = MARK + REST;
 
 	private static final UUID A = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
 	private static final UUID B = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
@@ -41,15 +52,235 @@ class TrialDragonFocusTest {
 	/** 명단에 없는 사람. 접속을 끊었거나 관전으로 넘어갔다. */
 	private static final UUID GONE = UUID.fromString("00000000-0000-0000-0000-0000000000ff");
 
-	// ------------------------------------------------------------------ 주기
+	// ------------------------------------------------------------------ 페이즈를 건드리지 않는다
+
+	/**
+	 * <b>이 시험이 이 파일에서 가장 중요하다.</b>
+	 *
+	 * <p>옛 구현은 주기마다 드래곤을 돌진 페이즈로 밀어넣었고, 그러자 <b>드래곤이 착지를 아예 하지
+	 * 않았다.</b> 바닐라는 원을 한 바퀴 다 돌아 경로가 끝난 틱에만 「착지할까」를 굴리는데, 우리가
+	 * 끼어들면 돌아올 때마다 경로가 처음부터 다시 깔려 그 틱이 영영 오지 않는다. 크리스탈을 먹으러
+	 * 가는 것도 내려앉아 맞아 주는 것도 사라져 <b>전투가 끝나지 않는 판</b>이 됐다.
+	 *
+	 * <p>고친 방법은 값을 조절한 것이 아니라 <b>개입을 통째로 걷어낸 것</b>이다. 그래서 「조금만
+	 * 밀어 보자」로 되돌아오는 길을 여기서 막는다. 이름 하나라도 상수 풀에 들어오면 걸린다.
+	 */
+	@Test
+	void 드래곤의_페이즈를_한_번도_부르지_않는다() {
+		String bytes = classBytes();
+		for (String banned : new String[] {"setPhase", "getPhaseManager", "getCurrentPhase",
+				"EnderDragonPhase", "setTarget", "HOLDING_PATTERN", "CHARGING_PLAYER",
+				"STRAFE_PLAYER", "LANDING_APPROACH", "LANDING", "SITTING_SCANNING", "TAKEOFF"}) {
+			assertFalse(bytes.contains(banned),
+					banned + " 이 상수 풀에 있다 — 드래곤의 행동에 다시 끼어들었다."
+							+ " 그것이 착지를 멈춘 사고이고, 이 카드는 구체를 직접 날리는 쪽으로 고쳤다");
+		}
+	}
+
+	@Test
+	void 드래곤에게서는_머리_좌표만_읽는다() {
+		// 우리가 드래곤에게 요구하는 것은 「지금 어디 있는가」 하나다. 그 밖의 것을 읽기 시작하면
+		// 곧 그 밖의 것을 쓰게 되고, 그때 다시 바닐라 흐름을 가로채게 된다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("head"), "구체의 출발점이 드래곤 머리가 아니면 입이 아닌 데서 나온다");
+		assertTrue(bytes.contains("Lnet/minecraft/world/entity/boss/enderdragon/EnderDragonPart;"),
+				"머리는 EnderDragonPart 다. 몸통 좌표로 쏘면 배에서 구체가 나온다");
+	}
+
+	@Test
+	void 착탄은_표적_한_사람에게만_묻는다() {
+		// 체력이 팀 공유이고 StatMirror.fold 가 팀원별 피해를 그대로 합산한다. 착탄 자리에 있는
+		// 아무나 때리면 넷이 모인 자리에 한 발이 떨어질 때 6 × 4 = 24 가 한 틱에 들어가 팀 체력
+		// 20 을 넘는다 — 한 발짜리 즉사 카드다.
+		assertFalse(classBytes().contains("getEntitiesOfClass"),
+				"주변 사람을 긁어모으고 있다 — 모여 있는 팀이 한 발에 죽는다");
+	}
+
+	@Test
+	void 넉백을_주는_피해원을_쓰지_않는다() {
+		// 엔드 중앙 섬은 사방이 허공이고 공유 체력이라 한 사람의 낙사가 팀 전체를 끝낸다.
+		// LivingEntity 는 피해원에 실체가 붙어 있을 때만 밀어내므로 엔티티 없는 것을 쓴다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("magic"), "피해를 넣는 자리가 사라졌다");
+		for (String pushes : new String[] {"mobAttack", "playerAttack", "mobProjectile",
+				"indirectMagic", "knockback"}) {
+			assertFalse(bytes.contains(pushes), pushes + " 은 사람을 밀어낸다 — 허공 낙사는 즉사다");
+		}
+	}
+
+	@Test
+	void 구체와_선은_긴_거리로_나간다() {
+		// 드래곤은 y 133 까지 올라가고 아레나를 가로지르면 150 블록이 넘는다. 짧은 형태는 32
+		// 블록에서 잘리므로, 되돌리면 구체가 코앞에서 갑자기 나타난다 — 그러면 예고가 아니다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDD)I"),
+				"긴 형태를 한 번도 부르지 않는다");
+		assertFalse(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I"),
+				"짧은 형태로 되돌아갔다 — 32 블록 밖에 있는 드래곤 쪽이 안 보인다");
+	}
+
+	@Test
+	void 장판을_남기지_않는다() {
+		// 바닐라 DragonFireball 은 착탄 자리에 브레스 장판을 남긴다. 우리 카드 어디에도 장판은
+		// 적혀 있지 않고, 장판을 쓰는 다른 카드가 따로 있어 섞이면 구별할 수 없다.
+		String bytes = classBytes();
+		assertFalse(bytes.contains("AreaEffectCloud"), "장판을 남기면 다른 카드와 구별되지 않는다");
+		assertFalse(bytes.contains("DragonFireball"), "바닐라 화염구는 장판과 블록 파괴를 함께 달고 온다");
+		// 소리와 사망 메시지도 갈라 둔다. 브레스 장판 쪽이 이 셋을 쓰고 있어서, 같은 것을 쓰면
+		// 화면을 안 보고 있을 때 — 또는 채팅 한 줄로 — 둘을 구별할 수 없다.
+		for (String taken : new String[] {"ENDER_DRAGON_SHOOT", "DRAGON_FIREBALL_EXPLODE",
+				"dragonBreath"}) {
+			assertFalse(bytes.contains(taken),
+					taken + " 은 브레스 장판 카드가 쓰고 있다 — 둘이 섞이면 무엇이 무엇인지 알 수 없다");
+		}
+	}
+
+	// ------------------------------------------------------------------ 표적과 쉼
+
+	@Test
+	void 표적이_markTicks_동안_유지되고_restTicks_동안_쉰다() {
+		for (int phase = 0; phase < PERIOD; phase++) {
+			assertEquals(phase < MARK, TrialDragonFocus.marked(phase, MARK),
+					"위상 " + phase + " 의 판단이 틀렸다 — 표적 " + MARK + "틱, 쉼 " + REST + "틱이다");
+		}
+		assertEquals(PERIOD, TrialDragonFocus.period(MARK, REST));
+		// 주기가 넘어가면 위상도 처음으로 돌아온다.
+		assertEquals(0, TrialDragonFocus.phaseOf(PERIOD, MARK, REST));
+		assertEquals(1L, TrialDragonFocus.cycleOf(PERIOD, MARK, REST));
+		assertEquals(0L, TrialDragonFocus.cycleOf(PERIOD - 1, MARK, REST));
+	}
+
+	@Test
+	void 쉬는_동안에는_한_발도_안_나간다() {
+		for (int phase = MARK; phase < PERIOD; phase++) {
+			assertEquals(-1, TrialDragonFocus.shotIndexAt(phase, MARK, SHOTS),
+					"쉬는 시간인 위상 " + phase + " 에 쏜다 — 20초 쉼이 카드에 적힌 약속이다");
+		}
+	}
+
+	@Test
+	void 발이_markTicks_안에_shots_발_고르게_나간다() {
+		List<Integer> fired = firedPhases(MARK, REST, SHOTS);
+		assertEquals(SHOTS, fired.size(), "카드에 적힌 수와 실제로 나가는 수가 다르다: " + fired);
+		assertEquals(0, fired.get(0), "표적을 잡는 틱에 첫 발이 나간다");
+		assertTrue(fired.get(fired.size() - 1) < MARK,
+				"마지막 발이 표적 해제 뒤에 날아간다: " + fired);
+
+		int interval = TrialDragonFocus.shotInterval(MARK, SHOTS);
+		for (int index = 1; index < fired.size(); index++) {
+			assertEquals(interval, fired.get(index) - fired.get(index - 1),
+					"발 사이가 고르지 않다 — 한 번에 몰리면 피할 수 없다: " + fired);
+		}
+		// 번호도 0 부터 차례대로 붙어야 한다. 번호가 어긋나면 같은 발을 두 번 쏘거나 건너뛴다.
+		for (int index = 0; index < fired.size(); index++) {
+			assertEquals(index, TrialDragonFocus.shotIndexAt(fired.get(index), MARK, SHOTS));
+		}
+	}
+
+	@Test
+	void 발사_간격은_markTicks_와_shots_에서_나온다() {
+		assertEquals(40, TrialDragonFocus.shotInterval(MARK, SHOTS), "10초에 5발이면 2초에 한 발이다");
+		// 숫자를 박아 두지 않았다는 증거 — 카드 값을 바꾸면 간격이 따라 움직인다.
+		assertEquals(20, TrialDragonFocus.shotInterval(MARK / 2, SHOTS));
+		assertEquals(80, TrialDragonFocus.shotInterval(MARK * 2, SHOTS));
+		assertEquals(20, TrialDragonFocus.shotInterval(MARK, SHOTS * 2));
+	}
+
+	@Test
+	void 나누어떨어지지_않아도_적힌_수보다_많이_쏘지_않는다() {
+		// 10 / 3 = 3 이라 간격만 보면 위상 0·3·6·9 에 네 발이 나간다. 카드를 적은 사람이
+		// 예상할 수 없는 피해다.
+		assertEquals(3, firedPhases(10, 20, 3).size(), "적힌 것보다 많이 쏜다");
+		assertEquals(List.of(0, 3, 6), firedPhases(10, 20, 3));
+	}
+
+	@Test
+	void 값이_잘못_적힌_카드는_조용해질_뿐이다() {
+		// 값이 잘못 적힌 카드는 심심해질 뿐이어야지 서버를 멈추거나 대응 불가를 만들면 안 된다.
+		for (int broken : new int[] {0, -1, -240}) {
+			assertTrue(TrialDragonFocus.period(broken, broken) >= 1,
+					"주기가 0 이면 나머지 연산이 그 자리에서 터진다");
+			assertFalse(TrialDragonFocus.marked(0, broken), "잡는 시간이 없으면 표적도 없다");
+			assertEquals(0, TrialDragonFocus.shotInterval(broken, SHOTS));
+			assertEquals(-1, TrialDragonFocus.shotIndexAt(0, broken, SHOTS));
+			assertEquals(0, TrialDragonFocus.flightTicks(broken, SHOTS));
+			assertEquals(-1, TrialDragonFocus.shotIndexAt(0, MARK, broken), "발 수가 " + broken);
+		}
+		assertTrue(TrialDragonFocus.period(Integer.MAX_VALUE, Integer.MAX_VALUE) > 0,
+				"더하다 넘치면 음수 주기가 되어 나머지 연산이 음수를 돌려준다");
+	}
+
+	@Test
+	void 월드_시간이_되감겨도_한_발만_나간다() {
+		// TrialRisks.elapsedSinceGrant 가 음수를 0 으로 깎으므로, 판을 다시 시작했는데 상태가
+		// 남았으면 위상 0 이 여러 틱 이어진다. 위상만 보고 쏘면 그동안 매 틱 한 발씩 나간다.
+		TrialDragonFocus.Fired first = new TrialDragonFocus.Fired(0L, 0);
+		assertTrue(TrialDragonFocus.freshShot(null, first), "첫 발은 기다리지 않는다");
+		assertFalse(TrialDragonFocus.freshShot(first, new TrialDragonFocus.Fired(0L, 0)),
+				"같은 주기의 같은 번호를 두 번 쏜다");
+		assertTrue(TrialDragonFocus.freshShot(first, new TrialDragonFocus.Fired(0L, 1)));
+		assertTrue(TrialDragonFocus.freshShot(first, new TrialDragonFocus.Fired(1L, 0)));
+	}
+
+	// ------------------------------------------------------------------ 구체 한 발
+
+	@Test
+	void 두_발이_같은_틱에_닿지_않는다() {
+		// 닿는 틱이 겹치면 카드 값 하나가 두 배로 들어간다. 팀 체력이 20 이라 6 이 12 가 되는
+		// 것으로 끝나지 않고, 다른 카드와 겹치면 그대로 전멸이다.
+		for (int shots = 1; shots <= 20; shots++) {
+			for (int markTicks : new int[] {20, 60, MARK, 600}) {
+				assertTrue(TrialDragonFocus.flightTicks(markTicks, shots)
+								<= TrialDragonFocus.shotInterval(markTicks, shots),
+						"표적 " + markTicks + "틱 · " + shots + "발에서 앞 발이 아직 날고 있다");
+			}
+		}
+	}
+
+	@Test
+	void 비행_시간이_옆걸음_예고보다_짧지_않다() {
+		// 이 카드가 요구하는 행동은 「제자리에서 옆으로 비키기」 하나다 — 조준점이 발사 순간에
+		// 얼어붙고 노려지는 사람도 하나라 흩어질 필요가 없다. 그 최소 예고가 30틱이다.
+		assertEquals(TrialWarning.TICKS_SIDESTEP,
+				TrialDragonFocus.flightTicks(MARK, SHOTS),
+				"실제 카드에서 구체가 날아오는 시간이 옆걸음 예고와 달라졌다");
+		assertTrue(TrialDragonFocus.flightTicks(MARK, SHOTS) >= TrialWarning.TICKS_SIDESTEP,
+				"예고가 아니라 사후 통보가 된다");
+	}
+
+	@Test
+	void 착탄_반경은_비켜서_벗어날_수_있다() {
+		// 걷는 속도가 초당 4.3 블록이라 30틱(1.5초)이면 6 블록 넘게 움직인다. 반경 2.5 는
+		// 한 걸음 반이다. 여기를 키우면 다섯 발을 전부 맞는 카드가 되고 합계 30 은 팀 체력을
+		// 넘긴다 — 「즉사 메커닉 0개」가 깨진다.
+		double seconds = TrialDragonFocus.flightTicks(MARK, SHOTS) / 20.0;
+		double walked = 4.3 * seconds;
+		assertTrue(walked > TrialDragonFocus.IMPACT_RADIUS * 2.0,
+				"비행 " + seconds + "초 동안 걸어서 " + walked + " 블록인데 반경이 "
+						+ TrialDragonFocus.IMPACT_RADIUS + " 다 — 비켜도 맞는다");
+	}
+
+	@Test
+	void 구체는_조준점을_지나쳐_날아가지_않는다() {
+		assertEquals(0.0, TrialDragonFocus.flightProgress(100L, 100L, 130L));
+		assertEquals(0.5, TrialDragonFocus.flightProgress(115L, 100L, 130L), 1.0E-9);
+		assertEquals(1.0, TrialDragonFocus.flightProgress(130L, 100L, 130L));
+		assertEquals(1.0, TrialDragonFocus.flightProgress(200L, 100L, 130L),
+				"지나친 자리에 구체를 그리면 사람들이 착탄을 엉뚱한 곳에서 본다");
+		assertEquals(0.0, TrialDragonFocus.flightProgress(50L, 100L, 130L));
+		assertEquals(1.0, TrialDragonFocus.flightProgress(100L, 100L, 100L),
+				"비행 시간이 0 이면 이미 닿아 있다");
+	}
+
+	// ------------------------------------------------------------------ 누구를 노리는가
 
 	@Test
 	void 표적은_한_주기_동안_바뀌지_않는다() {
 		RandomSource random = RandomSource.create(7L);
 		TrialDragonFocus.Selection held = null;
 		TrialDragonFocus.Selection first = null;
-		for (long now = GRANTED; now <= GRANTED + RETARGET; now++) {
-			long cycle = TrialRisks.strikeIndex(now, GRANTED, RETARGET);
+		for (long elapsed = 0L; elapsed < MARK; elapsed++) {
+			long cycle = TrialDragonFocus.cycleOf(elapsed, MARK, REST);
 			held = TrialDragonFocus.select(held, cycle, FOUR, TrialCatalog.Risk.Focus.RANDOM,
 					null, random);
 			if (first == null) {
@@ -57,15 +288,15 @@ class TrialDragonFocusTest {
 				continue;
 			}
 			assertSame(first, held,
-					"주기 안에서 다시 고르면 표식이 사람들 사이를 뛰어다녀 아무도 대응할 수 없다: " + now);
+					"주기 안에서 다시 고르면 표식이 사람들 사이를 뛰어다녀 아무도 대응할 수 없다: " + elapsed);
 		}
 	}
 
 	@Test
 	void 주기가_넘어가면_다시_고른다() {
 		RandomSource random = RandomSource.create(7L);
-		long insideCycle = TrialRisks.strikeIndex(GRANTED + RETARGET, GRANTED, RETARGET);
-		long nextCycle = TrialRisks.strikeIndex(GRANTED + RETARGET + 1L, GRANTED, RETARGET);
+		long insideCycle = TrialDragonFocus.cycleOf(PERIOD - 1, MARK, REST);
+		long nextCycle = TrialDragonFocus.cycleOf(PERIOD, MARK, REST);
 		assertNotEquals(insideCycle, nextCycle, "주기가 넘어가는 자리를 잘못 잡았다");
 
 		TrialDragonFocus.Selection held = TrialDragonFocus.select(null, insideCycle, FOUR,
@@ -74,26 +305,6 @@ class TrialDragonFocusTest {
 				TrialCatalog.Risk.Focus.RANDOM, null, random);
 		assertNotSameSelection(held, next);
 		assertEquals(nextCycle, next.cycle());
-	}
-
-	@Test
-	void retargetTicks_가_0_이하면_처음_고른_사람을_영영_유지한다() {
-		// 못박아 둔다. 「매 틱 다시 고른다」쪽은 표식이 뛰어다니고 자막이 매 틱 떠서 훨씬 나쁘다.
-		// 값이 잘못 적힌 카드는 심심해질 뿐이어야지 못 읽을 화면을 만들면 안 된다.
-		for (int broken : new int[] {0, -1, -240}) {
-			RandomSource random = RandomSource.create(11L);
-			TrialDragonFocus.Selection held = null;
-			for (long now = GRANTED; now < GRANTED + 10_000L; now += 137L) {
-				long cycle = TrialRisks.strikeIndex(now, GRANTED, broken);
-				assertEquals(0L, cycle, "주기가 0 이하면 번호가 늘 0 이다");
-				TrialDragonFocus.Selection next = TrialDragonFocus.select(held, cycle, FOUR,
-						TrialCatalog.Risk.Focus.RANDOM, null, random);
-				if (held != null) {
-					assertSame(held, next, "간격이 " + broken + " 인데 표적이 바뀌었다");
-				}
-				held = next;
-			}
-		}
 	}
 
 	@Test
@@ -117,7 +328,7 @@ class TrialDragonFocusTest {
 		for (long cycle = 0L; cycle < 50L; cycle++) {
 			TrialDragonFocus.Selection held = TrialDragonFocus.select(null, cycle, FOUR,
 					TrialCatalog.Risk.Focus.CRYSTAL_BREAKER, C, random);
-			assertEquals(C, held.target(), "「크리스탈을 깬 사람에게 집중된다」가 카드에 적힌 말이다");
+			assertEquals(C, held.target(), "「크리스탈을 깬 사람이 표적이 된다」가 카드에 적힌 말이다");
 		}
 	}
 
@@ -194,155 +405,73 @@ class TrialDragonFocusTest {
 	// ------------------------------------------------------------------ 카드에 적힌 값
 
 	@Test
-	void 표적_카드는_크리스탈을_깬_사람을_노린다() {
+	void 표적_카드에_적힌_값이_설계와_같다() {
 		TrialCatalog.Risk.DragonFocus focus = onlyFocus("sharedfate:dragon_mark");
 		assertEquals(TrialCatalog.Risk.Focus.CRYSTAL_BREAKER, focus.focus(),
-				"카드 설명이 「크리스탈을 깬 사람에게 집중됩니다」다. 값과 글이 어긋나면 설명이 거짓말이 된다");
-		assertEquals(RETARGET, focus.retargetTicks(), "시험이 보는 값과 카드 값이 어긋났다");
+				"카드 설명이 「크리스탈을 깬 사람」이다. 값과 글이 어긋나면 설명이 거짓말이 된다");
+		assertEquals(MARK, focus.markTicks(), "표적 10초");
+		assertEquals(REST, focus.restTicks(), "쉼 20초");
+		assertEquals(SHOTS, focus.shots(), "10초에 5발");
+		assertEquals(DAMAGE, focus.damage(), "발당 6");
+		assertEquals(30, (focus.markTicks() + focus.restTicks()) / 20,
+				"한 주기가 30초라고 문서에 적혀 있다");
 	}
 
 	@Test
-	void 재지정_간격은_자막을_읽을_수_있을_만큼_길다() {
+	void 다_맞아도_한_틱에_죽지_않는다() {
+		// 다섯 발을 전부 맞으면 30 이라 팀 체력 20 을 넘지만, 한 틱에 들어오는 것은 언제나 한
+		// 발이다 — 구체가 날아가는 시간이 발사 간격을 넘지 않으므로 두 발이 같은 틱에 닿지 않는다.
+		TrialCatalog.Risk.DragonFocus focus = onlyFocus("sharedfate:dragon_mark");
+		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
+		assertTrue(focus.damage() < teamHealth,
+				"한 발로 팀이 죽는다. 팀 공유 체력은 " + teamHealth + " 다");
+		assertTrue(TrialDragonFocus.flightTicks(focus.markTicks(), focus.shots())
+						<= TrialDragonFocus.shotInterval(focus.markTicks(), focus.shots()),
+				"두 발이 같은 틱에 닿으면 " + (focus.damage() * 2) + " 가 한 번에 들어간다");
+	}
+
+	@Test
+	void 표적_시간은_자막을_읽을_수_있을_만큼_길다() {
 		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
 			for (TrialCatalog.Risk risk : trial.risks()) {
 				if (!(risk instanceof TrialCatalog.Risk.DragonFocus focus)) {
 					continue;
 				}
-				assertTrue(focus.retargetTicks() >= 20,
-						trial.name() + " — 1초에 한 번 넘게 표적이 바뀌면 누가 물렸는지 읽을 수 없다");
+				assertTrue(focus.markTicks() >= TrialWarning.TICKS_SIDESTEP,
+						trial.name() + " — 표적이 옆걸음 예고보다 짧게 붙으면 읽기도 전에 풀린다");
+				assertTrue(focus.restTicks() >= 0, trial.name() + " — 쉬는 시간이 음수면 뜻이 없다");
+				assertTrue(focus.shots() >= 0, trial.name() + " — 발 수가 음수면 뜻이 없다");
 			}
 		}
 	}
 
-	// ------------------------------------------------------------------ 우리가 정말 개입하는가
-
+	/**
+	 * 카드 값이 문서와 같다.
+	 *
+	 * <p>{@code docs/드래곤-시련-카드.md} 는 <b>값의 근거를 남기는 곳</b>이다. 코드만 고치고
+	 * 문서를 두면 다음 사람이 「왜 이 값인가」를 물을 곳이 사라지고, 문서만 고치면 게임과 다른
+	 * 설명이 남는다. 문서에 적어 둔 「값 —」 줄을 카드 값에서 그대로 만들어 찾는다.
+	 */
 	@Test
-	void 드래곤을_사람에게_밀어넣는_호출이_실제로_있다() throws IOException {
-		// 이번 결함이 정확히 「아무것도 안 한다」였다. 옛 구현은 setPhase 를 한 번도 부르지 않고
-		// 드래곤이 스스로 사람을 노리기만 기다렸는데, 바닐라가 그 페이즈에 들어가도 고르는 사람이
-		// 우리와 같아 카드가 바닐라와 구별되지 않았다. 다시 「기다리기만 하는」 구현으로 돌아가면
-		// 여기서 걸린다.
-		String bytes = classBytes();
-		assertTrue(bytes.contains("setPhase"), "페이즈를 한 번도 바꾸지 않는다 — 옛 결함으로 되돌아갔다");
-		assertTrue(bytes.contains(
-						"(Lnet/minecraft/world/entity/boss/enderdragon/phases/EnderDragonPhase;)V"),
-				"setPhase 를 이름만 적고 실제로 부르지는 않는다");
-		assertTrue(bytes.contains("CHARGING_PLAYER"),
-				"드래곤이 사람에게 날아오는 페이즈는 이것 하나뿐이다");
+	void 표적_카드_값이_문서에도_같이_적혀_있다() {
+		TrialCatalog.Risk.DragonFocus focus = onlyFocus("sharedfate:dragon_mark");
+		String line = "값 — 표적 " + focus.markTicks() + "틱 · 쉼 " + focus.restTicks()
+				+ "틱 · " + focus.shots() + "발 · 발당 피해 " + plain(focus.damage())
+				+ " · 착탄 반경 " + plain(TrialDragonFocus.IMPACT_RADIUS);
+		String doc = cardDoc();
+		assertTrue(doc.contains(line),
+				"「표적」의 값이 문서와 다르다. 문서에 이 줄이 있어야 한다: " + line);
 	}
 
 	@Test
-	void 바닐라가_스스로_빠져나올_수_있는_페이즈만_쓴다() {
-		// 착지·앉기·이륙을 우리가 세우면 되돌릴 사람이 필요해진다. 연출 도중 드래곤이 죽거나
-		// 서버가 내려가면 우리 틱이 끊기고, 그때 드래곤이 그 페이즈에 갇히면 전투가 영영 끝나지
-		// 않는다. 이름을 아예 쓰지 않으면 밀어넣을 수도 없다.
-		String bytes = classBytes();
-		for (String stuck : new String[] {"LANDING_APPROACH", "LANDING", "SITTING_FLAMING",
-				"SITTING_SCANNING", "SITTING_ATTACKING", "TAKEOFF", "HOVERING", "DYING"}) {
-			assertFalse(bytes.contains(stuck),
-					stuck + " 을 이름으로 부르고 있다 — 바닐라 흐름을 가로채거나 갇힐 자리를 만들었다");
-		}
+	void 페이즈를_건드리지_않는다는_판단이_문서에_남아_있다() {
+		// 근거가 없으면 다음 사람이 「조금만 밀어 보자」로 되돌린다. 그때 착지가 다시 멈춘다.
+		String doc = cardDoc();
+		assertTrue(doc.contains("착지"), "착지가 멈췄던 사고가 문서에 없다");
+		assertTrue(doc.contains("setPhase"), "무엇을 부르지 않기로 했는지가 문서에 없다");
 	}
 
-	@Test
-	void 오고_있는_선은_긴_거리로_나간다() {
-		// 드래곤은 y 133 까지 올라가고 아레나를 가로지르면 150 블록이 넘는다. 짧은 형태로
-		// 되돌리면 선의 출발점 — 곧 「어디서 오는가」 — 가 통째로 사라지고, 그러면 자막만 뜨고
-		// 아무것도 안 보이던 그 화면으로 정확히 되돌아간다.
-		String bytes = classBytes();
-		assertTrue(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDD)I"),
-				"긴 형태를 한 번도 부르지 않는다");
-		assertFalse(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I"),
-				"짧은 형태로 되돌아갔다 — 32 블록 밖에 있는 드래곤 쪽 선이 안 보인다");
-	}
-
-	// ------------------------------------------------------------------ 개입 주기
-
-	@Test
-	void 돌진_간격은_재지정_간격에서_뽑는다() {
-		assertEquals(RETARGET * TrialDragonFocus.CHARGE_CYCLES,
-				TrialDragonFocus.chargeInterval(RETARGET));
-		assertEquals(0, TrialDragonFocus.chargeInterval(RETARGET) % RETARGET,
-				"두 박자가 어긋나면 표적이 바뀐 사람과 드래곤이 날아가는 사람이 따로 논다");
-	}
-
-	@Test
-	void 돌진_사이에는_바닐라를_내버려_둔다() {
-		int interval = TrialDragonFocus.chargeInterval(RETARGET);
-		long charged = GRANTED + 40L;
-		for (long now = charged; now < charged + interval; now++) {
-			assertFalse(TrialDragonFocus.chargeDue(now, charged, interval),
-					"간격 안인데 또 민다 — 드래곤이 원을 돌지 못해 착지 주사위를 굴릴 기회가 없어진다: "
-							+ (now - charged));
-		}
-		assertTrue(TrialDragonFocus.chargeDue(charged + interval, charged, interval),
-				"간격이 지났는데 오지 않으면 카드가 다시 아무 일도 안 하는 것이 된다");
-	}
-
-	@Test
-	void 돌진이_바닐라_비행_시간을_다_먹지_않는다() {
-		// 돌진 한 번은 비행 2~3초에 DragonChargePlayerPhase 가 정해 둔 회복 10틱이라 넉넉히
-		// 잡아 80틱이다. 간격이 그 몇 배는 되어야 나머지 시간이 바닐라 몫으로 남는다.
-		int dive = 80;
-		assertTrue(TrialDragonFocus.chargeInterval(RETARGET) >= dive * 3,
-				"드래곤이 사람만 쫓는다 — 크리스탈을 먹으러 가지도 내려앉지도 못한다. 실제 값: "
-						+ TrialDragonFocus.chargeInterval(RETARGET));
-	}
-
-	@Test
-	void 재지정_간격이_잘못_적혀도_바닥_아래로는_안_내려간다() {
-		// 값이 잘못 적힌 카드는 심심해질 뿐이어야지 대응 불가를 만들면 안 된다.
-		for (int broken : new int[] {0, -1, -240, 1, 20, 66}) {
-			assertTrue(TrialDragonFocus.chargeInterval(broken) >= TrialDragonFocus.CHARGE_MIN_TICKS,
-					"간격 " + broken + " 인 카드가 드래곤을 쉬지 않고 파고들게 만든다");
-		}
-	}
-
-	@Test
-	void 아주_큰_간격이_음수로_넘어가지_않는다() {
-		assertTrue(TrialDragonFocus.chargeInterval(Integer.MAX_VALUE) > 0,
-				"곱하다 넘치면 바닥값 검사를 그대로 통과해 매 틱 돌진이 된다");
-	}
-
-	@Test
-	void 카드를_받으면_첫_돌진을_기다리지_않는다() {
-		// 자막이 뜨고 한참 아무 일도 없는 것이 이번에 고친 그 결함이다.
-		assertTrue(TrialDragonFocus.chargeDue(GRANTED, null, 300));
-	}
-
-	@Test
-	void 월드_시간이_되감겨도_돌진이_멈추지_않는다() {
-		// 판을 다시 시작했는데 상태가 덜 지워졌을 수 있다. 미래 시각이 남아 있으면 「간격이
-		// 지났는가」가 영영 거짓이 되어 카드가 조용히 죽는다.
-		assertTrue(TrialDragonFocus.chargeDue(100L, 99_999L, 300));
-	}
-
-	// ------------------------------------------------------------------ 돌진이 성립하는 거리
-
-	@Test
-	void 너무_가깝거나_멀면_돌진시키지_않는다() {
-		// 두 끝값은 DragonChargePlayerPhase.doServerTick 이 「도착했다」로 보는 경계에서 왔다.
-		// 거리² 100 미만(=10블록)과 22500 초과(=150블록)에서 회복을 세기 시작한다.
-		assertTrue(TrialDragonFocus.CHARGE_MIN_DISTANCE > 10.0,
-				"10 블록 안에서 밀면 10틱 뒤 그냥 되돌아간다 — 또 아무 일도 없는 카드가 된다");
-		assertTrue(TrialDragonFocus.CHARGE_MAX_DISTANCE < 150.0,
-				"150 블록 밖으로 겨누면 돌진이 시작조차 하지 않는다");
-		assertFalse(TrialDragonFocus.chargeable(TrialDragonFocus.CHARGE_MIN_DISTANCE - 0.01));
-		assertTrue(TrialDragonFocus.chargeable(TrialDragonFocus.CHARGE_MIN_DISTANCE));
-		assertTrue(TrialDragonFocus.chargeable(TrialDragonFocus.CHARGE_MAX_DISTANCE));
-		assertFalse(TrialDragonFocus.chargeable(TrialDragonFocus.CHARGE_MAX_DISTANCE + 0.01));
-	}
-
-	@Test
-	void 아레나_안의_평범한_거리는_전부_돌진_거리다() {
-		// 엔드 섬 반경이 40 이고 드래곤은 y 133 까지 오른다. 사람이 중앙에 있고 드래곤이
-		// 궤도 꼭대기에 있는 흔한 그림이 빠지면 카드가 대부분의 시간 동안 놀게 된다.
-		for (double distance : new double[] {15.0, 30.0, 60.0, 92.0, 120.0}) {
-			assertTrue(TrialDragonFocus.chargeable(distance), "거리 " + distance);
-		}
-	}
-
-	// ------------------------------------------------------------------ 오고 있다는 선
+	// ------------------------------------------------------------------ 「저기서 온다」는 선
 
 	@Test
 	void 선이_점선으로_읽히지_않는다() {
@@ -374,36 +503,72 @@ class TrialDragonFocusTest {
 		assertTrue(TrialDragonFocus.beamGap(length) <= TrialDragonFocus.BEAM_MAX_GAP + 1.0E-9);
 	}
 
+	@Test
+	void 선은_첫_구체가_닿기_전에_그려진다() {
+		// 선이 주는 정보는 「어디서 날아오는가」다. 첫 구체가 이미 도착한 뒤에 그리면 늦는다.
+		assertTrue(TrialDragonFocus.BEAM_TICKS <= TrialDragonFocus.flightTicks(MARK, SHOTS),
+				"첫 구체가 닿은 뒤까지 선을 긋고 있다");
+	}
+
 	// ------------------------------------------------------------------ 26.3 의 실제 이름
 
 	@Test
-	void 사람을_노리는_페이즈_API_가_26_3_에_실제로_있다() throws Exception {
+	void 우리가_쓰는_바닐라_이름이_26_3_에_실제로_있다() throws Exception {
 		// 이 모드는 refmap 없이 이름으로 바닐라를 부른다. 판이 올라 이름이 바뀌면 빌드가 깨지지만,
 		// 여기서 먼저 깨지면 어느 이름이 사라졌는지가 바로 보인다.
-		Class<?> phase = load("net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase");
-		for (String name : new String[] {"HOLDING_PATTERN", "STRAFE_PLAYER", "CHARGING_PLAYER"}) {
-			assertNotNull(phase.getDeclaredField(name), name);
-		}
-
-		Class<?> manager = load(
-				"net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhaseManager");
-		assertNotNull(manager.getDeclaredMethod("setPhase", phase));
-		assertNotNull(manager.getDeclaredMethod("getPhase", phase));
-
-		// 대상을 심는 값이 두 페이즈가 서로 다르다. 이것이 뒤집히면 돌진이 유도탄이 된다.
-		assertNotNull(load("net.minecraft.world.entity.boss.enderdragon.phases"
-						+ ".DragonStrafePlayerPhase")
-				.getDeclaredMethod("setTarget", load("net.minecraft.world.entity.LivingEntity")));
-		assertNotNull(load("net.minecraft.world.entity.boss.enderdragon.phases"
-						+ ".DragonChargePlayerPhase")
-				.getDeclaredMethod("setTarget", load("net.minecraft.world.phys.Vec3")));
-
-		// 선의 출발점은 드래곤 머리다. 몸통 좌표로 그으면 입이 아닌 배에서 선이 나온다.
 		assertNotNull(load("net.minecraft.world.entity.boss.enderdragon.EnderDragon")
-				.getDeclaredField("head"));
+				.getDeclaredField("head"), "구체의 출발점이다");
+		assertNotNull(load("net.minecraft.world.entity.boss.enderdragon.EnderDragonPart")
+				.getMethod("position"), "머리 좌표를 읽는 길");
+		// 넉백 없는 피해원. 엔티티를 받는 것으로 바뀌면 사람이 밀려 허공으로 떨어진다.
+		assertEquals(0, load("net.minecraft.world.damagesource.DamageSources")
+				.getDeclaredMethod("magic").getParameterCount());
+		assertNotNull(load("net.minecraft.sounds.SoundEvents").getDeclaredField("SHULKER_SHOOT"));
+		assertNotNull(load("net.minecraft.sounds.SoundEvents")
+				.getDeclaredField("SHULKER_BULLET_HIT"));
 	}
 
 	// ------------------------------------------------------------------ 거들기
+
+	/** 한 주기를 다 돌려 실제로 발이 나가는 위상들. */
+	private static List<Integer> firedPhases(int markTicks, int restTicks, int shots) {
+		List<Integer> fired = new ArrayList<>();
+		for (int phase = 0; phase < TrialDragonFocus.period(markTicks, restTicks); phase++) {
+			if (TrialDragonFocus.shotIndexAt(phase, markTicks, shots) >= 0) {
+				fired.add(phase);
+			}
+		}
+		return fired;
+	}
+
+	/** 문서에 적는 모양 그대로. 정수로 떨어지는 값 뒤에 {@code .0} 을 붙이지 않는다. */
+	private static String plain(double value) {
+		if (value == Math.rint(value)) {
+			return String.valueOf((long) value);
+		}
+		return String.valueOf(value);
+	}
+
+	/**
+	 * 카드 문서를 읽는다.
+	 *
+	 * <p>작업 디렉터리에서 위로 올라가며 찾는다. Gradle 의 {@code test} 는 프로젝트 폴더에서
+	 * 돌지만 IDE 는 모듈 폴더에서 돌 수 있어, 한 자리만 보면 환경에 따라 시험이 사라진다.
+	 */
+	private static String cardDoc() {
+		Path here = Path.of("").toAbsolutePath();
+		for (Path at = here; at != null; at = at.getParent()) {
+			Path candidate = at.resolve("docs").resolve("드래곤-시련-카드.md");
+			if (Files.isRegularFile(candidate)) {
+				try {
+					return Files.readString(candidate, StandardCharsets.UTF_8);
+				} catch (IOException broken) {
+					throw new AssertionError(candidate + " 를 읽지 못했다", broken);
+				}
+			}
+		}
+		throw new AssertionError("docs/드래곤-시련-카드.md 를 찾지 못했다. 작업 디렉터리: " + here);
+	}
 
 	/** 초기화를 일으키지 않고 클래스만 집어 온다. 월드 없이 도는 시험이라 정적 초기화를 피한다. */
 	private static Class<?> load(String name) throws ClassNotFoundException {
