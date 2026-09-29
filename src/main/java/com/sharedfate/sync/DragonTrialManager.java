@@ -48,27 +48,33 @@ public final class DragonTrialManager {
 	private static final int SUMMON_DELAY_TICKS = 60;
 	/** 도착 직후 무적. 떨어지자마자 브레스에 맞아 팀이 절반 깎이는 것을 막는다. */
 	private static final int ARRIVAL_GRACE_TICKS = 60;
-	/** 엔드 섬 가장자리. 흑요석 기둥과 크리스탈 사거리를 피한다. */
-	private static final double ARRIVAL_RADIUS = 40.0;
 	/**
-	 * 자리가 터지고 룰렛이 열리기까지.
+	 * 팀이 떨어지는 자리. 엔드 섬 <b>한가운데</b>다.
 	 *
-	 * <p>엔드에 떨어지는 순간이나 크리스탈이 깨지는 순간에 곧바로 화면을 겹치면 <b>무엇 때문에
-	 * 떴는지 읽히지 않는다.</b> 자리가 터진 것을 먼저 겪게 하고 잠깐 뒤에 뽑는다.
+	 * <h2>가장자리에 내려놓다가 기둥 안에 박았다</h2>
+	 *
+	 * <p>처음에는 「기둥과 크리스탈 사거리를 피한다」며 반경 40 자리에 내려놓았다. 그런데
+	 * 흑요석 기둥은 <b>반경 42 원 위에 선다</b>(바닐라 {@code EndSpikeFeature} 를 풀어 확인했다).
+	 * 2칸 차이라 기둥 굵기 안이고, 실제로 사람이 <b>기둥 속에 스폰됐다.</b>
+	 *
+	 * <p>가운데는 기둥에서 가장 멀고 모든 방향이 똑같이 열려 있다. 크리스탈 사거리를 걱정했지만
+	 * 도착 직후 무적이 그 몫을 한다.
 	 */
-	private static final int TRIAL_DELAY_TICKS = 300;
-
+	private static final Vec3 ARRIVAL_POINT = new Vec3(0.0, 75.0, 0.0);
 	private static final net.minecraft.resources.Identifier HEALTH_MODIFIER_ID =
 			SharedFateMod.id("trial/dragon_health");
 
 	private static final Map<UUID, DragonTrialSession> SESSIONS = new HashMap<>();
 	private static final Map<UUID, Long> PENDING_SUMMON = new HashMap<>();
 	/**
-	 * 룰렛을 열 수 있는 가장 이른 시각.
+	 * 룰렛을 열 수 있는 가장 이른 시각. 줄 맨 앞 자리의 지연으로 정해진다.
 	 *
 	 * <p><b>저장하지 않는다.</b> 재시작하면 다시 세는데, 그때는 어차피 자리가 줄에 남아 있고
-	 * 15초가 더 걸릴 뿐이다. 반대로 이것을 저장했다가 값이 어긋나면 룰렛이 영영 안 열린다 —
-	 * 잃는 것보다 지키기 어려운 쪽이 더 비싸다.
+	 * 그 자리의 지연만큼 더 걸릴 뿐이다. 반대로 이것을 저장했다가 값이 어긋나면 룰렛이 영영 안
+	 * 열린다 — 잃는 것보다 지키기 어려운 쪽이 더 비싸다.
+	 *
+	 * <p>줄 맨 앞을 꺼낼 때마다 {@link #resetTrialDelay} 로 지운다. 남겨 두면 다음 자리가
+	 * <b>앞 자리의 지연</b>을 물려받는다.
 	 */
 	private static final Map<UUID, Long> READY_AT = new HashMap<>();
 	/** 전투를 열 때의 크리스탈 수. 「처음 깨졌다」를 이것과 비교해 판단한다. */
@@ -204,7 +210,7 @@ public final class DragonTrialManager {
 	}
 
 	private static void summonTeam(MinecraftServer server, ServerLevel end, ShareTeam team) {
-		Vec3 landing = new Vec3(ARRIVAL_RADIUS, 70.0, 0.0);
+		Vec3 landing = ARRIVAL_POINT;
 		for (ServerPlayer member : membersOf(server, team)) {
 			if (member.level().dimension() == Level.END) {
 				continue;
@@ -297,7 +303,7 @@ public final class DragonTrialManager {
 		if (!finished.isEmpty()) {
 			finished.forEach(SESSIONS::remove);
 			// 전투가 끝났는데 룰렛만 남으면 다음 전투 첫 틱에 옛 카드가 튀어나온다.
-			finished.forEach(READY_AT::remove);
+			finished.forEach(DragonTrialManager::resetTrialDelay);
 			persist();
 		}
 	}
@@ -358,8 +364,9 @@ public final class DragonTrialManager {
 		if (done == null) {
 			return;
 		}
-		// 다음 자리도 처음부터 다시 센다. 연달아 터지면 숨 쉴 틈 없이 두 번 얼어붙는다.
-		READY_AT.remove(done.teamId());
+		// 줄 맨 앞이 바뀌었으므로 지연을 다시 센다. 앞 자리가 쓰던 시각을 남겨 두면 다음 자리가
+		// 자기 지연 대신 그것을 물려받는다.
+		resetTrialDelay(done.teamId());
 		DragonTrialSession session = SESSIONS.get(done.teamId());
 		if (session == null) {
 			return;
@@ -380,13 +387,55 @@ public final class DragonTrialManager {
 	}
 
 	/**
-	 * 자리가 터지고 {@link #TRIAL_DELAY_TICKS} 이 지나면 룰렛을 연다.
+	 * 줄 맨 앞의 자리가 {@linkplain TrialCatalog.Trigger#delayTicks() 정한 만큼} 기다렸는가.
 	 *
-	 * <h2>왜 곧바로 열지 않는가</h2>
+	 * <h2>지연 0 은 그 틱에 열려야 한다</h2>
 	 *
-	 * <p>엔드에 떨어지는 순간이나 크리스탈이 깨지는 순간은 판이 가장 시끄러운 때다. 그 위에
-	 * 화면을 겹쳐 띄우면 무엇 때문에 떴는지 읽히지 않는다. 자리가 터진 것을 <b>먼저 겪게</b> 하고
-	 * 잠깐 뒤에 뽑는다.
+	 * <p>전에는 「{@code READY_AT} 이 비었으면 적고 돌아간다」였다. 그 모양이면 지연이 0 이어도
+	 * 적은 틱은 그냥 지나가고 <b>다음 틱에야</b> 열린다. 크리스탈처럼 즉시가 목적인 자리에서는
+	 * 그 한 틱이 곧 「안 되는 것」이므로, 적어 넣은 값을 <b>같은 틱에 바로 견준다.</b>
+	 *
+	 * <p>지연을 자리마다 다르게 두는 이상 값을 고르려면 <b>어느 자리인지부터 알아야 한다.</b>
+	 * 그래서 팀 id 가 아니라 세션을 받아 줄 맨 앞을 여기서 들여다본다. 줄이 비어 자리를 알 수
+	 * 없으면 기다리는 쪽으로 둔다 — 그 상태에서는 어차피 룰렛이 열리지 않고
+	 * ({@link DragonTrialSession#shouldOfferTrial} 이 막는다), 모르는 채 즉시를 고르는 것보다
+	 * 안전하다.
+	 *
+	 * <p>시험에서 직접 부른다. 이 계산이 틀리면 룰렛이 한 틱 밀리거나 영영 안 열리는데, 둘 다
+	 * 전멸이 곧 월드 삭제인 판에서 돌려 보고 발견할 수 없다.
+	 */
+	static boolean trialDue(DragonTrialSession session, long now) {
+		long readyAt = READY_AT.computeIfAbsent(session.teamId(),
+				teamId -> now + delayTicksFor(session.peekTrigger()));
+		return now >= readyAt;
+	}
+
+	/** 이 자리가 정한 지연. 자리를 모르면 기다리는 쪽이다. */
+	private static int delayTicksFor(@Nullable TrialCatalog.Trigger trigger) {
+		return trigger == null ? TrialCatalog.DELAY_SETTLE_TICKS : trigger.delayTicks();
+	}
+
+	/**
+	 * 이 팀의 지연을 처음부터 다시 센다.
+	 *
+	 * <p>줄 맨 앞을 꺼낸 자리마다 부른다. 다음 자리는 <b>자기 지연</b>을 써야 하므로 앞 자리가
+	 * 쓰던 시각을 남겨 두면 안 된다 — 남기면 즉시여야 할 자리가 앞 자리의 15초를 물려받거나,
+	 * 반대로 기다려야 할 자리가 이미 지난 시각을 보고 곧바로 열린다.
+	 */
+	static void resetTrialDelay(@Nullable UUID teamId) {
+		READY_AT.remove(teamId);
+	}
+
+	/**
+	 * 자리가 터지고 그 자리가 정한 지연이 지나면 룰렛을 연다.
+	 *
+	 * <h2>왜 자리마다 다른가</h2>
+	 *
+	 * <p>엔드에 떨어지는 순간은 판이 가장 시끄러운 때다. 그 위에 화면을 겹쳐 띄우면 무엇 때문에
+	 * 떴는지 읽히지 않으므로 떨어진 것을 <b>먼저 겪게</b> 하고 잠깐 뒤에 뽑는다. 반대로 크리스탈을
+	 * 깨거나 체력 문턱을 넘긴 것은 <b>팀이 스스로 만든 결과</b>라 원인이 이미 분명하고, 거기서
+	 * 기다리면 「해냈는데 왜 아무 일도 없지」가 된다. 값은
+	 * {@link TrialCatalog.Trigger#delayTicks()} 에 자리마다 적혀 있다.
 	 *
 	 * <p>풀이 비어 있으면 아무것도 주지 않고 지나간다 — 카드를 채워 가는 동안에는 빈 풀이
 	 * 정상이고 오류가 아니다.
@@ -396,12 +445,7 @@ public final class DragonTrialManager {
 		if (TrialFreeze.isActive() || !session.shouldOfferTrial() || members.isEmpty()) {
 			return;
 		}
-		Long readyAt = READY_AT.get(session.teamId());
-		if (readyAt == null) {
-			READY_AT.put(session.teamId(), now + TRIAL_DELAY_TICKS);
-			return;
-		}
-		if (now < readyAt) {
+		if (!trialDue(session, now)) {
 			return;
 		}
 		TrialCatalog.Trigger trigger = session.peekTrigger();
@@ -409,7 +453,7 @@ public final class DragonTrialManager {
 		if (pool.isEmpty()) {
 			session.beginChoice();
 			session.skipChoice();
-			READY_AT.remove(session.teamId());
+			resetTrialDelay(session.teamId());
 			SharedFateMod.LOGGER.info("[END] {} — 줄 수 있는 카드가 없어 지나갑니다",
 					trigger == null ? "?" : trigger.label());
 			persist();
@@ -496,7 +540,7 @@ public final class DragonTrialManager {
 			return;
 		}
 		SESSIONS.remove(team.teamId());
-		READY_AT.remove(team.teamId());
+		resetTrialDelay(team.teamId());
 		summonTeam(server, end, team);
 		startSession(server, end, team, end.getGameTime());
 	}
@@ -552,7 +596,7 @@ public final class DragonTrialManager {
 		if (server == null || session == null) {
 			return false;
 		}
-		READY_AT.remove(team.teamId());
+		resetTrialDelay(team.teamId());
 		session.restore(List.of(), session.firedNames(), session.queuedNames(), false, Map.of());
 		TrialRisks.clearState();
 		persist();

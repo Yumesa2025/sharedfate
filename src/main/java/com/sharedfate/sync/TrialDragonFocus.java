@@ -1,7 +1,6 @@
 package com.sharedfate.sync;
 
 import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -38,7 +37,7 @@ import java.util.UUID;
  * <h2>그 대신 우리가 직접 날린다</h2>
  *
  * <pre>
- *   0틱      표적을 고른다 — 보라 선 + 자막 + 발밑 고리
+ *   0틱      표적을 고른다 — 보라 선 + 표적 자리의 소리 + 발밑 고리
  *   0·40·80·120·160틱   드래곤 머리에서 표적 자리로 구체 한 발씩
  *   200틱    표적 해제
  *   ··· 400틱 쉼 ···
@@ -177,7 +176,7 @@ public final class TrialDragonFocus {
 	 * 지금 노리는 사람과 그 사람을 고른 주기.
 	 *
 	 * <p>주기 번호를 함께 들고 있어야 「이번 주기에 이미 골랐는가」를 물을 수 있다. 매 틱 다시
-	 * 고르면 표식이 사람들 사이를 뛰어다니고 자막이 매 틱 뜬다.
+	 * 고르면 표식이 사람들 사이를 뛰어다니고 표적 알림 소리가 매 틱 울린다.
 	 */
 	record Selection(long cycle, UUID target) {
 	}
@@ -292,13 +291,9 @@ public final class TrialDragonFocus {
 			return;
 		}
 		lastFired = shot;
+		// 「구체가 날아옵니다」를 띄우던 자리다. 자막을 걷어냈으므로 한 발이 나갔다는 것은
+		// fire 의 셜커 발사음(볼륨 4 = 64칸)과 착탄 자리의 보라 고리가 말한다.
 		fire(end, dragon, target, now, flightTicks(risk.markTicks(), risk.shots()));
-		// 표적을 잡은 틱에는 알리지 않는다. 자막은 한 줄뿐이라 방금 띄운 「노립니다」를 덮어 버리고,
-		// 그러면 정작 누가 물렸는지가 사라진다. 그 틱의 문구가 이미 구체를 말하고 있다.
-		if (!changed) {
-			TrialWarning.shout(List.of(target),
-					Component.literal("구체가 날아옵니다 — 자리를 비우십시오"));
-		}
 	}
 
 	/** 월드가 바뀌거나 서버가 내려갈 때. 옛 표적과 옛 좌표가 다음 판으로 새지 않게 한다. */
@@ -423,10 +418,13 @@ public final class TrialDragonFocus {
 	 * <p>이 게임은 전멸하면 월드가 지워진다. <b>누가 물렸는지 모르면 대응할 수 없다</b> — 물린
 	 * 사람은 떨어져 나가야 하고 나머지는 그 틈에 때려야 한다. 색은
 	 * {@link TrialWarning.Colors#MARKED}(「너 하나를 노린다」)이고, 여기서 새 색을 만들지 않는다.
+	 *
+	 * <p>「드래곤이 당신을 노립니다」를 본인에게 띄우던 줄은 걷어냈다({@link TrialWarning#shout}).
+	 * 이제 <b>이 소리와 {@link #mark} 의 보라 고리가 전부</b>다. 소리를 표적 자리에서 내는 것이
+	 * 그래서 더 중요해졌다 — 「누구인가」를 말하는 것이 그 자리 하나뿐이다. 한 점에서 울리게
+	 * 되돌리면 물린 사람이 누구인지가 사라진다.
 	 */
 	private static void announce(ServerLevel end, ServerPlayer target) {
-		TrialWarning.shout(List.of(target), Component.literal("드래곤이 당신을 노립니다 — 구체가 옵니다"));
-		// 본인 자막만으로는 나머지가 모른다. 소리는 표적 자리에서 나므로 누구인지가 함께 전해진다.
 		TrialWarning.sound(end, target.position(), TrialWarning.Stage.MARK);
 	}
 
@@ -439,8 +437,8 @@ public final class TrialDragonFocus {
 	/**
 	 * 드래곤 머리에서 표적까지 보라색 선을 긋는다.
 	 *
-	 * <p>표적을 잡은 직후에만 그린다. 「내가 물렸다」는 자막이 주지만 <b>「어디서 날아오는가」</b>는
-	 * 이 선밖에 주지 못한다 — 드래곤은 화면 밖 하늘에 있을 수 있다.
+	 * <p>표적을 잡은 직후에만 그린다. 「내가 물렸다」는 발밑 고리와 표적 자리의 소리가 주지만
+	 * <b>「어디서 날아오는가」</b>는 이 선밖에 주지 못한다 — 드래곤은 화면 밖 하늘에 있을 수 있다.
 	 *
 	 * <p>여기도 <b>긴 형태</b>다. 짧은 형태로 되돌리면 선의 출발점, 곧 드래곤 쪽이 사라져 남는
 	 * 것은 발밑의 짧은 토막뿐이다.

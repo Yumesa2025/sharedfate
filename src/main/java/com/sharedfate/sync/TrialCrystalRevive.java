@@ -3,7 +3,6 @@ package com.sharedfate.sync;
 import com.sharedfate.SharedFateMod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -215,6 +214,9 @@ public final class TrialCrystalRevive {
 	 * 사실이고, 여기서 물러서면 전원이 잠깐 접속을 끊는 것으로 카드를 지울 수 있게 된다.
 	 *
 	 * @param granted 카드를 받은 틱. 연출은 월드 시간이 아니라 여기서부터 센다
+	 * @param members <b>지금은 쓰지 않는다.</b> 액션바 자막을 걷어낸 뒤로 이 카드가 사람 목록을
+	 *     볼 일이 없어졌다 — 소리도 표식도 크리스탈 자리에서 나간다. 그래도 받는 것은 모든 위험
+	 *     실행기가 같은 모양이어야 {@code TrialRisks} 의 분기가 한 줄로 유지되기 때문이다
 	 */
 	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
 			@Nullable List<ServerPlayer> members, long granted, long now,
@@ -230,10 +232,10 @@ public final class TrialCrystalRevive {
 
 		Key key = new Key(granted, risk);
 		if (step == Step.SHOW) {
-			show(end, dragon, members, key, granted, now, risk);
+			show(end, dragon, key, granted, now, risk);
 			return;
 		}
-		finish(end, dragon, members, key, risk);
+		finish(end, dragon, key, risk);
 	}
 
 	/**
@@ -261,10 +263,12 @@ public final class TrialCrystalRevive {
 	 * 플레이어가 카드 수만큼 새 언어를 배워야 한다. 다만 여기서 세 층이 뜻하는 것은 「맞는다」가
 	 * 아니라 <b>「이 자리가 곧 막힌다」</b>다 — 색은 같은 빨강이고, 요구하는 행동도 같은
 	 * 「그 자리에서 비켜라」이므로 뜻이 어긋나지 않는다.
+	 *
+	 * <p>사람 목록을 받지 않는다. 자막을 걷어낸 뒤로 이 연출이 내보내는 것은 소리와 표식뿐이고
+	 * 둘 다 <b>크리스탈 자리</b>에서 나가므로, 누가 접속해 있는지를 알 필요가 없다.
 	 */
-	private static void show(ServerLevel end, @Nullable EnderDragon dragon,
-			@Nullable List<ServerPlayer> members, Key key, long granted, long now,
-			TrialCatalog.Risk.CrystalRevive risk) {
+	private static void show(ServerLevel end, @Nullable EnderDragon dragon, Key key, long granted,
+			long now, TrialCatalog.Risk.CrystalRevive risk) {
 		Vec3 perch = watchPoint(EndPillars.tops(end), WATCH_CLEARANCE);
 		if (dragon != null && dragon.isAlive() && perch != null) {
 			hold(dragon, perch);
@@ -277,10 +281,6 @@ public final class TrialCrystalRevive {
 			sweep(end);
 			raised = raise(end, openSeatsFor(end, risk.count()), GUARD_MARGIN_TICKS);
 			RAISED.put(key, raised);
-			if (members != null && !raised.isEmpty()) {
-				TrialWarning.shout(members,
-						Component.literal("드래곤이 중앙 상공으로 올라갑니다 — 크리스탈이 되살아납니다"));
-			}
 		} else {
 			prune(raised, bystanders(end));
 		}
@@ -307,12 +307,6 @@ public final class TrialCrystalRevive {
 				TrialWarning.sound(end, crystal.position(), stage);
 			}
 		}
-		if (remaining == TrialWarning.TICKS_REPOSITION && members != null) {
-			// 「지정한 자리로 옮겨야 할 때」의 예고 시간이다. 기둥 위에 있는 사람은 사다리를 타고
-			// 내려와야 하므로 한 걸음 옆으로 비키는 것보다 오래 걸린다.
-			TrialWarning.shout(members, Component.literal("기둥 위에서 내려오십시오 — 크리스탈이 되살아납니다"));
-		}
-
 		if (TrialRisks.elapsedSinceGrant(now, granted) % PULSE_TICKS != 0L) {
 			return;
 		}
@@ -467,8 +461,8 @@ public final class TrialCrystalRevive {
 	 * 연출 도중 서버가 내려갔다 올라와 첫 틱이 곧 이 틱인 경우다. 연출은 잃었어도 결과는 일어나야
 	 * 한다 — 안 그러면 카드를 소모하고 아무 일도 없다.
 	 */
-	private static void finish(ServerLevel end, @Nullable EnderDragon dragon,
-			@Nullable List<ServerPlayer> members, Key key, TrialCatalog.Risk.CrystalRevive risk) {
+	private static void finish(ServerLevel end, @Nullable EnderDragon dragon, Key key,
+			TrialCatalog.Risk.CrystalRevive risk) {
 		List<EndCrystal> raised = RAISED.remove(key);
 		if (raised != null) {
 			for (EndCrystal crystal : raised) {
@@ -500,7 +494,7 @@ public final class TrialCrystalRevive {
 		if (dragon != null && dragon.isAlive()) {
 			heal(dragon, risk.heal(), born);
 		}
-		announce(end, dragon, members, born);
+		announce(end, dragon, born);
 	}
 
 	/**
@@ -561,15 +555,17 @@ public final class TrialCrystalRevive {
 		dragon.heal(perCrystal * born);
 	}
 
-	/** 끝났다고 알린다. 소리는 <b>드래곤 자리</b>에서 낸다 — 이 일을 한 것은 드래곤이다. */
-	private static void announce(ServerLevel end, @Nullable EnderDragon dragon,
-			@Nullable List<ServerPlayer> members, int born) {
+	/**
+	 * 끝났다고 알린다. 소리는 <b>드래곤 자리</b>에서 낸다 — 이 일을 한 것은 드래곤이다.
+	 *
+	 * <p>몇 개가 되살아났는지는 이제 <b>로그에만</b> 남는다. 개수를 적어 주던 자막을 걷어냈고,
+	 * 소리는 「되살아났다」까지만 말한다. 판에 선 크리스탈은 눈으로 셀 수 있으므로 소리가
+	 * 「고개를 들라」만 해도 뜻이 닿는다.
+	 */
+	private static void announce(ServerLevel end, @Nullable EnderDragon dragon, int born) {
 		Vec3 at = dragon == null ? Vec3.ZERO : dragon.position();
 		end.playSound(null, at.x, at.y, at.z, SoundEvents.END_PORTAL_SPAWN,
 				SoundSource.HOSTILE, 1.0F, 1.2F);
-		if (members != null) {
-			TrialWarning.shout(members, Component.literal("크리스탈 " + born + "개가 되살아났습니다"));
-		}
 		SharedFateMod.LOGGER.info("[END] 「부활」 — 크리스탈 {}개가 되살아났습니다", born);
 	}
 

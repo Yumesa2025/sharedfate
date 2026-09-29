@@ -7,10 +7,15 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,6 +36,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 종류였기 때문이다. 짧은 형태로 되돌려도 컴파일이 되고 로그도 깨끗하고 시험도 다 통과한다 —
  * 게임에서 아무것도 안 나올 뿐이다. 그래서 컴파일된 클래스의 상수 풀을 직접 뒤진다
  * ({@code DebugOverlayCheckTest} 가 같은 이유로 쓰는 방식이다).
+ *
+ * <h2>자막은 나가지 않는다</h2>
+ *
+ * <p>사람이 「스킬 발동할 때 밑에 글 써 주는 것들도 일단 없애」라고 해서
+ * {@link TrialWarning#shout} 를 부르던 자리를 전부 걷어냈다. 글자는 <b>한 줄만 되살려도</b>
+ * 화면에 돌아오고, 카드를 새로 만들다 보면 「예고니까 한 줄 띄우자」가 자연스러워 보인다. 그래서
+ * 같은 상수 풀 수법으로 <b>아무도 그 이름을 부르지 않는지</b>를 못박아 둔다.
  */
 class TrialWarningTest {
 
@@ -40,6 +52,15 @@ class TrialWarningTest {
 	/** 긴 형태의 서술자. 앞의 {@code ZZ} 가 {@code overrideLimiter}·{@code alwaysShow} 다. */
 	private static final String LONG_FORM =
 			"(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDD)I";
+	/**
+	 * {@link TrialWarning#sound} 의 서술자.
+	 *
+	 * <p>이름만 찾으면 안 된다 — {@code playSound}·{@code SoundEvents} 에도 {@code sound} 가
+	 * 들어 있어 무엇을 부르든 통과한다. {@code TrialWarning$Stage} 가 적힌 이 서술자가 「공용
+	 * 경고 소리를 부른다」를 가리키는 유일한 자국이다.
+	 */
+	private static final String SOUND_FORM = "(Lnet/minecraft/server/level/ServerLevel;"
+			+ "Lnet/minecraft/world/phys/Vec3;Lcom/sharedfate/sync/TrialWarning$Stage;)V";
 
 	/**
 	 * 엔드 전투에서 32 블록을 넘겨 그리는 자리들. 하나라도 짧은 형태로 되돌아가면 그 연출이 통째로
@@ -227,6 +248,71 @@ class TrialWarningTest {
 				"짧은 형태가 없어졌다면 위의 서술자 검사도 뜻을 잃는다 — 함께 고칠 것");
 	}
 
+	// ------------------------------------------------------------------ 자막은 나가지 않는다
+
+	/**
+	 * 본 소스 세트에 컴파일된 <b>모든</b> 클래스에서 {@code shout} 참조를 찾는다.
+	 *
+	 * <p>{@link TrialWarning#shout} 은 지우지 않았다 — 「일단 없애」였으므로 되돌릴 자리를 남긴
+	 * 것이다. 그러니 「호출자가 하나도 없다」를 지키는 것은 사람의 기억이 아니라 이 시험이어야
+	 * 한다. 카드를 하나 더 만들 때 「예고니까 한 줄 띄우자」가 슬그머니 들어오면 여기서 걸린다.
+	 *
+	 * <p>클래스 파일을 직접 뒤지는 까닭은 {@code grep} 과 달리 <b>실제로 컴파일된 것</b>을 보기
+	 * 때문이다. 주석이나 javadoc 의 {@code shout} 은 클래스 파일에 들어가지 않으므로 설명을 적어
+	 * 두어도 걸리지 않는다.
+	 *
+	 * <p>메서드를 선언한 {@link TrialWarning} 자신은 건너뛴다. 자기 이름은 언제나 상수 풀에 있다.
+	 *
+	 * <p>클라이언트 소스 세트는 보지 않는다. {@code shout} 은 {@code ServerPlayer} 를 받으므로
+	 * 그쪽에서 부를 길이 없고, 시련·패시브 실행기는 전부 본 소스 세트에 있다.
+	 */
+	@Test
+	void 아무도_자막을_띄우지_않는다() throws Exception {
+		List<Path> scanned = new ArrayList<>();
+		for (Path file : mainClassFiles()) {
+			String name = file.getFileName().toString();
+			if (name.equals("TrialWarning.class") || name.startsWith("TrialWarning$")) {
+				continue;
+			}
+			scanned.add(file);
+			String bytes = new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
+			assertFalse(bytes.contains("shout"),
+					file.getFileName() + " 가 TrialWarning.shout 을 부른다. 액션바 자막은 걷어낸"
+							+ " 상태다 — 되살리려면 TrialWarning 의 설명(「두 갈래로 쌓는다」)부터"
+							+ " 함께 고칠 것");
+		}
+		assertTrue(scanned.size() > 50,
+				"클래스를 " + scanned.size() + "개밖에 못 찾았다. 빌드 산출물 자리가 바뀌었다면 이"
+						+ " 시험은 아무것도 안 지키면서 통과한다");
+	}
+
+	/**
+	 * 없앤 것이 <b>글자뿐</b>임을 못박는다.
+	 *
+	 * <p>자막을 걷어내면서 같은 메서드 안의 소리나 표식까지 함께 지우기 쉽다 — 세 줄이 붙어 있던
+	 * 자리들이다. 전멸하면 월드가 지워지는 전투라 <b>「몰라서 죽었다」가 가장 나쁜 결과</b>이므로,
+	 * 남은 두 갈래가 실제로 살아 있는지를 카드마다 확인한다.
+	 *
+	 * <p>{@code TrialCrystalRevive} 와 {@code DragonRiftBreath} 는 {@code markGround} 를 쓰지
+	 * 않는다. 각자 제 모양(자리 고리·선의 두 경계)을 직접 그리기 때문이고, 그쪽이 살아 있는지는
+	 * {@link #먼_곳에_그리는_연출은_전부_긴_형태를_쓴다} 와 {@code DragonRiftBreathTest} 가 본다.
+	 */
+	@Test
+	void 소리와_바닥_표식은_여전히_나간다() throws IOException {
+		for (Class<?> type : new Class<?>[] {DragonRiftBreath.class, TrialCrystalRevive.class,
+				TrialDragonFocus.class, TrialFireball.class, TrialRisks.class}) {
+			assertTrue(classBytes(type).contains(SOUND_FORM),
+					type.getSimpleName() + " 가 경고 소리를 내지 않는다. 자막을 걷어낸 뒤로 소리는"
+							+ " 「무엇이 언제 오는가」를 말하는 두 갈래 중 하나다");
+		}
+		for (Class<?> type : new Class<?>[] {TrialDragonFocus.class, TrialFireball.class,
+				TrialRisks.class}) {
+			assertTrue(classBytes(type).contains("markGround"),
+					type.getSimpleName() + " 가 바닥 표식을 그리지 않는다. 「어디로 오는가」를 말하는"
+							+ " 것이 그 고리뿐이다");
+		}
+	}
+
 	/** 컴파일된 클래스 파일을 그대로 읽는다. 서술자는 상수 풀에 아스키로 들어간다. */
 	private static String classBytes(Class<?> type) throws IOException {
 		String path = "/" + type.getName().replace('.', '/') + ".class";
@@ -235,6 +321,28 @@ class TrialWarningTest {
 				throw new IOException("클래스 파일을 찾지 못했습니다: " + path);
 			}
 			return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+		}
+	}
+
+	/**
+	 * 본 소스 세트가 컴파일된 자리의 클래스 파일 전부.
+	 *
+	 * <p>패키지 이름으로 자원을 찾지 않는다 — {@code com/sharedfate/sync/} 는 <b>시험 산출물
+	 * 쪽에도 있어서</b> 먼저 걸리는 쪽이 돌아온다. 그러면 이 파일 자신을 뒤지게 되고, 여기 적힌
+	 * {@code "shout"} 문자열 때문에 시험이 스스로 깨진다. 그래서 클래스 파일 하나를 짚어 거기서
+	 * 위로 올라간다.
+	 */
+	private static List<Path> mainClassFiles() throws Exception {
+		URL url = TrialWarning.class.getResource("TrialWarning.class");
+		if (url == null) {
+			throw new IOException("TrialWarning.class 를 찾지 못했습니다");
+		}
+		// .../com/sharedfate/sync/TrialWarning.class 에서 셋 올라가면 산출물 뿌리다.
+		Path root = Path.of(url.toURI()).getParent().getParent().getParent().getParent();
+		try (Stream<Path> files = Files.walk(root)) {
+			return files.filter(path -> path.getFileName().toString().endsWith(".class"))
+					.sorted()
+					.toList();
 		}
 	}
 }

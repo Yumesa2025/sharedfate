@@ -1,5 +1,7 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.TestBootstrap;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.AfterEach;
@@ -16,6 +18,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -324,12 +327,25 @@ class DragonRiftBreathTest {
 				"층이 빠지면 한 층을 놓친 사람을 다음 층이 못 잡는다");
 	}
 
+	/**
+	 * 「브레스가 아레나를 가릅니다 — 한쪽을 고르십시오」를 <b>띄우지 않는다.</b>
+	 *
+	 * <p>예전에는 이 자리가 「자막이 예고 안에서 나간다」였다. 사람이 액션바 글자를 「일단
+	 * 없애」라고 해서 뒤집었다 — 시험을 지우면 글자가 돌아와도 아무도 모른다.
+	 *
+	 * <p>글자가 빠진 만큼 <b>선이 예고 내내 그려지는 것</b>이 더 중요해졌다. 이 패턴이 요구하는
+	 * 행동은 「어느 쪽에 남을지 고르기」이고, 고를 정보를 주는 것이 이제 선 하나뿐이다. 그쪽은
+	 * {@link #예고가_요구하는_행동의_최소_예고보다_길다} 와
+	 * {@link #경고_세_층이_모두_나갈_만큼_예고가_길다} 가 지킨다.
+	 */
 	@Test
-	void 자막이_예고_안에서_나간다() {
-		assertTrue(TrialWarning.TICKS_SIDESTEP < DragonRiftBreath.LEAD_TICKS,
-				"자막을 띄우는 시점이 예고 밖이면 영영 안 뜬다");
+	void 자막을_띄우지_않는다() throws IOException {
+		assertFalse(classBytes().contains("shout"),
+				"액션바 자막이 돌아왔다. 걷어내기로 한 것은 글자뿐이고 소리와 표식은 그대로 둔다 —"
+						+ " 되살리려면 TrialWarning 의 설명부터 함께 고칠 것");
 		assertTrue(DragonRiftBreath.SWEEP_TICKS < TrialWarning.TICKS_SIDESTEP,
-				"자막보다 브레스가 먼저 지나가면 「비키십시오」가 지나간 뒤에 뜬다");
+				"브레스가 사람이 반응할 수 있는 시간보다 먼저 지나간다. 자막이 없어진 지금은"
+						+ " 이 여유가 「비킬 수 있는가」의 전부다");
 	}
 
 	// ------------------------------------------------------------------ 쓸고 지나가기
@@ -418,6 +434,197 @@ class DragonRiftBreathTest {
 				"주기 기록이 남으면 새 판의 그 주기가 통째로 건너뛰어진다");
 	}
 
+	// ------------------------------------------------------------------ 드래곤에 선을 맞춘다
+
+	/**
+	 * 브레스가 드래곤이 있는 쪽에서 출발한다.
+	 *
+	 * <p>드래곤을 선에 맞추는 것이 아니라 <b>선을 드래곤에 맞춘다.</b> 드래곤을 옮기면
+	 * {@code aiStep} 의 히트박스가 사람을 때리고 {@code checkWalls} 가 블록을 부수지만, 선은 우리
+	 * 것이라 공짜로 돌릴 수 있다.
+	 */
+	@Test
+	void 브레스는_드래곤이_있는_쪽_끝에서_출발한다() {
+		// 굴림 0 이면 축이 +x 라 from 은 (-40,0,0), to 는 (40,0,0) 이다.
+		DragonRiftBreath.Rift rift = DragonRiftBreath.plan(0L, 0.0);
+
+		DragonRiftBreath.Rift far = DragonRiftBreath.startingNear(rift, new Vec3(70.0, 120.0, 0.0));
+		assertEquals(rift.to(), far.from(), "드래곤 반대편에서 브레스가 나오면 누가 뿜었는지 못 읽는다");
+		assertEquals(rift.from(), far.to());
+		assertEquals(rift.rightEdge(), far.leftEdge(), "방향을 뒤집으면 좌우도 함께 뒤집혀야 한다");
+		assertEquals(rift.leftEdge(), far.rightEdge());
+
+		DragonRiftBreath.Rift near = DragonRiftBreath.startingNear(rift, new Vec3(-70.0, 120.0, 0.0));
+		assertEquals(rift.from(), near.from(), "이미 드래곤 쪽에서 출발하면 그대로 둔다");
+	}
+
+	@Test
+	void 드래곤_높이는_출발점을_고르는_데_쓰지_않는다() {
+		// 드래곤은 아레나보다 수십 칸 위를 난다. 세로를 섞으면 양 끝이 똑같이 멀어져 사실상
+		// 굴림이 방향을 정하게 된다.
+		DragonRiftBreath.Rift rift = DragonRiftBreath.plan(0L, 0.0);
+		assertEquals(rift.to(),
+				DragonRiftBreath.startingNear(rift, new Vec3(70.0, 500.0, 0.0)).from(),
+				"아무리 높이 있어도 가로로 가까운 쪽이 출발점이다");
+	}
+
+	@Test
+	void 드래곤이_없으면_굴림이_정한_방향_그대로다() {
+		// 드래곤이 죽었거나 아직 안 나온 틱에도 선은 그어져야 한다.
+		DragonRiftBreath.Rift rift = DragonRiftBreath.plan(0L, 0.63);
+		assertEquals(rift, DragonRiftBreath.startingNear(rift, null));
+	}
+
+	@Test
+	void 방향을_뒤집어도_아픈_자리는_그대로다() {
+		// 방향은 연출이고 판정은 선분이다. 뒤집는 것이 「어디가 아픈가」를 한 칸이라도 바꾸면
+		// 예고로 보여 준 띠와 실제 장판이 어긋난다.
+		DragonRiftBreath.Rift rift = DragonRiftBreath.plan(0L, 0.31);
+		DragonRiftBreath.Rift flipped = DragonRiftBreath.startingNear(rift, rift.to());
+		assertNotEquals(rift.from(), flipped.from(), "이 굴림에서는 실제로 뒤집혀야 시험이 뜻이 있다");
+		for (double x = -50.0; x <= 50.0; x += 2.5) {
+			for (double z = -50.0; z <= 50.0; z += 2.5) {
+				Vec3 spot = new Vec3(x, 63.0, z);
+				assertEquals(
+						DragonRiftBreath.insideField(spot, rift.from(), rift.to(),
+								DragonRiftBreath.HALF_WIDTH),
+						DragonRiftBreath.insideField(spot, flipped.from(), flipped.to(),
+								DragonRiftBreath.HALF_WIDTH),
+						"뒤집었더니 판정이 달라졌다: " + spot);
+			}
+		}
+	}
+
+	/**
+	 * 브레스 줄기가 드래곤 입에서 바닥까지 이어진다.
+	 *
+	 * <p>드래곤을 옮기지 않기로 했으므로 <b>몸과 장판을 잇는 것은 이 줄기뿐</b>이다. 끊기면
+	 * 「드래곤이 뿜었다」가 사라지고 「어디선가 선이 그어졌다」가 된다.
+	 */
+	@Test
+	void 브레스_줄기가_드래곤_입에서_바닥까지_이어진다() {
+		Vec3 mouth = new Vec3(60.0, 120.0, -30.0);
+		Vec3 ground = new Vec3(0.0, 63.5, 0.0);
+		List<Vec3> stream = DragonRiftBreath.breathStream(mouth, ground);
+
+		assertTrue(stream.size() >= 2, "점 하나는 선이 아니다");
+		assertEquals(0.0, stream.getFirst().distanceTo(mouth), 1.0E-9,
+				"입에서 시작하지 않으면 드래곤이 뿜은 것으로 안 보인다");
+		assertEquals(0.0, stream.getLast().distanceTo(ground), 1.0E-9,
+				"바닥에 안 닿으면 장판과 이어지지 않는다");
+
+		double previous = -1.0;
+		for (Vec3 point : stream) {
+			double along = point.distanceTo(mouth);
+			assertTrue(along > previous, "되돌아가는 점이 있으면 줄기가 아니라 뭉치다");
+			previous = along;
+		}
+	}
+
+	@Test
+	void 줄기는_드래곤이_아무리_멀어도_점이_늘지_않는다() {
+		Vec3 ground = new Vec3(0.0, 63.5, 0.0);
+		assertTrue(DragonRiftBreath.breathStream(new Vec3(0.0, 400.0, 0.0), ground).size()
+						<= DragonRiftBreath.STREAM_MAX_POINTS,
+				"드래곤이 멀수록 패킷이 늘면, 하필 가장 안 보이는 때가 가장 비싸다");
+		assertEquals(2, DragonRiftBreath.breathStream(ground, ground).size(),
+				"입이 바닥에 닿아 있어도 점 둘은 있어야 선이다");
+	}
+
+	// ------------------------------------------------------------------ 장판은 잔류 구름이다
+
+	/**
+	 * 예고와 장판이 서로 다른 모습이다.
+	 *
+	 * <p>표식은 색 규약에서 「곧 온다」는 뜻이라, 남은 장판을 표식으로 그리면 「아직 안 터진
+	 * 건가」로 읽혀 사람이 그 위를 그냥 걸어 들어간다. 장판은 바닐라 잔류 구름의 생김새를
+	 * 빌려야 설명이 필요 없다.
+	 */
+	@Test
+	void 예고와_장판이_서로_다른_모습이다() {
+		TestBootstrap.ensureInitialized();
+		DragonRiftBreath.Rift planned = DragonRiftBreath.plan(0L, 0.2);
+		assertEquals(DragonRiftBreath.Look.WARNING, DragonRiftBreath.lookFor(planned),
+				"붙기 전에는 예고다");
+		assertEquals(DragonRiftBreath.Look.LINGER, DragonRiftBreath.lookFor(planned.ignitedAt(100L)),
+				"붙은 뒤에는 장판이다");
+		assertNotEquals(DragonRiftBreath.mark(DragonRiftBreath.Look.WARNING).getType(),
+				DragonRiftBreath.mark(DragonRiftBreath.Look.LINGER).getType(),
+				"둘이 같은 파티클이면 사람이 언제 피해야 하는지 배울 수 없다");
+		assertEquals(ParticleTypes.DRAGON_BREATH,
+				DragonRiftBreath.mark(DragonRiftBreath.Look.LINGER).getType(),
+				"26.3 DragonSittingFlamingPhase 가 제 잔류 구름에 넣는 바로 그 파티클이어야 한다");
+	}
+
+	@Test
+	void 장판_파티클이_일반_잔류_포션이_아니라_드래곤_것이다() throws IOException {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("DRAGON_BREATH"), "장판이 잔류 구름으로 안 보인다");
+		assertTrue(bytes.contains("PowerParticleOption"),
+				"세기 없는 형태로 되돌아가면 바닐라 구름과 크기·속도가 어긋난다");
+		assertFalse(bytes.contains("ENTITY_EFFECT"),
+				"그쪽은 일반 잔류 포션 구름의 것이다 — 이 선을 그은 것은 드래곤이다");
+		assertTrue(bytes.contains("dust"), "예고는 색 규약의 빨간 표식으로 남아 있어야 한다");
+	}
+
+	/**
+	 * 장판이 선이 아니라 면이다.
+	 *
+	 * <p>폭이 6칸인데 경계 두 줄만 그으면 여전히 「금」으로 보이고, 금은 밟는 것이 아니라 넘는
+	 * 것이다.
+	 */
+	@Test
+	void 장판이_폭만큼_면을_채운다() {
+		DragonRiftBreath.Rift rift = DragonRiftBreath.plan(0L, 0.37);
+		List<Vec3> fill = DragonRiftBreath.fieldFill(rift.leftEdge(), rift.rightEdge());
+		assertFalse(fill.isEmpty(), "안쪽이 비면 선 하나지 장판이 아니다");
+
+		boolean inner = false;
+		for (Vec3 point : fill) {
+			double across = DragonRiftBreath.distanceToSegment(point, rift.from(), rift.to());
+			assertTrue(across <= DragonRiftBreath.HALF_WIDTH + 1.0E-9,
+					"장판 밖에 뿌리면 「어디부터 아픈가」가 거짓말이 된다: " + across);
+			if (across > 1.0E-9 && across < DragonRiftBreath.HALF_WIDTH - 1.0E-9) {
+				inner = true;
+			}
+		}
+		assertTrue(inner, "경계 위에만 찍으면 채운 것이 아니다");
+	}
+
+	@Test
+	void 장판_점_수에_상한이_있고_경계는_상한_밖이다() {
+		DragonRiftBreath.Rift rift = DragonRiftBreath.plan(0L, 0.37);
+		assertTrue(DragonRiftBreath.fieldFill(rift.leftEdge(), rift.rightEdge()).size()
+						<= DragonRiftBreath.FILL_MAX_POINTS,
+				"면은 점이 제곱으로 는다. 상한이 없으면 장판 하나가 파티클만으로 틱을 민다");
+
+		assertEquals(0, DragonRiftBreath.fillLanes(0.0), "폭이 없으면 채울 안쪽도 없다");
+		assertTrue(DragonRiftBreath.fillLanes(100.0) <= DragonRiftBreath.FILL_MAX_LANES,
+				"폭을 아무리 넓혀도 줄 수에는 천장이 있다");
+		for (int lanes = 1; lanes <= DragonRiftBreath.FILL_MAX_LANES; lanes++) {
+			assertTrue(lanes * DragonRiftBreath.fillAlong(lanes) <= DragonRiftBreath.FILL_MAX_POINTS,
+					"줄 " + lanes + "개에서 상한을 넘는다");
+			assertTrue(DragonRiftBreath.fillAlong(lanes) >= 2, "한 줄에 점 하나는 줄이 아니다");
+		}
+
+		// 상한은 안쪽에만 걸린다. 경계가 성겨지면 장판이 어디서 끝나는지를 잃는다.
+		assertEquals(DragonRiftBreath.linePoints(LENGTH), rift.leftEdge().size(),
+				"경계가 상한에 깎였다");
+		assertEquals(DragonRiftBreath.linePoints(LENGTH), rift.rightEdge().size());
+	}
+
+	@Test
+	void 폭이_넓어져도_걸어서_건널_수_있다() {
+		float walked = DragonRiftBreath.crossingDamage(4.317);
+		float sprinted = DragonRiftBreath.crossingDamage(5.612);
+		assertEquals(6.0F, walked, 1.0E-6,
+				"폭 " + DragonRiftBreath.HALF_WIDTH * 2.0 + "칸에서 걸어 건너며 받는 피해");
+		assertTrue(walked < TEAM_HEALTH / 2.0F,
+				"팀 체력의 절반을 넘으면 「못 지나간다」이지 「아프다」가 아니다. 실제 " + walked);
+		assertTrue(walked > 0.0F, "한 점도 안 아프면 벽이 아니다");
+		assertTrue(sprinted <= walked, "달리는 쪽이 더 아프면 뛸 이유가 없다");
+	}
+
 	// ------------------------------------------------------------------ 파티클 사거리
 
 	@Test
@@ -425,14 +632,7 @@ class DragonRiftBreathTest {
 		// 이 패시브가 보여 주는 것은 「아레나가 갈렸다」이고, 그것은 반대편 끝까지 보여야 성립한다.
 		// 짧은 형태는 32칸에서 잘리는데 이 선은 80칸이라, 되돌리면 절반이 아무에게도 안 보이고
 		// 그래도 빌드와 로그는 조용하다.
-		String bytes;
-		try (InputStream in = DragonRiftBreath.class
-				.getResourceAsStream("/com/sharedfate/sync/DragonRiftBreath.class")) {
-			if (in == null) {
-				throw new IOException("DragonRiftBreath 의 클래스 파일을 찾지 못했다");
-			}
-			bytes = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
-		}
+		String bytes = classBytes();
 		assertTrue(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDD)I"),
 				"긴 형태를 한 번도 부르지 않는다");
 		assertFalse(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I"),
@@ -447,17 +647,70 @@ class DragonRiftBreathTest {
 	 */
 	@Test
 	void 블록을_한_칸도_바꾸지_않는다() throws IOException {
-		String bytes;
+		String bytes = classBytes();
+		assertFalse(bytes.contains("setBlock"), "블록을 놓으면 다음 전투의 발판이 달라진다");
+		assertFalse(bytes.contains("destroyBlock"), "바닥을 지우면 공허 낙사다");
+		assertFalse(bytes.contains("removeBlock"));
+		assertTrue(bytes.contains("getHeightmapPos"), "지면 높이는 읽어야 선이 바닥에 붙는다");
+	}
+
+	/**
+	 * 페이즈 API 를 한 번도 부르지 않는다.
+	 *
+	 * <p>바로 앞 작업에서 데었다 — 「표적」이 드래곤을 돌진 페이즈로 밀었더니 <b>착지를 아예 하지
+	 * 않게 됐다.</b> {@code EnderDragonPhaseManager.setPhase} 가 부르는 {@code begin()} 이
+	 * {@code DragonHoldingPatternPhase.currentPath} 를 {@code null} 로 지우는데, 「착지할까」
+	 * 주사위는 <b>그 경로가 끝난 틱에만</b> 굴러가기 때문이다.
+	 */
+	@Test
+	void 페이즈_API_를_한_번도_부르지_않는다() throws IOException {
+		String bytes = classBytes();
+		assertFalse(bytes.contains("setPhase"), "페이즈를 밀면 드래곤이 착지를 아예 안 한다");
+		assertFalse(bytes.contains("getPhaseManager"));
+		assertFalse(bytes.contains("EnderDragonPhase"));
+		assertFalse(bytes.contains("LANDING_APPROACH"));
+	}
+
+	/**
+	 * 드래곤을 한 칸도 옮기지 않는다.
+	 *
+	 * <p>페이즈를 안 건드려도 <b>위치를 미는 것만으로 같은 종류의 사고</b>가 난다. 26.3
+	 * {@code EnderDragon.aiStep} 의 서버 구간이 매 틱
+	 * {@code hurt(level, getEntities(head.getBoundingBox().inflate(1)))} 로
+	 * {@code mobAttack} <b>10.0F</b> 를 넣고(목도 같다),
+	 * {@code knockBack(wing2.getBoundingBox().inflate(4,2,4).move(0,-2,0))} 로 5.0F 와 밀치기를
+	 * 넣는다 — 팀 공유 체력이 20 인데 10 은 절반이고, 80칸을 20틱에 지나가면 히트박스가 한 틱에
+	 * 4칸씩 건너뛰어 맞고 안 맞고가 복불복이 된다. 같은 구간의 {@code checkWalls} 는
+	 * {@code DRAGON_IMMUNE} 이 아닌 블록을 {@code removeBlock} 하므로, 사람이 놓은 블록이
+	 * 드래곤의 손으로 부서진다.
+	 *
+	 * <p>그래서 이 패시브는 드래곤을 <b>읽기만</b> 한다. 되돌릴 상태가 없다는 것이 이 방식의
+	 * 값어치이므로, 값을 쓰는 호출이 하나라도 들어오면 여기서 막는다.
+	 */
+	@Test
+	void 드래곤을_한_칸도_옮기지_않는다() throws IOException {
+		String bytes = classBytes();
+		assertFalse(bytes.contains("setPos"), "옮기면 몸이 사람을 때리고 블록을 부순다");
+		assertFalse(bytes.contains("setDeltaMovement"), "속도를 눌러도 바닐라 비행을 밀어내는 것이다");
+		assertFalse(bytes.contains("teleportTo"));
+		assertFalse(bytes.contains("setYRot"), "방향을 틀면 부위 여덟 개가 몸과 어긋난다");
+		assertFalse(bytes.contains("yBodyRot"));
+		assertFalse(bytes.contains("getSubEntities"),
+				"부위를 미는 코드가 있다는 것은 몸을 옮겼다는 뜻이다");
+		assertFalse(bytes.contains("syncPosition"),
+				"위치를 클라이언트로 밀어 보낼 일이 없어야 한다 — 옮기지 않으니까");
+		assertTrue(bytes.contains("EnderDragonPart"),
+				"그래도 입에서는 나와야 한다 — dragon.head 를 읽는 줄이 사라졌다");
+	}
+
+	/** 클래스 파일을 통째로 읽어 온다. 상수 풀에 무엇이 있고 없는지를 묻는 시험들이 쓴다. */
+	private static String classBytes() throws IOException {
 		try (InputStream in = DragonRiftBreath.class
 				.getResourceAsStream("/com/sharedfate/sync/DragonRiftBreath.class")) {
 			if (in == null) {
 				throw new IOException("DragonRiftBreath 의 클래스 파일을 찾지 못했다");
 			}
-			bytes = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+			return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
 		}
-		assertFalse(bytes.contains("setBlock"), "블록을 놓으면 다음 전투의 발판이 달라진다");
-		assertFalse(bytes.contains("destroyBlock"), "바닥을 지우면 공허 낙사다");
-		assertFalse(bytes.contains("removeBlock"));
-		assertTrue(bytes.contains("getHeightmapPos"), "지면 높이는 읽어야 선이 바닥에 붙는다");
 	}
 }

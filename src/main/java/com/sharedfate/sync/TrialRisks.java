@@ -3,7 +3,6 @@ package com.sharedfate.sync;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -269,16 +268,15 @@ public final class TrialRisks {
 		long cycle = strikeIndex(now, granted, strike.interval());
 		int remaining = remainingTicks(now, granted, strike.interval());
 
-		List<ServerPlayer> marked = new ArrayList<>();
 		List<Vec3> spots = switch (strike.aim()) {
-			case TRAIL -> trailSpots(end, members, key, cycle, strike, marked);
+			case TRAIL -> trailSpots(end, members, key, cycle, strike);
 			case RANDOM_SPOT -> spotsInArena(end, key, cycle, strike);
 		};
 		if (spots.isEmpty()) {
 			return;
 		}
 
-		warn(end, spots, marked.isEmpty() ? members : marked, remaining, strike);
+		warn(end, spots, remaining, strike);
 		if (firesAt(now, granted, strike.interval())) {
 			for (Vec3 spot : spots) {
 				detonate(end, spot, strike, now);
@@ -294,9 +292,13 @@ public final class TrialRisks {
 	 *
 	 * <p>고리 색은 {@link #markColor} 가 연출 값에서 뽑는다. 파티클을 고리 밖에서 한 번만 만드는
 	 * 것은 「낙뢰」가 한 번에 열 곳이라 매 틱 열 번 새로 만들 이유가 없어서다.
+	 *
+	 * <p>사람 목록을 받지 않는다. 「발밑을 보십시오」·「표시된 자리에서 벗어나십시오」를 노려진
+	 * 사람에게만 띄우던 줄을 걷어냈고({@link TrialWarning#shout}), 남은 소리와 고리는 둘 다
+	 * <b>자리</b>에서 나가기 때문이다.
 	 */
-	private static void warn(ServerLevel end, List<Vec3> spots, List<ServerPlayer> audience,
-			int remaining, TrialCatalog.Risk.DelayedStrike strike) {
+	private static void warn(ServerLevel end, List<Vec3> spots, int remaining,
+			TrialCatalog.Risk.DelayedStrike strike) {
 		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
 		if (stage == null) {
 			return;
@@ -310,11 +312,6 @@ public final class TrialRisks {
 			if (changed) {
 				TrialWarning.sound(end, spot, stage);
 			}
-		}
-		if (remaining == TrialWarning.TICKS_SIDESTEP) {
-			TrialWarning.shout(audience, Component.literal(strike.aim() == TrialCatalog.Risk.Aim.TRAIL
-					? "발밑을 보십시오"
-					: "표시된 자리에서 벗어나십시오"));
 		}
 	}
 
@@ -410,10 +407,12 @@ public final class TrialRisks {
 	 * <p>표식이 가리키는 <b>자리</b>는 매 틱 갱신된다. 그 사람이 {@code lookback} 틱 전에 있던
 	 * 자리를 쫓아오므로, 멈춰 서면 맞고 계속 움직이면 빗나간다. 이것이 이 카드의 전부다.
 	 *
-	 * @param marked 노려진 사람을 담아 돌려준다. 자막을 그 사람들에게만 띄우려고 쓴다
+	 * <p>노려진 사람을 담아 돌려주던 칸이 있었다. 그 사람들에게만 자막을 띄우려던 것인데 자막을
+	 * 걷어냈으므로 함께 지웠다 — 남은 신호는 자리에서 나가고, 사람은 <b>자기 발자국 위에 뜬
+	 * 고리</b>로 자기가 물렸음을 안다.
 	 */
 	private static List<Vec3> trailSpots(ServerLevel end, List<ServerPlayer> members, String key,
-			long cycle, TrialCatalog.Risk.DelayedStrike strike, List<ServerPlayer> marked) {
+			long cycle, TrialCatalog.Risk.DelayedStrike strike) {
 		Cycle<UUID> picked = TRAIL_PICKS.get(key);
 		if (picked == null || picked.index() != cycle) {
 			List<UUID> ids = new ArrayList<>();
@@ -434,7 +433,6 @@ public final class TrialRisks {
 				// 아직 발자국이 그만큼 쌓이지 않았다. 지금 자리를 노리면 예고가 무의미해진다.
 				continue;
 			}
-			marked.add(member);
 			spots.add(past);
 		}
 		return spots;

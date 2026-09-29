@@ -1,7 +1,6 @@
 package com.sharedfate.sync;
 
 import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -15,7 +14,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * {@link TrialCatalog.Risk.TracedProjectile} 실행기 — 기둥에서 날아오는 불덩이.
@@ -96,11 +94,14 @@ public final class TrialFireball {
 	 * <p>{@code to} 가 좌표인 것이 핵심이다. 사람을 들고 있으면 매 틱 그 사람의 현재 위치를 읽게
 	 * 되고, 그 순간 조준이 다시 따라다니기 시작한다.
 	 *
-	 * @param targetId 이 발이 노린 사람. 자막을 그 사람에게만 띄우려고 들고 있다
-	 * @param from     발사점 — 가장 가까운 기둥 꼭대기
-	 * @param to       발사 순간 얼린 조준점
+	 * <p>노린 사람이 <b>누구인지는 들고 있지 않다.</b> 예전에는 그 사람에게만 자막을 띄우려고
+	 * {@code targetId} 를 함께 실었는데, 자막을 걷어낸 지금은 이 발이 내보내는 신호가 궤적·소리·
+	 * 바닥 고리뿐이고 셋 다 <b>좌표</b>에만 달려 있다. 사람을 다시 실어야 한다면 그때 넣을 것.
+	 *
+	 * @param from 발사점 — 가장 가까운 기둥 꼭대기
+	 * @param to   발사 순간 얼린 조준점
 	 */
-	private record Shot(UUID targetId, Vec3 from, Vec3 to) {
+	private record Shot(Vec3 from, Vec3 to) {
 	}
 
 	/** 한 주기에 쏜 것들. 주기 번호가 바뀔 때만 다시 만든다. */
@@ -165,7 +166,7 @@ public final class TrialFireball {
 		}
 
 		double progress = flightProgress(remaining, window);
-		show(end, members, volley, remaining, progress, risk);
+		show(end, volley, remaining, progress, risk);
 
 		if (TrialRisks.firesAt(now, granted, interval)) {
 			for (Shot shot : volley.shots()) {
@@ -203,7 +204,7 @@ public final class TrialFireball {
 			if (muzzle == null) {
 				continue;
 			}
-			shots.add(new Shot(target.getUUID(), muzzle, aim));
+			shots.add(new Shot(muzzle, aim));
 			end.playSound(null, muzzle.x, muzzle.y, muzzle.z, SoundEvents.GHAST_SHOOT,
 					SoundSource.HOSTILE, 4.0F, 1.0F);
 		}
@@ -218,9 +219,13 @@ public final class TrialFireball {
 	 * <p>궤적만으로는 <b>어디에 떨어지는지</b>가 흐리다. 선은 방향을 알려 주지만 끝점은 원근 때문에
 	 * 읽기 어렵다. 그래서 착탄 지점에 {@link TrialWarning} 의 바닥 고리를 함께 그린다 — 다른
 	 * 카드에서 이미 「서 있으면 죽는다」로 배운 그 빨강이라 새로 배울 것이 없다.
+	 *
+	 * <p>노려진 사람에게 「불덩이가 옵니다」를 띄우던 줄은 걷어냈다({@link TrialWarning#shout}).
+	 * 그래서 사람 목록을 받지 않는다 — 남은 신호는 궤적·소리·고리뿐이고 셋 다 착탄 <b>좌표</b>에서
+	 * 나간다.
 	 */
-	private static void show(ServerLevel end, List<ServerPlayer> members, Volley volley,
-			int remaining, double progress, TrialCatalog.Risk.TracedProjectile risk) {
+	private static void show(ServerLevel end, Volley volley, int remaining, double progress,
+			TrialCatalog.Risk.TracedProjectile risk) {
 		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
 		boolean changed = stage != null && TrialRisks.stageJustChanged(remaining);
 		for (Shot shot : volley.shots()) {
@@ -230,23 +235,6 @@ public final class TrialFireball {
 				TrialWarning.sound(end, shot.to(), stage);
 			}
 		}
-		if (remaining == TrialWarning.TICKS_SIDESTEP) {
-			TrialWarning.shout(aimedAt(members, volley), Component.literal("불덩이가 옵니다 — 자리를 비우십시오"));
-		}
-	}
-
-	/** 이번 주기에 노려진 사람들. 접속을 끊었으면 빠진다. */
-	private static List<ServerPlayer> aimedAt(List<ServerPlayer> members, Volley volley) {
-		List<ServerPlayer> aimed = new ArrayList<>();
-		for (ServerPlayer member : members) {
-			for (Shot shot : volley.shots()) {
-				if (shot.targetId().equals(member.getUUID())) {
-					aimed.add(member);
-					break;
-				}
-			}
-		}
-		return aimed;
 	}
 
 	/**

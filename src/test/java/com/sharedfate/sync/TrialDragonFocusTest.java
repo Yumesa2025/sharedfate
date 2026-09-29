@@ -430,15 +430,23 @@ class TrialDragonFocusTest {
 				"두 발이 같은 틱에 닿으면 " + (focus.damage() * 2) + " 가 한 번에 들어간다");
 	}
 
+	/**
+	 * 표식이 붙어 있는 시간이 사람이 반응할 시간보다 길다.
+	 *
+	 * <p>예전 이름은 「표적 시간은 <b>자막</b>을 읽을 수 있을 만큼 길다」였다. 액션바 글자를
+	 * 걷어냈으므로 읽을 자막이 없다 — 대신 <b>발밑 보라 고리와 표적 자리의 소리</b>가 그 몫을
+	 * 한다. 값을 재는 잣대({@link TrialWarning#TICKS_SIDESTEP}, 사람의 지각·판단·입력에 드는
+	 * 최소 시간)는 그대로라 시험은 남기고 뜻만 고쳤다.
+	 */
 	@Test
-	void 표적_시간은_자막을_읽을_수_있을_만큼_길다() {
+	void 표적_시간은_반응할_수_있을_만큼_길다() {
 		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
 			for (TrialCatalog.Risk risk : trial.risks()) {
 				if (!(risk instanceof TrialCatalog.Risk.DragonFocus focus)) {
 					continue;
 				}
 				assertTrue(focus.markTicks() >= TrialWarning.TICKS_SIDESTEP,
-						trial.name() + " — 표적이 옆걸음 예고보다 짧게 붙으면 읽기도 전에 풀린다");
+						trial.name() + " — 표적이 옆걸음 예고보다 짧게 붙으면 알아채기도 전에 풀린다");
 				assertTrue(focus.restTicks() >= 0, trial.name() + " — 쉬는 시간이 음수면 뜻이 없다");
 				assertTrue(focus.shots() >= 0, trial.name() + " — 발 수가 음수면 뜻이 없다");
 			}
