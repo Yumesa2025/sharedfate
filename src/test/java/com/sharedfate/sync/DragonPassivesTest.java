@@ -31,14 +31,14 @@ class DragonPassivesTest {
 
 	@Test
 	void clearState_가_패시브의_상태까지_비운다() {
-		DragonRiftBreath.remember(DragonRiftBreath.plan(1L, 0.2));
-		DragonRiftBreath.notePlanned(1L);
-		assertNotNull(DragonRiftBreath.active());
+		DragonFireBarrage.remember(DragonFireBarrage.plan(1L, 0.2));
+		DragonFireBarrage.notePlanned(1L);
+		assertNotNull(DragonFireBarrage.active());
 
 		DragonPassives.clearState();
 
-		assertNull(DragonRiftBreath.active(),
-				"DragonPassives.clearState 가 패시브를 안 부르면 지난 판의 선이 다음 월드로 샌다");
+		assertNull(DragonFireBarrage.active(),
+				"DragonPassives.clearState 가 패시브를 안 부르면 지난 판의 좌표가 다음 월드로 샌다");
 	}
 
 	/**
@@ -59,7 +59,7 @@ class DragonPassivesTest {
 			}
 			bytes = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
 		}
-		assertTrue(bytes.contains("com/sharedfate/sync/DragonRiftBreath"),
-				"「가르는 브레스」가 배선에서 빠졌다 — 언제나 있어야 할 판이 한 번도 안 돈다");
+		assertTrue(bytes.contains("com/sharedfate/sync/DragonFireBarrage"),
+				"「연쇄 포격」이 배선에서 빠졌다 — 언제나 있어야 할 판이 한 번도 안 돈다");
 	}
 }

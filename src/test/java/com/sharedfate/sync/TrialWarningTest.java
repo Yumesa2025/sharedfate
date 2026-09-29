@@ -293,20 +293,20 @@ class TrialWarningTest {
 	 * 자리들이다. 전멸하면 월드가 지워지는 전투라 <b>「몰라서 죽었다」가 가장 나쁜 결과</b>이므로,
 	 * 남은 두 갈래가 실제로 살아 있는지를 카드마다 확인한다.
 	 *
-	 * <p>{@code TrialCrystalRevive} 와 {@code DragonRiftBreath} 는 {@code markGround} 를 쓰지
-	 * 않는다. 각자 제 모양(자리 고리·선의 두 경계)을 직접 그리기 때문이고, 그쪽이 살아 있는지는
-	 * {@link #먼_곳에_그리는_연출은_전부_긴_형태를_쓴다} 와 {@code DragonRiftBreathTest} 가 본다.
+	 * <p>{@code TrialCrystalRevive} 는 {@code markGround} 를 쓰지 않는다. 제 모양(자리 고리)을
+	 * 직접 그리기 때문이고, 그쪽이 살아 있는지는
+	 * {@link #먼_곳에_그리는_연출은_전부_긴_형태를_쓴다} 가 본다.
 	 */
 	@Test
 	void 소리와_바닥_표식은_여전히_나간다() throws IOException {
-		for (Class<?> type : new Class<?>[] {DragonRiftBreath.class, TrialCrystalRevive.class,
+		for (Class<?> type : new Class<?>[] {DragonFireBarrage.class, TrialCrystalRevive.class,
 				TrialDragonFocus.class, TrialFireball.class, TrialRisks.class}) {
 			assertTrue(classBytes(type).contains(SOUND_FORM),
 					type.getSimpleName() + " 가 경고 소리를 내지 않는다. 자막을 걷어낸 뒤로 소리는"
 							+ " 「무엇이 언제 오는가」를 말하는 두 갈래 중 하나다");
 		}
-		for (Class<?> type : new Class<?>[] {TrialDragonFocus.class, TrialFireball.class,
-				TrialRisks.class}) {
+		for (Class<?> type : new Class<?>[] {DragonFireBarrage.class, TrialDragonFocus.class,
+				TrialFireball.class, TrialRisks.class}) {
 			assertTrue(classBytes(type).contains("markGround"),
 					type.getSimpleName() + " 가 바닥 표식을 그리지 않는다. 「어디로 오는가」를 말하는"
 							+ " 것이 그 고리뿐이다");

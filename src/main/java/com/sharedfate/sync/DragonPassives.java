@@ -39,7 +39,7 @@ import java.util.List;
  * 두지 않았으므로 <b>다음 사람이 할 일은 네 걸음뿐</b>이다.
  *
  * <ol>
- *   <li>{@code DragonRiftBreath} 와 같은 모양으로 파일을 하나 만든다. 진입점 시그니처를
+ *   <li>{@code DragonFireBarrage} 와 같은 모양으로 파일을 하나 만든다. 진입점 시그니처를
  *       <b>그대로</b> 맞춘다 — {@code tick(ServerLevel, EnderDragon, List&lt;ServerPlayer&gt;,
  *       long granted, long now)} 와 {@code clearState()}</li>
  *   <li>{@link #tick} 에 호출 한 줄</li>
@@ -60,8 +60,8 @@ public final class DragonPassives {
 	/**
 	 * 매 틱. 전투가 열려 있는 동안 패시브를 모두 돌린다.
 	 *
-	 * <p><b>드래곤이 살아 있을 때만 돈다.</b> 패시브는 드래곤이 하는 짓이므로, 죽은 뒤에도 장판이
-	 * 깔리면 승리한 팀이 귀환 포털로 걸어가다 맞는다.
+	 * <p><b>드래곤이 살아 있을 때만 돈다.</b> 패시브는 드래곤이 하는 짓이므로, 죽은 뒤에도 포격이
+	 * 이어지면 승리한 팀이 귀환 포털로 걸어가다 맞는다.
 	 *
 	 * @param granted 전투가 열린 틱({@link DragonTrialSession#startedTick()})
 	 * @param now     지금 게임 시각. 시련 룰렛이 시간을 멈추면 이 값도 멈춰 위상이 함께 선다
@@ -72,7 +72,7 @@ public final class DragonPassives {
 				|| members == null || members.isEmpty()) {
 			return;
 		}
-		DragonRiftBreath.tick(end, dragon, members, granted, now);
+		DragonFireBarrage.tick(end, dragon, members, granted, now);
 	}
 
 	/**
@@ -82,6 +82,6 @@ public final class DragonPassives {
 	 * 저마다 정적 상태를 쓴다. 빠뜨리면 지난 판의 좌표·표적이 다음 판으로 샌다.
 	 */
 	public static void clearState() {
-		DragonRiftBreath.clearState();
+		DragonFireBarrage.clearState();
 	}
 }
