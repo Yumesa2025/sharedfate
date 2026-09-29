@@ -5,7 +5,6 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -515,10 +514,14 @@ public final class TrialCrystalOvercharge {
 	 * 볼륨 1 이면 16 블록이다. 크리스탈 자리에서 한 번 울리면 기둥 꼭대기에 올라간 사람 말고는
 	 * <b>아무도 못 듣는다.</b>
 	 *
-	 * <p>{@link TrialWarning#sound} 를 사람 자리마다 부른다. 소리표를 여기에 베껴 오면
+	 * <p>{@link TrialWarning#soundFor} 를 사람마다 부른다. 소리표를 여기에 베껴 오면
 	 * {@code TrialWarning} 이 층의 소리를 바꿀 때 이 카드만 옛 소리로 남는다 — <b>규약이 갈라지는
-	 * 것이 더 나쁘다.</b> 대가는 팀원 둘이 16 블록 안에 붙어 있을 때 같은 소리가 겹쳐 조금
-	 * 커지는 것뿐이다.
+	 * 것이 더 나쁘다.</b>
+	 *
+	 * <p>⚠ <b>전에는 {@code TrialWarning.sound} 를 사람 자리마다 불렀고, 그것이 틀렸다.</b> 그쪽은
+	 * 자리에 소리를 놓는 것이라 반경 안의 <b>전원</b>에게 나간다 — 옛 주석은 그 대가를 「둘이 붙어
+	 * 있으면 조금 커진다」고 적어 두었는데, 실제로는 넷이 모이면 <b>각자 네 겹</b>으로 듣고 남의
+	 * 경고까지 듣는다. {@code soundFor} 는 그 사람의 연결로 직접 보내 둘 다 없앤다.
 	 */
 	private static void warn(ServerLevel end, @Nullable List<ServerPlayer> members,
 			@Nullable TrialWarning.Stage stage) {
@@ -526,10 +529,7 @@ public final class TrialCrystalOvercharge {
 			return;
 		}
 		for (ServerPlayer member : members) {
-			if (member == null || member.isSpectator()) {
-				continue;
-			}
-			TrialWarning.sound(end, member.position(), stage);
+			TrialWarning.soundFor(end, member, stage);
 		}
 	}
 
@@ -541,17 +541,7 @@ public final class TrialCrystalOvercharge {
 	 * 「무엇이 시작됐는지」가 이 한 소리로 갈린다.
 	 */
 	private static void announce(ServerLevel end, @Nullable List<ServerPlayer> members) {
-		if (members == null) {
-			return;
-		}
-		for (ServerPlayer member : members) {
-			if (member == null || member.isSpectator()) {
-				continue;
-			}
-			Vec3 at = member.position();
-			end.playSound(null, at.x, at.y, at.z, SoundEvents.CONDUIT_ATTACK_TARGET,
-					SoundSource.HOSTILE, 1.0F, 0.6F);
-		}
+		TrialWarning.playEach(end, members, SoundEvents.CONDUIT_ATTACK_TARGET, 1.0F, 0.6F);
 	}
 
 	// ------------------------------------------------------------------ 고르기

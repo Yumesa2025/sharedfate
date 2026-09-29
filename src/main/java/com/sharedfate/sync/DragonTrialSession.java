@@ -50,6 +50,17 @@ import java.util.UUID;
  * 적어 두고 {@code (now - 받은틱) % interval} 로 세면 카드마다 위상이 저절로 어긋나고, 받은
  * 직후 한 주기는 온전히 예고에 쓰인다.
  *
+ * <h2>시련을 끈 팀도 세션을 연다</h2>
+ *
+ * <p>팀 설정에서 시련을 끄면({@link #trialsEnabled()} 이 거짓) 이 세션은 <b>아무 자리도 세지
+ * 않고 아무 카드도 받지 않는다.</b> 그래도 세션 자체는 열린다 — 엔드에 들어섰다는 사실과 전투
+ * 시각은 여전히 있어야 하고, 이것이 없으면 {@code DragonTrialManager.detectArrival} 이 매 틱
+ * 「아직 안 열렸다」로 읽어 팀을 계속 다시 부른다.
+ *
+ * <p><b>켰는가를 생성자로 받는 것이 이 설계의 핵심이다.</b> 나중에 켜고 끌 수 있게 두면
+ * 「전투 도중에 바뀌면 이미 받은 카드는 어떻게 되는가」라는 답 없는 물음이 생기고, 무엇보다
+ * 세션을 만드는 사람이 <b>정하지 않고 지나갈 수 있게</b> 된다. 그래서 값 없이는 만들 수 없다.
+ *
  * <h2>무엇을 모르는가</h2>
  *
  * <p>시련이 무슨 효과인지 모른다. 드래곤도 월드도 모른다. 그래서 월드 없이 시험할 수 있다.
@@ -58,6 +69,15 @@ public final class DragonTrialSession {
 	private final UUID teamId;
 	/** 전투가 시작된 게임 시각. 로그에 전투 길이를 남길 때 쓴다. */
 	private final long startedTick;
+	/**
+	 * 이 팀이 시련을 쓰기로 했는가({@code TeamState.dragonTrialsEnabled}).
+	 *
+	 * <p>거짓이면 {@link #fire}·{@link #choose} 가 <b>언제나 거짓을 돌려주고 아무것도 쌓지
+	 * 않는다.</b> 자리를 세는 길과 카드를 쌓는 길이 이 둘뿐이므로, 여기서 막으면 룰렛도 고정
+	 * 시련도 시험 명령({@code /shareteam trialtest give|fire})도 함께 막힌다 — 켜고 끄기를
+	 * 부르는 쪽마다 적어 두면 언젠가 한 길만 빠진다.
+	 */
+	private final boolean trialsEnabled;
 
 	/** 이미 터진 자리. 같은 자리는 다시 세지 않는다. */
 	private final Set<Trigger> fired = EnumSet.noneOf(Trigger.class);
@@ -70,13 +90,23 @@ public final class DragonTrialSession {
 	/** 지금 선택을 기다리는 중인가. 기다리는 동안 다음 자리는 줄에서 기다린다. */
 	private boolean awaitingChoice;
 
-	public DragonTrialSession(UUID teamId, long startedTick) {
+	/**
+	 * @param trialsEnabled 이 팀이 시련을 쓰기로 했는가. <b>기본값이 없다</b> — 부르는 쪽이
+	 *                      반드시 정해야 한다. 까닭은 클래스 문서에 적어 뒀다
+	 */
+	public DragonTrialSession(UUID teamId, long startedTick, boolean trialsEnabled) {
 		this.teamId = teamId;
 		this.startedTick = startedTick;
+		this.trialsEnabled = trialsEnabled;
 	}
 
 	public UUID teamId() {
 		return teamId;
+	}
+
+	/** 이 팀이 시련을 쓰는가. 거짓이면 바닐라 드래곤전이다. */
+	public boolean trialsEnabled() {
+		return trialsEnabled;
 	}
 
 	public long startedTick() {
@@ -111,10 +141,13 @@ public final class DragonTrialSession {
 	/**
 	 * 자리 하나가 터졌다.
 	 *
-	 * @return 처음 터진 것이면 참. 이미 센 자리면 거짓이고 아무 일도 없다
+	 * <p>시련을 끈 팀에서는 <b>아무 자리도 세지 않는다.</b> 세어 두면 나중에 무엇을 쌓을지
+	 * 모르는 자리가 줄에 남고, 그 줄이 곧 「룰렛을 띄울 때」의 근거다.
+	 *
+	 * @return 처음 터진 것이면 참. 이미 센 자리이거나 시련을 끈 팀이면 거짓이고 아무 일도 없다
 	 */
 	public boolean fire(@Nullable Trigger trigger) {
-		if (trigger == null || !fired.add(trigger)) {
+		if (!trialsEnabled || trigger == null || !fired.add(trigger)) {
 			return false;
 		}
 		queued.addLast(trigger);
@@ -147,12 +180,16 @@ public final class DragonTrialSession {
 	 * 길을 남기면 그 길로 들어온 카드만 위상이 월드 시간과 같아져 고치려던 문제로 되돌아가므로,
 	 * 1인자 오버로드는 일부러 두지 않았다.
 	 *
+	 * <p>시련을 끈 팀에서는 <b>무엇을 넘겨도 쌓이지 않는다.</b> 자리가 세지지 않으니 정상
+	 * 경로로는 여기까지 오지 않지만, 시험 명령({@code /shareteam trialtest give})은 자리를
+	 * 거치지 않고 곧장 들어온다 — 그 길도 여기서 함께 막힌다.
+	 *
 	 * @param tick 지금 게임 시각. 이 카드의 위험 주기를 여기서부터 센다
-	 * @return 실제로 쌓였으면 참. 이미 고른 것이면 거짓
+	 * @return 실제로 쌓였으면 참. 이미 고른 것이거나 시련을 끈 팀이면 거짓
 	 */
 	public boolean choose(@Nullable String trialId, long tick) {
 		awaitingChoice = false;
-		if (trialId == null || trialId.isBlank() || chosen.contains(trialId)) {
+		if (!trialsEnabled || trialId == null || trialId.isBlank() || chosen.contains(trialId)) {
 			// 쌓이지 못한 카드의 틱은 남기지 않는다. 남으면 chosen 과 어긋난다.
 			return false;
 		}
@@ -196,6 +233,16 @@ public final class DragonTrialSession {
 			@Nullable Collection<String> stillQueued, boolean waiting,
 			@Nullable Map<String, Long> grantedTicks) {
 		chosen.clear();
+		this.grantedTicks.clear();
+		fired.clear();
+		queued.clear();
+		awaitingChoice = false;
+		if (!trialsEnabled) {
+			// 시련을 끈 팀은 무엇이 적혀 있었든 한 장도 되살리지 않는다. 설정을 끄기 전에
+			// 쌓아 둔 저장이 남아 있을 수 있는데, 그것을 읽어 들이면 「꺼 놓았는데 카드가
+			// 걸려 있는」 팀이 생기고 그 상태는 화면 어디에도 설명되지 않는다.
+			return;
+		}
 		if (alreadyChosen != null) {
 			for (String id : alreadyChosen) {
 				if (id != null && !id.isBlank() && !chosen.contains(id)) {
@@ -203,7 +250,6 @@ public final class DragonTrialSession {
 				}
 			}
 		}
-		this.grantedTicks.clear();
 		if (grantedTicks != null) {
 			for (Map.Entry<String, Long> mark : grantedTicks.entrySet()) {
 				String id = mark.getKey();
@@ -214,7 +260,6 @@ public final class DragonTrialSession {
 				}
 			}
 		}
-		fired.clear();
 		if (alreadyFired != null) {
 			for (String name : alreadyFired) {
 				Trigger trigger = parse(name);
@@ -223,7 +268,6 @@ public final class DragonTrialSession {
 				}
 			}
 		}
-		queued.clear();
 		if (stillQueued != null) {
 			for (String name : stillQueued) {
 				Trigger trigger = parse(name);

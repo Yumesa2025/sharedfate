@@ -13,7 +13,15 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 시련 룰렛이 도는 동안 판을 멈춘다.
+ * 시련 화면이 떠 있는 동안 판을 멈춘다.
+ *
+ * <p>멈추는 자리가 둘이다 — 룰렛이 도는 동안({@link TrialCatalog.Reveal#ROULETTE},
+ * 굴림 + {@link #HOLD_TICKS})과 정해진 카드 한 장을 읽는 동안
+ * ({@link TrialCatalog.Reveal#FIXED_SCREEN}, {@link #FIXED_HOLD_TICKS}). 이 클래스는 둘을
+ * 구분하지 않는다 — <b>몇 틱을 얼릴지는 부르는 쪽이 정해서 넘긴다.</b> 여기에 연출의 종류가
+ * 들어오면 연출이 하나 늘 때마다 이 파일을 다시 뜯어야 한다.
+ *
+ * <p>{@link TrialCatalog.Reveal#SILENT} 은 <b>여기를 아예 지나지 않는다.</b>
  *
  * <h2>왜 멈추는가</h2>
  *
@@ -55,6 +63,35 @@ public final class TrialFreeze {
 	public static final int HOLD_TICKS = 60;
 
 	/**
+	 * 룰렛을 돌리지 않고 <b>정해진 카드 한 장</b>만 보여 줄 때 판을 멈추는 시간
+	 * ({@link TrialCatalog.Reveal#FIXED_SCREEN}). <b>5초</b>다.
+	 *
+	 * <h2>왜 {@link #HOLD_TICKS} 를 그대로 쓰지 않는가</h2>
+	 *
+	 * <p>룰렛은 굴림 {@value TrialRoulette#TOTAL_TICKS} 틱 + 읽는 시간 {@value #HOLD_TICKS} 틱이고,
+	 * <b>실제로 읽는 것은 뒤쪽 60틱뿐</b>이다 — 설명은 멈춘 뒤에야 뜬다. 그런데 그 60틱은 사람
+	 * 눈이 <b>이미 4초 동안 그 판 위에 있던 뒤</b>의 60틱이다. 굴림이 빠지면 화면이 아무 예고
+	 * 없이 뜨고, 그 처음 얼마는 「무엇이 떴나」에 쓰인다 — {@link TrialWarning#TICKS_SIDESTEP}
+	 * 이 지각·판단에만 0.25초를 따로 잡아 두는 것과 같은 몫이다. 60틱을 그대로 물려주면 실제로
+	 * 읽는 시간은 2초 남짓이 된다.
+	 *
+	 * <h2>그렇다고 룰렛 전체 길이를 쓰지도 않는다</h2>
+	 *
+	 * <p>{@value TrialRoulette#TOTAL_TICKS} + {@value #HOLD_TICKS} = 137틱을 그대로 쓰면
+	 * <b>아무것도 움직이지 않는 화면이 7초</b> 떠 있다. 룰렛의 7초가 견딜 만한 것은 그중 4초가
+	 * 돌고 있기 때문이고, 여기서는 그 4초가 없다.
+	 *
+	 * <p>그래서 둘 사이에서 <b>100틱</b>을 잡았다. 읽는 시간은 룰렛보다 40틱 길어 「뜬 것을
+	 * 알아채는」 몫을 스스로 치르고, 멈추는 전체 길이는 룰렛(137틱)보다 짧아 <b>굴림도 없는
+	 * 자리가 룰렛보다 무거워지지 않는다.</b> {@link #MAX_TICKS} 안이다.
+	 *
+	 * <p>⚠ <b>실제로 플레이해 보고 정한 값이 아니다</b> — 근거는 위 셈뿐이다. 고칠 때는 여기
+	 * 한 곳만 고치면 된다. 화면이 쓰는 값은 {@code TrialRoulettePayload.holdTicks} 로 실려 나가고,
+	 * 그 값을 채우는 자리도 {@code DragonTrialManager} 한 곳이다.
+	 */
+	public static final int FIXED_HOLD_TICKS = 100;
+
+	/**
 	 * 어떤 경우에도 이보다 오래 얼지 않는다.
 	 *
 	 * <p>연출 길이는 카드가 아니라 코드가 정하므로 큰 값이 들어올 일이 없어야 한다. 그래도 두는
@@ -90,10 +127,12 @@ public final class TrialFreeze {
 	}
 
 	/**
-	 * 판을 멈추고 룰렛을 연다.
+	 * 판을 멈추고 시련 화면을 연다.
 	 *
-	 * @param ticks 연출 길이. {@link #HOLD_TICKS} 는 여기에 <b>이미 더해져서</b> 와야 한다
-	 * @return 실제로 멈췄으면 참. 이미 돌고 있거나 증강 선택 중이면 거짓
+	 * @param ticks 화면이 떠 있는 전체 길이. <b>읽는 시간까지 이미 더해져서</b> 와야 한다 —
+	 *              룰렛이면 굴림 + {@link #HOLD_TICKS}, 정해진 카드 화면이면
+	 *              {@link #FIXED_HOLD_TICKS} 다
+	 * @return 실제로 멈췄으면 참. 이미 떠 있거나 증강 선택 중이면 거짓
 	 */
 	public static boolean begin(@Nullable MinecraftServer server, @Nullable UUID teamId,
 			@Nullable String trialId, java.util.List<ServerPlayer> watching, int ticks) {
@@ -123,7 +162,7 @@ public final class TrialFreeze {
 			tickRate.setFrozen(true);
 		} else {
 			SharedFateMod.LOGGER.info(
-					"시련 룰렛을 여는데 서버가 이미 정지 상태였습니다. 끝나도 정지를 그대로 둡니다.");
+					"시련 화면을 여는데 서버가 이미 정지 상태였습니다. 끝나도 정지를 그대로 둡니다.");
 		}
 		return true;
 	}
@@ -143,7 +182,7 @@ public final class TrialFreeze {
 			}
 		}
 		if (!anyOnline) {
-			finish(server, current, "지켜보던 사람이 모두 나가 시련 룰렛을 닫습니다.");
+			finish(server, current, "지켜보던 사람이 모두 나가 시련 화면을 닫습니다.");
 			return;
 		}
 		current.remaining--;
@@ -152,7 +191,7 @@ public final class TrialFreeze {
 		}
 	}
 
-	/** 지금 룰렛이 돌고 있는가. */
+	/** 지금 시련 화면이 떠 있는가. 룰렛이든 정해진 카드 화면이든 참이다. */
 	public static boolean isActive() {
 		return state != null;
 	}

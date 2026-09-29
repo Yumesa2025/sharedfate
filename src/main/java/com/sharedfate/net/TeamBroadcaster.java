@@ -250,7 +250,8 @@ public final class TeamBroadcaster {
 				? TeamSyncPayload.Options.NONE
 				: new TeamSyncPayload.Options(state.perksEnabled,
 						state.damageAlertEnabled, state.deathAlertEnabled, state.runStarted,
-						com.sharedfate.perk.PerkInventorySlots.unlockedFor(state));
+						com.sharedfate.perk.PerkInventorySlots.unlockedFor(state),
+						state.dragonTrialsEnabled);
 		return new TeamSyncPayload(members, team.name(), xpLevel, nextPerkLevel,
 				maxHealth, swapMinutes, options, team.leader());
 	}

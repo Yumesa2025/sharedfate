@@ -157,9 +157,16 @@ public final class TrialEnderPulse {
 	/**
 	 * 몸통 고리 한 바퀴에 찍는 점 수의 상한.
 	 *
-	 * <p>이쪽은 <b>남아서 쌓인다.</b> 수명이 40~49틱이라 화면에 살아 있는 수는
-	 * {@code 이 값 × 수명}이고, 앞머리와 같은 240 을 주면 만 점을 넘긴다. 몸통은 경계를 말하는
-	 * 줄이 아니라 지나간 자리를 채우는 안개라 성겨도 제 몫을 한다.
+	 * <p>이쪽은 <b>남아서 쌓인다.</b> 화면에 살아 있는 수가 {@code 이 값 × 수명}이라, 앞머리와
+	 * 같은 240 을 주면 만 점에 닿는다. 몸통은 경계를 말하는 줄이 아니라 지나간 자리를 채우는
+	 * 안개라 성겨도 제 몫을 한다.
+	 *
+	 * <p>⚠ <b>수명은 40~49틱이 아니다.</b> 여기에 그렇게 적혀 있었는데 그것은
+	 * {@code PORTAL} 의 값이고, 몸통이 쓰는 것은 먼지다. 26.3 {@code DustParticleBase} 의
+	 * 수명은 {@code max(1, (int)(8.0 / (random.nextDouble() * 0.8 + 0.2)) * scale)} 이라
+	 * {@code scale} 이 1.0 이면 <b>8~40틱</b>이다({@code TrialWarning.markGround} 의 같은 계산).
+	 * 그은 선 자체는 그대로 맞다 — 240 × 40 = 9600 이라 여전히 만 점 언저리이고, 160 이면
+	 * 6400 이다.
 	 */
 	static final int WAKE_MAX_POINTS = 160;
 	/**
@@ -442,7 +449,10 @@ public final class TrialEnderPulse {
 	 * <p>남은 시간이 <b>사람마다 다르다</b>는 것이 이 카드의 특징이다. 고리는 중앙에서 출발하므로
 	 * 가까이 선 사람에게 먼저 닿는다 — 같은 파동에 네 사람이 네 번 다른 순간에 뛰어야 한다.
 	 *
-	 * <p>소리는 <b>사람마다 그 자리에서</b> 울린다. 한 점에서 울리면 16칸 밖에는 안 들린다.
+	 * <p>소리는 <b>그 사람에게만</b> 간다({@link TrialWarning#soundFor}). 한 점에 놓으면 16칸 밖에는
+	 * 안 들리고, 사람 자리마다 놓는 것으로는 안 된다 — 그쪽은 반경 안의 <b>전원</b>에게 나가므로
+	 * 같은 거리에 선 둘이 서로의 경고까지 들어 <b>각자 두 번</b>이 되고, 「네 사람이 네 번 다른
+	 * 순간에 뛴다」는 이 카드의 요점이 그 한 줄로 무너진다.
 	 *
 	 * <p>출발 틱은 층이 바뀌지 않았어도 무조건 한 번 울린다. 고리가 없던 직전 틱에는 층 자체가
 	 * 없으니 「바뀌었다」가 참이어야 맞고, 무엇보다 <b>중앙 가까이 선 사람은 처음부터 마지막
@@ -474,7 +484,7 @@ public final class TrialEnderPulse {
 			if (!TrialRisks.stageJustChanged(remaining, lead)) {
 				continue;
 			}
-			TrialWarning.sound(end, at, stage);
+			TrialWarning.soundFor(end, member, stage);
 		}
 	}
 

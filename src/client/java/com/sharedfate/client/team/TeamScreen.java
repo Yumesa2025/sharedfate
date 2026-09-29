@@ -130,13 +130,27 @@ public class TeamScreen extends Screen {
 	/**
 	 * 팀 만들기 탭의 설정 줄들.
 	 *
-	 * <p>정할 것이 일곱 가지로 늘어 한 줄에 하나씩 두면 창을 넘긴다. 절반씩 둘을 나란히 놓고,
+	 * <p>정할 것이 여덟 가지로 늘어 한 줄에 하나씩 두면 창을 넘긴다. 절반씩 둘을 나란히 놓고,
 	 * 숫자는 −/+ 두 단추 대신 <b>누를 때마다 값이 굴러가는</b> 단추 하나로 줄였다
 	 * ({@link TeamCreationCycle}).
+	 *
+	 * <h2>여덟 번째를 넣으면서 창 높이도 줄 높이도 건드리지 않았다</h2>
+	 *
+	 * <p>절반씩 둘을 놓으면 <b>일곱은 네 줄에 한 칸이 빈다</b> — 마지막 줄(「다시 뽑기」)의
+	 * 오른쪽이 그동안 비어 있었다. 여덟 번째는 그 빈칸에 그대로 들어가므로 줄이 늘지 않고,
+	 * 따라서 아래의 「팀 만들기」 단추도 경고 세 줄도 예전과 <b>같은 y</b>에 선다.
+	 *
+	 * <p>줄을 더 줄이거나 창을 키우는 쪽은 둘 다 대가가 있어 고르지 않았다. {@code FORM_ROW}
+	 * 를 줄이면 단추가 서로 붙어 잘못 누르기 쉬워지고, 판을 키우면 GUI 배율이 큰 사람에게서
+	 * 아래 경고 줄이 「닫기」 단추와 겹친다 — 바닐라가 보장하는 세로는 240 뿐이라 지금도
+	 * 여유가 크지 않다. <b>빈칸이 이미 있는데 자리를 새로 만들 이유가 없다.</b>
+	 *
+	 * <p>⚠ 아홉 번째를 넣는 사람은 그때 진짜로 골라야 한다. 네 줄이 꽉 차므로 다섯 번째 줄이
+	 * 생기고, 그만큼 아래의 모든 것이 20px 씩 내려간다.
 	 */
 	private static final int FORM_TOP = PANEL_TOP + 34;
 	private static final int FORM_ROW = 20;
-	/** 설정 줄의 단추 높이. 기본 20 보다 낮춰야 일곱 가지가 창 안에 들어간다. */
+	/** 설정 줄의 단추 높이. 기본 20 보다 낮춰야 여덟 가지가 네 줄로 창 안에 들어간다. */
 	private static final int FORM_BUTTON_HEIGHT = 18;
 
 	private enum Tab {
@@ -184,7 +198,7 @@ public class TeamScreen extends Screen {
 	private int perkScroll;
 
 	/**
-	 * 팀을 만들 때 정할 일곱 가지. 아직 팀이 없으니 서버에 있을 수 없어 화면이 들고 있다가
+	 * 팀을 만들 때 정할 여덟 가지. 아직 팀이 없으니 서버에 있을 수 없어 화면이 들고 있다가
 	 * 「팀 만들기」를 누를 때 명령 한 줄로 보낸다. 창을 닫았다 열면 기본값으로 돌아간다.
 	 *
 	 * <p><b>기본값은 서버의 {@link TeamCreationSettings} 와 같아야 한다.</b> 화면에 보이는
@@ -192,13 +206,19 @@ public class TeamScreen extends Screen {
 	 * 실제 팀이 어긋난다. 그래서 <b>서버 상수를 그대로 참조</b>한다 — 숫자를 여기에 옮겨
 	 * 적으면 언젠가 한쪽만 고쳐진다. 증강과 위치 교환이 켬이고 나머지는 끔·서버 설정값이다.
 	 *
-	 * <p>두 알림과 난이도 상승은 <b>만든 뒤에 바꿀 수 없으므로</b> 켜는 것을 일부러 손으로
-	 * 고르게 한다.
+	 * <p>두 알림과 난이도 상승, 드래곤 시련은 <b>만든 뒤에 바꿀 수 없으므로</b> 켜는 것을
+	 * 일부러 손으로 고르게 한다.
+	 *
+	 * <p>⚠ <b>드래곤 시련은 2026-09-30 전까지 늘 켜져 있던 것</b>이라 특히 조심할 자리다.
+	 * 이제 기본값이 끔이므로 <b>시험 월드를 새로 열 때마다 팀을 만들면서 켜 줘야</b> 하고,
+	 * 안 켜면 엔드에 도착해도 카드가 한 장도 안 뜬다. 창을 닫았다 열면 여기 적힌 기본값으로
+	 * 돌아가므로 「아까 켰는데」도 통하지 않는다.
 	 */
 	private boolean newTeamPerks = TeamCreationSettings.DEFAULT_PERKS_ENABLED;
 	private boolean newTeamDamageAlert;
 	private boolean newTeamDeathAlert;
 	private boolean newTeamDifficulty = TeamCreationSettings.DEFAULT_DIFFICULTY_ESCALATION;
+	private boolean newTeamDragonTrials = TeamCreationSettings.DEFAULT_DRAGON_TRIALS;
 	/**
 	 * 서버가 정한 기본 최대 체력을 화면이 알 길이 없다 — 팀에 속하기 전에는 동기화가 오지
 	 * 않는다. 명령이 받는 아래 끝(20)에서 시작한다.
@@ -375,6 +395,11 @@ public class TeamScreen extends Screen {
 							newTeamRerollCount,
 							TeamCreationSettings.MIN_REROLL_COUNT,
 							TeamCreationSettings.MAX_REROLL_COUNT)));
+			// 마지막 줄의 오른쪽은 일곱 가지일 때 비어 있던 자리다. 여덟 번째가 여기 들어가므로
+			// 줄이 늘지 않고 아래 단추와 경고 줄의 y 도 그대로다 — FORM_ROW 문서를 보라.
+			addRenderableWidget(toggle(right, formRowY(3), half, "드래곤 시련",
+					newTeamDragonTrials, "켬", "끔", TeamCreationTooltips.DRAGON_TRIAL,
+					() -> newTeamDragonTrials = !newTeamDragonTrials));
 
 			createButton = Button.builder(Component.literal("팀 만들기"), button -> createTeam())
 					.bounds(left, formRowY(4) + 4, PANEL_WIDTH, FORM_BUTTON_HEIGHT).build();
@@ -512,7 +537,7 @@ public class TeamScreen extends Screen {
 	}
 
 	/**
-	 * 화면이 들고 있던 일곱을 모두 적어 보낸다.
+	 * 화면이 들고 있던 여덟을 모두 적어 보낸다.
 	 *
 	 * <p>적지 않은 항목은 서버가 기본값으로 두는데, 화면에는 이미 다른 값이 보이고 있을 수
 	 * 있어 눈에 보이는 것과 실제가 어긋난다. 그래서 늘 완전한 형태를 보낸다. 낱말 순서는
@@ -531,7 +556,8 @@ public class TeamScreen extends Screen {
 			return;
 		}
 		run(TeamCreationCycle.createCommand(newTeamPerks, newTeamDamageAlert, newTeamDeathAlert,
-				newTeamDifficulty, newTeamMaxHealth, newTeamSwapMinutes, newTeamRerollCount, name));
+				newTeamDifficulty, newTeamDragonTrials, newTeamMaxHealth, newTeamSwapMinutes,
+				newTeamRerollCount, name));
 		awaitingCreate = true;
 	}
 
@@ -731,12 +757,12 @@ public class TeamScreen extends Screen {
 	private void renderTeam(GuiGraphicsExtractor graphics, int left) {
 		int y = PANEL_TOP;
 		if (!ClientTeamState.inTeam()) {
-			graphics.text(this.font, "새 팀 이름을 적고 일곱 가지를 정한 뒤 만드세요.",
+			graphics.text(this.font, "새 팀 이름을 적고 여덟 가지를 정한 뒤 만드세요.",
 					left, y, TEXT_DIM);
-			// 「팀 만들기」 단추 바로 아래. 일곱 가지 전부 되돌릴 수 없으므로 눈에 띄는 색으로
+			// 「팀 만들기」 단추 바로 아래. 여덟 가지 전부 되돌릴 수 없으므로 눈에 띄는 색으로
 			// 적고, 줄 수를 둘로 줄여 창이 낮을 때 닫기 단추와 겹치지 않게 한다.
 			int noteY = formRowY(4) + 4 + FORM_BUTTON_HEIGHT + 6;
-			graphics.text(this.font, "일곱 가지 모두 팀을 만들 때만 정합니다. 바꾸려면 팀을 해체하세요.",
+			graphics.text(this.font, "여덟 가지 모두 팀을 만들 때만 정합니다. 바꾸려면 팀을 해체하세요.",
 					left, noteY, TEXT_WARN);
 			// 단추가 꺼져 있으면 왜 꺼져 있는지를 늘 보이는 한 줄로 적는다.
 			boolean nameReady = TeamNameInput.valid(newTeamName);
@@ -811,6 +837,12 @@ public class TeamScreen extends Screen {
 				left, y, TEXT_MAIN);
 		y += ROW_HEIGHT;
 		graphics.text(this.font, "사망 알림 " + onOffText(ClientTeamState.deathAlertEnabled()),
+				left, y, TEXT_MAIN);
+		y += ROW_HEIGHT;
+		// 기본값이 끔이라 「켜 준 적이 있는가」를 게임 안에서 확인할 자리가 필요하다. 엔드에
+		// 가서 카드가 안 뜨는 것을 보고 여기를 열면 원인이 바로 읽혀야 한다.
+		graphics.text(this.font, "드래곤 시련 " + (ClientTeamState.dragonTrialsEnabled()
+						? "켜짐" : "꺼짐 (바닐라 엔더 드래곤전)"),
 				left, y, TEXT_MAIN);
 
 		y += ROW_HEIGHT + 6;

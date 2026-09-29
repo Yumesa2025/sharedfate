@@ -20,6 +20,18 @@ import java.util.List;
 /**
  * 엔드 시련이 <b>정해지는</b> 것을 보여 주는 화면.
  *
+ * <h2>돌 때도 있고 안 돌 때도 있다</h2>
+ *
+ * <p>같은 화면이 두 자리를 그린다. 룰렛이 도는 자리가 있고, 판은 멈추되 <b>정해진 카드 한 장의
+ * 이름과 설명만</b> 보여 주는 자리가 있다({@code TrialCatalog.Reveal}). 가르는 값은
+ * {@link TrialRoulettePayload#spinTicks()} 하나이고 <b>0 이면 굴림이 한 틱도 나오지 않는다</b> —
+ * {@link Spin#frameAt} 이 처음부터 -1 을 돌려주므로 첫 프레임부터 결과와 설명이 떠 있다.
+ * 카드가 한 장뿐인 풀에서 이름이 도는 것은 <b>결과가 정해진 굴림을 보여 주는 것</b>이라 연출이
+ * 거짓말이 되기 때문이다.
+ *
+ * <p>붙잡아 두는 시간도 자리마다 다르므로 {@linkplain TrialRoulettePayload#holdTicks() 패킷에
+ * 실려 온다.} 여기에 상수를 두지 않는 이유는 그쪽에 적어 두었다.
+ *
  * <h2>고르는 화면이 아니다</h2>
  *
  * <p>증강 선택창({@code PerkOfferScreen})과 겉모습이 비슷해 보이면 안 된다. 그쪽은 좋은 것을
@@ -50,18 +62,6 @@ import java.util.List;
  * 마인크래프트 클래스를 하나도 쓰지 않으므로 화면을 띄우지 않고 시험할 수 있다.
  */
 public class TrialRouletteScreen extends Screen {
-
-	/**
-	 * 룰렛이 멈춘 뒤 결과를 붙잡아 두는 시간(틱). 3초.
-	 *
-	 * <p>여기서 플레이어가 <b>무엇을 받았는지 읽는다.</b> 설명이 두세 줄이라 1초로는 못 읽고,
-	 * 그렇다고 길게 잡으면 드래곤 전투가 그만큼 멈춰 선 것처럼 느껴진다.
-	 *
-	 * <p><b>서버가 판을 얼려 두는 시간과 같은 값을 쓴다.</b> 여기에 숫자를 따로 박으면 한쪽만
-	 * 바뀌었을 때 화면이 먼저 닫혀 얼어 있는 채로 서 있거나, 시간이 먼저 흘러 화면 뒤에서
-	 * 드래곤이 움직인다. 둘 다 눈으로 봐야만 아는 어긋남이다.
-	 */
-	public static final int HOLD_TICKS = com.sharedfate.sync.TrialFreeze.HOLD_TICKS;
 
 	/** 화면 가장자리에서 띄우는 여백. */
 	private static final int SCREEN_MARGIN = 10;
@@ -418,9 +418,11 @@ public class TrialRouletteScreen extends Screen {
 	 *
 	 * @param optionCount 후보 수. 0 이면 열리지 않아야 하는 패킷이다
 	 * @param resultIndex 멈출 칸. <b>밖에서 온 값</b>이라 범위 안으로 눌러 둔다
-	 * @param spinTicks   도는 시간(틱). 0 이하면 돌지 않고 결과부터 보여 준다
+	 * @param spinTicks   도는 시간(틱). 0 이하면 <b>한 틱도 돌지 않고</b> 결과부터 보여 준다
+	 * @param holdTicks   결과를 붙잡아 두는 시간(틱). <b>서버가 실어 보낸 값을 그대로 쓴다</b> —
+	 *                    여기서 지어내면 얼음이 풀린 판에 화면만 남거나 그 반대가 된다
 	 */
-	public record Spin(int optionCount, int resultIndex, int spinTicks) {
+	public record Spin(int optionCount, int resultIndex, int spinTicks, int holdTicks) {
 
 		/** 칸이 바뀌는 경과 틱. {@link TrialRoulette#gaps()} 를 누적한 것이다. */
 		private static final int[] FRAME_STARTS = frameStarts();
@@ -432,10 +434,12 @@ public class TrialRouletteScreen extends Screen {
 			resultIndex = optionCount <= 0
 					? 0 : Math.clamp(resultIndex, 0, optionCount - 1);
 			spinTicks = Math.max(0, spinTicks);
+			holdTicks = Math.max(0, holdTicks);
 		}
 
 		public static Spin of(TrialRoulettePayload payload) {
-			return new Spin(payload.options().size(), payload.resultIndex(), payload.spinTicks());
+			return new Spin(payload.options().size(), payload.resultIndex(), payload.spinTicks(),
+					payload.holdTicks());
 		}
 
 		private static int[] frameStarts() {
@@ -534,9 +538,9 @@ public class TrialRouletteScreen extends Screen {
 			return frameAt(elapsedTicks) < 0;
 		}
 
-		/** 돌기와 멈춤을 합친 전체 길이(틱). */
+		/** 돌기와 멈춤을 합친 전체 길이(틱). 서버가 판을 얼려 두는 길이와 같아야 한다. */
 		public int totalTicks() {
-			return spinTicks + HOLD_TICKS;
+			return spinTicks + holdTicks;
 		}
 
 		/** 화면이 스스로 닫혀야 하는 때인지. */
@@ -550,10 +554,18 @@ public class TrialRouletteScreen extends Screen {
 			return (remaining + TICKS_PER_SECOND - 1) / TICKS_PER_SECOND;
 		}
 
-		/** 멈춤 구간이 얼마나 남았는지 0.0~1.0 으로. 카운트다운 막대의 채움 비율이다. */
+		/**
+		 * 멈춤 구간이 얼마나 남았는지 0.0~1.0 으로. 카운트다운 막대의 채움 비율이다.
+		 *
+		 * <p>붙잡는 시간이 0 이면 막대를 그릴 구간 자체가 없다. 0 으로 나누지 않고 0 을 준다 —
+		 * 어차피 그 화면은 그 틱에 닫힌다.
+		 */
 		public float holdFraction(int elapsedTicks) {
+			if (holdTicks <= 0) {
+				return 0.0F;
+			}
 			int remaining = Math.max(0, totalTicks() - elapsedTicks);
-			return Math.clamp((float) remaining / HOLD_TICKS, 0.0F, 1.0F);
+			return Math.clamp((float) remaining / holdTicks, 0.0F, 1.0F);
 		}
 
 		/** 돌기가 얼마나 진행됐는지 0.0~1.0 으로. 소리의 음을 내리는 데 쓴다. */

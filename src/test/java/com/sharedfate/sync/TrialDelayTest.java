@@ -49,7 +49,7 @@ class TrialDelayTest {
 
 	/** 시험마다 새 팀이다. 팀 id 가 겹치면 앞 시험이 적어 둔 시각을 물려받는다. */
 	private DragonTrialSession session(Trigger... fired) {
-		DragonTrialSession session = new DragonTrialSession(UUID.randomUUID(), STARTED);
+		DragonTrialSession session = new DragonTrialSession(UUID.randomUUID(), STARTED, true);
 		for (Trigger trigger : fired) {
 			session.fire(trigger);
 		}

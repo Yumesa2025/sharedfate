@@ -9,6 +9,7 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.tree.LiteralCommandNode;
+import com.sharedfate.SharedFateMod;
 import com.sharedfate.config.SharedFateConfig;
 import com.sharedfate.net.ClientVersionRegistry;
 import com.sharedfate.net.OpenTeamScreenPayload;
@@ -174,19 +175,21 @@ public final class ShareTeamCommand {
 	/**
 	 * {@code create} 가지를 만든다.
 	 *
-	 * <p>{@code name} 이 greedyString 이라 뒤에는 아무것도 못 붙는다. 그래서 팀이 정할 일곱
+	 * <p>{@code name} 이 greedyString 이라 뒤에는 아무것도 못 붙는다. 그래서 팀이 정할 여덟
 	 * 가지는 모두 <b>이름 앞에</b> 정해진 순서로 온다.
 	 *
 	 * <pre>
 	 * /shareteam create [perks on|off] [damagealert on|off] [deathalert on|off]
-	 *                   [difficulty on|off] [health &lt;20~40&gt;] [swap off|&lt;1~120&gt;]
+	 *                   [difficulty on|off] [dragontrials on|off]
+	 *                   [health &lt;20~40&gt;] [swap off|&lt;1~120&gt;]
 	 *                   [reroll &lt;0~15&gt;] &lt;이름&gt;
 	 * </pre>
 	 *
 	 * <p>각 단계에서 곧바로 이름으로 빠져나갈 수 있으므로 {@code /shareteam create 우리팀} 도
 	 * {@code /shareteam create perks on 우리팀} 도 그대로 동작한다. 적지 않은 것은 기본값이다 —
 	 * 증강은 {@linkplain TeamCreationSettings#DEFAULT_PERKS_ENABLED 켬}, 두 알림과 난이도
-	 * 상승은 끔, 최대 체력은 서버 설정값, 위치 교환은
+	 * 상승과 {@linkplain TeamCreationSettings#DEFAULT_DRAGON_TRIALS 드래곤 시련}은 끔,
+	 * 최대 체력은 서버 설정값, 위치 교환은
 	 * {@linkplain TeamCreationSettings#DEFAULT_SWAP_MINUTES 5분 주기}, 다시 뽑기는
 	 * {@linkplain TeamCreationSettings#DEFAULT_REROLL_COUNT 회차당 3회}.
 	 * 팀 화면은 늘 완전한 형태를 보낸다.
@@ -195,8 +198,9 @@ public final class ShareTeamCommand {
 	 * 하나에 담아 다음 단계로 넘긴다. 각 단계의 꼬리는 {@link #withCreateOptions} 가 붙인다.
 	 *
 	 * <p><b>주의</b> — {@code perks} {@code damagealert} {@code deathalert} {@code difficulty}
-	 * {@code health} {@code swap} 은 이 자리에서 예약어다. 브리가디어는 같은 자리에 리터럴이
-	 * 맞으면 인자를 아예 보지 않으므로, 이 여섯 낱말로 <b>시작하는</b> 팀 이름은 만들 수 없다.
+	 * {@code dragontrials} {@code health} {@code swap} 은 이 자리에서 예약어다. 브리가디어는
+	 * 같은 자리에 리터럴이 맞으면 인자를 아예 보지 않으므로, 이 일곱 낱말로 <b>시작하는</b>
+	 * 팀 이름은 만들 수 없다.
 	 */
 	private static LiteralArgumentBuilder<CommandSourceStack> createNode(SharedFateConfig config) {
 		TeamCreationSettings base = TeamCreationSettings.defaults((float) config.sharedMaxHealth);
@@ -224,8 +228,21 @@ public final class ShareTeamCommand {
 					LiteralArgumentBuilder<CommandSourceStack> difficulty =
 							Commands.literal("difficulty");
 					for (boolean escalation : BOTH) {
-						difficulty.then(withCreateOptions(onOff(escalation), config,
-								afterDeath.withDifficultyEscalation(escalation)));
+						TeamCreationSettings afterDifficulty =
+								afterDeath.withDifficultyEscalation(escalation);
+						LiteralArgumentBuilder<CommandSourceStack> escalationValue =
+								withCreateOptions(onOff(escalation), config, afterDifficulty);
+
+						// 드래곤 시련은 켜고 끄기 중 마지막이다. 순서는
+						// TeamCreationCycle.createCommand 가 적는 순서와 같아야 한다.
+						LiteralArgumentBuilder<CommandSourceStack> trials =
+								Commands.literal("dragontrials");
+						for (boolean trialsOn : BOTH) {
+							trials.then(withCreateOptions(onOff(trialsOn), config,
+									afterDifficulty.withDragonTrials(trialsOn)));
+						}
+						escalationValue.then(trials);
+						difficulty.then(escalationValue);
 					}
 					deathValue.then(difficulty);
 					death.then(deathValue);
@@ -414,6 +431,11 @@ public final class ShareTeamCommand {
 		StatMirror.syncPlayerNow(team.teamId(), manager.stateOf(self.getUUID()), self);
 		EffectSync.refreshPlayer(self);
 		TeamBroadcaster.broadcast(context.getSource().getServer(), manager.teamOf(self.getUUID()));
+
+		// 팀을 만들 때 정한 것은 그 뒤로 바꿀 수 없으므로, 나중에 「그 팀은 뭘로 만들었더라」를
+		// 물을 곳이 채팅 한 줄밖에 없다. 로그에도 남긴다 — 특히 드래곤 시련은 기본값이 끔이라
+		// 「켜 준 적이 있는가」가 「왜 시련이 안 뜨지」의 답인 경우가 대부분이다.
+		SharedFateMod.LOGGER.info("[TEAM] 팀 '{}' 생성 — {}", name, settings.summary());
 
 		context.getSource().sendSuccess(() -> Component.literal(
 				"팀 '" + name + "'을 만들었습니다."
@@ -727,13 +749,15 @@ public final class ShareTeamCommand {
 		context.getSource().sendSuccess(() -> Component.literal("""
 				SharedFate 팀 명령
 				/shareteam create <이름> — 기본 설정으로 팀 생성
-				  (증강 켬 · 두 알림 끔 · 난이도 상승 끔 · 최대 체력은 서버 설정값 · 위치 교환 끔
-				   · 증강 다시 뽑기 회차당 3회)
+				  (증강 켬 · 두 알림 끔 · 난이도 상승 끔 · 드래곤 시련 끔
+				   · 최대 체력은 서버 설정값 · 위치 교환 끔 · 증강 다시 뽑기 회차당 3회)
 				/shareteam create [perks on|off] [damagealert on|off] [deathalert on|off]
-				                  [difficulty on|off] [health <20~40>] [swap off|<1~120>]
-				                  [reroll <0~15>] <이름>
-				  — 이 일곱은 팀을 만들 때만 정합니다. 만든 뒤에는 바꿀 수 없습니다.
+				                  [difficulty on|off] [dragontrials on|off]
+				                  [health <20~40>] [swap off|<1~120>] [reroll <0~15>] <이름>
+				  — 이 여덟은 팀을 만들 때만 정합니다. 만든 뒤에는 바꿀 수 없습니다.
 				  difficulty 를 켜면 30분마다 적대적 몹이 4%p 씩 세집니다 (엔더 드래곤 제외).
+				  dragontrials 를 켜면 드래곤이 인원 비례로 세지고 시련 카드가 뜹니다.
+				  끄면(기본값) 바닐라 엔더 드래곤전입니다 — 체력 200, 카드도 패시브도 없음.
 				  reroll 은 증강 선택창에서 후보 3장을 다시 뽑을 수 있는 회차당 횟수입니다.
 				/shareteam start — 회차를 시작합니다 (리더). 무엇이 사라지는지 먼저 보여 줍니다
 				/shareteam start confirm — 실제로 시작합니다. 되돌릴 수 없습니다
@@ -791,6 +815,11 @@ public final class ShareTeamCommand {
 				+ "\n피격 알림=" + onOffText(state.damageAlertEnabled)
 				+ ", 사망 알림=" + onOffText(state.deathAlertEnabled)
 				+ "\n난이도 상승=" + DifficultyEscalation.describe(state)
+				// 기본값이 끔이라 「켜 준 적이 있는가」를 게임 안에서 물을 자리가 필요하다.
+				// 끈 팀에게는 dragonHealthPerMember 도 읽히지 않으므로 그 사실까지 적는다.
+				+ "\n드래곤 시련=" + (state.dragonTrialsEnabled
+						? "켬"
+						: "끔 (바닐라 엔더 드래곤전 — 체력 200, 시련 카드·패시브 없음)")
 				// 「회차당 몇 번」은 팀이 정한 값이라 위와 같은 묶음이지만, 「이번 회차에 몇 번
 				// 남았는지」는 회차마다 달라지는 진행 상황이다. 한 줄에 같이 적어야 헷갈리지 않는다.
 				+ "\n증강 다시 뽑기=회차당 " + state.rerollAllowance + "회"

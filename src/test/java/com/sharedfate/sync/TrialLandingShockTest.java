@@ -686,10 +686,99 @@ class TrialLandingShockTest {
 				"먼지 수명 하한(8틱)이 판정 창보다 길어야 뒷자락까지 파랑으로 덮인다");
 	}
 
+	/**
+	 * ⚠ 앞머리가 <b>세로로 선다</b> — 사람이 「너무 이펙트가 잘안보여」라고 해서 고친 자리다.
+	 *
+	 * <p>바닥에만 찍으면 서서 보는 눈높이에서 고리가 시선과 거의 나란해 한 줄로 뭉개진다. 위로
+	 * 쏘면 <b>점 수도 패킷 수도 그대로인데</b> 벽이 된다.
+	 *
+	 * <p>높이를 시험이 보는 까닭은 <b>눈으로만 확인되는 값</b>이기 때문이다. 다음 사람이 2.0 을
+	 * 20 으로 바꿔도 컴파일도 로그도 조용한데, 그때 서는 것은 <b>다른 카드의 바닥 표식을 가리는
+	 * 벽</b>이다. 고리가 셋이라 이 카드만으로 벽이 셋이다.
+	 */
+	@Test
+	void 앞머리가_사람_키만큼_선다() {
+		double rise = TrialLandingShock.riseHeight(TrialLandingShock.EDGE_RISE_SPEED);
+		assertEquals(1.878, rise, 1.0E-3,
+				"26.3 CritParticle(속도×0.4 · 마찰 0.7 · 중력 0.5)을 수명 하한 4틱으로 굴린 값이다."
+						+ " 달라졌다면 판이 올라 물리가 바뀐 것이니 상수 설명부터 다시 읽을 것");
+
+		double human = 1.8;
+		assertTrue(rise >= human,
+				"올라가는 높이가 " + rise + "칸이다 — 사람 키(" + human + ")보다 낮으면 벽이 아니라"
+						+ " 조금 두꺼운 바닥 선이고, 그러면 고친 뜻이 없다");
+		assertTrue(rise < TrialEnderStorm.COLUMN_HEIGHT,
+				"「엔더폭풍」이 기둥을 " + TrialEnderStorm.COLUMN_HEIGHT + "칸에서 멈춘 것은 세로로"
+						+ " 선 것이 다른 카드의 바닥 표식을 가리기 때문이다. 이 카드는 고리가"
+						+ " 셋이라 더 낮아야 한다");
+		assertEquals(0.0, TrialLandingShock.riseHeight(0.0),
+				"0 이면 제자리에 찍는다 — 몸통이 그 갈래로 간다");
+		assertEquals(0.0, TrialLandingShock.riseHeight(-2.0), "음수는 땅으로 쏘는 것이다");
+	}
+
+	/**
+	 * ⚠ 몸통을 키웠는데 <b>쌓이는 수</b>가 「엔더 파동」이 그은 선 아래다.
+	 *
+	 * <p>먼지는 크기와 수명이 한 값에 매여 있어서(26.3 {@code DustParticleBase}) 키우면 오래
+	 * 남고, 오래 남으면 <b>화면에 살아 있는 수</b>가 는다. 한 틱 예산은 그대로인데 여기가 조용히
+	 * 몇 배가 될 수 있는 자리라 값에서 직접 센다.
+	 */
+	@Test
+	void 몸통을_키워도_쌓이는_수가_선_아래다() {
+		assertTrue(TrialLandingShock.WAKE_SCALE > 1.0F,
+				"1.0 이면 「크게 했다」가 말뿐이다 — 사람이 고쳐 달라고 한 것이 그대로 남는다");
+
+		// 몸통이 한 틱에 쓸 수 있는 가장 큰 몫. 나머지는 앞머리 몫이다.
+		int wakePerTick = TrialLandingShock.MAX_POINTS_PER_TICK
+				- TrialLandingShock.edgeShare(TrialLandingShock.MAX_POINTS_PER_TICK);
+		assertEquals(176, wakePerTick, "440 - edgeShare(440)");
+
+		// 크기 1.0 에서 8~40틱이고, 크기가 그 수에 그대로 곱해진다.
+		int dustMaxLife = (int) (40.0F * TrialLandingShock.WAKE_SCALE);
+		int alive = wakePerTick * dustMaxLife;
+		int line = TrialEnderPulse.EDGE_MAX_POINTS * 40;
+		assertTrue(alive < line,
+				"몸통이 화면에 " + alive + " 점까지 쌓인다. 「엔더 파동」이 " + line
+						+ " 을 두고 「만 점을 넘긴다」며 몸통 상한을 깎았다 — 그 선을 넘으려면"
+						+ " 몸통 몫부터 줄여야 한다");
+
+		// 판정이 내려지는 뒷자락까지 반드시 파랑으로 덮여 있어야 한다. 크기를 올리면 수명도
+		// 함께 오르므로 이쪽은 더 넉넉해질 뿐이다.
+		int dustMinLife = (int) (8.0F * TrialLandingShock.WAKE_SCALE);
+		assertTrue(dustMinLife > TrialLandingShock.JUMP_WINDOW_TICKS,
+				"먼지 수명 하한(" + dustMinLife + "틱)이 판정 창보다 짧으면 맞는 자리가 안 그려진"
+						+ " 채로 맞는다");
+	}
+
+	/**
+	 * 연출을 고치면서 <b>소리를 늘렸다</b> — 점 예산과 무관한 길이다.
+	 *
+	 * <p>착지한 그 틱에 한 번, 뛰어서 넘긴 순간에 한 번. 둘 다 사람마다 제자리에서 울린다 —
+	 * 한 점에서 울리면 16칸 밖은 아무것도 못 듣는다.
+	 */
+	@Test
+	void 착지와_회피를_소리로_말한다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("GENERIC_EXPLODE"),
+				"착지한 틱에 아무 소리도 안 나면, 화면을 안 보고 있던 사람은 고리가 발밑에 올"
+						+ " 때까지 시작한 줄을 모른다");
+		assertTrue(bytes.contains("WIND_CHARGE_BURST"),
+				"밀려나는 소리가 사라졌다 — 맞았을 때와 넘겼을 때를 이 소리의 음과 크기로 가른다");
+		assertTrue(bytes.contains("playSound"), "소리를 한 번도 울리지 않는다");
+	}
+
+	/**
+	 * 공용 경고를 쓰되 <b>사람마다 보내는</b> 쪽이어야 한다.
+	 *
+	 * <p>자리에 놓는 {@code TrialWarning.sound} 가 아니라 {@code TrialWarning.soundFor} 다.
+	 * 고리가 중앙에서 퍼져 <b>사람마다 다른 순간에</b> 닿는 카드라, 자리에 놓으면 반경 안의
+	 * 전원에게 나가 남의 경고까지 들리고 같은 거리에 선 둘은 겹쳐 듣는다.
+	 */
 	@Test
 	void 경고_소리는_공용_경고를_쓴다() {
 		assertTrue(classBytes().contains("(Lnet/minecraft/server/level/ServerLevel;"
-						+ "Lnet/minecraft/world/phys/Vec3;Lcom/sharedfate/sync/TrialWarning$Stage;)V"),
+						+ "Lnet/minecraft/server/level/ServerPlayer;"
+						+ "Lcom/sharedfate/sync/TrialWarning$Stage;)V"),
 				"자막을 걷어낸 뒤로 소리는 「무엇이 언제 오는가」를 말하는 두 갈래 중 하나다");
 	}
 
@@ -747,6 +836,10 @@ class TrialLandingShockTest {
 	 *
 	 * <p>「엔더 파동」의 점 수를 고리마다 그대로 쓰면 한 틱에 1200점이다. 벌이 사는 235틱을
 	 * 통째로 훑어 합계를 센다.
+	 *
+	 * <p>⚠ <b>가장 바쁜 틱을 숫자로 못박아 둔다.</b> 사람이 「이펙트가 잘 안 보인다」고 했을 때
+	 * 가장 쉬운 답이 점을 늘리는 것인데, 이 카드는 이미 434점이라 늘릴 자리가 없다. 연출을
+	 * 고치는 사람이 여기를 먼저 만나야 <b>점이 아닌 길</b>(크기·세로·소리)을 찾는다.
 	 */
 	@Test
 	void 고리가_셋이어도_한_틱_예산_안이다() {
@@ -762,6 +855,9 @@ class TrialLandingShockTest {
 		assertTrue(busiest > TrialWarning.MAX_POINTS,
 				"가장 바쁜 틱이 " + busiest + " 점이다. 이 카드의 고리는 반드시 읽혀야 하는 줄이라"
 						+ " 공용 상한(" + TrialWarning.MAX_POINTS + ")보다 촘촘하게 준다");
+		assertEquals(434, busiest,
+				"연출을 고치면서 점을 늘렸다. 예산이 400~440 이라 434 에서는 늘릴 자리가 거의"
+						+ " 없다 — 눈에 띄게 하려면 점 말고 크기·세로·소리를 볼 것");
 	}
 
 	/**

@@ -4,13 +4,11 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.EntityReference;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.monster.Enderman;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -504,18 +502,16 @@ public final class TrialNightHost {
 	 * 곧 그 자리가 터진다」의 언어다. 이 카드에는 고리도 없고 비킬 자리도 없어서, 같은 소리를
 	 * 내면 사람이 발밑을 보게 된다 — 봐야 하는 것은 사방이다.
 	 *
-	 * <p>소리는 <b>사람마다 그 자리에서</b> 울린다. 바닐라 소리 사거리는 볼륨 1 이하면 16칸인데
-	 * 아레나 반경이 40 이라 한 점에서 울리면 흩어진 팀원에게 닿지 않는다.
+	 * <p>소리는 <b>사람마다 그 자리에서, 그 사람에게만</b> 울린다
+	 * ({@link TrialWarning#playEach}). 바닐라 소리 사거리는 볼륨 1 이하면 16칸인데 아레나 반경이
+	 * 40 이라 한 점에서 울리면 흩어진 팀원에게 닿지 않고, 사람 자리마다 {@code level.playSound} 를
+	 * 부르면 반경 안의 전원에게 나가 <b>모여 있을 때 사람 수만큼 겹친다.</b>
 	 * {@code ENDERMAN_STARE} 를 고른 것은 그것이 사람이 <b>이미 배워 둔 「엔더맨이 나를
-	 * 봤다」</b>이기 때문이다 — 새로 배울 것이 없고, 넷이 동시에 들으면 「전부 깨어났다」로
-	 * 읽힌다.
+	 * 봤다」</b>이기 때문이다 — 새로 배울 것이 없고, 넷이 동시에 <b>한 번씩</b> 들으면 「전부
+	 * 깨어났다」로 읽힌다.
 	 */
 	private static void announce(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host) {
-		for (ServerPlayer member : members) {
-			Vec3 at = member.position();
-			end.playSound(null, at.x, at.y, at.z, SoundEvents.ENDERMAN_STARE, SoundSource.HOSTILE,
-					1.0F, 0.6F);
-		}
+		TrialWarning.playEach(end, members, SoundEvents.ENDERMAN_STARE, 1.0F, 0.6F);
 		flare(end, host);
 	}
 
@@ -563,11 +559,7 @@ public final class TrialNightHost {
 	 * 엔더맨에게 내는 웅얼거림이라 「돌아갔다」가 그대로 읽힌다. 조용히, 한 번만 낸다.
 	 */
 	private static void signalCalm(ServerLevel end, List<ServerPlayer> members) {
-		for (ServerPlayer member : members) {
-			Vec3 at = member.position();
-			end.playSound(null, at.x, at.y, at.z, SoundEvents.ENDERMAN_AMBIENT,
-					SoundSource.HOSTILE, 0.7F, 1.2F);
-		}
+		TrialWarning.playEach(end, members, SoundEvents.ENDERMAN_AMBIENT, 0.7F, 1.2F);
 	}
 
 	// ------------------------------------------------------------------ 월드 없이 도는 계산

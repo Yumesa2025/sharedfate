@@ -22,10 +22,11 @@ class TeamCreationTooltipsTest {
 	private static final int MAX_LENGTH = 80;
 
 	@Test
-	void 설정_툴팁_일곱_가지는_모두_짧게_읽힌다() {
+	void 설정_툴팁_여덟_가지는_모두_짧게_읽힌다() {
 		List<String> tooltips = List.of(
 				TeamCreationTooltips.PERKS,
 				TeamCreationTooltips.DIFFICULTY,
+				TeamCreationTooltips.DRAGON_TRIAL,
 				TeamCreationTooltips.DAMAGE_ALERT,
 				TeamCreationTooltips.DEATH_ALERT,
 				TeamCreationTooltips.MAX_HEALTH,
@@ -41,10 +42,24 @@ class TeamCreationTooltipsTest {
 
 	@Test
 	void 사망_알림_설명은_전멸_원인을_못_찾게_되는_대가를_반드시_적는다() {
-		// 이 대가는 다른 여섯 설정에는 없고, 화면 어디에도 따로 적혀 있지 않다. 문구를 다듬다
+		// 이 대가는 다른 일곱 설정에는 없고, 화면 어디에도 따로 적혀 있지 않다. 문구를 다듬다
 		// 이 경고가 지워지면 리더가 대가를 모른 채 알림을 끄게 된다.
 		String text = TeamCreationTooltips.DEATH_ALERT;
 		assertTrue(text.contains("로그") && text.contains("원인"),
 				"사망 알림 설명에서 로그·원인 언급이 빠졌다: " + text);
+	}
+
+	/**
+	 * 드래곤 시련만은 <b>기본값이 끔이라는 사실</b>을 문구에 적는다.
+	 *
+	 * <p>2026-09-30 전까지 시련은 늘 켜져 있었다. 이제는 팀을 만들 때마다 손으로 켜야 하는데,
+	 * 그 사실을 모르면 엔드까지 가서야 「왜 시련이 안 뜨지」를 묻게 되고 그때는 팀을 해체하는
+	 * 수밖에 없다. 문구를 다듬다 이 말이 빠지면 그 사고가 그대로 돌아온다.
+	 */
+	@Test
+	void 드래곤_시련_설명은_기본값이_끔이라는_것과_끄면_바닐라라는_것을_적는다() {
+		String text = TeamCreationTooltips.DRAGON_TRIAL;
+		assertTrue(text.contains("기본값"), "기본값이 끔이라는 말이 빠졌다: " + text);
+		assertTrue(text.contains("바닐라"), "끄면 바닐라 드래곤전이라는 말이 빠졌다: " + text);
 	}
 }

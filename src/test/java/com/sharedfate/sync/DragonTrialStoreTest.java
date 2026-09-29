@@ -116,7 +116,7 @@ class DragonTrialStoreTest {
 
 		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
 		DragonTrialSession session = new DragonTrialSession(
-				java.util.UUID.fromString(loaded.teamId), loaded.startedTick);
+				java.util.UUID.fromString(loaded.teamId), loaded.startedTick, true);
 		session.restore(loaded.chosen, loaded.fired, loaded.queued, loaded.awaitingChoice,
 				loaded.grantedTicks);
 
@@ -140,7 +140,7 @@ class DragonTrialStoreTest {
 		assertEquals(Map.of("a", 1100L, "b", 1730L), loaded.grantedTicks);
 
 		DragonTrialSession session = new DragonTrialSession(
-				java.util.UUID.fromString(loaded.teamId), loaded.startedTick);
+				java.util.UUID.fromString(loaded.teamId), loaded.startedTick, true);
 		session.restore(loaded.chosen, loaded.fired, loaded.queued, loaded.awaitingChoice,
 				loaded.grantedTicks);
 

@@ -485,8 +485,11 @@ public final class DragonFireBarrage {
 	 * <p>자막은 띄우지 않는다({@link TrialWarning#shout}). 남은 신호는 <b>소리와 바닥 표식</b>뿐이라
 	 * 원을 예고 내내 그리는 것이 더 중요해졌다 — 줄이지 말 것.
 	 *
-	 * <p>소리는 <b>사람마다 그 자리에서</b> 울린다. 바닐라 소리 사거리는 볼륨이 1 이하면 16칸인데
-	 * 이 선은 80칸이라, 한 점에서 울리면 반대편에 선 사람에게 닿지 않는다.
+	 * <p>소리는 <b>사람마다 그 자리에서, 그 사람에게만</b> 울린다
+	 * ({@link TrialWarning#soundFor}). 바닐라 소리 사거리는 볼륨이 1 이하면 16칸인데 이 선은
+	 * 80칸이라 한 점에서 울리면 반대편에 선 사람에게 닿지 않고, 그렇다고 사람 자리마다
+	 * {@code TrialWarning.sound} 를 부르면 그쪽은 반경 안의 <b>전원</b>에게 나가므로 모여 있는
+	 * 넷이 <b>각자 네 겹</b>으로 듣는다 — 한동안 그렇게 되어 있었다.
 	 */
 	private static void warn(ServerLevel end, @Nullable EnderDragon dragon,
 			List<ServerPlayer> members, Barrage run, int remaining) {
@@ -494,7 +497,7 @@ public final class DragonFireBarrage {
 		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
 		if (stage != null && TrialRisks.stageJustChanged(remaining)) {
 			for (ServerPlayer member : members) {
-				TrialWarning.sound(end, member.position(), stage);
+				TrialWarning.soundFor(end, member, stage);
 			}
 		}
 		if (remaining <= FLIGHT_TICKS) {

@@ -4,7 +4,7 @@ package com.sharedfate.team;
  * 팀을 만들 때 한 번만 정하는 설정.
  *
  * <p><b>증강 사용 여부·공유 최대 체력·위치 교환
- * 주기·난이도 상승·증강 다시 뽑기 횟수</b>도 팀을 만드는 순간에만 정한다. 회차가 이미
+ * 주기·난이도 상승·드래곤 시련·증강 다시 뽑기 횟수</b>도 팀을 만드는 순간에만 정한다. 회차가 이미
  * 굴러가는 중에 이것들이 바뀌면 같은 회차의 앞뒤가 다른 규칙으로 흘러간다. 특히 증강은
  * 껐다 켜는 것이 이미 받은 효과를 잠깐 벗어 두는 길이 되어 회차 자체가 뜻을 잃는다.
  * 그래서 바꾸는 길을 아예 두지 않고, 바꾸려 하면 {@link Locked} 의 안내로 돌려보낸다.
@@ -17,12 +17,14 @@ package com.sharedfate.team;
  * @param damageAlertEnabled            피격 알림을 띄울 것인가
  * @param deathAlertEnabled             사망 알림을 띄울 것인가
  * @param difficultyEscalationEnabled   시간이 흐를수록 적대적 몹이 강해질 것인가
+ * @param dragonTrialsEnabled           엔더 드래곤 시련을 쓸 것인가. 끄면 바닐라 드래곤전이다
  * @param maxHealth                     팀이 정한 공유 최대 체력. 증강 보너스가 붙기 전의 값이다
  * @param swapIntervalMinutes           위치 교환 주기(분). {@link #SWAP_DISABLED} 면 끔
  * @param rerollCount                   증강 선택창에서 후보를 다시 뽑을 수 있는 <b>회차당</b> 횟수
  */
 public record TeamCreationSettings(boolean perksEnabled, boolean damageAlertEnabled,
 		boolean deathAlertEnabled, boolean difficultyEscalationEnabled,
+		boolean dragonTrialsEnabled,
 		float maxHealth, int swapIntervalMinutes, int rerollCount) {
 
 	/**
@@ -34,6 +36,22 @@ public record TeamCreationSettings(boolean perksEnabled, boolean damageAlertEnab
 
 	/** 난이도 상승은 <b>끈 채로</b> 시작한다. */
 	public static final boolean DEFAULT_DIFFICULTY_ESCALATION = false;
+
+	/**
+	 * 엔더 드래곤 시련은 <b>끈 채로</b> 시작한다.
+	 *
+	 * <p>끄면 최종 보스가 <b>바닐라 엔더 드래곤전</b>이다 — 체력 200 그대로이고
+	 * ({@code SharedFateConfig.dragonHealthPerMember} 를 무시한다) 시련 카드도 고정 시련도
+	 * 기본 패시브도 돌지 않는다. 실제로 가르는 자리는
+	 * {@code com.sharedfate.sync.DragonTrialManager} 와 {@code DragonTrialSession} 이다.
+	 *
+	 * <p>⚠ <b>이 값은 2026-09-30 에 「늘 켜짐」에서 「기본 끔」으로 바뀌었다.</b> 그 전에는 설정
+	 * 자체가 없어 모든 팀이 시련을 받았다. 이제는 <b>팀을 만들 때 손으로 켜야</b> 하므로, 시험
+	 * 월드를 새로 열 때마다 켜 주지 않으면 엔드에 가도 아무 카드가 뜨지 않는다 — 「왜 시련이 안
+	 * 뜨지」의 첫 번째 원인이 이것이다. 켜고 끈 것은 팀을 만들 때와 전투가 열릴 때 로그에 한 줄씩
+	 * 남는다.
+	 */
+	public static final boolean DEFAULT_DRAGON_TRIALS = false;
 
 	/** 위치 교환 「끔」. 주기 0분은 없으므로 0 을 끔으로 쓴다. */
 	public static final int SWAP_DISABLED = 0;
@@ -123,43 +141,53 @@ public record TeamCreationSettings(boolean perksEnabled, boolean damageAlertEnab
 	/** 아무것도 적지 않고 만든 팀의 설정. 최대 체력만 서버 설정에서 온다. */
 	public static TeamCreationSettings defaults(float maxHealth) {
 		return new TeamCreationSettings(DEFAULT_PERKS_ENABLED, false, false,
-				DEFAULT_DIFFICULTY_ESCALATION, maxHealth, DEFAULT_SWAP_MINUTES,
-				DEFAULT_REROLL_COUNT);
+				DEFAULT_DIFFICULTY_ESCALATION, DEFAULT_DRAGON_TRIALS, maxHealth,
+				DEFAULT_SWAP_MINUTES, DEFAULT_REROLL_COUNT);
 	}
 
 	public TeamCreationSettings withPerks(boolean enabled) {
 		return new TeamCreationSettings(enabled, damageAlertEnabled, deathAlertEnabled,
-				difficultyEscalationEnabled, maxHealth, swapIntervalMinutes, rerollCount);
+				difficultyEscalationEnabled, dragonTrialsEnabled, maxHealth, swapIntervalMinutes,
+				rerollCount);
 	}
 
 	public TeamCreationSettings withDamageAlert(boolean enabled) {
 		return new TeamCreationSettings(perksEnabled, enabled, deathAlertEnabled,
-				difficultyEscalationEnabled, maxHealth, swapIntervalMinutes, rerollCount);
+				difficultyEscalationEnabled, dragonTrialsEnabled, maxHealth, swapIntervalMinutes,
+				rerollCount);
 	}
 
 	public TeamCreationSettings withDeathAlert(boolean enabled) {
 		return new TeamCreationSettings(perksEnabled, damageAlertEnabled, enabled,
-				difficultyEscalationEnabled, maxHealth, swapIntervalMinutes, rerollCount);
+				difficultyEscalationEnabled, dragonTrialsEnabled, maxHealth, swapIntervalMinutes,
+				rerollCount);
 	}
 
 	public TeamCreationSettings withDifficultyEscalation(boolean enabled) {
 		return new TeamCreationSettings(perksEnabled, damageAlertEnabled, deathAlertEnabled,
-				enabled, maxHealth, swapIntervalMinutes, rerollCount);
+				enabled, dragonTrialsEnabled, maxHealth, swapIntervalMinutes, rerollCount);
+	}
+
+	public TeamCreationSettings withDragonTrials(boolean enabled) {
+		return new TeamCreationSettings(perksEnabled, damageAlertEnabled, deathAlertEnabled,
+				difficultyEscalationEnabled, enabled, maxHealth, swapIntervalMinutes, rerollCount);
 	}
 
 	public TeamCreationSettings withMaxHealth(float value) {
 		return new TeamCreationSettings(perksEnabled, damageAlertEnabled, deathAlertEnabled,
-				difficultyEscalationEnabled, value, swapIntervalMinutes, rerollCount);
+				difficultyEscalationEnabled, dragonTrialsEnabled, value, swapIntervalMinutes,
+				rerollCount);
 	}
 
 	public TeamCreationSettings withSwapIntervalMinutes(int minutes) {
 		return new TeamCreationSettings(perksEnabled, damageAlertEnabled, deathAlertEnabled,
-				difficultyEscalationEnabled, maxHealth, minutes, rerollCount);
+				difficultyEscalationEnabled, dragonTrialsEnabled, maxHealth, minutes, rerollCount);
 	}
 
 	public TeamCreationSettings withRerollCount(int count) {
 		return new TeamCreationSettings(perksEnabled, damageAlertEnabled, deathAlertEnabled,
-				difficultyEscalationEnabled, maxHealth, swapIntervalMinutes, count);
+				difficultyEscalationEnabled, dragonTrialsEnabled, maxHealth, swapIntervalMinutes,
+				count);
 	}
 
 	public boolean swapEnabled() {
@@ -181,6 +209,7 @@ public record TeamCreationSettings(boolean perksEnabled, boolean damageAlertEnab
 		state.damageAlertEnabled = damageAlertEnabled;
 		state.deathAlertEnabled = deathAlertEnabled;
 		state.difficultyEscalationEnabled = difficultyEscalationEnabled;
+		state.dragonTrialsEnabled = dragonTrialsEnabled;
 		// 난이도가 오른 시간은 「이 회차가 시작된 뒤」다. 갓 만든 팀은 언제나 0 에서 시작한다.
 		state.difficultyElapsedTicks = 0;
 		state.baseMaxHealth = maxHealth;
@@ -205,6 +234,9 @@ public record TeamCreationSettings(boolean perksEnabled, boolean damageAlertEnab
 				+ " · 최대 체력: " + trimZero(maxHealth)
 				+ " · 위치 교환: " + (swapEnabled() ? swapIntervalMinutes + "분 주기" : "끔")
 				+ " · 난이도 상승: " + onOff(difficultyEscalationEnabled)
+				// 기본값이 끔이라 「안 적으면 안 켜진다」. 만든 직후 한 줄에 보여 주는 것이
+				// 「왜 시련이 안 뜨지」를 막는 가장 이른 자리다.
+				+ " · 드래곤 시련: " + onOff(dragonTrialsEnabled)
 				+ " · 다시 뽑기: 회차당 " + rerollCount + "회";
 	}
 

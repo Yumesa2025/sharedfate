@@ -4,6 +4,7 @@ import com.sharedfate.TestBootstrap;
 import com.sharedfate.client.trial.TrialRouletteScreen.Spin;
 import com.sharedfate.net.TrialRoulettePayload;
 import com.sharedfate.net.TrialRoulettePayload.TrialOption;
+import com.sharedfate.sync.TrialFreeze;
 import com.sharedfate.sync.TrialRoulette;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,16 @@ class TrialRouletteScreenTest {
 
 	/** 기본 연출 길이. 서버가 실어 보내는 값이다. */
 	private static final int SPIN = TrialRoulette.TOTAL_TICKS;
+	/**
+	 * 룰렛 자리가 결과를 붙잡아 두는 시간. 서버가 실어 보내는 값이다.
+	 *
+	 * <p>화면에는 이제 이 상수가 없다 — 붙잡는 시간이 자리마다 다르므로 패킷에 실려 온다.
+	 * 시험이 서버 쪽 값을 직접 가져다 쓰는 것은, 숫자를 여기 박아 두면 서버가 60을 바꿔도
+	 * 시험이 조용히 통과하기 때문이다.
+	 */
+	private static final int HOLD = TrialFreeze.HOLD_TICKS;
+	/** 굴리지 않는 자리({@code Reveal.FIXED_SCREEN})가 붙잡아 두는 시간. */
+	private static final int FIXED_HOLD = TrialFreeze.FIXED_HOLD_TICKS;
 
 	/** 돌기가 끝날 때까지 칸을 차례로 모은다. 같은 칸이 이어지면 한 번만 담는다. */
 	private static List<Integer> framesOf(Spin spin) {
@@ -70,7 +81,7 @@ class TrialRouletteScreenTest {
 	void 마지막_칸이_뽑힌_카드다() {
 		for (int count = 1; count <= 6; count++) {
 			for (int result = 0; result < count; result++) {
-				Spin spin = new Spin(count, result, SPIN);
+				Spin spin = new Spin(count, result, SPIN, HOLD);
 				assertEquals(result, spin.optionAt(spin.lastFrame()),
 						"후보 " + count + "장, 결과 " + result + " — 마지막 칸이 결과가 아니다."
 								+ " 화면과 서버가 서로 다른 시련을 가리킨다");
@@ -84,7 +95,7 @@ class TrialRouletteScreenTest {
 	/** 멈춘 뒤에는 언제나 결과가 보인다. 붙잡아 두는 60틱 내내. */
 	@Test
 	void 멈춘_뒤에는_계속_결과가_보인다() {
-		Spin spin = new Spin(4, 2, SPIN);
+		Spin spin = new Spin(4, 2, SPIN, HOLD);
 		for (int tick = SPIN; tick <= spin.totalTicks(); tick++) {
 			assertTrue(spin.revealed(tick), tick + "틱에 아직 돌고 있다");
 			assertEquals(2, spin.shownOption(tick));
@@ -94,7 +105,7 @@ class TrialRouletteScreenTest {
 	/** 칸이 하나도 안 빠지고 0번부터 차례로 나온다. 건너뛰면 글자가 튄다. */
 	@Test
 	void 칸이_빠짐없이_차례로_나온다() {
-		Spin spin = new Spin(3, 1, SPIN);
+		Spin spin = new Spin(3, 1, SPIN, HOLD);
 		List<Integer> frames = framesOf(spin);
 		assertEquals(TrialRoulette.gaps().length, frames.size(),
 				"칸 수가 서버의 간격 개수와 다르다");
@@ -106,7 +117,7 @@ class TrialRouletteScreenTest {
 	/** 카드도 한 칸씩 차례로 넘어간다. 두 칸씩 뛰면 돌아가는 것으로 안 보인다. */
 	@Test
 	void 카드도_한_장씩_차례로_넘어간다() {
-		Spin spin = new Spin(5, 3, SPIN);
+		Spin spin = new Spin(5, 3, SPIN, HOLD);
 		for (int frame = 1; frame <= spin.lastFrame(); frame++) {
 			assertEquals((spin.optionAt(frame - 1) + 1) % 5, spin.optionAt(frame),
 					frame + "번째 칸에서 카드가 한 장씩 넘어가지 않았다");
@@ -150,11 +161,11 @@ class TrialRouletteScreenTest {
 	@Test
 	void 돌_시간이_없으면_처음부터_결과다() {
 		for (int spinTicks : new int[] {0, -1, -1000}) {
-			Spin spin = new Spin(4, 3, spinTicks);
+			Spin spin = new Spin(4, 3, spinTicks, HOLD);
 			assertTrue(spin.revealed(0), "돌 시간이 없는데 돌고 있다");
 			assertEquals(3, spin.shownOption(0));
 			assertEquals(0, spin.frameCount());
-			assertEquals(TrialRouletteScreen.HOLD_TICKS, spin.totalTicks(),
+			assertEquals(HOLD, spin.totalTicks(),
 					"돌지 않아도 읽을 시간은 그대로 있어야 한다");
 		}
 	}
@@ -166,8 +177,8 @@ class TrialRouletteScreenTest {
 	 */
 	@Test
 	void 다_끝나면_닫힌다() {
-		Spin spin = new Spin(3, 0, SPIN);
-		assertEquals(SPIN + TrialRouletteScreen.HOLD_TICKS, spin.totalTicks());
+		Spin spin = new Spin(3, 0, SPIN, HOLD);
+		assertEquals(SPIN + HOLD, spin.totalTicks());
 		assertFalse(spin.finished(spin.totalTicks() - 1), "아직 읽는 중인데 닫으려 한다");
 		assertTrue(spin.finished(spin.totalTicks()));
 		assertTrue(spin.finished(spin.totalTicks() + 1000));
@@ -176,15 +187,15 @@ class TrialRouletteScreenTest {
 	/** 돌 시간이 없어도 반드시 닫힌다. 결과만 보여 주는 화면이 영영 남으면 안 된다. */
 	@Test
 	void 돌지_않는_연출도_닫힌다() {
-		Spin spin = new Spin(1, 0, 0);
+		Spin spin = new Spin(1, 0, 0, HOLD);
 		assertFalse(spin.finished(0));
-		assertTrue(spin.finished(TrialRouletteScreen.HOLD_TICKS));
+		assertTrue(spin.finished(HOLD));
 	}
 
 	/** 후보가 한 장이면 어느 칸이든 같은 카드다. 그것도 정직한 연출이다. */
 	@Test
 	void 후보가_한_장이면_언제나_같은_카드다() {
-		Spin spin = new Spin(1, 0, SPIN);
+		Spin spin = new Spin(1, 0, SPIN, HOLD);
 		for (int tick = 0; tick <= spin.totalTicks(); tick++) {
 			assertEquals(0, spin.shownOption(tick));
 		}
@@ -199,7 +210,7 @@ class TrialRouletteScreenTest {
 	@Test
 	void 결과_번호가_범위_밖이어도_터지지_않는다() {
 		for (int given : new int[] {-5, -1, 3, 99, Integer.MAX_VALUE}) {
-			Spin spin = new Spin(3, given, SPIN);
+			Spin spin = new Spin(3, given, SPIN, HOLD);
 			assertTrue(spin.resultIndex() >= 0 && spin.resultIndex() < 3,
 					"결과 번호가 후보 밖이다: " + spin.resultIndex());
 			for (int tick = 0; tick <= spin.totalTicks(); tick++) {
@@ -213,7 +224,7 @@ class TrialRouletteScreenTest {
 	/** 후보가 하나도 없어도 터지지 않는다. 화면은 애초에 안 열리지만 계산은 견뎌야 한다. */
 	@Test
 	void 후보가_없어도_터지지_않는다() {
-		Spin spin = new Spin(0, 7, SPIN);
+		Spin spin = new Spin(0, 7, SPIN, HOLD);
 		assertEquals(0, spin.resultIndex());
 		assertEquals(0, spin.shownOption(0));
 		assertEquals(0, spin.optionAt(spin.lastFrame()));
@@ -224,22 +235,80 @@ class TrialRouletteScreenTest {
 	void 빈_후보로는_열지_않는다() {
 		assertFalse(TrialRouletteScreen.shouldOpen(null));
 		assertFalse(TrialRouletteScreen.shouldOpen(
-				new TrialRoulettePayload("첫 크리스탈", 0, SPIN, List.of())));
+				new TrialRoulettePayload("첫 크리스탈", 0, SPIN, HOLD, List.of())));
 		assertTrue(TrialRouletteScreen.shouldOpen(new TrialRoulettePayload("첫 크리스탈", 0, SPIN,
-				List.of(new TrialOption("gravity", "중력 역전", "위아래가 뒤집힌다")))));
+				HOLD, List.of(new TrialOption("gravity", "중력 역전", "위아래가 뒤집힌다")))));
 	}
 
 	/** 패킷에서 그대로 받아 온다. 화면이 서버가 정한 길이와 결과를 고쳐 쓰면 안 된다. */
 	@Test
 	void 패킷_값을_그대로_쓴다() {
-		TrialRoulettePayload payload = new TrialRoulettePayload("마지막 크리스탈", 1, 40,
+		TrialRoulettePayload payload = new TrialRoulettePayload("마지막 크리스탈", 1, 40, 25,
 				List.of(new TrialOption("a", "가", "가나다"), new TrialOption("b", "나", "라마바")));
 		Spin spin = Spin.of(payload);
 		assertEquals(2, spin.optionCount());
 		assertEquals(1, spin.resultIndex());
 		assertEquals(40, spin.spinTicks());
+		assertEquals(25, spin.holdTicks(),
+				"붙잡는 시간을 화면이 지어내면 얼음과 화면이 어긋난다");
+		assertEquals(65, spin.totalTicks());
 		assertEquals(1, spin.optionAt(spin.lastFrame()),
 				"돌기가 짧아도 마지막 칸은 결과여야 한다");
+	}
+
+	/**
+	 * 굴리지 않는 자리는 <b>굴림이 한 틱도 안 나온다.</b>
+	 *
+	 * <p>{@code Reveal.FIXED_SCREEN} 이 쓰는 모양이다 — 카드가 한 장뿐인 풀에서 이름이 도는 것은
+	 * <b>결과가 정해진 굴림을 보여 주는 것</b>이라 연출이 거짓말이 된다. 「돌다 멈췄다」로 한 프레임만
+	 * 보여도 그 거짓말이 성립하므로, 첫 틱부터 마지막 틱까지 전부 본다.
+	 */
+	@Test
+	void 굴리지_않는_자리는_한_틱도_굴리지_않는다() {
+		Spin spin = new Spin(1, 0, 0, FIXED_HOLD);
+		assertEquals(0, spin.frameCount(), "굴릴 칸이 하나라도 있으면 굴림 애니메이션이 나온다");
+		for (int tick = 0; tick <= spin.totalTicks(); tick++) {
+			assertEquals(-1, spin.frameAt(tick), tick + "틱에 굴림 칸이 나왔다");
+			assertTrue(spin.revealed(tick), tick + "틱에 아직 이름이 돌고 있다");
+			assertEquals(0, spin.shownOption(tick));
+		}
+	}
+
+	/** 굴리지 않는 자리는 붙잡는 시간이 곧 전체 길이이고, 그 틱에 반드시 닫힌다. */
+	@Test
+	void 굴리지_않는_자리는_붙잡는_시간만큼만_떠_있다() {
+		Spin spin = new Spin(1, 0, 0, FIXED_HOLD);
+		assertEquals(FIXED_HOLD, spin.totalTicks());
+		assertFalse(spin.finished(FIXED_HOLD - 1), "아직 읽는 중인데 닫으려 한다");
+		assertTrue(spin.finished(FIXED_HOLD));
+		// 막대가 가득 찬 데서 시작해 0 으로 내려간다. 굴림이 없어도 「언제 사라지는가」는 보여야
+		// 한다 — 없으면 읽기를 마치기 전에 막힌 ESC 를 누르게 된다.
+		assertEquals(1.0F, spin.holdFraction(0), 0.001F);
+		assertEquals(0.0F, spin.holdFraction(FIXED_HOLD), 0.001F);
+	}
+
+	/**
+	 * 굴림도 붙잡는 시간도 0 이면 그 틱에 닫힌다. 0 으로 나누지 않는다.
+	 *
+	 * <p>서버가 그런 값을 만들지 않지만 <b>패킷은 밖에서 오는 값</b>이다. 여기서 화면이 시간을
+	 * 지어내면 얼음이 풀린 판에 화면만 남아 그대로 맞는다.
+	 */
+	@Test
+	void 붙잡는_시간이_0이면_바로_닫힌다() {
+		Spin spin = new Spin(2, 1, 0, 0);
+		assertEquals(0, spin.totalTicks());
+		assertTrue(spin.finished(0));
+		assertEquals(0.0F, spin.holdFraction(0), 0.001F);
+	}
+
+	/** 읽는 시간이 룰렛 자리보다 길다. 굴림이 빠진 만큼을 스스로 치러야 한다. */
+	@Test
+	void 굴리지_않는_자리가_더_오래_읽힌다() {
+		assertTrue(FIXED_HOLD > HOLD,
+				"굴림이 없으면 화면이 갑자기 뜬다 — 「무엇이 떴나」에 쓰이는 몫이 더 든다");
+		assertTrue(FIXED_HOLD < SPIN + HOLD,
+				"아무것도 안 움직이는 화면이 룰렛보다 오래 멈춰 서면 안 된다");
+		assertTrue(FIXED_HOLD <= TrialFreeze.MAX_TICKS, "얼음 상한을 넘으면 잘려서 어긋난다");
 	}
 
 	/**
@@ -250,7 +319,7 @@ class TrialRouletteScreenTest {
 	@Test
 	void 돌기가_짧아도_마지막_칸이_결과다() {
 		for (int spinTicks = 1; spinTicks <= SPIN + 40; spinTicks++) {
-			Spin spin = new Spin(4, 2, spinTicks);
+			Spin spin = new Spin(4, 2, spinTicks, HOLD);
 			assertEquals(2, spin.shownOption(spinTicks - 1),
 					spinTicks + "틱짜리 연출의 마지막 칸이 결과가 아니다");
 			assertEquals(2, spin.shownOption(spinTicks));

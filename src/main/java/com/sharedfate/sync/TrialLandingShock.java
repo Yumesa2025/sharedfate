@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -37,6 +38,21 @@ import java.util.UUID;
  *
  * <p>고리가 여럿이라 <b>한 번 비켰다고 끝이 아니다.</b> 지금 값(고리 3개·2초 간격)에서는 착지
  * 한 번에 점프를 세 번 읽어야 한다.
+ *
+ * <h2>⚠ 다음에 볼 사람에게 — 사람이 「운으로 피해진다」고 했다</h2>
+ *
+ * <p>플레이해 보고 <b>「그냥 뛰어다녀도 알아서 피해지는 정도야」</b>라고 했다. 달리면서 점프를
+ * 이어 하면 절반 넘게 공중이라, 고리를 <b>보지 않고도</b> 판정 창에 걸려 통과한다는 뜻이다.
+ * 이 카드가 요구하는 행동이 「고리를 보고 그 순간 뛰기」인데 실제로는 「계속 뛰기」로 풀린다.
+ *
+ * <p><b>이번에는 고치지 않기로 했다.</b> 사람이 시킨 것은 연출뿐이고(아래 「연출을 어떻게
+ * 고쳤는가」), 난이도는 그대로 두라고 했다 — 점프 창 5틱, 고리 속도, 판정 규칙 전부 손대지
+ * 않았다. 여기 적어 두는 것은 <b>다음에 난이도를 볼 때 무엇이 문제였는지</b>를 남기려는 것이다.
+ *
+ * <p>고치게 된다면 창({@link TrialEnderPulse#JUMP_WINDOW_TICKS})을 줄이는 쪽이 아니라
+ * <b>「뛰어 있는 동안」이 아니라 「앞머리가 지나는 그 틱 언저리에 떴는가」로 묻는 쪽</b>을 먼저
+ * 볼 것. 창을 줄이면 「엔더 파동」의 타이밍까지 함께 바뀌고, 그 창은 통신 왕복을 봐 주려고
+ * 있는 것이라 줄이면 억울하게 걸리는 사람이 먼저 생긴다.
  *
  * <h2>⚠ 「엔더 파동」과 <b>같은 고리</b>다 — 한쪽만 고치지 말 것</h2>
  *
@@ -183,6 +199,32 @@ import java.util.UUID;
  * 강제로 앉히자」는 이 파일이 가장 하면 안 되는 일이기도 하다 — 위의 「드래곤을 읽기만 한다」가
  * 바로 그 사고의 기록이다.
  *
+ * <h2>연출을 어떻게 고쳤는가 — <b>점을 한 개도 더 쓰지 않고</b></h2>
+ *
+ * <p>사람이 플레이해 보고 <b>「착지충격 너무 이펙트가 잘안보여」</b>라고 했다. 까닭은 반경이다.
+ * 반경 75 고리의 둘레가 471칸인데 한 틱 점 예산이 434점이라 점 사이가 1.1칸이고, 게다가 고리가
+ * <b>초당 10칸</b>으로 지나가 한자리에 오래 머물지 않는다. 멀리서 보면 희미한 선 하나다.
+ *
+ * <p><b>점을 더 쓰는 길은 없었다.</b> 이 판의 예산이 400~440 인데 이미 434 라 늘릴 자리가
+ * 없다. 그래서 <b>같은 점으로 더 크게 보이게</b> 하는 세 가지를 했다.
+ *
+ * <ul>
+ *   <li><b>앞머리를 세로로 세웠다</b>({@link #EDGE_RISE_SPEED}). 바닥에 찍기만 하던
+ *       {@code CRIT} 을 <b>위로 쏜다</b> — 점 수도 패킷 수도 그대로인데 고리가 바닥에 그은 선이
+ *       아니라 <b>사람 키만 한 흰 벽</b>이 된다. 멀리서 볼 때 바닥 선은 시선과 거의 나란해
+ *       한 줄로 뭉개지지만, 서 있는 것은 그렇지 않다</li>
+ *   <li><b>몸통을 키웠다</b>({@link #WAKE_SCALE}). 먼지는 크기와 수명이 <b>한 값에 매여</b>
+ *       있어서(26.3 {@code DustParticleBase}) 키우면 오래 남는다 — 「희미하다」와 「한자리에 안
+ *       머문다」가 한꺼번에 조금씩 낫는다. 늘릴 수 있는 한계는 그 상수에 적어 두었다</li>
+ *   <li><b>소리를 늘렸다.</b> 점 예산과 무관하고, 무엇보다 <b>고리가 아직 안 보이는 자리</b>에도
+ *       닿는다 — 착지한 그 틱에 한 번({@link #open}), 뛰어서 넘긴 순간에 한 번
+ *       ({@link #dodged}) 사람마다 제자리에서 울린다</li>
+ * </ul>
+ *
+ * <p><b>값은 한 개도 안 건드렸다</b> — 반경 75 · 넉백 16 · 피해 4 · 고리 3개 · 간격 40틱 ·
+ * 150틱 그대로다. 예산을 나누는 장치({@link #ringAllowance}·{@link #stride}·
+ * {@link #touchesGround})도 그대로다.
+ *
  * <h2>파티클과 소리는 멀리 보낸다</h2>
  *
  * <p>고리는 75칸까지 간다. 파티클 짧은 형태는 <b>32칸</b>에서 잘리므로({@link TrialWarning} 의
@@ -285,11 +327,82 @@ public final class TrialLandingShock {
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다({@code TrialWarning} 과 같은 값). */
 	private static final double GROUND_OFFSET = 0.15;
 	/**
+	 * ⚠ 앞머리 {@code CRIT} 을 위로 쏘는 속도. <b>점을 안 늘리고 고리를 세우는 장치다.</b>
+	 *
+	 * <h2>전에는 바닥에만 찍었다</h2>
+	 *
+	 * <p>점을 전부 지표 바로 위({@link #GROUND_OFFSET})에 찍었다. 사람이 <b>「너무 이펙트가
+	 * 잘안보여」</b>라고 한 까닭의 절반이 그것이다 — 서서 보는 눈높이에서 바닥 선은 시선과 거의
+	 * 나란해, 75칸 밖에서는 1.1칸 간격의 점들이 한 줄로 뭉개진다.
+	 *
+	 * <p>위로 쏘면 <b>점 수도 패킷 수도 그대로인데</b> 같은 점들이 세로로 퍼져 고리가 벽이 된다.
+	 * 예산을 한 점도 안 쓰고 얻는 것이라 먼저 골랐다.
+	 *
+	 * <h2>왜 2.0 인가 — 올라가는 높이가 사람 키다</h2>
+	 *
+	 * <p>26.3 클래스 파일을 직접 뜯어 확인한 값으로 계산했다({@link #riseHeight} 가 그 계산이다).
+	 * {@code CritParticle} 은 받은 속도를 <b>0.4배</b> 해서 싣고(무작위 밑바닥은 0.02 남짓이라
+	 * 묻힌다), 마찰 0.7 · 중력 0.5 로 매 틱 줄어든다. 2.0 이면 처음 0.8 칸/틱으로 올라
+	 * <b>수명이 가장 짧은 점(4틱)도 1.88칸</b>, 긴 점(10틱)은 2.1칸까지 간다 — 사람 키(1.8)만
+	 * 하다.
+	 *
+	 * <p><b>더 높이지 않는 까닭</b>은 시야다. 아레나에는 카드가 겹쳐 뜨고 그 대부분이 바닥
+	 * 표식이라, 세로로 선 것이 높으면 <b>다른 카드의 고리를 가린다</b> — 「엔더폭풍」이 기둥을
+	 * 5칸에서 멈춘 것과 같은 판단이다. 고리가 셋이라 이 카드만으로도 벽이 셋이다.
+	 *
+	 * <p>⚠ <b>수명은 이 값과 무관하다.</b> {@code CritParticle} 의 수명 식에 속도가 들어가지
+	 * 않으므로 4~10틱 그대로고, 따라서 {@link #MAX_STRIDE} 의 근거도 그대로다.
+	 */
+	static final double EDGE_RISE_SPEED = 2.0;
+	/** {@code CritParticle} 이 받은 속도에 곱하는 값. 26.3 클래스 파일에서 확인했다. */
+	private static final double CRIT_SPEED_FACTOR = 0.4;
+	/** {@code CritParticle} 의 마찰. {@code Particle.tick} 이 매 틱 속도에 곱한다. */
+	private static final double CRIT_FRICTION = 0.7;
+	/** {@code Particle.tick} 이 매 틱 세로 속도에서 먼저 빼는 값. {@code 0.04 × 중력 0.5} 다. */
+	private static final double CRIT_GRAVITY_PULL = 0.02;
+	/**
+	 * {@code CritParticle} 수명의 <b>하한</b>(틱).
+	 *
+	 * <p>{@code max(1, 6.0 / (굴림×0.8 + 0.6))} 이 4~10틱을 잡는다. {@link #MAX_STRIDE} 가 기대는
+	 * 것과 <b>같은 값</b>이다 — 한쪽만 고치지 말 것.
+	 */
+	private static final int CRIT_MIN_LIFETIME = 4;
+	/**
+	 * 몸통 먼지의 크기. 1.0 이 바닐라 레드스톤 가루다.
+	 *
+	 * <h2>전에는 1.0 이었다({@code TrialWarning.dust} 의 기본)</h2>
+	 *
+	 * <p>사람이 「잘 안 보여」라고 한 까닭의 나머지 절반이 <b>한자리에 안 머무는 것</b>이다.
+	 * 고리가 초당 10칸으로 지나가므로 어느 한 자리가 파랗게 있는 시간은 먼지 수명뿐이다.
+	 *
+	 * <p>26.3 {@code DustParticleBase} 는 이 값을 <b>크기와 수명 둘 다에</b> 곱한다
+	 * ({@code quadSize × 0.75 × 크기}, {@code 수명 = max(1, (int)(8.0 / (굴림×0.8 + 0.2)) × 크기)}).
+	 * 그래서 한 값을 올리면 <b>더 크게 보이고 더 오래 남는다</b> — 두 불만이 함께 조금씩 낫는다.
+	 * 1.25 에서 수명이 8~40틱에서 <b>10~50틱</b>이 되어 지나간 자국이 5~25칸으로 늘어난다.
+	 *
+	 * <h2>⚠ 왜 더 못 키우는가 — 쌓이는 수 때문이다</h2>
+	 *
+	 * <p>몸통은 <b>남아서 쌓인다.</b> 화면에 살아 있는 수가 {@code 한 틱 몸통 점수 × 수명}인데,
+	 * 이 카드의 몸통 몫은 한 틱에 최대 176점({@code 440 - edgeShare(440)})이라 지금이
+	 * {@code 176 × 40 = 7,040} 이고 1.25 에서 <b>8,800</b> 이다.
+	 * {@link TrialEnderPulse#WAKE_MAX_POINTS} 가 「{@code 240 × 40} 이면 만 점을 넘긴다」며
+	 * 긋고 간 선(9,600)보다 아래다. <b>1.4 로 올리면 {@code 176 × 56 = 9,856} 이라 그 선을
+	 * 넘는다</b> — 더 키우려면 몸통 몫부터 줄여야 하고, 그 몫은 「엔더 파동」과 같은 비율이라
+	 * 그쪽부터 봐야 한다.
+	 */
+	static final float WAKE_SCALE = 1.25F;
+	/**
 	 * 한 틱에 이 카드가 쓸 수 있는 점 수의 상한.
 	 *
 	 * <p>이 판의 예산은 400~440 이다 — 「낙뢰」가 반경 3 짜리 고리 열 개로 400,
 	 * 「연쇄 포격」이 반경 3.5 짜리 열 개로 440 을 쓴다. 고리가 여럿인 이 카드는 그 <b>합</b>이
-	 * 여기를 넘지 않게 {@link #edgeBudget}·{@link #wakeBudget} 이 나눠 쓴다.
+	 * 여기를 넘지 않게 {@link #ringAllowance}(고리끼리)·{@link #edgeShare}(앞머리와 몸통)가
+	 * 나눠 쓴다.
+	 *
+	 * <p>지금 값에서 가장 바쁜 틱이 <b>434점</b>이다({@code TrialLandingShockTest} 가 벌이 사는
+	 * 235틱을 통째로 훑어 그 수를 못박아 둔다). 곧 <b>늘릴 자리가 없다</b> — 「이펙트가 잘 안
+	 * 보인다」의 답을 점에서 찾으려는 사람은 여기서 멈춰야 하고, 실제로 찾은 답은
+	 * {@link #EDGE_RISE_SPEED}·{@link #WAKE_SCALE}·소리였다.
 	 */
 	static final int MAX_POINTS_PER_TICK = 440;
 	/**
@@ -393,7 +506,7 @@ public final class TrialLandingShock {
 		List<ServerPlayer> present = present(end, members);
 		// 고리가 없는 동안에도 적는다. 판정 창이 과거를 보므로 기록이 끊기면 창이 비어 버린다.
 		recordAirborne(present, now);
-		watchLanding(end, dragon, now, risk);
+		watchLanding(end, dragon, present, now, risk);
 		spread(end, present, now, risk);
 	}
 
@@ -440,8 +553,8 @@ public final class TrialLandingShock {
 	 * <p>드래곤이 없거나 죽었으면 기록을 놓는다. 다시 나타나면 {@link #sitting} 이 {@code null}
 	 * 부터 다시 시작하므로, 죽는 연출 중에 좌표가 멈춘 것이 착지로 읽히지 않는다.
 	 */
-	private static void watchLanding(ServerLevel end, @Nullable EnderDragon dragon, long now,
-			TrialCatalog.Risk.LandingShock risk) {
+	private static void watchLanding(ServerLevel end, @Nullable EnderDragon dragon,
+			List<ServerPlayer> present, long now, TrialCatalog.Risk.LandingShock risk) {
 		Vec3 podium = podiumOf(end, dragon);
 		if (dragon == null || podium == null) {
 			lastDragonAt = null;
@@ -461,7 +574,7 @@ public final class TrialLandingShock {
 		if (!touchdown(was, down)) {
 			return;
 		}
-		open(end, podium, now, ringCount(risk.ringCount()));
+		open(end, present, podium, now, ringCount(risk.ringCount()));
 	}
 
 	/**
@@ -517,8 +630,15 @@ public final class TrialLandingShock {
 	 *
 	 * <p>명단을 여기서 <b>고리 수만큼</b> 만든다. 나중에 세면 카드 값이 바뀌는 순간 이미 날고
 	 * 있던 벌의 명단 수와 어긋나 자리를 벗어난다.
+	 *
+	 * <p><b>착지한 그 틱에 소리를 한 번 울린다.</b> 전에는 가운데 파티클 하나뿐이었는데, 사람이
+	 * 「잘 안 보여」라고 한 카드에서 <b>화면을 안 보고 있으면 시작을 놓친다</b>는 뜻이기도 했다.
+	 * 소리는 점 예산과 무관하고 고리가 아직 중앙에 있는 동안에도 닿는다. 층 경고
+	 * ({@link #warn})는 <b>고리가 나에게 닿기까지 남은 시간</b>을 말하는 것이라 이 「시작했다」를
+	 * 대신하지 못한다 — 중앙 가까이 선 사람은 첫 층이 곧 마지막 층이다.
 	 */
-	private static void open(ServerLevel end, Vec3 podium, long now, int rings) {
+	private static void open(ServerLevel end, List<ServerPlayer> present, Vec3 podium, long now,
+			int rings) {
 		if (wave != null) {
 			return;
 		}
@@ -528,10 +648,15 @@ public final class TrialLandingShock {
 		}
 		wave = new Wave(podium, now, crossed);
 		// 착지 자체가 이 카드의 유일한 예고다. 가운데에서 한 번 크게 터뜨려 「지금부터다」를
-		// 말한다. 소리는 warn 이 사람마다 제자리에서 울린다 — 한 점에서 울리면 16칸 밖은
-		// 아무것도 못 듣는다.
+		// 말한다.
 		end.sendParticles(ParticleTypes.GUST_EMITTER_LARGE, true, false,
 				podium.x, podium.y + GROUND_OFFSET, podium.z, 1, 0.0, 0.0, 0.0, 0.0);
+		// 사람마다 그 자리에서, 그 사람에게만 울린다 — 한 점에서 울리면 16칸 밖은 아무것도 못
+		// 듣고, 사람 자리마다 level.playSound 를 부르면 반경 안의 전원에게 나가 모여 있는 넷이
+		// 각자 네 겹으로 듣는다(TrialWarning.playEach 의 설명).
+		// 음을 바닥까지 낮춘 폭발음이라 「무언가 거대한 것이 내려앉았다」로 읽히고, 이 판의
+		// 다른 신호(WIND_CHARGE_BURST = 밀렸다, TrialWarning 의 세 층)와 섞이지 않는다.
+		TrialWarning.playEach(end, present, SoundEvents.GENERIC_EXPLODE, 1.0F, 0.5F);
 	}
 
 	// ------------------------------------------------------------------ 고리가 퍼진다
@@ -696,7 +821,9 @@ public final class TrialLandingShock {
 	 * 한다.
 	 *
 	 * <p>남은 시간이 <b>사람마다 다르다.</b> 고리는 중앙에서 출발하므로 가까이 선 사람에게 먼저
-	 * 닿는다. 그리고 <b>사람마다 그 자리에서</b> 울린다 — 한 점에서 울리면 16칸 밖에는 안 들린다.
+	 * 닿는다. 그래서 소리도 <b>그 사람에게만</b> 간다({@link TrialWarning#soundFor}) — 한 점에
+	 * 놓으면 16칸 밖에는 안 들리고, 사람 자리마다 놓으면 반경 안의 전원에게 나가 <b>남의 경고까지
+	 * 듣고 겹쳐 듣는다.</b>
 	 *
 	 * <p>출발 틱은 층이 바뀌지 않았어도 무조건 한 번 울린다. 고리가 없던 직전 틱에는 층 자체가
 	 * 없으니 「바뀌었다」가 참이어야 맞고, 무엇보다 <b>중앙 가까이 선 사람은 처음부터 마지막
@@ -731,7 +858,7 @@ public final class TrialLandingShock {
 			if (!TrialRisks.stageJustChanged(remaining, lead)) {
 				continue;
 			}
-			TrialWarning.sound(end, at, stage);
+			TrialWarning.soundFor(end, member, stage);
 		}
 	}
 
@@ -741,11 +868,19 @@ public final class TrialLandingShock {
 	 * <p>그래도 신호는 준다 — <b>「지금 그 판단이 맞았다」</b>를 돌려주지 않으면 사람은 자기가
 	 * 뛴 덕분인지 고리가 안 왔던 것인지 배울 수 없다. 피해도 넉백도 없으므로 발밑의 작은 바람
 	 * 한 번이면 된다.
+	 *
+	 * <p><b>전에는 파티클뿐이었다.</b> 그런데 이 카드에서 뛰는 사람은 대개 <b>발밑을 안 보고</b>
+	 * 있고(고리를 보려면 멀리 봐야 한다), 사람이 「잘 안 보여」라고 한 것이 그 이야기이기도 했다.
+	 * 그래서 소리를 하나 붙였다 — {@link #strike} 가 맞은 사람에게 내는 것과 <b>같은 소리를 더
+	 * 높고 작게</b> 낸다. 같은 소리면 「고리와 나 사이에 무슨 일이 있었다」가 하나로 읽히고,
+	 * 음과 크기가 맞았을 때와 갈라 준다(「엔더폭풍」이 음만 낮춰 가른 것과 같은 수법이다).
 	 */
 	private static void dodged(ServerLevel end, ServerPlayer member) {
 		Vec3 at = member.position();
 		end.sendParticles(ParticleTypes.SMALL_GUST, true, false, at.x, at.y, at.z, 2,
 				0.2, 0.1, 0.2, 0.0);
+		end.playSound(null, at.x, at.y, at.z, SoundEvents.WIND_CHARGE_BURST.value(),
+				SoundSource.HOSTILE, 0.5F, 1.6F);
 	}
 
 	/**
@@ -873,16 +1008,21 @@ public final class TrialLandingShock {
 	 *
 	 * <h2>먼지 하나로는 고리가 안 된다 — 수명 때문이다</h2>
 	 *
-	 * <p>26.3 {@code DustParticleBase} 의 수명은 {@code max(1, 8.0 / (굴림×0.8 + 0.2))} 라
-	 * <b>8~40틱</b>이다. 지금 값에서 이 고리는 틱당 1.875칸으로 나아가므로, 파랑 먼지만으로
-	 * 그리면 지나간 자국이 15~75칸 남아 <b>「고리」가 아니라 「퍼지는 원판」</b>으로 보인다.
-	 * 앞머리가 어디인지 안 읽히면 언제 뛰어야 하는지도 안 읽힌다. 반경을 다섯 배로 늘리면서
-	 * 고리도 그만큼 빨라졌으니 <b>이 갈라 그리기가 전보다 더 중요해졌다.</b>
+	 * <p>26.3 {@code DustParticleBase} 의 수명은 {@code max(1, (int)(8.0 / (굴림×0.8 + 0.2)) × 크기)}
+	 * 라 크기 1.0 에서 <b>8~40틱</b>이다. 이 고리는 틱당 0.5칸으로 나아가므로, 파랑 먼지만으로
+	 * 그리면 지나간 자국이 4~20칸 남아 <b>「고리」가 아니라 「퍼지는 원판」</b>으로 보인다.
+	 * 앞머리가 어디인지 안 읽히면 언제 뛰어야 하는지도 안 읽힌다.
 	 *
 	 * <p>그래서 「엔더 파동」과 <b>같은 문법</b>으로 두 벌을 겹쳐 찍는다. 앞머리는 수명 4~10틱짜리
-	 * {@code CRIT}(흰 불티)이라 자국이 7.5~18.75칸에서 끝나 <b>선으로 남고</b>, 몸통은 파랑
-	 * 먼지가 지나간 자리를 채운다. 두 카드의 고리가 같은 모양으로 읽혀야 사람이 「고리는 뛰면
-	 * 피한다」를 한 번만 배운다.
+	 * {@code CRIT}(흰 불티)이라 자국이 2~5칸에서 끝나 <b>선으로 남고</b>, 몸통은 파랑 먼지가
+	 * 지나간 자리를 채운다. 두 카드의 고리가 같은 모양으로 읽혀야 사람이 「고리는 뛰면 피한다」를
+	 * 한 번만 배운다.
+	 *
+	 * <h2>앞머리는 세우고 몸통은 키운다 — 점은 그대로다</h2>
+	 *
+	 * <p>사람이 「너무 이펙트가 잘안보여」라고 해서 고친 자리가 여기다. 앞머리는 위로 쏘고
+	 * ({@link #EDGE_RISE_SPEED}) 몸통은 크기를 올렸다({@link #WAKE_SCALE}). <b>둘 다 점 수를
+	 * 한 개도 안 늘린다</b> — 까닭과 한계는 그 두 상수에 적어 두었다.
 	 *
 	 * <h2>몸통이 파랑인 것이 이 카드의 이름표다</h2>
 	 *
@@ -891,9 +1031,9 @@ public final class TrialLandingShock {
 	 * 이고, 이 카드는 넉백이 본체라 파랑이 정확히 제 뜻이다. 그러니 두 고리는 <b>앞머리가 같고
 	 * 몸통 색이 다르다</b> — 문법은 하나, 뜻은 둘이다.
 	 *
-	 * <p>먼지 수명의 하한 8틱이 판정 창 {@link #JUMP_WINDOW_TICKS}(5틱)보다 길다. 그래서
-	 * <b>판정이 내려지는 뒷자락까지는 반드시 파랑으로 덮여 있다</b> — 맞는 자리가 안 그려진 채로
-	 * 맞는 일이 없다.
+	 * <p>먼지 수명의 하한(크기 1.0 에서 8틱, 지금 크기에서 10틱)이 판정 창
+	 * {@link #JUMP_WINDOW_TICKS}(5틱)보다 길다. 그래서 <b>판정이 내려지는 뒷자락까지는 반드시
+	 * 파랑으로 덮여 있다</b> — 맞는 자리가 안 그려진 채로 맞는 일이 없다.
 	 *
 	 * <h2>점 수는 「엔더 파동」에서 가져오되 예산으로 한 번 더 자른다</h2>
 	 *
@@ -925,10 +1065,24 @@ public final class TrialLandingShock {
 			return;
 		}
 		int edgeRoom = edgeShare(allowance);
-		stroke(end, ground, ParticleTypes.CRIT, center, radius,
+		stroke(end, ground, ParticleTypes.CRIT, EDGE_RISE_SPEED, center, radius,
 				TrialEnderPulse.edgePoints(radius), edgeRoom, now);
-		stroke(end, ground, TrialWarning.dust(markColor()), center, radius,
+		stroke(end, ground, wakeDust(), 0.0, center, radius,
 				TrialEnderPulse.wakePoints(radius), allowance - edgeRoom, now);
+	}
+
+	/**
+	 * 몸통에 쓰는 파랑 먼지.
+	 *
+	 * <p>{@code TrialWarning.dust} 를 쓰지 않는 것은 <b>그쪽이 크기를 1.0 으로 박아 두기</b>
+	 * 때문이다. 색은 그대로 {@link #markColor} 에서 가져오므로 규약은 지켜진다 — 바뀌는 것은
+	 * 크기뿐이고 까닭은 {@link #WAKE_SCALE} 에 있다.
+	 *
+	 * <p>{@code TrialWarning} 쪽에 크기를 받는 형태를 더하지 않은 것은 그 파일을 다른 사람이
+	 * 쓰고 있기 때문이다. 크기를 쓰는 카드가 둘이 되면 그때 그쪽으로 옮길 것.
+	 */
+	private static ParticleOptions wakeDust() {
+		return new DustParticleOptions(markColor(), WAKE_SCALE);
 	}
 
 	/**
@@ -937,15 +1091,17 @@ public final class TrialLandingShock {
 	 * <p>{@code room} 개를 넘지 않도록 {@link #stride} 를 고르고, 그래도 넘치면 점자리 자체를
 	 * 줄인다. 두 장치가 함께 있어야 <b>예산이 반드시 지켜진다</b> — {@code stride} 는 8보다
 	 * 작아야 해서(아래) 그것만으로는 아무리 큰 고리도 담을 수 없기 때문이다.
+	 *
+	 * @param rise 점을 위로 쏘는 속도. 0 이면 제자리에 찍는다({@link #ring} 참고)
 	 */
 	private static void stroke(ServerLevel end, TrialEnderPulse.Ground ground, ParticleOptions type,
-			Vec3 center, double radius, int wholeRing, int room, long now) {
+			double rise, Vec3 center, double radius, int wholeRing, int room, long now) {
 		if (wholeRing <= 0 || room <= 0) {
 			return;
 		}
 		int step = stride(wholeRing, room);
 		int points = Math.min(wholeRing, room * step);
-		ring(end, ground, type, center, radius, points, step, Math.floorMod(now, step));
+		ring(end, ground, type, rise, center, radius, points, step, Math.floorMod(now, step));
 	}
 
 	/**
@@ -962,18 +1118,35 @@ public final class TrialLandingShock {
 	 * <p>각을 도는 순서를 뒤섞지 말 것 — {@link TrialEnderPulse.Ground} 의 청크 기억이 이어
 	 * 도는 것을 전제로 한다. {@code step} 만큼 건너뛰어도 순서는 한 방향 그대로다.
 	 *
+	 * <h2>⚠ 위로 쏘는 점은 <b>개수 0</b> 으로 보낸다 — 실수가 아니다</h2>
+	 *
+	 * <p>바닐라는 파티클 꾸러미의 <b>개수가 0 일 때만</b> 뒤의 세 값을 <b>속도</b>로 읽는다
+	 * (26.3 {@code ClientPacketListener.handleParticleEvent} 가 {@code count() != 0} 이면 그
+	 * 값들을 「퍼뜨릴 범위」로 쓴다). 개수를 1 로 두고 속도를 적으면 <b>제자리에 흩뿌리기만</b>
+	 * 하고 한 점도 안 올라간다 — 빌드도 로그도 조용한 채로 연출만 사라지는 종류의 실수다.
+	 *
+	 * <p>개수 0 이라고 아무것도 안 나가는 것이 아니다. 그 갈래도 파티클을 <b>정확히 하나</b>
+	 * 만들므로 점 수도 패킷 수도 제자리에 찍을 때와 같다. 그래서 이 카드가 <b>예산을 한 점도
+	 * 더 안 쓰고</b> 고리를 세울 수 있다.
+	 *
 	 * @param points 고리 한 바퀴의 점자리 수
 	 * @param step   그 가운데 몇 개마다 하나씩 찍을지
 	 * @param phase  이번 틱에 찍을 몫. {@code 0..step-1}
+	 * @param rise   위로 쏘는 속도. 0 이면 제자리에 찍는다
 	 */
 	private static void ring(ServerLevel end, TrialEnderPulse.Ground ground, ParticleOptions type,
-			Vec3 center, double radius, int points, int step, int phase) {
+			double rise, Vec3 center, double radius, int points, int step, int phase) {
 		for (int index = phase; index < points; index += step) {
 			double angle = (Math.PI * 2.0 * index) / points;
 			double x = center.x + Math.cos(angle) * radius;
 			double z = center.z + Math.sin(angle) * radius;
 			int surface = ground.surfaceAt(end, x, z);
 			if (surface == TrialEnderPulse.NO_GROUND) {
+				continue;
+			}
+			if (rise > 0.0) {
+				end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
+						0, 0.0, 1.0, 0.0, rise);
 				continue;
 			}
 			end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
@@ -1049,6 +1222,40 @@ public final class TrialLandingShock {
 		// 아직 아무 카드도 쓰지 않던 빈 자리다. 빨강을 쓰면 「자리 폭격」·「기둥 화염구」·
 		// 「연쇄 포격」과 섞여 무엇이 오는지 안 읽힌다.
 		return TrialWarning.Colors.SHOVE;
+	}
+
+	/**
+	 * 앞머리를 {@code speed} 로 쏘면 <b>몇 칸까지 올라가는가</b>(칸).
+	 *
+	 * <p>{@link #EDGE_RISE_SPEED} 를 고른 근거를 <b>시험이 물을 수 있게</b> 함수로 둔다. 「위로
+	 * 쏜다」는 눈으로만 확인되는 종류의 값이라, 다음 사람이 2.0 을 20 으로 바꿔도 컴파일도 시험도
+	 * 조용하면 <b>다른 카드의 바닥 표식을 가리는 벽</b>이 서 있는 것을 아무도 못 잡는다.
+	 *
+	 * <p>26.3 클래스 파일을 뜯어 확인한 그대로 굴린다.
+	 *
+	 * <ul>
+	 *   <li>{@code CritParticle} 이 받은 속도에 <b>0.4</b> 를 곱해 싣는다. 여기에 무작위 밑바닥이
+	 *       0.02 남짓 섞이는데 지금 값에서 2% 라 세지 않는다</li>
+	 *   <li>{@code Particle.tick} 이 매 틱 <b>{@code yd -= 0.04 × 중력}</b> 을 먼저 하고,
+	 *       옮긴 다음 <b>마찰</b>을 곱한다. {@code CritParticle} 의 중력이 0.5, 마찰이 0.7 이다</li>
+	 *   <li>수명은 4~10틱인데 <b>짧은 쪽</b>으로 센다. 가장 낮게 서는 벽이 그것이다</li>
+	 * </ul>
+	 *
+	 * <p>바닥에 부딪히는 것은 안 센다 — {@code CritParticle} 은 {@code hasPhysics} 가 거짓이라
+	 * 블록을 통과하고, 어차피 위로만 간다.
+	 */
+	static double riseHeight(double speed) {
+		double velocity = Math.max(0.0, speed) * CRIT_SPEED_FACTOR;
+		double height = 0.0;
+		for (int tick = 0; tick < CRIT_MIN_LIFETIME; tick++) {
+			velocity -= CRIT_GRAVITY_PULL;
+			if (velocity <= 0.0) {
+				break;
+			}
+			height += velocity;
+			velocity *= CRIT_FRICTION;
+		}
+		return height;
 	}
 
 	/**

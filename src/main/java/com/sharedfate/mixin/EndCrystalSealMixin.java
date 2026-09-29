@@ -66,6 +66,44 @@ import java.util.UUID;
  * 값으로는 잴 수 없고, {@code DragonTrialManager} 가 {@code now = end.getGameTime()} 으로
  * 시작하므로 실행기가 적는 기한과 같은 눈금이다.
  *
+ * <h2>크리스탈은 <b>제 발밑에 매 틱 불을 놓는다</b> — 그 불은 「막았다」가 아니다</h2>
+ *
+ * <p>사람이 「아무도 안 때렸는데 방패 소리가 미친 듯이 난다」를 들고 왔다. 원인은 이 카드가 아니라
+ * <b>{@code HEAD} 라는 자리</b>였다. 26.3 바이트코드로 확인한 길을 그대로 적어 둔다.
+ *
+ * <pre>{@code
+ * EndCrystal.tick()
+ *   applyEffectsFromBlocks();                       ← 매 틱
+ *   if (serverLevel.getDragonFight() != null && level.getBlockState(pos).isAir())
+ *       level.setBlockAndUpdate(pos, BaseFireBlock.getState(level, pos));   ← 제 자리에 불
+ *
+ * BaseFireBlock.entityInside(…, InsideBlockEffectApplier applier, …)
+ *   applier.apply(FIRE_IGNITE);
+ *   applier.runAfter(FIRE_IGNITE, e -> e.hurt(e.level().damageSources().inFire(), fireDamage));
+ *                                       ↑ fireImmune() 을 보지 않는다
+ *
+ * InsideBlockEffectApplier$StepBasedCollector.flushStep()
+ *   finalEffects.addAll(afterEffectsInStep.get(type));   ← 효과가 실제로 걸렸는지와 무관하게 실행
+ *
+ * Entity.hurt(DamageSource, float)  →  hurtServer(ServerLevel, DamageSource, float)
+ * }</pre>
+ *
+ * <p>즉 <b>드래곤전이 도는 동안 기둥 위의 크리스탈은 매 틱 {@code in_fire} 한 방을 받는다.</b>
+ * 바닐라는 이것을 몇 줄 뒤 {@code isInvulnerableToBase} 의
+ * {@code source.is(IS_FIRE) && this.fireImmune()} 에서 조용히 버리고
+ * ({@code EntityTypes.END_CRYSTAL} 은 {@code .fireImmune()} 으로 등록된다), 그래서 바닐라에서는
+ * 아무 일도 없는 것처럼 보인다. 그런데 <b>우리는 그 검사보다 앞</b>({@code HEAD})에 서 있어
+ * 그 한 방까지 「봉인이 막았다」로 세고 있었다 — 초당 20번이다.
+ *
+ * <p>그래서 <b>바닐라가 어차피 버릴 불 피해는 그대로 넘긴다.</b> 판별식을
+ * {@code isInvulnerableToBase} 와 글자 그대로 같게 두었으므로 돌아가는 값도 같고
+ * ({@code false}), 보호막은 조금도 약해지지 않는다. 불로는 원래 크리스탈이 깨지지 않는다.
+ *
+ * <p>⚠ 나머지 세 갈래({@code isRemoved}·{@code isInvulnerable}·{@code IS_FALL})까지 함께
+ * 넘기지는 <b>않는다.</b> 그쪽은 「어차피 안 깨진다」가 아니라 <b>다른 무엇이 잠깐 무적을
+ * 걸어 둔 상태</b>라, 넘기면 사람이 쏜 한 방이 아무 반응 없이 사라진다 — 이 연출을 넣은 까닭이
+ * 바로 그것이다. {@code TrialCrystalRevive} 가 {@code invulnerableTime} 을 쓰므로 실제로 겹친다.
+ *
  * <h2>연출은 여기서 내지 않는다</h2>
  *
  * <p>막았다는 것은 {@link TrialCrystalLink#noteDeflected()} 에 <b>적어만</b> 두고, 파티클과
@@ -113,6 +151,12 @@ public abstract class EndCrystalSealMixin {
 		}
 		if (source.is(DamageTypeTags.BYPASSES_INVULNERABILITY) || source.isCreativePlayer()) {
 			// 바닐라 무적이 열어 두는 그 둘. 운영자가 치울 길은 반드시 남긴다.
+			return;
+		}
+		if (source.is(DamageTypeTags.IS_FIRE) && ((Entity) (Object) this).fireImmune()) {
+			// 크리스탈이 제 발밑에 놓은 불이 매 틱 때리는 것이다. 바닐라는 몇 줄 뒤
+			// isInvulnerableToBase 에서 같은 판별로 버리므로 그냥 넘긴다 — 클래스 설명의
+			// 「크리스탈은 제 발밑에 매 틱 불을 놓는다」를 볼 것.
 			return;
 		}
 		TrialCrystalLink.noteDeflected();

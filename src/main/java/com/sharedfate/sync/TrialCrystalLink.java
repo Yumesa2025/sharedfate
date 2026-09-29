@@ -4,9 +4,7 @@ import com.sharedfate.SharedFateMod;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -231,6 +229,18 @@ import java.util.UUID;
  * 파티클·소리를 넣으면 연쇄 폭발 한 번에 수십 번 나가고, 소리는 <b>사람마다 그 자리에서</b> 내야
  * 하는데 믹스인에는 팀 명단이 없다. 한 틱에 몇 방을 막았든 <b>깃발 하나</b>라 연출도 한 번이다.
  *
+ * <p><b>소리는 거기서 한 번 더 묶여 봉인마다 하나다</b>({@link #deflectHeard}). 틱마다 하나로도
+ * 연사와 근접 연타에서는 한 봉인에 수십 번 울리는데, 소리가 하는 일은 「이건 지금 못 깬다」를
+ * <b>한 번 알리는 것</b>이라 그 뒤로는 배울 것이 없다. <b>불꽃은 묶지 않는다</b> — 그쪽은 「지금
+ * 이 한 방이 막혔다」라 쏠 때마다 나야 조준이 맞았는지를 알 수 있다.
+ *
+ * <p>⚠ 그 전에 반드시 걷어야 하는 것이 하나 더 있었다. <b>크리스탈은 드래곤전이 도는 동안 제
+ * 발밑에 매 틱 불을 놓고</b>({@code EndCrystal.tick}), 그 불은 <b>매 틱 {@code in_fire} 한 방을
+ * 때린다.</b> 바닐라는 {@code isInvulnerableToBase} 에서 조용히 버리지만 봉인 믹스인은 그보다
+ * 앞({@code HEAD})에 서 있어 그것까지 「막았다」로 셌다 — 아무도 안 때렸는데 초당 20번 방패
+ * 소리가 나던 원인이 이것이다. 그래서 {@code EndCrystalSealMixin} 이 <b>바닐라가 어차피 버릴 불
+ * 피해를 그대로 넘긴다.</b> 자세한 바이트코드 근거는 그 파일 설명에 적어 두었다.
+ *
  * <h2>이 저장소가 이미 밟은 지뢰</h2>
  *
  * <ul>
@@ -239,7 +249,9 @@ import java.util.UUID;
  *       「부활」이 이 함정으로 연출을 통째로 한 번 잃었다</li>
  *   <li><b>소리도 32 블록에서 잘린다.</b> {@code level.playSound} 는 자리에 소리를 놓는 것이라
  *       크리스탈 자리에서 울리면 기둥에 올라간 사람 말고는 아무도 못 듣는다. 그래서 소리는
- *       <b>사람마다 그 자리에서</b> 낸다</li>
+ *       <b>사람마다 그 자리에서</b> 내되, {@code playSound} 를 사람마다 부르는 것으로는 안 된다 —
+ *       그쪽은 반경 안의 <b>전원</b>에게 나가 모여 있으면 사람 수만큼 겹친다. 이 파일도 한동안
+ *       그렇게 틀려 있었고, 지금은 {@link TrialWarning#playEach} 하나를 부른다</li>
  *   <li><b>자막은 쓰지 않는다.</b> 화면 아래 글자는 전부 걷어냈다({@link TrialWarning#shout})</li>
  *   <li><b>크리스탈을 부수지도 만들지도 않는다.</b> 이 카드가 하는 일은 보호막뿐이다</li>
  *   <li><b>개체에 아무것도 쓰지 않는다.</b> 봉인은 이 클래스의 정적 칸에만 산다. 그래서 되돌릴 것도
@@ -378,6 +390,23 @@ public final class TrialCrystalLink {
 
 	/** 지난 틱 이후로 봉인이 한 방이라도 거절했는가. 믹스인이 세우고 실행기가 내린다. */
 	private static volatile boolean deflected;
+
+	/**
+	 * 이번 봉인에서 <b>방패 소리를 이미 냈는가</b>.
+	 *
+	 * <p>소리가 하는 일은 「이건 지금 못 깬다」를 <b>한 번 알리는 것</b>이다. 그 말이 전해진 뒤로는
+	 * 같은 말을 되풀이해도 배울 것이 없고, 연사와 근접 연타에서는 한 봉인에 수십 번 울린다.
+	 * 그래서 소리만 <b>봉인마다 한 번</b>으로 묶는다.
+	 *
+	 * <p><b>불꽃은 묶지 않는다.</b> 파티클은 「지금 이 한 방이 막혔다」를 말하는 신호라 쏠 때마다
+	 * 나야 조준이 맞았는지를 알 수 있고, 귀와 달리 여러 번 나도 시끄럽지 않다.
+	 *
+	 * <p>{@link #release} 에서 함께 내린다 — 보호막이 <b>다른</b> 크리스탈로 옮겨 가거나 풀렸다가
+	 * 다시 걸리면 그것은 새 봉인이고, 새 봉인은 제 말을 한 번 해야 한다. 같은 크리스탈에서 시간만
+	 * 늘어난 경우에는 {@link #release} 를 지나지 않으므로 다시 울리지 않는데, 그때는
+	 * {@link #announce} 의 전도체 소리가 「또 걸렸다」를 대신 말한다.
+	 */
+	private static boolean deflectHeard;
 
 	private TrialCrystalLink() {
 	}
@@ -601,7 +630,9 @@ public final class TrialCrystalLink {
 
 		if (deflected) {
 			deflected = false;
-			deflect(end, members, crystal.position(), elapsed);
+			// 소리는 이번 봉인의 첫 한 방에만. 불꽃은 언제나 낸다 — 까닭은 deflectHeard 에 적었다.
+			deflect(end, members, crystal.position(), elapsed, !deflectHeard);
+			deflectHeard = true;
 		}
 
 		if (elapsed % PULSE_TICKS != 0L) {
@@ -624,18 +655,22 @@ public final class TrialCrystalLink {
 	/**
 	 * 들고 있던 보호막을 되돌린다.
 	 *
-	 * <p>되돌릴 것은 정적 칸 넷뿐이다. 개체도 블록도 빔도 드래곤도 건드린 적이 없다.
+	 * <p>되돌릴 것은 정적 칸 여섯뿐이다. 개체도 블록도 빔도 드래곤도 건드린 적이 없다.
 	 * {@code setPermanentlyInvulnerable} 은 <b>켠 적이 없으므로 끄지도 않는다</b> — 그것까지 끄는
 	 * 것은 「부활」의 일이고(옛 저장 파일과 소환 의식을 함께 보는 자리다), 여기서 같이 끄면 우리가
 	 * 켜지 않은 값을 우리가 지우는 셈이 된다.
 	 *
 	 * <p>{@link #deflected} 도 함께 내린다. 봉인이 없는데 깃발만 남아 있으면 <b>다음에 걸리는
 	 * 보호막이 맞지도 않았는데 튕겨 내는 연출</b>로 시작한다.
+	 *
+	 * <p>{@link #deflectHeard} 도 함께 내린다. 안 내리면 <b>다음 봉인이 첫 한 방부터 말없이</b>
+	 * 막는다 — 「이건 못 깬다」를 한 번은 반드시 전해야 하므로 그것이 이 규칙의 유일한 고장이다.
 	 */
 	private static void release() {
 		sealedId = null;
 		sealFreshUntil = 0L;
 		deflected = false;
+		deflectHeard = false;
 		shielded = null;
 		shieldEnds = 0L;
 	}
@@ -695,9 +730,14 @@ public final class TrialCrystalLink {
 	 * <p>소리는 방패가 막는 소리다. 바닐라에서 그 소리의 뜻이 <b>글자 그대로 「막혔다」</b>라
 	 * 배울 것이 없고, 걸릴 때와 풀릴 때의 전도체 소리({@link #announce}·{@link #expire})와도
 	 * 귀로 섞이지 않는다. {@code Holder.Reference} 로 들어 있어 {@code value()} 로 꺼낸다.
+	 *
+	 * <p><b>소리는 봉인마다 한 번뿐이다.</b> 불꽃은 막을 때마다 낸다 — 까닭은
+	 * {@link #deflectHeard} 에 적었다.
+	 *
+	 * @param sound 이번에 소리까지 낼 것인가. 거짓이면 불꽃만 그린다
 	 */
 	private static void deflect(ServerLevel end, @Nullable List<ServerPlayer> members, Vec3 at,
-			long elapsed) {
+			long elapsed, boolean sound) {
 		double spin = elapsed * SHELL_SPIN;
 		for (int index = 0; index < DEFLECT_POINTS; index++) {
 			double angle = spin + (Math.PI * 2.0 * index) / DEFLECT_POINTS;
@@ -707,14 +747,19 @@ public final class TrialCrystalLink {
 					at.z + Math.sin(angle) * SHELL_MAX,
 					2, 0.0, 0.0, 0.0, 0.0);
 		}
-		playEverywhere(end, members, SoundEvents.SHIELD_BLOCK.value(), 1.0F, 0.8F);
+		if (!sound) {
+			return;
+		}
+		TrialWarning.playEach(end, members, SoundEvents.SHIELD_BLOCK, 1.0F, 0.8F);
 	}
 
 	/**
 	 * 보호막이 걸렸다고 알린다. <b>사람마다 그 자리에서</b> 울린다.
 	 *
 	 * <p>{@code level.playSound} 는 자리에 소리를 놓는 것이고 볼륨 1 이면 16 블록이다. 크리스탈
-	 * 자리에서 한 번 울리면 기둥 꼭대기에 올라간 사람 말고는 <b>아무도 못 듣는다.</b>
+	 * 자리에서 한 번 울리면 기둥 꼭대기에 올라간 사람 말고는 <b>아무도 못 듣는다.</b> 그렇다고
+	 * 사람마다 {@code playSound} 를 부르면 이번에는 <b>모인 사람 수만큼 겹친다</b> —
+	 * {@link TrialWarning#playEach} 가 그 둘을 한꺼번에 푸는 자리다.
 	 *
 	 * <p>전도체의 켜지는 소리다. 바닐라에서 전도체는 <b>사람을 감싸는 보호 장막</b>이라 그림이
 	 * 그대로 맞고, 풀릴 때의 {@link #expire} 와 짝이 되어 「켜졌다/꺼졌다」를 배우기 쉽다.
@@ -722,27 +767,12 @@ public final class TrialCrystalLink {
 	 * 않는다 — 같은 물건의 다른 동작이므로 뜻도 어긋나지 않는다.
 	 */
 	private static void announce(ServerLevel end, @Nullable List<ServerPlayer> members) {
-		playEverywhere(end, members, SoundEvents.CONDUIT_ACTIVATE, 1.0F, 1.4F);
+		TrialWarning.playEach(end, members, SoundEvents.CONDUIT_ACTIVATE, 1.0F, 1.4F);
 	}
 
 	/** 보호막이 풀렸다고 알린다. 「이제 깰 수 있다」는 말을 소리로 하는 유일한 자리다. */
 	private static void expire(ServerLevel end, @Nullable List<ServerPlayer> members) {
-		playEverywhere(end, members, SoundEvents.CONDUIT_DEACTIVATE, 1.0F, 1.4F);
-	}
-
-	/** 팀원 저마다의 자리에서 같은 소리를 낸다. 관전자는 뺀다 — 판에 끼어들지 않는 사람이다. */
-	private static void playEverywhere(ServerLevel end, @Nullable List<ServerPlayer> members,
-			SoundEvent sound, float volume, float pitch) {
-		if (members == null) {
-			return;
-		}
-		for (ServerPlayer member : members) {
-			if (member == null || member.isSpectator()) {
-				continue;
-			}
-			Vec3 at = member.position();
-			end.playSound(null, at.x, at.y, at.z, sound, SoundSource.HOSTILE, volume, pitch);
-		}
+		TrialWarning.playEach(end, members, SoundEvents.CONDUIT_DEACTIVATE, 1.0F, 1.4F);
 	}
 
 	// ------------------------------------------------------------------ 월드에서 읽어 오는 것

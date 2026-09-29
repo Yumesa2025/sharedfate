@@ -25,7 +25,8 @@ class DragonTrialSessionTest {
 	private static final UUID TEAM = UUID.fromString("cccccccc-0000-0000-0000-000000000001");
 
 	private static DragonTrialSession session() {
-		return new DragonTrialSession(TEAM, 1000L);
+		// 시련을 켠 팀. 끈 팀은 자리도 카드도 없는 것이 정상이라 이 시험의 대상이 아니다.
+		return new DragonTrialSession(TEAM, 1000L, true);
 	}
 
 	@Test
@@ -270,5 +271,55 @@ class DragonTrialSessionTest {
 
 		assertThrows(UnsupportedOperationException.class,
 				() -> session.grantedTicks().put("b", 1200L));
+	}
+
+	// ------------------------------------------------------------- 시련을 끈 팀
+
+	/**
+	 * 팀 설정에서 시련을 끈 팀.
+	 *
+	 * <p>여기서 막지 못하면 「끔」이 화면에만 남고 실제로는 카드가 걸린다. 그 어긋남은
+	 * 엔드에 도착해서야 드러나고, 이 모드에서 그 자리의 실수는 월드 삭제로 이어진다.
+	 */
+	private static DragonTrialSession disabled() {
+		return new DragonTrialSession(TEAM, 1000L, false);
+	}
+
+	@Test
+	void 끈_팀은_자리가_터져도_세지_않는다() {
+		DragonTrialSession session = disabled();
+
+		assertFalse(session.fire(Trigger.ENTRY));
+		assertFalse(session.fire(Trigger.HEALTH_80), "고정 시련 자리도 마찬가지다");
+		assertTrue(session.fired().isEmpty());
+		assertEquals(0, session.queuedCount());
+		assertFalse(session.shouldOfferTrial(), "줄이 비었으므로 룰렛이 열릴 근거가 없다");
+	}
+
+	@Test
+	void 끈_팀은_시험_명령으로도_카드가_쌓이지_않는다() {
+		DragonTrialSession session = disabled();
+
+		// /shareteam trialtest give 는 자리를 거치지 않고 곧장 choose 로 들어온다.
+		assertFalse(session.choose("a", 1100L));
+		assertEquals(0, session.trialCount());
+	}
+
+	@Test
+	void 끈_팀은_저장에_남아_있던_카드도_되살리지_않는다() {
+		DragonTrialSession session = disabled();
+		session.restore(List.of("a"), List.of("ENTRY"), List.of("ENTRY"), true,
+				new HashMap<>(Map.of("a", 1100L)));
+
+		assertEquals(0, session.trialCount(), "끄기 전에 쌓아 둔 카드가 되살아나면 안 된다");
+		assertTrue(session.fired().isEmpty());
+		assertFalse(session.shouldOfferTrial());
+		assertFalse(session.awaitingChoice());
+	}
+
+	@Test
+	void 켠_팀과_끈_팀은_스스로_어느_쪽인지_안다() {
+		assertTrue(session().trialsEnabled());
+		assertFalse(disabled().trialsEnabled());
 	}
 }

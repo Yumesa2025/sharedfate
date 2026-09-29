@@ -29,6 +29,22 @@ import java.util.UUID;
 /**
  * 엔더 드래곤 전투를 지휘한다. 엔드 입장 감지 · 전원 소환 · 드래곤 강화 · 시련 타이머.
  *
+ * <h2>시련은 팀 설정이고, 기본값은 끔이다</h2>
+ *
+ * <p>{@code TeamState.dragonTrialsEnabled} 가 거짓인 팀에게는 <b>이 파일이 드래곤에 아무
+ * 손도 대지 않는다.</b> 체력 수정자를 붙였다가 떼는 것이 아니라 <b>처음부터 붙이지 않는다</b> —
+ * 올렸다 내리면 보스바가 한 번 튀고, 그 사이 틱에 맞은 피해가 다른 최대치를 기준으로 계산된다.
+ * 그래서 {@link #strengthenDragon} 을 <b>부르지 않는 것</b>이 유일한 갈림이다.
+ *
+ * <p>끈 팀에게 꺼지는 것은 넷이다 — 시련 카드(룰렛)·고정 시련(체력 80·30%)·기본
+ * 패시브({@link DragonPassives})·드래곤 체력 강화. 앞의 둘은 {@link DragonTrialSession} 이
+ * 자리를 아예 세지 않아 저절로 꺼지고, 뒤의 둘은 {@link #tickSessions} 와
+ * {@link #startSession} 이 각각 건너뛴다.
+ *
+ * <p><b>팀을 엔드로 부르는 것은 끄지 않는다.</b> 그것은 시련이 아니라 「최종 보스는 팀이 함께
+ * 선다」는 이 모드의 규칙이고, 시련을 껐다고 혼자 들어가게 두면 나머지는 다른 차원에서 공유
+ * 체력만 깎이는 것을 구경하게 된다 — 아래 「왜 전원을 부르는가」가 그대로 성립한다.
+ *
  * <h2>엔드는 나갈 수 없다</h2>
  *
  * <p>드래곤을 잡기 전에 엔드를 나가는 길은 죽는 것뿐이고, 이 모드에서 그건 곧 전멸이자 월드
@@ -106,12 +122,16 @@ public final class DragonTrialManager {
 			} catch (IllegalArgumentException malformed) {
 				continue;
 			}
-			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick);
+			// 켬·끔은 저장 파일에 담지 않는다. 팀 설정이 그 사실의 유일한 출처이고, 여기
+			// 한 벌을 더 두면 팀을 해체하고 다시 만든 뒤에 옛 값이 되살아난다. 팀 명단은
+			// SharedFateMod 가 이보다 먼저(TeamRosterStore.onServerStarted) 세워 둔다.
+			boolean trials = trialsEnabled(server, teamId);
+			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick, trials);
 			session.restore(entry.chosen, entry.fired, entry.queued, entry.awaitingChoice,
 					entry.grantedTicks);
 			SESSIONS.put(teamId, session);
-			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {}장",
-					session.trialCount());
+			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {} · {}장",
+					trials ? "켬" : "끔(바닐라 드래곤전)", session.trialCount());
 		}
 	}
 
@@ -175,6 +195,10 @@ public final class DragonTrialManager {
 		// 정지는 설정 검사보다 앞이다. 얼려 둔 채로 설정이 0 이 되면 녹일 사람이 없어진다.
 		TrialFreeze.tick(server);
 		applyFinishedTrial(server);
+		// ⚠ 이 줄은 <b>서버 전체</b>를 끄는 스위치다. 팀 설정의 「드래곤 시련」과 다르다 —
+		// 여기서 돌아가면 팀을 엔드로 부르는 것까지 함께 멈춘다. 시련을 끈 팀에게
+		// dragonHealthPerMember 를 무시한다고 적었지만, 0 으로 둔 서버에서는 그 팀도 전원
+		// 소환을 못 받는다. 이 경로는 시련 설정이 생기기 전부터 있던 것이라 그대로 두었다.
 		if (SharedFateMod.config.dragonHealthPerMember <= 0) {
 			return;
 		}
@@ -223,19 +247,52 @@ public final class DragonTrialManager {
 		}
 	}
 
+	/**
+	 * 전투를 연다. <b>여기가 시련을 켠 팀과 끈 팀이 갈리는 유일한 자리다.</b>
+	 *
+	 * <p>끈 팀에게는 {@link #strengthenDragon} 을 <b>부르지 않는다.</b> 「올려 놓고 다시 내린다」
+	 * 가 아니라 아예 손을 대지 않는 것이라, 드래곤은 바닐라 최대 체력 200 그대로이고
+	 * {@code SharedFateConfig.dragonHealthPerMember} 는 읽히지도 않는다. 붙였다 떼면 보스바가
+	 * 한 번 튀고 그 사이 틱의 피해가 다른 최대치로 계산된다.
+	 *
+	 * <p>자리(트리거)를 세는 일도 세션이 스스로 막는다 — {@link DragonTrialSession#fire} 가
+	 * 끈 팀에서는 아무 일도 하지 않으므로 아래 {@code fire(ENTRY)} 는 그대로 두어도 된다.
+	 * 여기에 {@code if} 를 하나 더 두면 「어디서 막았나」가 두 곳이 된다.
+	 *
+	 * <p>로그는 <b>켬·끔을 반드시 적는다.</b> 기본값이 끔이라 「왜 시련이 안 뜨지」의 답이 거의
+	 * 언제나 이 줄에 있다.
+	 */
 	private static void startSession(MinecraftServer server, ServerLevel end, ShareTeam team,
 			long now) {
-		DragonTrialSession session = new DragonTrialSession(team.teamId(), now);
+		boolean trials = trialsEnabled(server, team.teamId());
+		DragonTrialSession session = new DragonTrialSession(team.teamId(), now, trials);
 		SESSIONS.put(team.teamId(), session);
 		int memberCount = Math.max(1, team.members().size());
-		float target = strengthenDragon(end, memberCount);
-		// 엔드에 들어선 것 자체가 첫 자리다.
+		// 끈 팀에게는 강화 자체를 건너뛴다. 지금 값을 그대로 로그에 적어 「바닐라 200 이다」가
+		// 눈으로 확인되게 한다.
+		EnderDragon dragon = findDragon(end);
+		float target = trials
+				? strengthenDragon(end, memberCount)
+				: (dragon == null ? 0.0F : dragon.getMaxHealth());
+		// 엔드에 들어선 것 자체가 첫 자리다. 끈 팀에서는 fire 가 거짓을 돌려주고 끝난다.
 		session.fire(TrialCatalog.Trigger.ENTRY);
 		CRYSTALS_AT_START.put(team.teamId(), countCrystals(end));
 		SharedFateMod.LOGGER.info(
-				"[END] 팀 '{}' 엔드 전투 시작 — 인원 {}명 · 드래곤 체력 {} · 크리스탈 {}개",
-				team.name(), memberCount, target, countCrystals(end));
+				"[END] 팀 '{}' 엔드 전투 시작 — 시련 {} · 인원 {}명 · 드래곤 체력 {} · 크리스탈 {}개",
+				team.name(), trials ? "켬" : "끔(바닐라 드래곤전)", memberCount, target,
+				countCrystals(end));
 		persist();
+	}
+
+	/**
+	 * 이 팀이 시련을 쓰기로 했는가. 팀 상태를 못 찾으면 <b>끔</b>이다.
+	 *
+	 * <p>모를 때 켜는 쪽으로 기울면, 상태를 못 읽은 팀이 아무도 고른 적 없는 체력 2400짜리
+	 * 드래곤을 만나게 된다. 모를 때는 <b>기본값</b>과 같은 쪽으로 간다.
+	 */
+	private static boolean trialsEnabled(MinecraftServer server, UUID teamId) {
+		com.sharedfate.team.TeamState state = TeamManager.get(server).stateByTeamId(teamId);
+		return state != null && state.dragonTrialsEnabled;
 	}
 
 	/**
@@ -290,6 +347,16 @@ public final class DragonTrialManager {
 				SharedFateMod.LOGGER.info("[END] 팀 '{}' 드래곤 처치 — {}초 · 시련 {}장",
 						team.name(), session.elapsedTicks(now) / 20, session.trialCount());
 				finished.add(entry.getKey());
+				continue;
+			}
+			// 시련을 끈 팀은 여기서 통째로 지나간다. 바닐라 드래곤전이므로 자리도 카드도
+			// 패시브도 없고, 남는 일은 위의 「드래곤이 죽었는가」 하나뿐이다.
+			//
+			// ⚠ 안쪽 넷 중 앞의 셋(자리 감지·룰렛·위험)은 세션이 자리를 세지 않아 어차피
+			// 아무 일도 안 한다. 그래도 한 줄로 묶어 두는 것은 DragonPassives 때문이다 —
+			// 그쪽은 카드와 무관하게 「언제나 있는 판」이라 스스로 멈출 근거가 없고, 여기서
+			// 안 막으면 시련을 끈 팀도 연쇄 포격을 맞는다.
+			if (!session.trialsEnabled()) {
 				continue;
 			}
 			List<ServerPlayer> members = membersOf(server, team, end);
@@ -390,35 +457,59 @@ public final class DragonTrialManager {
 	}
 
 	/**
-	 * 끝난 룰렛의 결과를 실제로 쌓는다.
+	 * 끝난 화면의 결과를 실제로 쌓는다.
 	 *
 	 * <p>자리를 <b>여기서야</b> 줄에서 꺼낸다. 열 때 꺼내면 연출 도중 서버가 내려갔을 때 그
 	 * 자리가 통째로 사라진다. 지금은 연출만 사라지고 자리는 줄에 남아 다시 뜰 때 처음부터 돈다.
+	 *
+	 * <p>⚠ <b>얼음을 안 쓰는 자리는 이 길로 오지 않는다.</b>
+	 * {@link TrialCatalog.Reveal#SILENT} 은 판을 멈추지 않으므로 「얼음이 끝나는 틱」이 아예
+	 * 없다 — 그쪽은 뽑은 그 틱에 {@link #applyChoice} 를 직접 부른다.
 	 */
 	private static void applyFinishedTrial(MinecraftServer server) {
 		TrialFreeze.Finished done = TrialFreeze.poll();
 		if (done == null) {
 			return;
 		}
-		// 줄 맨 앞이 바뀌었으므로 지연을 다시 센다. 앞 자리가 쓰던 시각을 남겨 두면 다음 자리가
-		// 자기 지연 대신 그것을 물려받는다.
-		resetTrialDelay(done.teamId());
 		DragonTrialSession session = SESSIONS.get(done.teamId());
 		if (session == null) {
+			// 세션이 사라졌어도 지연은 지운다. 앞 자리가 쓰던 시각을 남겨 두면 다음 전투의
+			// 첫 자리가 그것을 물려받는다.
+			resetTrialDelay(done.teamId());
 			return;
 		}
 		ServerLevel end = server.getLevel(Level.END);
 		long now = end == null ? server.overworld().getGameTime() : end.getGameTime();
+		applyChoice(session, done.trialId(), now);
+	}
+
+	/**
+	 * 뽑힌 카드를 줄 맨 앞의 자리에 얹어 실제로 쌓는다.
+	 *
+	 * <h2>연출이 셋인데 「확정」은 한 자리여야 한다</h2>
+	 *
+	 * <p>{@link TrialCatalog.Reveal} 마다 카드가 정해지는 시점이 다르다 — 룰렛과 정해진 카드
+	 * 화면은 <b>얼음이 끝나는 틱</b>, {@link TrialCatalog.Reveal#SILENT} 은 <b>뽑는 그 틱</b>이다.
+	 * 그래도 「줄에서 꺼내고 · 쌓고 · 지연을 다시 세고 · 저장한다」는 넷은 어느 쪽이든 같아야
+	 * 하므로 여기 한 곳에 둔다. 연출을 하나 더 만드는 사람은 뽑기만 하고 여기로 넘기면 된다.
+	 *
+	 * @param now 지금 게임 시각. 이 카드의 위험 주기를 여기서부터 센다
+	 */
+	private static void applyChoice(DragonTrialSession session, @Nullable String trialId,
+			long now) {
+		// 줄 맨 앞이 바뀌었으므로 지연을 다시 센다. 앞 자리가 쓰던 시각을 남겨 두면 다음 자리가
+		// 자기 지연 대신 그것을 물려받는다.
+		resetTrialDelay(session.teamId());
 		TrialCatalog.Trigger trigger = session.beginChoice();
-		if (!session.choose(done.trialId(), now)) {
+		if (!session.choose(trialId, now)) {
 			session.skipChoice();
 			persist();
 			return;
 		}
-		TrialCatalog.Trial trial = TrialCatalog.byId(done.trialId());
+		TrialCatalog.Trial trial = TrialCatalog.byId(trialId);
 		SharedFateMod.LOGGER.info("[END] {} 에서 시련 {}장째 — {} (줄에 {}개 남음)",
 				trigger == null ? "?" : trigger.label(), session.trialCount(),
-				trial == null ? done.trialId() : trial.name(), session.queuedCount());
+				trial == null ? trialId : trial.name(), session.queuedCount());
 		persist();
 	}
 
@@ -463,7 +554,19 @@ public final class DragonTrialManager {
 	}
 
 	/**
-	 * 자리가 터지고 그 자리가 정한 지연이 지나면 룰렛을 연다.
+	 * 자리가 터지고 그 자리가 정한 지연이 지나면 카드를 정한다.
+	 *
+	 * <h2>「어떻게 뜨는가」를 읽는 유일한 자리다</h2>
+	 *
+	 * <p>{@link TrialCatalog.Trigger#reveal()} 이 갈리는 곳이 여기 하나다. 값은 자리에 붙어
+	 * 있고({@link TrialCatalog.Reveal}) 그 값을 행동으로 바꾸는 것은 이 메서드다 — 자리를 새로
+	 * 만드는 사람은 연출을 고르기만 하면 되고, 연출을 새로 만드는 사람은 여기 한 곳만 본다.
+	 *
+	 * <p>{@code default} 없는 <b>switch 식</b>으로 가른다. {@link TrialCatalog.Reveal} 에 값을
+	 * 더하고 여기에 갈래를 안 붙이면 <b>컴파일이 거절한다.</b> 이 저장소가
+	 * {@code TrialCatalog.Risk} 와 {@code GameOverCountdown.Reason} 에서 이미 쓰는 방식이다 —
+	 * <b>switch 문으로 바꾸지 말 것.</b> 문은 열거형을 다 덮지 않아도 컴파일이 통과해서, 연출을
+	 * 하나 더 만든 사람의 자리가 조용히 아무 일도 안 하게 된다.
 	 *
 	 * <h2>왜 자리마다 다른가</h2>
 	 *
@@ -499,17 +602,81 @@ public final class DragonTrialManager {
 			// 코덱 상한을 넘으면 패킷이 터진다. 카드가 그만큼 늘면 풀을 쪼갤 때가 된 것이다.
 			pool = pool.subList(0, TrialRoulettePayload.MAX_OPTIONS);
 		}
-		TrialRoulette roulette = TrialRoulette.open(trigger, pool, now, end.getRandom());
-		if (roulette == null) {
+		// 연출이 무엇이든 뽑는 자리는 하나다. 여기를 갈래마다 따로 두면 「어느 카드가 뽑히는가」가
+		// 연출에 따라 달라지고, 그 차이는 눈으로 봐서는 알 수 없다.
+		TrialRoulette draw = TrialRoulette.open(trigger, pool, now, end.getRandom());
+		if (draw == null) {
 			return;
 		}
+		// 여기서부터 자리는 null 이 아니다 — 풀이 비어 있지 않다는 것이 이미 그 뜻이다
+		// (offerable 은 자리를 모르면 빈 목록을 준다). 룰렛이 들고 있는 것을 쓰면 그 사실이
+		// 코드에도 남는다.
+		TrialCatalog.Trigger drawnAt = draw.trigger();
+		TrialCatalog.Trial result = draw.result();
+
+		// 「지금 이 틱에 카드를 확정해야 하는가」. 얼음을 쓰는 연출은 거짓이다 — 그쪽은
+		// 얼음이 끝나는 틱에 applyFinishedTrial 이 확정한다(연출 도중 서버가 내려가도 자리가
+		// 통째로 사라지지 않게 하려고 미뤄 둔 것이다).
+		boolean decideNow = switch (drawnAt.reveal()) {
+			case ROULETTE -> {
+				openRouletteScreen(server, session, members, drawnAt, pool, result);
+				yield false;
+			}
+			case FIXED_SCREEN -> {
+				openFixedScreen(server, session, members, drawnAt, result);
+				yield false;
+			}
+			// 판을 멈추지도, 화면을 띄우지도 않는다. 카드만 조용히 걸린다.
+			//
+			// ⚠ 얼음이 없으면 「얼음이 끝나는 틱」도 없다. 미뤄 두면 카드가 영영 안 걸리므로
+			// 여기서 확정한다. 미룰 이유였던 「연출 도중 서버가 내려간다」도 성립하지 않는다 —
+			// 연출이 없어 뽑는 틱과 쌓는 틱이 같고, 그 사이에 내려갈 틈이 없다.
+			case SILENT -> true;
+		};
+		if (decideNow) {
+			applyChoice(session, result.id(), now);
+		}
+	}
+
+	/**
+	 * 룰렛을 돌리는 자리. 판을 멈추고 후보 전부를 보낸다.
+	 *
+	 * <p>정지를 <b>먼저</b> 건다. 화면만 띄우고 시간이 흐르면 글을 읽는 동안 맞는다. 얼지 못하면
+	 * ({@link TrialFreeze#begin} 이 거짓) 화면도 보내지 않는다 — 자리는 줄에 남아 다음 틱에 다시
+	 * 시도한다.
+	 */
+	private static void openRouletteScreen(MinecraftServer server, DragonTrialSession session,
+			List<ServerPlayer> members, TrialCatalog.Trigger trigger,
+			List<TrialCatalog.Trial> candidates, TrialCatalog.Trial result) {
 		int spinTicks = TrialRoulette.TOTAL_TICKS;
-		// 정지를 먼저 건다. 화면만 띄우고 시간이 흐르면 글을 읽는 동안 맞는다.
-		if (!TrialFreeze.begin(server, session.teamId(), roulette.result().id(), members,
+		if (!TrialFreeze.begin(server, session.teamId(), result.id(), members,
 				spinTicks + TrialFreeze.HOLD_TICKS)) {
 			return;
 		}
-		sendRoulette(members, trigger, pool, roulette.result(), spinTicks);
+		sendTrialScreen(members, trigger, candidates, result, spinTicks, TrialFreeze.HOLD_TICKS);
+	}
+
+	/**
+	 * 판은 멈추되 <b>룰렛은 돌지 않는</b> 자리. 정해진 카드의 이름과 설명만 보여 준다.
+	 *
+	 * <h2>후보를 한 장만 보낸다</h2>
+	 *
+	 * <p>{@code spinTicks} 를 0 으로 두는 것만으로도 화면은 굴리지 않는다. 그런데 후보 목록까지
+	 * 한 장으로 줄이는 것은 <b>굴릴 거리 자체를 없애기 위해서다</b> — 화면은 받은 후보 전부로
+	 * 글자 배율과 판 높이를 재므로, 안 보여 줄 카드를 실어 보내면 보이지도 않는 이름에 맞춰
+	 * 판이 커진다. 게다가 누가 나중에 굴림 길이를 잘못 채워도 <b>돌릴 것이 없다.</b>
+	 *
+	 * <p>붙잡아 두는 시간이 룰렛과 다른 이유는 {@link TrialFreeze#FIXED_HOLD_TICKS} 에 적어
+	 * 두었다.
+	 */
+	private static void openFixedScreen(MinecraftServer server, DragonTrialSession session,
+			List<ServerPlayer> members, TrialCatalog.Trigger trigger, TrialCatalog.Trial result) {
+		if (!TrialFreeze.begin(server, session.teamId(), result.id(), members,
+				TrialFreeze.FIXED_HOLD_TICKS)) {
+			return;
+		}
+		sendTrialScreen(members, trigger, List.of(result), result, 0,
+				TrialFreeze.FIXED_HOLD_TICKS);
 	}
 
 	/**
@@ -517,18 +684,23 @@ public final class DragonTrialManager {
 	 *
 	 * <p>칸이 바뀔 때마다 보내면 4초에 열다섯 번이고 그중 하나만 늦어도 화면이 튄다. 결과는 이미
 	 * 정해져 있으므로 늦게 닿아도 답이 달라지지 않는다.
+	 *
+	 * @param spinTicks 굴림 길이. <b>0 이면 한 틱도 굴리지 않는다</b>
+	 * @param holdTicks 결과를 붙잡아 두는 시간. {@link TrialFreeze} 에 넘긴 값과 같아야 한다 —
+	 *                  어긋나면 화면이 먼저 닫혀 얼어 있는 채로 서 있거나, 시간이 먼저 흘러
+	 *                  화면 뒤에서 드래곤이 움직인다
 	 */
-	private static void sendRoulette(List<ServerPlayer> members,
-			@Nullable TrialCatalog.Trigger trigger, List<TrialCatalog.Trial> pool,
-			TrialCatalog.Trial result, int spinTicks) {
+	private static void sendTrialScreen(List<ServerPlayer> members,
+			@Nullable TrialCatalog.Trigger trigger, List<TrialCatalog.Trial> candidates,
+			TrialCatalog.Trial result, int spinTicks, int holdTicks) {
 		List<TrialRoulettePayload.TrialOption> options = new ArrayList<>();
-		for (TrialCatalog.Trial trial : pool) {
+		for (TrialCatalog.Trial trial : candidates) {
 			options.add(new TrialRoulettePayload.TrialOption(
 					trial.id(), trial.name(), trial.description()));
 		}
 		TrialRoulettePayload payload = new TrialRoulettePayload(
 				trigger == null ? "시련" : trigger.label(),
-				Math.max(0, pool.indexOf(result)), spinTicks, options);
+				Math.max(0, candidates.indexOf(result)), spinTicks, holdTicks, options);
 		for (ServerPlayer member : members) {
 			ServerPlayNetworking.send(member, payload);
 		}

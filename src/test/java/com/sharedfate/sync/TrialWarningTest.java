@@ -1,7 +1,15 @@
 package com.sharedfate.sync;
 
+import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.PlayerList;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.player.Player;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -61,6 +69,25 @@ class TrialWarningTest {
 	 */
 	private static final String SOUND_FORM = "(Lnet/minecraft/server/level/ServerLevel;"
 			+ "Lnet/minecraft/world/phys/Vec3;Lcom/sharedfate/sync/TrialWarning$Stage;)V";
+	/**
+	 * {@link TrialWarning#soundFor} 의 서술자. <b>그 사람에게만</b> 가는 경고음이다.
+	 *
+	 * <p>{@link #SOUND_FORM} 과 갈라 두는 것이 요점이다. 둘은 이름이 거의 같은데 닿는 사람이
+	 * 전혀 다르다 — 하나는 자리 반경 안의 전원이고 하나는 딱 한 명이다.
+	 */
+	private static final String SOUND_FOR_FORM = "(Lnet/minecraft/server/level/ServerLevel;"
+			+ "Lnet/minecraft/server/level/ServerPlayer;Lcom/sharedfate/sync/TrialWarning$Stage;)V";
+	/**
+	 * {@code ServerLevel.playSound} 의 <b>자리에 놓는</b> 형태. 26.3 에서 javap 로 뜬 서술자다.
+	 *
+	 * <p>이것을 팀원 루프 안에서 부르면 사람 수만큼 겹친다 — 까닭은
+	 * {@link TrialWarning#playEach} 설명에 있다.
+	 */
+	private static final String PLACED_SOUND = "(Lnet/minecraft/world/entity/Entity;DDD"
+			+ "Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V";
+	/** 같은 것의 {@code Holder} 형태. 한쪽만 막으면 다른 쪽으로 그대로 돌아온다. */
+	private static final String PLACED_SOUND_HOLDER = "(Lnet/minecraft/world/entity/Entity;DDD"
+			+ "Lnet/minecraft/core/Holder;Lnet/minecraft/sounds/SoundSource;FF)V";
 
 	/**
 	 * 엔드 전투에서 32 블록을 넘겨 그리는 자리들. 하나라도 짧은 형태로 되돌아가면 그 연출이 통째로
@@ -299,17 +326,176 @@ class TrialWarningTest {
 	 */
 	@Test
 	void 소리와_바닥_표식은_여전히_나간다() throws IOException {
-		for (Class<?> type : new Class<?>[] {DragonFireBarrage.class, TrialCrystalRevive.class,
+		// 자리에 놓는 경고음을 쓰는 카드들 — 위험한 지점이 사람과 따로 있는 쪽이다.
+		for (Class<?> type : new Class<?>[] {TrialCrystalRevive.class,
 				TrialDragonFocus.class, TrialFireball.class, TrialRisks.class}) {
 			assertTrue(classBytes(type).contains(SOUND_FORM),
 					type.getSimpleName() + " 가 경고 소리를 내지 않는다. 자막을 걷어낸 뒤로 소리는"
 							+ " 「무엇이 언제 오는가」를 말하는 두 갈래 중 하나다");
 		}
+		// 「연쇄 포격」은 사람마다 보내는 쪽으로 옮겼다. 소리를 안 내게 된 것이 아니다.
+		assertTrue(classBytes(DragonFireBarrage.class).contains(SOUND_FOR_FORM),
+				"DragonFireBarrage 가 경고 소리를 내지 않는다");
 		for (Class<?> type : new Class<?>[] {DragonFireBarrage.class, TrialDragonFocus.class,
 				TrialFireball.class, TrialRisks.class}) {
 			assertTrue(classBytes(type).contains("markGround"),
 					type.getSimpleName() + " 가 바닥 표식을 그리지 않는다. 「어디로 오는가」를 말하는"
 							+ " 것이 그 고리뿐이다");
+		}
+	}
+
+	// ------------------------------------------------------------------ 소리가 겹치지 않는가
+
+	/**
+	 * <b>팀이 넷이면 각자 정확히 한 번</b> — 이 수정의 전부다.
+	 *
+	 * <p>실전에서는 {@code ServerPlayer} 의 연결로 꾸러미가 나가므로 <b>받는 사람 수 = 나간 수</b>
+	 * 이고, 그래서 「몇 장 나갔나」를 세면 「각자 몇 번 들었나」를 센 것과 같다. 그 셈만
+	 * {@link TrialWarning#eachListener} 로 떼어 두었다 — 시험 환경에는 살아 있는 서버가 없어
+	 * {@code ServerPlayer} 를 만들 수 없기 때문이다.
+	 *
+	 * <p>고치기 전에는 이 수가 4 여도 <b>들린 횟수는 16</b> 이었다. {@code level.playSound} 가
+	 * 자리 반경 안의 전원에게 나가서다. 그 부분은 세는 것으로 잡을 수 없으므로
+	 * {@link #시련_실행기는_팀_소리를_자리에_놓지_않는다} 가 따로 붙들고 있다.
+	 */
+	@Test
+	void 넷이면_저마다_정확히_한_번_듣는다() {
+		List<String> team = List.of("가", "나", "다", "라");
+		List<String> heard = new ArrayList<>();
+
+		int sent = TrialWarning.eachListener(team, member -> false, heard::add);
+
+		assertEquals(4, sent, "넷인데 " + sent + "장이 나갔다");
+		assertEquals(team, heard, "누군가 빠졌거나 두 번 들어갔다");
+	}
+
+	@Test
+	void 관전자는_듣지_않는다() {
+		List<String> team = List.of("산 사람", "관전자", "산 사람2");
+		List<String> heard = new ArrayList<>();
+
+		int sent = TrialWarning.eachListener(team, "관전자"::equals, heard::add);
+
+		assertEquals(2, sent);
+		assertEquals(List.of("산 사람", "산 사람2"), heard,
+				"관전자는 판에 끼어들지 않는 사람이다 — 피해·판정 쪽이 이미 같은 규칙을 쓴다");
+	}
+
+	@Test
+	void 같은_사람이_두_번_들어와도_한_번만_듣는다() {
+		String twice = "같은 사람";
+		List<String> heard = new ArrayList<>();
+
+		int sent = TrialWarning.eachListener(List.of(twice, "다른 사람", twice),
+				member -> false, heard::add);
+
+		assertEquals(2, sent, "명단이 중복을 들고 와도 「사람마다 한 번」은 여기서 지켜져야 한다");
+		assertEquals(List.of(twice, "다른 사람"), heard);
+	}
+
+	@Test
+	void 아무도_없으면_아무_일도_안_한다() {
+		List<String> heard = new ArrayList<>();
+		assertEquals(0, TrialWarning.<String>eachListener(null, member -> false, heard::add));
+		assertEquals(0,
+				TrialWarning.eachListener(List.<String>of(), member -> false, heard::add));
+		assertTrue(heard.isEmpty());
+	}
+
+	/**
+	 * 사람 하나에게 직접 보내는 길이 26.3 에 <b>그 모양 그대로</b> 있는지.
+	 *
+	 * <p>{@link TrialWarning#playEach} 가 이 생성자 하나에 매달려 있다. 판이 올라 인자가 바뀌면
+	 * 컴파일이 먼저 깨지겠지만, 그때 <b>왜</b> 이 모양이어야 하는지를 여기서 읽을 수 있어야 한다.
+	 */
+	@Test
+	void 소리_꾸러미를_사람에게_직접_보낼_길이_있다() {
+		assertDoesNotThrow(() -> ClientboundSoundPacket.class.getConstructor(
+						Holder.class, SoundSource.class,
+						double.class, double.class, double.class,
+						float.class, float.class, long.class),
+				"사람마다 보내는 길이 사라졌다. 26.3 의 생성자를 javap 로 다시 확인할 것");
+	}
+
+	/**
+	 * {@code ServerPlayer.playNotifySound} 는 <b>없다.</b>
+	 *
+	 * <p>「사람에게만 소리를 내려면 그런 게 있지 않나」가 이 수정에서 가장 먼저 나온 생각이었고,
+	 * 26.3 에는 없다는 것을 클래스 파일로 확인했다. 없다는 사실을 시험으로 적어 두지 않으면
+	 * 다음 사람이 같은 자리를 다시 뒤진다. <b>생기더라도 이 자리를 대체하지 못한다</b> —
+	 * {@code SoundSource} 를 우리가 고를 수 없기 때문이다.
+	 */
+	@Test
+	void ServerPlayer_에는_혼자_듣는_소리가_없다() {
+		for (Method method : ServerPlayer.class.getMethods()) {
+			assertNotEquals("playNotifySound", method.getName(),
+					"26.3 에 없다고 적어 둔 것이 생겼다. TrialWarning.playEach 의 설명을 고칠 것 —"
+							+ " 다만 SoundSource 를 못 고르므로 그대로 쓸 수는 없다");
+		}
+	}
+
+	/**
+	 * <b>왜</b> {@code level.playSound} 로는 안 되는가를 바닐라 쪽에 못박아 둔다.
+	 *
+	 * <p>{@code playSound} → {@code playSeededSound} → {@code PlayerList.broadcast} 인데, 그
+	 * {@code broadcast} 가 <b>반경과 차원을 받는다</b>는 것이 겹침의 원인 전부다. 받는 사람이
+	 * 하나가 아니라 「그 반경 안의 전원」이라는 뜻이라, 사람마다 한 번씩 부르면 사람 수의 제곱만큼
+	 * 소리가 난다.
+	 */
+	@Test
+	void 자리에_놓는_소리는_반경_안_전원에게_나간다() {
+		Method broadcast = assertDoesNotThrow(() -> PlayerList.class.getMethod("broadcast",
+						Player.class, double.class, double.class, double.class, double.class,
+						ResourceKey.class, Packet.class),
+				"이 서술자가 사라졌다면 겹침의 근거도 다시 확인할 것");
+		assertEquals(double.class, broadcast.getParameterTypes()[4],
+				"다섯째 인자가 반경이다. 한 사람이 아니라 범위를 받는다는 것이 요점");
+	}
+
+	/**
+	 * 팀 전체에게 알리던 카드가 <b>자리에 놓는 소리로 돌아가지 않았는지.</b>
+	 *
+	 * <p>이 다섯은 소리가 전부 「팀에게 한 번 알린다」뿐이라, 자리에 놓는 형태가 한 줄이라도
+	 * 있으면 그것이 곧 되돌아간 것이다. 되돌아가도 <b>컴파일도 로그도 조용하고</b> 게임에서
+	 * 소리가 조금 커질 뿐이라 사람 눈으로는 못 잡는다 — 이 저장소가 파티클 사거리에서 이미 같은
+	 * 종류의 사고를 겪었고, 그래서 같은 수법으로 붙든다.
+	 *
+	 * <p>나머지 카드는 여기 넣지 않았다. 「한 사람이 맞았다」·「저 자리가 터졌다」처럼 <b>자리에
+	 * 놓는 것이 맞는</b> 소리를 함께 들고 있어서다({@code TrialLandingShock.strike} 등).
+	 */
+	@Test
+	void 시련_실행기는_팀_소리를_자리에_놓지_않는다() throws IOException {
+		for (Class<?> type : new Class<?>[] {TrialCrystalLink.class, TrialCrystalOvercharge.class,
+				TrialEndRain.class, TrialNightHost.class, TrialHotbarLock.class}) {
+			String bytes = classBytes(type);
+			assertFalse(bytes.contains(PLACED_SOUND) || bytes.contains(PLACED_SOUND_HOLDER),
+					type.getSimpleName() + " 가 자리에 소리를 놓는다. 팀원 루프 안에서 부르면"
+							+ " PlayerList.broadcast 가 반경 안의 전원에게 보내므로 모여 있는 넷이"
+							+ " 각자 네 겹으로 듣는다 — TrialWarning.playEach 를 쓸 것");
+			assertTrue(bytes.contains("playEach"),
+					type.getSimpleName() + " 가 공용 도우미를 쓰지 않는다. 실행기마다 제 것을 들면"
+							+ " 다음에 또 한쪽만 고쳐진다");
+		}
+	}
+
+	/**
+	 * 고리가 <b>사람마다 다른 순간에</b> 닿는 카드는 경고음도 사람마다여야 한다.
+	 *
+	 * <p>이 여섯은 남은 시간이 사람마다 다르다. 자리에 놓는 {@link TrialWarning#sound} 를 팀원
+	 * 루프에서 부르면 겹치는 것에 더해 <b>남의 경고가 나에게 들려</b> 「지금 뛰어야 하는 것이
+	 * 나인가」가 지워진다. 그 카드의 요점 자체가 사라지는 자리라 이름으로 붙들어 둔다.
+	 */
+	@Test
+	void 사람마다_때가_다른_카드는_경고음도_사람마다다() throws IOException {
+		for (Class<?> type : new Class<?>[] {DragonFireBarrage.class, TrialCrystalOvercharge.class,
+				TrialEndRain.class, TrialEnderPulse.class, TrialEnderStorm.class,
+				TrialLandingShock.class}) {
+			String bytes = classBytes(type);
+			assertTrue(bytes.contains(SOUND_FOR_FORM),
+					type.getSimpleName() + " 가 사람마다 보내는 경고음을 쓰지 않는다");
+			assertFalse(bytes.contains(SOUND_FORM),
+					type.getSimpleName() + " 가 자리에 놓는 TrialWarning.sound 로 돌아갔다."
+							+ " 그쪽은 반경 안의 전원에게 나가 남의 경고까지 들린다");
 		}
 	}
 

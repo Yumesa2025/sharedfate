@@ -658,15 +658,17 @@ public final class TrialDryWorld {
 				"[시련] 메마른 세계 — 엔드의 물과 용암이 증발했습니다."
 						+ " 들고 있던 물·용암·서리눈 양동이가 비었고, 전투가 끝날 때까지"
 						+ " 엔드에서는 물·용암·서리눈을 놓을 수 없습니다.");
+		// 글자는 차원을 가리지 않고 보내지만 소리는 엔드에 서 있는 사람만 듣는다. 소리를 뒤로
+		// 미뤄 모으는 이유는 TrialWarning.playEach 가 한 번 부를 때 씨앗도 하나여서다 — 전원이
+		// 같은 변주를 듣는다. 사람마다 playSound 를 부르면 안 되는 까닭은 그쪽 설명에 있다.
+		List<ServerPlayer> here = new ArrayList<>(members.size());
 		for (ServerPlayer member : members) {
 			member.sendSystemMessage(line);
-			if (member.level() != end) {
-				continue;
+			if (member.level() == end) {
+				here.add(member);
 			}
-			Vec3 at = member.position();
-			end.playSound(null, at.x, at.y, at.z, SoundEvents.FIRE_EXTINGUISH, SoundSource.HOSTILE,
-					1.0F, 0.7F);
 		}
+		TrialWarning.playEach(end, here, SoundEvents.FIRE_EXTINGUISH, 1.0F, 0.7F);
 	}
 
 	/**

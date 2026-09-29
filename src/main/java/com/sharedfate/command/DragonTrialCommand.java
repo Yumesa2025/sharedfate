@@ -147,8 +147,14 @@ public final class DragonTrialCommand {
 		}
 		DragonTrialSession session = DragonTrialManager.sessionOf(team.teamId());
 		if (session == null) {
-			source.sendSuccess(() -> Component.literal(
-					"전투가 열려 있지 않습니다. 엔드에 들어가거나 /shareteam trialtest start 를 쓰십시오."),
+			// 시련이 꺼진 팀이면 그것부터 알린다. 기본값이 끔이라 「전투가 안 열렸다」보다
+			// 「이 팀은 애초에 시련을 안 쓴다」가 훨씬 흔한 원인이다.
+			boolean trials = trialsEnabled(source.getServer(), team);
+			source.sendSuccess(() -> Component.literal(trials
+					? "전투가 열려 있지 않습니다. 엔드에 들어가거나"
+							+ " /shareteam trialtest start 를 쓰십시오."
+					: "이 팀은 드래곤 시련이 꺼져 있습니다 (기본값이 끔입니다)."
+							+ "\n엔드에 들어가도 카드가 뜨지 않고 드래곤은 바닐라 체력 200 입니다."),
 					false);
 			return 1;
 		}
@@ -179,6 +185,16 @@ public final class DragonTrialCommand {
 		if (SharedFateMod.config.dragonHealthPerMember <= 0) {
 			source.sendFailure(Component.literal(
 					"dragonHealthPerMember 가 0 이라 강화가 꺼져 있습니다."));
+			return 0;
+		}
+		// 시련을 끈 팀에게 전투를 열어 봐야 바닐라 드래곤전이 열릴 뿐이고, 그 뒤에 치는
+		// give·fire 는 전부 조용히 거짓을 돌려준다. 여기서 막지 않으면 「명령은 되는데 카드가
+		// 안 걸린다」로 시간을 버린다 — 막고, 무엇을 해야 하는지까지 적는다.
+		if (!trialsEnabled(source.getServer(), team)) {
+			source.sendFailure(Component.literal(
+					"이 팀은 드래곤 시련이 꺼져 있습니다 (기본값이 끔입니다)."
+							+ "\n시련은 팀을 만들 때만 정합니다. 팀 화면의 「드래곤 시련」을 켜거나"
+							+ " /shareteam create ... dragontrials on <이름> 으로 다시 만드세요."));
 			return 0;
 		}
 		DragonTrialManager.forceStart(source.getServer(), team);
@@ -515,6 +531,17 @@ public final class DragonTrialCommand {
 					.append(" — ").append(trigger.label());
 		}
 		return body.toString();
+	}
+
+	/** 이 팀이 드래곤 시련을 쓰기로 했는가. 팀 상태를 못 찾으면 기본값과 같은 쪽(끔)이다. */
+	private static boolean trialsEnabled(@Nullable MinecraftServer server,
+			@Nullable ShareTeam team) {
+		if (server == null || team == null) {
+			return false;
+		}
+		com.sharedfate.team.TeamState state =
+				TeamManager.get(server).stateByTeamId(team.teamId());
+		return state != null && state.dragonTrialsEnabled;
 	}
 
 	private static @Nullable ShareTeam teamOf(CommandSourceStack source) {

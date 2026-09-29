@@ -5,7 +5,6 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -16,9 +15,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,6 +219,9 @@ public final class TrialHotbarLock {
 		long cycle = TrialRisks.elapsedSinceGrant(now, granted) / interval;
 		boolean resend = heartbeat(now, granted);
 
+		// 이번 틱에 칸이 옮겨진 사람들. 소리는 루프 안에서 내지 않고 여기 모아 뒤에서 한 번에
+		// 낸다 — 까닭은 announce 설명에 적어 두었다.
+		List<ServerPlayer> moved = new ArrayList<>(members.size());
 		for (ServerPlayer member : members) {
 			UUID memberId = member.getUUID();
 			Lock lock = LOCKS.get(memberId);
@@ -227,7 +229,7 @@ public final class TrialHotbarLock {
 				// 지난 칸을 피해 뽑는다. 자물쇠가 없는 사람(첫 틱·재접속)은 피할 것이 없다.
 				int mask = move(end.getRandom(), slots, lock == null ? 0 : lock.mask());
 				LOCKS.put(memberId, new Lock(mask, cycle, now));
-				announce(end, member);
+				moved.add(member);
 				send(member, mask);
 				continue;
 			}
@@ -237,6 +239,7 @@ public final class TrialHotbarLock {
 				send(member, lock.mask());
 			}
 		}
+		announce(end, moved);
 		// 오래 틱을 못 받은 자물쇠를 버린다. 접속을 끊은 사람과 사라진 팀이 여기서 함께 정리된다.
 		//
 		// ⚠ 이번 명단에 없는 열쇠를 지우는(retainAll) 방식을 쓰지 말 것. 이 맵은 팀이 아니라
@@ -337,19 +340,29 @@ public final class TrialHotbarLock {
 	// ------------------------------------------------------------------ 알리기
 
 	/**
-	 * 칸이 옮겨 갔다고 알리는 소리.
+	 * 칸이 옮겨 갔다고 알리는 소리. 이번 틱에 <b>실제로 옮겨진 사람들</b>만 받는다.
 	 *
-	 * <p>사람마다 굳는 칸이 다르므로 <b>사람 자리에서</b> 울린다. 팀원이 옆에 있으면 남의 소리도
-	 * 들리는데, 같은 틱에 모두가 함께 굳으므로 그것이 곧 「지금 전원이 옮길 때」라는 신호가 된다.
+	 * <p>사람마다 굳는 칸이 다르므로 <b>사람마다 그 자리에서</b> 울린다. 같은 틱에 모두가 함께
+	 * 굳으므로 넷이 동시에 한 번씩 들으면 그것이 곧 「지금 전원이 옮길 때」라는 신호가 된다.
+	 *
+	 * <h2>⚠ 루프 안에서 한 사람씩 내지 않는다</h2>
+	 *
+	 * <p>전에는 이 메서드가 {@code ServerPlayer} 하나를 받았고 {@link #tick} 의 팀원 루프 안에서
+	 * 불렸다. 그런데 그 안에서 {@code end.playSound} 를 부르면 <b>자리에 소리를 놓는 것</b>이라
+	 * 반경 안의 전원에게 나간다 — 옛 주석이 「팀원이 옆에 있으면 남의 소리도 들린다」고 적어 둔
+	 * 그것이고, 같은 틱에 넷이 함께 굳으므로 실제로는 <b>각자 네 겹</b>이었다. 사슬 소리가 네
+	 * 번 겹치면 「묶인다」가 아니라 소음이다.
+	 *
+	 * <p>지금은 옮겨진 사람을 모아 {@link TrialWarning#playEach} 를 <b>한 번</b> 부른다. 목록으로
+	 * 받는 모양 자체가 「루프 안에서 부르면 안 된다」를 말한다.
 	 *
 	 * <p>{@code CHAIN_PLACE} 를 낮게 튼 것은 「묶인다」에 가장 가까운 바닐라 소리라서다. 시련의
-	 * 소리는 {@code SoundSource.HOSTILE} 로 통일돼 있다({@code TrialWarning.sound}) — 사람이
-	 * 소리 설정에서 시련만 따로 줄이거나 키울 수 있어야 한다.
+	 * 소리는 {@code SoundSource.HOSTILE} 로 통일돼 있고, 그 규약은 이제 {@code playEach} 가
+	 * 인자로 열어 두지 않는 것으로 지킨다 — 사람이 소리 설정에서 시련만 따로 줄이거나 키울 수
+	 * 있어야 한다.
 	 */
-	private static void announce(ServerLevel end, ServerPlayer member) {
-		Vec3 at = member.position();
-		end.playSound(null, at.x, at.y, at.z, SoundEvents.CHAIN_PLACE, SoundSource.HOSTILE,
-				0.8F, 0.6F);
+	private static void announce(ServerLevel end, List<ServerPlayer> moved) {
+		TrialWarning.playEach(end, moved, SoundEvents.CHAIN_PLACE, 0.8F, 0.6F);
 	}
 
 	/**

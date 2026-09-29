@@ -83,9 +83,11 @@ class TrialEnderStormTest {
 	 * ⚠ <b>여러 번 연속으로 밀려도</b> 섬 안이다.
 	 *
 	 * <p>넉백이 「닿아 있는 동안 계속」으로 바뀐 뒤 새로 필요해진 시험이다. 한 번이 안전해도 계속
-	 * 밀리면 누적되어 조금씩 밖으로 나갈 수 있다 — 소용돌이 하나를 통과하는 데 80틱이 걸리고
-	 * {@code SHOVE_INTERVAL_TICKS} 마다 미므로 <b>한 소용돌이에 여덟 번</b>, 소용돌이가 둘이고
-	 * 폭풍이 반복되므로 한 전투에서는 훨씬 여러 번이다.
+	 * 밀리면 누적되어 조금씩 밖으로 나갈 수 있다 — 소용돌이 하나를 통과하는 데 120틱이 걸리고
+	 * {@code SHOVE_INTERVAL_TICKS} 마다 미므로 <b>한 소용돌이에 열다섯 번</b>, 소용돌이가 둘이고
+	 * 폭풍이 반복되므로 한 전투에서는 훨씬 여러 번이다. <b>반경을 6 으로 키우고 간격을 8 로
+	 * 줄이면서 여덟 번이던 것이 열다섯 번이 됐다</b> — 아래에서 스무 번을 훑는 것이 그래서 아직
+	 * 최악 위다.
 	 *
 	 * <p>그래서 목적지를 도로 출발점에 넣어 <b>스무 번 연속</b>으로 민다. 누적되지 않는 것이
 	 * {@code pushDistance} 가 「출발점 기준 거리」가 아니라 <b>「목적지가 천장 안」</b>으로
@@ -309,28 +311,77 @@ class TrialEnderStormTest {
 	 * <p>사람이 고쳐 달라고 한 것이 이것이다 — 「한번 밀쳐지면 끝」. 넉백을 {@code swept} 에 도로
 	 * 넣으면 그 상태로 돌아간다. 반대로 피해를 명단에서 빼면 80틱 통과에서 160 이 들어가 즉사다.
 	 *
-	 * <p>여기서는 <b>간격</b>을 값으로 센다. 통과 시간(80틱) 안에 여러 번 들어가야 「계속」이고,
+	 * <p>여기서는 <b>간격</b>을 값으로 센다. 통과 시간(120틱) 안에 여러 번 들어가야 「계속」이고,
 	 * 매 틱은 아니어야 사람이 조작을 할 수 있다.
+	 *
+	 * <h2>⚠ 0.4초가 하한이 아니다 — 하한은 6틱이다</h2>
+	 *
+	 * <p>사람이 처음 <b>0.2초(4틱)</b>를 말했다가 「그러면 조작이 아예 안 된다」를 듣고 0.4초로
+	 * 물러섰다. 「조금 더 자주」는 언제든 다시 나올 요청이라, <b>그때 멈춰 세우는 것이 이
+	 * 시험</b>이다.
 	 */
 	@Test
 	void 닿아_있는_동안_여러_번_밀린다() {
 		double perTick = TrialEnderStorm.blocksPerTick(SPEED_PER_SECOND);
 		double crossing = TrialEnderStorm.VORTEX_RADIUS * 2.0 / perTick;
 		int interval = TrialEnderStorm.SHOVE_INTERVAL_TICKS;
+		assertEquals(8, interval, "사람이 「0.5초말고 일단 0.4초로해봐」라고 정한 값이다");
 		assertTrue(interval > 1,
 				"매 틱 밀면 사람이 조작을 아예 못 한다 — 이 카드가 요구하는 「옆으로 빠져나가기」를"
 						+ " 할 수 없는 카드가 된다");
 		assertTrue(crossing / interval >= 4.0,
 				"통과하는 " + crossing + "틱 동안 " + (crossing / interval) + "번밖에 안 밀린다 —"
 						+ " 「닿아 있는 동안 계속」이라 하기 어렵다");
+
 		// 한 번 밀린 몸은 바닥 마찰 0.546 으로 다섯 틱이면 이동량의 95% 를 쓴다. 그보다 자주 밀면
 		// 앞의 밀림이 살아 있는 채로 덮어써 속도가 끊기지 않고, 그것이 곧 조작 불능이다.
 		double leftAfterFive = Math.pow(0.546, 5);
 		assertTrue(leftAfterFive < 0.05, "0.546⁵ = " + leftAfterFive);
-		assertTrue(interval >= 5 + TrialEnderPulse.JUMP_WINDOW_TICKS,
-				"밀림이 멎는 데 5틱, 사람이 반응하는 데 "
-						+ TrialEnderPulse.JUMP_WINDOW_TICKS + "틱이다. 그보다 짧으면 반응이"
-						+ " 들어갈 자리가 없다");
+		assertEquals(6, TrialEnderStorm.SHOVE_MIN_INTERVAL_TICKS,
+				"마찰이 가라앉는 5틱 바로 위다 — 5 이하면 밀림이 겹쳐 속도가 한 번도 안 끊긴다");
+		assertTrue(interval >= TrialEnderStorm.SHOVE_MIN_INTERVAL_TICKS,
+				interval + "틱은 하한(" + TrialEnderStorm.SHOVE_MIN_INTERVAL_TICKS + ") 아래다."
+						+ " 사람이 처음 말한 0.2초(4틱)가 그 자리였고, 거기서는 앞의 밀림이 아직"
+						+ " 살아 있는 채로 덮어써 조작이 아예 안 된다");
+
+		// 8 = 마찰이 가라앉는 5틱 + 반응 여유 3틱. 전에는 10 = 5 + 5 였고, 그 뒤쪽 5 의 근거가
+		// 「사람의 지각·판단·입력에 0.25초」였다. 8 로 줄면서 그 여유가 3틱(0.15초)으로 깎였다 —
+		// 사람이 대가를 알고 고른 값이라 사실대로 세어 둔다.
+		int frictionTicks = 5;
+		int reaction = interval - frictionTicks;
+		assertEquals(3, reaction,
+				"반응 여유가 3틱이 아니다. 간격을 만졌으면 상수 설명의 「5 + 3」도 함께 고칠 것");
+		assertTrue(reaction < TrialEnderPulse.JUMP_WINDOW_TICKS,
+				"반응 여유가 " + reaction + "틱이라 사람이 한 번 반응하는 데 드는 "
+						+ TrialEnderPulse.JUMP_WINDOW_TICKS + "틱보다 짧다. 이것이 0.4초의 대가고,"
+						+ " 여기가 뒤집혔다면 간격이 10 으로 되돌아간 것이니 상수 설명도 되돌릴 것");
+		assertTrue(reaction > 0, "반응 여유가 0 이면 밀림이 멎는 그 틱에 다시 밀린다");
+	}
+
+	/**
+	 * ⚠ <b>반경을 6 으로 키우면서 함께 움직인 것들.</b>
+	 *
+	 * <p>사람이 「폭풍크기는 50프로 키워도 좋을거같아」라고 한 것은 크기 하나지만, 이 카드에서
+	 * 반경은 <b>통과 시간과 밀리는 횟수를 함께 끌고 온다.</b> 그 셋이 어긋나면 클래스 설명과
+	 * 실제가 갈라지므로 값에서 직접 센다.
+	 */
+	@Test
+	void 반경_6_이_통과_시간과_밀리는_횟수를_끌고_온다() {
+		assertEquals(6.0, TrialEnderStorm.VORTEX_RADIUS,
+				"사람이 4 에서 50% 키우라고 했다 — 여기를 되돌리면 아래 숫자가 전부 어긋난다");
+
+		double perTick = TrialEnderStorm.blocksPerTick(SPEED_PER_SECOND);
+		double crossing = TrialEnderStorm.VORTEX_RADIUS * 2.0 / perTick;
+		assertEquals(120.0, crossing, 1.0E-9, "지름 12칸을 초당 2칸으로 — 120틱이다(전에는 80)");
+
+		int shoves = (int) (crossing / TrialEnderStorm.SHOVE_INTERVAL_TICKS);
+		assertEquals(15, shoves,
+				"가만히 서 있으면 " + shoves + "번 밀린다. 전에는 80틱을 10틱마다라 여덟 번이었다 —"
+						+ " 클래스 설명의 숫자와 다르면 한쪽만 고쳐진 것이다");
+
+		// 밀리는 횟수가 늘어도 섬 밖으로는 못 나간다. 그 증명은 위의 연속 넉백 시험이 한다.
+		assertTrue(shoves < 20, "위의 「여러 번 연속으로 밀어도 섬 안이다」가 스무 번을 훑는다 —"
+				+ " 실제 횟수가 그보다 많아지면 그 시험이 더 이상 최악을 보지 않는다");
 	}
 
 	/** 처음 닿은 틱에 밀고, 그 뒤로는 간격마다 민다. */
@@ -350,15 +401,16 @@ class TrialEnderStormTest {
 	/**
 	 * 통과하는 데 여러 틱이 걸린다 — 그래서 <b>피해</b> 명단이 없으면 즉사한다.
 	 *
-	 * <p>지름 8칸을 초당 2칸으로 지나가므로 80틱이다. 매 틱 2씩 들어가면 160 이고 팀 공유 체력은
-	 * 20 이다. 이 시험은 그 숫자를 값에서 직접 세어, 「무적시간이 알아서 걸러 주겠지」로 명단을
-	 * 지우는 사람 앞에 세워 둔다.
+	 * <p>지름 12칸을 초당 2칸으로 지나가므로 120틱이다. 매 틱 2씩 들어가면 240 이고 팀 공유
+	 * 체력은 20 이다. 반경을 4 에서 6 으로 키우면서 이 값이 160 에서 240 으로 늘었다 —
+	 * <b>명단이 하는 일이 그만큼 커졌다.</b> 이 시험은 그 숫자를 값에서 직접 세어, 「무적시간이
+	 * 알아서 걸러 주겠지」로 명단을 지우는 사람 앞에 세워 둔다.
 	 */
 	@Test
 	void 명단이_없으면_통과하는_동안_즉사한다() {
 		double perTick = TrialEnderStorm.blocksPerTick(SPEED_PER_SECOND);
 		double crossing = TrialEnderStorm.VORTEX_RADIUS * 2.0 / perTick;
-		assertEquals(80.0, crossing, 1.0E-9, "지름 8칸을 초당 2칸으로 — 80틱이다");
+		assertEquals(120.0, crossing, 1.0E-9, "지름 12칸을 초당 2칸으로 — 120틱이다");
 		float unguarded = (float) crossing * DAMAGE;
 		assertTrue(unguarded > PerkHealthRules.effectiveMaxHealth(null),
 				"매 틱 물으면 " + unguarded + " 가 들어간다. 팀 체력은 "
@@ -567,10 +619,19 @@ class TrialEnderStormTest {
 				"건너오는 것이 곧 예고다. 흩어질 시간보다 짧으면 이 카드에는 예고가 없는 셈이다");
 	}
 
+	/**
+	 * 공용 경고를 쓰되 <b>사람마다 보내는</b> 쪽이어야 한다.
+	 *
+	 * <p>자리에 놓는 {@code TrialWarning.sound} 가 아니라 {@code TrialWarning.soundFor} 다.
+	 * 소용돌이가 닿는 순간이 사람마다 다른 카드라, 자리에 놓으면 반경 안의 전원에게 나가
+	 * <b>남의 경고까지 들리고 겹쳐 들린다.</b> 서술자를 바꿔 적은 이유가 그것이다 — 「공용 경고를
+	 * 쓴다」는 뜻은 그대로다.
+	 */
 	@Test
 	void 경고_소리는_공용_경고를_쓴다() {
 		assertTrue(classBytes().contains("(Lnet/minecraft/server/level/ServerLevel;"
-						+ "Lnet/minecraft/world/phys/Vec3;Lcom/sharedfate/sync/TrialWarning$Stage;)V"),
+						+ "Lnet/minecraft/server/level/ServerPlayer;"
+						+ "Lcom/sharedfate/sync/TrialWarning$Stage;)V"),
 				"자막을 걷어낸 뒤로 소리는 「무엇이 언제 오는가」를 말하는 두 갈래 중 하나다");
 	}
 
@@ -620,6 +681,10 @@ class TrialEnderStormTest {
 		assertEquals(COUNT * (TrialWarning.ringPoints(TrialEnderStorm.VORTEX_RADIUS)
 						+ TrialEnderStorm.COLUMN_POINTS), points,
 				"점 수를 값에서 뽑지 않으면 반경이나 개수를 올릴 때 예산이 조용히 깨진다");
+		assertEquals(232, points,
+				"반경을 4 에서 6 으로 키우면서 바닥 고리가 51 에서 76 이 되어 소용돌이당 116점,"
+						+ " 둘이 232 다(전에는 182). 여기가 달라졌으면 반경이나 기둥 점 수가"
+						+ " 바뀐 것이니 상수 설명도 함께 고칠 것");
 	}
 
 	/**
