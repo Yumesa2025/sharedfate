@@ -256,6 +256,9 @@ public final class DragonTrialCommand {
 			case TrialCatalog.Risk.DelayedStrike strike -> {
 				StringBuilder line = new StringBuilder("예고 타격 · ")
 						.append(strike.aim() == TrialCatalog.Risk.Aim.TRAIL ? "발자국" : "아무 곳")
+						// 연출을 함께 찍는다. 값을 조정하는 쪽이 「이 카드가 번개인지 폭발인지」를
+						// list 한 줄로 알아야 한다 — 그것이 어긋난 것이 낙뢰 카드의 결함이었다.
+						.append(" · ").append(impact(strike.impact()))
 						.append(" · 간격 ").append(ticks(strike.interval()))
 						.append(" · 피해 ").append(strike.damage())
 						.append(" · 반경 ").append(strike.radius()).append("블록")
@@ -293,6 +296,19 @@ public final class DragonTrialCommand {
 			case TrialCatalog.Risk.CrystalRevive revive -> "크리스탈 부활 · "
 					+ revive.count() + "개 · 연출 " + ticks(revive.showTicks())
 					+ (revive.heal() > 0.0F ? " · 개당 회복 " + revive.heal() : "");
+		};
+	}
+
+	/**
+	 * 떨어진 자리에 무엇이 보이는가.
+	 *
+	 * <p>{@code default} 를 두지 않는다. {@code Impact} 를 늘리고 여기를 안 고치면 <b>컴파일이
+	 * 거절한다</b> — 새 연출이 목록에 옛 이름으로 조용히 뜨는 것을 막는다.
+	 */
+	private static String impact(TrialCatalog.Risk.Impact impact) {
+		return switch (impact) {
+			case EXPLOSION -> "폭발";
+			case LIGHTNING -> "번개";
 		};
 	}
 

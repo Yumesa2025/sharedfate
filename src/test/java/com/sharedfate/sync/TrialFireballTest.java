@@ -4,6 +4,10 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -210,10 +214,71 @@ class TrialFireballTest {
 		assertEquals(0, TrialFireball.trailSamples(0.0), "아직 출발점이면 꼬리가 없다");
 		assertEquals(0, TrialFireball.trailSamples(-5.0));
 		assertTrue(TrialFireball.trailSamples(10.0) > 0);
-		assertTrue(TrialFireball.trailSamples(200.0) <= 24,
-				"아레나 반대편 기둥이면 선이 100 칸이 넘는다. 상한이 없으면 파티클만으로 틱이 밀린다");
-		assertTrue(TrialFireball.trailSamples(300.0) == TrialFireball.trailSamples(200.0),
+
+		// 상한은 「약속한 길이 ÷ 허용 간격」이다. 숫자를 박아 두면 둘 중 하나만 고쳐질 때
+		// 이 시험이 그것을 놓친다.
+		int cap = (int) Math.ceil(TrialFireball.TRAIL_KEPT_LENGTH / TrialFireball.TRAIL_MAX_GAP);
+		assertTrue(TrialFireball.trailSamples(500.0) <= cap,
+				"상한이 없으면 먼 기둥의 한 발이 파티클만으로 틱을 민다");
+		assertEquals(TrialFireball.trailSamples(500.0), TrialFireball.trailSamples(300.0),
 				"상한에 닿은 뒤로는 더 늘지 않는다");
+	}
+
+	@Test
+	void 꼬리가_길어지면_점도_따라_늘어난다() {
+		int previous = 0;
+		for (double travelled = 0.5; travelled <= 60.0; travelled += 0.5) {
+			int points = TrialFireball.trailSamples(travelled);
+			assertTrue(points >= previous,
+					"날아온 거리가 느는데 점이 줄면 선이 뒤로 끊긴다: " + travelled);
+			previous = points;
+		}
+		assertTrue(TrialFireball.trailSamples(50.0) > TrialFireball.trailSamples(10.0));
+	}
+
+	@Test
+	void 궤적_점_사이가_선으로_읽힐_만큼만_벌어진다() {
+		// 상한에 걸린 뒤로는 점이 안 늘어 간격만 벌어진다. 어디까지 벌어지는지를 세어 두지 않으면
+		// 상한이 조용히 선을 점선으로 만든다.
+		for (double travelled = 0.1; travelled <= TrialFireball.TRAIL_KEPT_LENGTH;
+				travelled += 0.1) {
+			assertTrue(TrialFireball.trailGap(travelled) <= TrialFireball.TRAIL_MAX_GAP + 1.0E-9,
+					"길이 " + travelled + " 에서 점이 " + TrialFireball.trailGap(travelled)
+							+ " 블록씩 벌어진다 — 선이 아니라 점선이다");
+		}
+	}
+
+	@Test
+	void 바닥에_선_사람과_기둥_꼭대기_사이에서도_선으로_읽힌다() {
+		// 26.3 의 EndSpikeFeature 는 기둥 열 개를 반경 42 원 위에 세우고 높이를 76 + 3n 으로 준다.
+		// 사람은 y 63 쯤이라, 섬 가운데에 선 사람에게 가장 가까운 기둥까지가 44~58 블록이다.
+		Vec3 pillar = new Vec3(42.0, 93.0, 0.0);
+		Vec3 aim = new Vec3(0.0, 63.0, 0.0);
+		double length = pillar.distanceTo(aim);
+		assertTrue(length > 32.0,
+				"이 거리가 32 를 안 넘으면 이 카드에 사거리 문제가 없다는 뜻이다. 실제 값: " + length);
+		assertTrue(length <= TrialFireball.TRAIL_KEPT_LENGTH,
+				"약속한 길이 밖이면 간격을 보장하지 못한다. 실제 값: " + length);
+		assertTrue(TrialFireball.trailGap(length) <= TrialFireball.TRAIL_MAX_GAP + 1.0E-9,
+				"실제 값: " + TrialFireball.trailGap(length));
+	}
+
+	@Test
+	void 궤적은_긴_거리로_나간다() throws IOException {
+		// 이 카드가 예고하는 것은 「어느 기둥에서 출발했는가」다. 짧은 형태로 되돌리면 출발점이
+		// 32 블록 밖이라 선의 앞부분이 통째로 안 그려지고, 그래도 빌드와 로그는 조용하다.
+		String bytes;
+		try (InputStream in = TrialFireball.class
+				.getResourceAsStream("/com/sharedfate/sync/TrialFireball.class")) {
+			if (in == null) {
+				throw new IOException("TrialFireball 의 클래스 파일을 찾지 못했다");
+			}
+			bytes = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+		}
+		assertTrue(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDD)I"),
+				"긴 형태를 한 번도 부르지 않는다");
+		assertFalse(bytes.contains("(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I"),
+				"짧은 형태로 되돌아갔다 — 기둥에서 출발하는 장면이 아무에게도 안 보인다");
 	}
 
 	// ------------------------------------------------------------------ 착탄 판정

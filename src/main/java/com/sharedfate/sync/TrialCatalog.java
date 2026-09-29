@@ -19,9 +19,14 @@ import java.util.Set;
  *
  * <h2>카드는 룰렛으로 뽑는다</h2>
  *
- * <p>셋을 띄워 고르게 하지 않는다. 자리가 터지면 이름이 돌다가 멈추고, 멈춘 것이 그 판의
- * 시련이다. 새 화면이 필요 없으므로 <b>통신 규약이 29 그대로</b>이고, 카드가 한 장뿐일 때도
- * 굴러간다.
+ * <p>셋을 띄워 고르게 하지 않는다. 자리가 터지고 15초 뒤에 <b>판이 멈추고</b> 이름이 돌다가
+ * 멈추며, 멈춘 것이 그 판의 시련이다. 카드가 한 장뿐일 때도 굴러간다 — 고르게 하려면 자리당
+ * 최소 세 장이 있어야 하는데 카드를 채워 가는 동안에는 맞출 수 없는 조건이다.
+ *
+ * <p>처음에는 타이틀 글자만 갈아 끼워 규약을 올리지 않았다. 그런데 <b>드래곤이 때리는 중에
+ * 화면 위로 지나가는 글자는 읽히지 않았다.</b> 무엇을 받았는지 모른 채 싸우게 되고 전멸은 곧
+ * 월드 삭제라, 증강처럼 판을 멈추고 화면을 띄우기로 했다({@link TrialFreeze}). 그 대가로
+ * <b>통신 규약이 30</b> 이다.
  *
  * <h2>풀을 나누는 이유</h2>
  *
@@ -91,9 +96,26 @@ public final class TrialCatalog {
 		}
 
 		/**
+		 * 무엇이 떨어지는가.
+		 *
+		 * <h2>왜 값으로 가르는가</h2>
+		 *
+		 * <p>연출이 갈리지 않아 「낙뢰」가 <b>번개 대신 폭발 파티클과 폭발음</b>으로 나갔다. 카드
+		 * 이름과 실제로 보이는 것이 달랐고, 사람은 TNT 가 터지는 줄 알았다. 실행기가 카드 id 를
+		 * 보고 연출을 고르게 만들면 카드를 늘릴 때마다 같은 실수가 되풀이되므로 값으로 적는다.
+		 */
+		enum Impact {
+			/** 그 자리가 터진다. 폭발 파티클과 폭발음. */
+			EXPLOSION,
+			/** 진짜 번개가 내리친다. */
+			LIGHTNING
+		}
+
+		/**
 		 * 예고한 자리에 무언가 떨어진다.
 		 *
 		 * @param aim      발자국을 노리는가 아무 곳인가
+		 * @param impact   떨어진 자리에서 무엇이 보이고 들리는가. 실행기가 이 값으로 갈린다
 		 * @param interval 떨어지는 간격(틱)
 		 * @param lookback 몇 틱 전 발자국을 노리는가. {@link Aim#RANDOM_SPOT} 이면 쓰지 않는다
 		 * @param damage   반경 안에 남아 있는 사람이 받는 피해
@@ -102,8 +124,8 @@ public final class TrialCatalog {
 		 *                 띄우는 동안은 낙하 피해를 면제한다 — 이 카드의 위험은 노출이지 낙사가 아니다
 		 * @param count    한 번에 몇 군데인가. {@link Aim#TRAIL} 이면 <b>무작위로 뽑는 사람 수</b>다
 		 */
-		record DelayedStrike(Aim aim, int interval, int lookback, float damage, double radius,
-				double launch, int count) implements Risk {
+		record DelayedStrike(Aim aim, Impact impact, int interval, int lookback, float damage,
+				double radius, double launch, int count) implements Risk {
 		}
 
 		/**
@@ -201,7 +223,12 @@ public final class TrialCatalog {
 			new Trial("sharedfate:ground_strike", "자리 폭격",
 					"12초마다 한 사람이 2초 전에 있던 자리가 터집니다. 맞으면 하늘로 떠오릅니다.",
 					POOL_ENTRY,
-					new Risk.DelayedStrike(Risk.Aim.TRAIL, 240, 40, 6.0F, 2.0, 4.0, 1)),
+					// 피해 18 은 이 카드의 천장에 가깝다. 팀 공유 체력이 20 이라 가득 찬 상태에서
+					// 한 대 맞으면 하트 1칸만 남는다 — 「즉사 메커닉 0개」는 지키지만(한 대로는
+					// 죽지 않는다) 다른 위험과 겹치면 죽는다. 여기서 조금만 더 올리면 그 순간
+					// 즉사 카드가 되므로, 다음에 이 값을 만질 사람은 20 을 넘기지 말 것.
+					new Risk.DelayedStrike(Risk.Aim.TRAIL, Risk.Impact.EXPLOSION,
+							240, 40, 18.0F, 2.0, 4.0, 1)),
 			new Trial("sharedfate:pillar_fireball", "기둥 화염구",
 					"10초마다 가장 가까운 흑요석 기둥에서 불덩이가 날아옵니다. 5초 동안 궤적이 보입니다.",
 					POOL_ENTRY,
@@ -209,7 +236,8 @@ public final class TrialCatalog {
 			new Trial("sharedfate:lightning_storm", "낙뢰",
 					"6초마다 아레나 두 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
 					POOL_MIDDLE,
-					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, 120, 0, 5.0F, 3.0, 0.0, 2)),
+					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, Risk.Impact.LIGHTNING,
+							120, 0, 5.0F, 3.0, 0.0, 2)),
 			new Trial("sharedfate:crystal_ward", "크리스탈 보호막",
 					"남은 크리스탈이 화살에 맞지 않습니다. 올라가서 깨야 합니다.",
 					POOL_FIRST_CRYSTAL,

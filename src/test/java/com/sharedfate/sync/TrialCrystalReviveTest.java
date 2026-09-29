@@ -1,5 +1,6 @@
 package com.sharedfate.sync;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -17,10 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 「부활」 카드에서 월드 없이 답이 정해지는 계산만 본다.
  *
- * <p>크리스탈 생성과 드래곤을 끌어올리는 것은 {@code ServerLevel} 이 있어야 해서 여기서 볼 수
- * 없다. 그런데 이 카드가 망가지는 길은 거의 전부 계산 쪽이다 — <b>한 카드로 두 번 되살아난다</b>,
- * <b>연출이 끝나기 전에 생긴다</b>, <b>이미 살아 있는 자리에 겹쳐 놓는다</b>, <b>사람 발밑에
- * 놓는다</b>. 전멸하면 월드가 지워지는 게임이라 이것들은 돌려 보고 발견할 수 없다.
+ * <p>크리스탈을 실제로 세우는 것과 드래곤을 끌어올리는 것은 {@code ServerLevel} 이 있어야 해서
+ * 여기서 볼 수 없다. 그런데 이 카드가 망가지는 길은 거의 전부 계산 쪽이다 — <b>한 카드로 두 번
+ * 되살아난다</b>, <b>연출이 끝나기 전에 끝난 것으로 친다</b>, <b>이미 살아 있는 자리에 겹쳐
+ * 놓는다</b>, <b>사람 발밑에 놓는다</b>, 그리고 <b>무적이 영영 안 풀린다</b>. 전멸하면 월드가
+ * 지워지는 게임이라 이것들은 돌려 보고 발견할 수 없다.
+ *
+ * <p>무적은 개체에 거는 것이라 여기서 개체를 만들 수 없지만, <b>거는 값</b>은 순수 계산이다.
+ * 그 값이 언제나 유한한 카운트다운이라는 것만 붙들면 「영영 무적」은 구조적으로 불가능해진다 —
+ * {@code Entity.commonTick} 이 매 틱 1씩 깎기 때문이다.
  */
 class TrialCrystalReviveTest {
 
@@ -28,6 +35,10 @@ class TrialCrystalReviveTest {
 	private static final int COUNT = 10;
 	private static final int SHOW_TICKS = 100;
 	private static final long GRANTED = 1000L;
+
+	/** 기둥 위 크리스탈 자리 하나와 드래곤이 머무는 중앙 상공. 빔 계산에 쓴다. */
+	private static final Vec3 SEAT = new Vec3(42.5, 77.0, 0.5);
+	private static final Vec3 PERCH = new Vec3(0.0, 133.0, 0.0);
 
 	private static TrialCatalog.Risk.CrystalRevive card() {
 		return new TrialCatalog.Risk.CrystalRevive(COUNT, SHOW_TICKS, 0.0F);
@@ -80,7 +91,7 @@ class TrialCrystalReviveTest {
 		TrialCatalog.Risk.CrystalRevive risk = card();
 		for (long now = GRANTED; now < GRANTED + SHOW_TICKS; now++) {
 			assertEquals(TrialCrystalRevive.Step.SHOW, TrialCrystalRevive.step(GRANTED, now, risk),
-					"연출이 끝나기 전에 생기면 예고한 뜻이 없다: " + (now - GRANTED));
+					"연출이 끝나기 전에 끝난 것으로 치면 예고한 뜻이 없다: " + (now - GRANTED));
 			assertFalse(TrialCrystalRevive.revivesAt(now, GRANTED, SHOW_TICKS));
 		}
 		assertTrue(TrialCrystalRevive.revivesAt(GRANTED + SHOW_TICKS, GRANTED, SHOW_TICKS));
@@ -296,6 +307,119 @@ class TrialCrystalReviveTest {
 			assertEquals(130.0, point.y, 1.0E-9, "음수면 드래곤 뒤쪽으로 뻗는다");
 		}
 		assertTrue(TrialCrystalRevive.beamPoints(from, to, 0.5F, 0).isEmpty());
+	}
+
+	// ------------------------------------------------------------------ 크리스탈은 언제 서는가
+
+	@Test
+	void 크리스탈은_연출이_시작될_때_선다() {
+		TrialCatalog.Risk.CrystalRevive risk = card();
+		// 받은 그 틱이 이미 SHOW 다. 크리스탈을 세우는 것은 이 틱이고, REVIVE 가 하는 일은
+		// 세우는 것이 아니라 걷는 것이다 — 뒤집으면 연출 내내 화면에 아무것도 없다.
+		assertEquals(TrialCrystalRevive.Step.SHOW, TrialCrystalRevive.step(GRANTED, GRANTED, risk),
+				"연출 첫 틱에 물건이 서 있어야 「복구되는 중」이 보인다");
+		// 세우는 그 틱에 이미 무적이 걸릴 만큼의 값이 나와야 한다. 0 이면 세우자마자 깨질 수 있다.
+		assertTrue(TrialCrystalRevive.guardTicks(
+						TrialCrystalRevive.remainingShowTicks(GRANTED, GRANTED, SHOW_TICKS)) > 0,
+				"무적 없이 세우면 복구되는 중에 깨져 연출이 무의미해진다");
+		// 그리고 그 틱에 이미 선이 조금은 뻗어 있어야 한다. 물건만 나타나면 예고가 아니라 사고다.
+		BlockPos head = TrialCrystalRevive.beamHead(SEAT, PERCH, 0.0F);
+		assertNotNull(head);
+		assertTrue(head.getY() > SEAT.y,
+				"길이가 0 이면 크리스탈 안에 점 하나가 박힌 꼴이라 선이 시작된 것을 못 본다");
+	}
+
+	// ------------------------------------------------------------------ 무적을 반드시 푼다
+
+	@Test
+	void 연출_중에는_무적이고_끝나면_무적이_풀린다() {
+		TrialCatalog.Risk.CrystalRevive risk = card();
+		for (long now = GRANTED; now < GRANTED + SHOW_TICKS; now++) {
+			assertEquals(TrialCrystalRevive.Step.SHOW, TrialCrystalRevive.step(GRANTED, now, risk));
+			assertTrue(TrialCrystalRevive.guardTicks(
+							TrialCrystalRevive.remainingShowTicks(now, GRANTED, SHOW_TICKS)) > 0,
+					"연출 중 한 틱이라도 0 이면 그 틱에 깨진다: " + (now - GRANTED));
+		}
+		// 끝나는 틱이 거두는 자리다. 그 뒤로는 영원히 NOTHING 이라 무적을 다시 걸 길이 없다 —
+		// 이것이 「연출이 끝나면 풀린다」를 보장하는 두 축 중 하나다(다른 하나는 아래 만료).
+		assertEquals(TrialCrystalRevive.Step.REVIVE,
+				TrialCrystalRevive.step(GRANTED, GRANTED + SHOW_TICKS, risk));
+		for (long now = GRANTED + SHOW_TICKS; now < GRANTED + SHOW_TICKS + 600L; now++) {
+			assertEquals(TrialCrystalRevive.Step.NOTHING, TrialCrystalRevive.step(GRANTED, now, risk),
+					"끝난 뒤에도 SHOW 가 돌면 무적이 계속 다시 걸려 전투가 끝나지 않는다: " + now);
+		}
+	}
+
+	@Test
+	void 어떤_경로로_끝나도_무적은_스스로_만료된다() {
+		// 정상 종료가 아닌 길이 여럿이다 — 연출 도중 드래곤이 죽거나, 팀이 전멸해 월드가 갈리거나,
+		// 서버가 그냥 죽거나, clearState 가 불린다. 그 전부에 공통된 사실은 「우리가 다음 틱에
+		// 다시 걸어 주지 못한다」는 것뿐이다. 그래서 거는 값이 언제나 유한해야 한다.
+		int longest = SHOW_TICKS + TrialCrystalRevive.GUARD_MARGIN_TICKS;
+		for (int remaining = 0; remaining <= SHOW_TICKS; remaining++) {
+			int guard = TrialCrystalRevive.guardTicks(remaining);
+			assertTrue(guard > 0, "연출 중에는 무적이어야 한다: " + remaining);
+			assertTrue(guard <= longest,
+					"영구 무적이면 그 크리스탈은 영영 못 깨고 전투가 끝나지 않는다: " + guard);
+		}
+		assertEquals(TrialCrystalRevive.GUARD_MARGIN_TICKS, TrialCrystalRevive.guardTicks(0),
+				"마지막 틱에도 여유는 준다. 서버가 한 틱 밀린다고 연출 중에 깨지면 안 된다");
+		assertEquals(TrialCrystalRevive.GUARD_MARGIN_TICKS, TrialCrystalRevive.guardTicks(-999),
+				"음수가 들어와도 무한이 되지 않는다");
+	}
+
+	@Test
+	void clearState_는_연출_기억을_남기지_않는다() {
+		// 연출 도중 월드가 갈리면 clearState 가 유일한 정상 경로다. 카드 기억이 남으면 다음 판의
+		// 카드가 조용히 죽고, 세워 둔 크리스탈 목록이 남으면 그 개체를 영원히 붙들고 있게 된다.
+		assertEquals(TrialCrystalRevive.Step.SHOW, TrialCrystalRevive.step(GRANTED, GRANTED, card()));
+		TrialCrystalRevive.clearState();
+		assertEquals(TrialCrystalRevive.Step.SHOW, TrialCrystalRevive.step(GRANTED, GRANTED, card()));
+		TrialCrystalRevive.clearState();
+		assertEquals(TrialCrystalRevive.Step.REVIVE,
+				TrialCrystalRevive.step(GRANTED, GRANTED + SHOW_TICKS, card()));
+	}
+
+	// ------------------------------------------------------------------ 바닐라 빔이 그리는 선
+
+	@Test
+	void 빔_대상은_진행도만큼_크리스탈에서_멀어진다() {
+		double whole = SEAT.distanceTo(PERCH);
+		double previous = -1.0;
+		for (float progress = 0.0F; progress <= 1.0F; progress += 0.05F) {
+			BlockPos head = TrialCrystalRevive.beamHead(SEAT, PERCH, progress);
+			assertNotNull(head);
+			double reach = SEAT.distanceTo(Vec3.atLowerCornerOf(head));
+			assertTrue(reach >= previous - 1.8,
+					"선이 줄어들면 「복구되는 중」이 아니라 「꺼지는 중」으로 읽힌다: " + progress);
+			assertTrue(reach <= whole + 1.8,
+					"선이 드래곤을 지나치면 어디로 이어지는지가 거짓말이 된다: " + reach);
+			previous = reach;
+		}
+	}
+
+	@Test
+	void 빔은_연출이_끝나는_순간_드래곤에_닿는다() {
+		assertEquals(BlockPos.containing(PERCH.x, PERCH.y, PERCH.z),
+				TrialCrystalRevive.beamHead(SEAT, PERCH, 1.0F), "닿는 순간이 곧 부활이다");
+		assertNotEquals(BlockPos.containing(PERCH.x, PERCH.y, PERCH.z),
+				TrialCrystalRevive.beamHead(SEAT, PERCH, 0.5F), "절반이면 아직 닿지 않았다");
+	}
+
+	@Test
+	void 진행도가_범위를_벗어나도_빔이_선분_밖으로_나가지_않는다() {
+		assertEquals(BlockPos.containing(PERCH.x, PERCH.y, PERCH.z),
+				TrialCrystalRevive.beamHead(SEAT, PERCH, 9.0F));
+		BlockPos back = TrialCrystalRevive.beamHead(SEAT, PERCH, -3.0F);
+		assertNotNull(back);
+		assertTrue(back.getY() > SEAT.y && back.getY() < PERCH.y,
+				"음수면 크리스탈 아래로 뻗는다 — 땅속을 가리키는 선은 아무 뜻도 없다");
+	}
+
+	@Test
+	void 붙들_자리가_없으면_빔도_걷는다() {
+		assertNull(TrialCrystalRevive.beamHead(SEAT, null, 0.5F),
+				"null 을 그대로 setBeamTarget 에 넘기면 선이 지워진다. 하늘의 빈 점을 가리키느니 없는 편이 낫다");
 	}
 
 	// ------------------------------------------------------------------ 카드 값

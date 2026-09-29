@@ -1,9 +1,19 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.perk.PerkHealthRules;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -11,6 +21,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -234,6 +245,101 @@ class TrialRisksTest {
 		assertEquals(0.0, spots.launch(), "「낙뢰」는 띄우지 않는다");
 	}
 
+	// ------------------------------------------------------------------ 연출
+
+	@Test
+	void 낙뢰_카드는_진짜_번개다() {
+		// 사람이 플레이하다 발견한 결함을 그대로 못박는다. 연출이 값으로 갈리지 않아 이 카드가
+		// 번개 대신 폭발 파티클과 폭발음으로 나갔고, TNT 가 터지는 것으로 보였다.
+		assertEquals(TrialCatalog.Risk.Impact.LIGHTNING,
+				onlyStrike("sharedfate:lightning_storm").impact(),
+				"카드 이름이 「낙뢰」인데 폭발이 나가면 이름이 거짓말이 된다");
+	}
+
+	@Test
+	void 자리_폭격_카드는_폭발이다() {
+		assertEquals(TrialCatalog.Risk.Impact.EXPLOSION,
+				onlyStrike("sharedfate:ground_strike").impact(),
+				"「자리 폭격」은 터지는 것이 맞다. 낙뢰를 고치면서 이쪽까지 번개로 바꾸면 안 된다");
+	}
+
+	@Test
+	void 같은_타입의_두_카드가_연출이_서로_다르다() {
+		// 값으로 카드를 만드는 구조가 실제로 도는지 보는 시험이다. 둘이 같아지는 순간
+		// 「연출을 값으로 갈랐다」는 말이 껍데기만 남는다.
+		assertNotEquals(onlyStrike("sharedfate:ground_strike").impact(),
+				onlyStrike("sharedfate:lightning_storm").impact(),
+				"같은 DelayedStrike 인데 하나는 터지고 하나는 내리쳐야 한다");
+	}
+
+	// ------------------------------------------------------------------ 26.3 번개 API
+
+	/**
+	 * 연출 전용 설정이 26.3 에 실제로 있다.
+	 *
+	 * <p>이름이 사라지면 우리 코드가 컴파일에서 먼저 걸리지만, <b>시그니처가 조용히 바뀌는</b> 쪽은
+	 * 그렇지 않다. 판올림 때 여기서 먼저 멈추게 해 둔다.
+	 */
+	@Test
+	void 번개_엔티티와_연출_전용_설정이_26_3_에_있다() {
+		Method setVisualOnly = declared(LightningBolt.class, "setVisualOnly", boolean.class);
+		assertEquals(void.class, setVisualOnly.getReturnType());
+		assertFalse(Modifier.isStatic(setVisualOnly.getModifiers()),
+				"정적이 되면 우리가 부르는 자리가 통째로 달라진다");
+		assertTrue(Entity.class.isAssignableFrom(LightningBolt.class),
+				"엔티티가 아니면 addFreshEntity 로 띄울 수 없다");
+	}
+
+	/**
+	 * 그 설정이 실제로 끄는 두 가지가 그대로 있다.
+	 *
+	 * <p>{@code visualOnly} 가 참이면 26.3 의 {@code LightningBolt} 는 피해 구간을 건너뛰고
+	 * {@code spawnFire} 가 첫 줄에서 되돌아간다. 두 이름 중 하나라도 사라지면 <b>그 보장을 손으로
+	 * 다시 확인해야 한다</b> — 피해가 두 배가 되거나 엔드에 불이 붙는데 로그도 빌드도 조용하다.
+	 */
+	@Test
+	void 연출_전용_번개는_피해도_불도_내지_않는다() {
+		assertEquals(boolean.class, declaredField(LightningBolt.class, "visualOnly").getType(),
+				"이 깃발이 피해 구간과 spawnFire 를 함께 끈다");
+		assertEquals(void.class, declared(LightningBolt.class, "spawnFire", int.class)
+				.getReturnType(), "불을 지르는 자리. visualOnly 가 참이면 첫 줄에서 되돌아간다");
+		// 피해를 넣는 길도 그대로여야 한다. 이름이 바뀌면 visualOnly 가 무엇을 막는지 다시 봐야 한다.
+		assertEquals(void.class,
+				declared(Entity.class, "thunderHit", ServerLevel.class, LightningBolt.class)
+						.getReturnType());
+	}
+
+	/**
+	 * 우리가 번개를 띄우는 길이 반드시 연출 전용 설정을 지난다.
+	 *
+	 * <p>한 줄만 빠지면 <b>카드에 적힌 값의 두 배</b>가 들어가는데 빌드도 로그도 아무 말을 안 한다.
+	 * 돌려 보고 발견하려면 누가 맞아 봐야 하고, 이 게임은 전멸하면 월드가 지워진다.
+	 *
+	 * <p>컴파일된 클래스 파일에서 이름을 찾는다. 상수 풀에 그 이름이 없다는 것은 이 클래스 어디서도
+	 * 그 메서드를 부르지 않는다는 뜻이다 — {@code TrialRisks} 에서 번개를 만드는 곳은 한 군데뿐이라
+	 * 이만큼이면 「그 길을 지난다」가 증명된다.
+	 */
+	@Test
+	void 번개를_소환하는_길은_반드시_연출_전용을_지난다() {
+		byte[] compiled = classBytes(TrialRisks.class);
+		assertTrue(references(compiled, "setVisualOnly"),
+				"소환한 번개가 자기 피해까지 주면 카드에 적힌 값이 두 배가 된다");
+		assertTrue(references(compiled, "LIGHTNING_BOLT"),
+				"번개를 파티클로 흉내 내면 하늘 섬광도 천둥도 나오지 않는다");
+	}
+
+	// ------------------------------------------------------------------ 카드에 적힌 무게
+
+	@Test
+	void 자리_폭격은_한_대로_팀을_죽이지_않는다() {
+		float damage = onlyStrike("sharedfate:ground_strike").damage();
+		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
+		assertEquals(18.0F, damage, "약해서 맞아도 상관없던 값을 세 배로 올렸다");
+		assertTrue(damage < teamHealth,
+				"팀 공유 체력이 " + teamHealth + " 다. 여기를 넘기면 그 순간 즉사 카드가 된다 —"
+						+ " 이 판의 원칙은 「즉사 메커닉 0개」이고, 전멸하면 월드가 지워진다");
+	}
+
 	@Test
 	void 카드에_적힌_주기는_예고_세_층보다_길다() {
 		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
@@ -283,6 +389,62 @@ class TrialRisksTest {
 		Vec3 center = new Vec3(0.0, 64.0, 0.0);
 		assertTrue(TrialRisks.insideMark(new Vec3(2.0, 64.0, 0.0), center, 2.0));
 		assertFalse(TrialRisks.insideMark(new Vec3(2.01, 64.0, 0.0), center, 2.0));
+	}
+
+	// ------------------------------------------------------------------ 도우미
+
+	private static Method declared(Class<?> owner, String name, Class<?>... parameters) {
+		try {
+			return owner.getDeclaredMethod(name, parameters);
+		} catch (NoSuchMethodException missing) {
+			throw new AssertionError(
+					owner.getSimpleName() + "." + name + " 의 서술자가 바뀌었다."
+							+ " 번개를 연출 전용으로 띄우는 길을 다시 확인할 것",
+					missing);
+		}
+	}
+
+	private static Field declaredField(Class<?> owner, String name) {
+		try {
+			return owner.getDeclaredField(name);
+		} catch (NoSuchFieldException missing) {
+			throw new AssertionError(
+					owner.getSimpleName() + "." + name + " 가 없어졌다."
+							+ " 연출 전용 번개가 무엇을 끄는지 다시 확인할 것",
+					missing);
+		}
+	}
+
+	/** 컴파일된 클래스 파일 그대로. 우리가 무엇을 부르는지는 소스가 아니라 여기에 남는다. */
+	private static byte[] classBytes(Class<?> type) {
+		String resource = type.getSimpleName() + ".class";
+		try (InputStream stream = type.getResourceAsStream(resource)) {
+			assertNotNull(stream, resource + " 를 클래스패스에서 찾지 못했다");
+			return stream.readAllBytes();
+		} catch (IOException broken) {
+			throw new AssertionError(resource + " 를 읽지 못했다", broken);
+		}
+	}
+
+	/**
+	 * 클래스 파일이 이 이름을 상수 풀에 들고 있는가.
+	 *
+	 * <p>상수 풀의 이름은 ASCII 구간에서 그대로 바이트로 들어간다. 없다는 것은 이 클래스가 그것을
+	 * 어디서도 부르지 않는다는 뜻이다 — 있다고 해서 어느 메서드에서 부르는지까지는 알 수 없지만,
+	 * 그 이름을 쓰는 곳이 한 군데뿐이면 그만큼으로 충분하다.
+	 */
+	private static boolean references(byte[] compiled, String name) {
+		byte[] needle = name.getBytes(StandardCharsets.US_ASCII);
+		outer:
+		for (int start = 0; start + needle.length <= compiled.length; start++) {
+			for (int index = 0; index < needle.length; index++) {
+				if (compiled[start + index] != needle[index]) {
+					continue outer;
+				}
+			}
+			return true;
+		}
+		return false;
 	}
 
 	private static TrialCatalog.Risk.DelayedStrike onlyStrike(String id) {

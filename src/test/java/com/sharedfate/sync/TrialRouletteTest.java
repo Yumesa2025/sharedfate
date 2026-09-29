@@ -25,7 +25,8 @@ class TrialRouletteTest {
 
 	private static Trial card(String id) {
 		return new Trial("sharedfate:" + id, id, "시험용", TrialCatalog.POOL_ENTRY,
-				new Risk.DelayedStrike(Risk.Aim.TRAIL, 40, 20, 1.0F, 1.0, 0.0, 1));
+				new Risk.DelayedStrike(Risk.Aim.TRAIL, Risk.Impact.EXPLOSION,
+						40, 20, 1.0F, 1.0, 0.0, 1));
 	}
 
 	private static List<Trial> cards(int count) {

@@ -8,6 +8,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.LightningBolt;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
@@ -280,11 +283,21 @@ public final class TrialRisks {
 		}
 	}
 
+	/**
+	 * 예고한 자리에서 실제로 터진다.
+	 *
+	 * <p>연출과 피해를 나눠 둔다. 연출은 카드가 적어 둔 {@link TrialCatalog.Risk.Impact} 로 갈리고
+	 * 피해는 어느 연출이든 똑같이 들어간다 — <b>「무엇으로 보이는가」가 「얼마나 아픈가」를
+	 * 바꾸면 안 된다.</b>
+	 */
 	private static void detonate(ServerLevel end, Vec3 at, TrialCatalog.Risk.DelayedStrike strike,
 			long now) {
-		end.sendParticles(ParticleTypes.EXPLOSION, at.x, at.y + 0.2, at.z, 1, 0.0, 0.0, 0.0, 0.0);
-		end.playSound(null, at.x, at.y, at.z, SoundEvents.LIGHTNING_BOLT_IMPACT,
-				SoundSource.HOSTILE, 2.0F, 1.0F);
+		// default 를 넣지 말 것. Impact 를 늘리고 연출을 안 붙이면 여기서 빌드가 깨져야 한다 —
+		// 「낙뢰인데 폭발이 나가는」 이번 결함이 바로 연출이 갈리지 않아서 생겼다.
+		switch (strike.impact()) {
+			case EXPLOSION -> showExplosion(end, at);
+			case LIGHTNING -> strikeLightning(end, at);
+		}
 		// 피해는 반경 안에 남아 있는 사람에게만 들어간다. 움직였으면 빗나간 것이다.
 		for (ServerPlayer nearby : end.getEntitiesOfClass(ServerPlayer.class,
 				new AABB(at, at).inflate(strike.radius()))) {
@@ -294,6 +307,61 @@ public final class TrialRisks {
 			nearby.hurtServer(end, end.damageSources().lightningBolt(), strike.damage());
 			launch(nearby, strike.launch(), now);
 		}
+	}
+
+	/**
+	 * 그 자리가 터지는 연출.
+	 *
+	 * <p>{@code LIGHTNING_BOLT_IMPACT} 는 이름과 달리 <b>바닐라가 「내리친 것이 땅에 닿는 굉음」으로
+	 * 쓰는 소리</b>다. 번개 엔티티도 스스로 이 소리를 낸다. 여기서는 폭발음으로 쓴다 — 사람이
+	 * 「자리 폭격」에서 들어야 하는 것이 정확히 이 소리라서 바꾸지 않았다.
+	 */
+	private static void showExplosion(ServerLevel end, Vec3 at) {
+		// 긴 거리로 보낸다. 짧은 형태는 32칸에서 잘리는데, 「자리 폭격」이 노리는 자리는 아레나
+		// 반경 40 안의 어디든이라 반대편에 선 팀원에게는 80칸까지 벌어진다. 맞은 사람만 보고
+		// 나머지는 소리만 듣는 연출이 되어, 「무엇이 터졌는지」가 팀에 공유되지 않는다.
+		end.sendParticles(ParticleTypes.EXPLOSION, true, false,
+				at.x, at.y + 0.2, at.z, 1, 0.0, 0.0, 0.0, 0.0);
+		end.playSound(null, at.x, at.y, at.z, SoundEvents.LIGHTNING_BOLT_IMPACT,
+				SoundSource.HOSTILE, 2.0F, 1.0F);
+	}
+
+	/**
+	 * 진짜 번개가 내리치는 연출.
+	 *
+	 * <h2>왜 파티클이 아니라 엔티티인가</h2>
+	 *
+	 * <p>번개는 기둥 모델·하늘 섬광({@code setSkyFlashTime})·천둥소리가 한 덩어리다. 파티클과 소리로
+	 * 흉내 내면 그 어느 것도 나오지 않아 <b>「번개」라고 적힌 카드가 폭발로 보인다</b> — 이번 결함이
+	 * 정확히 그것이었다. 엔티티를 띄우면 클라이언트가 전부 알아서 그린다.
+	 *
+	 * <h2>연출 전용으로만 띄운다</h2>
+	 *
+	 * <p>{@code setVisualOnly(true)} 를 <b>반드시</b> 켠다. 26.3 의 {@code LightningBolt} 는 이
+	 * 깃발 하나로 두 가지를 동시에 끈다.
+	 *
+	 * <ul>
+	 *   <li>{@code tick()} 의 피해 구간이 통째로 건너뛰어진다 — 우리가 {@code hurtServer} 로 이미
+	 *       카드에 적힌 값을 주므로, 켜지 않으면 <b>피해가 조용히 두 배</b>가 된다</li>
+	 *   <li>{@code spawnFire(int)} 가 첫 줄에서 되돌아간다 — 불이 붙지 않는다. 엔드에도 플레이어가
+	 *       놓은 블록이 있고, 무엇보다 <b>우리 카드 어디에도 「불」이 적혀 있지 않다</b></li>
+	 * </ul>
+	 *
+	 * <p>이 깃발은 <b>로그도 빌드도 알려 주지 않는</b> 종류의 것이다. 판을 올릴 때 메서드가 사라지면
+	 * 피해가 두 배가 된 채로 굴러가므로 {@code TrialRisksTest} 가 클래스 파일에서 직접 찾아 둔다.
+	 *
+	 * <p>소리와 파티클을 덧붙이지 않는다. 번개 엔티티가 스스로 천둥과 착탄음을 내는데 그 위에 폭발
+	 * 파티클을 뿌리는 것이 지금 TNT 처럼 보였던 이유다.
+	 */
+	private static void strikeLightning(ServerLevel end, Vec3 at) {
+		LightningBolt bolt = EntityTypes.LIGHTNING_BOLT.create(end, EntitySpawnReason.TRIGGERED);
+		if (bolt == null) {
+			return;
+		}
+		bolt.setVisualOnly(true);
+		// 표식을 그린 바로 그 자리에 세운다. 블록 중앙으로 맞추면 고리와 번개가 어긋난다.
+		bolt.snapTo(at);
+		end.addFreshEntity(bolt);
 	}
 
 	// ------------------------------------------------------------------ 자리 고르기

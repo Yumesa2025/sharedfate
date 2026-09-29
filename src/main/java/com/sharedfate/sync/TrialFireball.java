@@ -45,13 +45,50 @@ import java.util.UUID;
  * <p>엔드 중앙 섬은 사방이 허공이다. 밀려서 가장자리를 넘으면 대응할 방법이 없는 즉사이고, 공유
  * 체력이라 한 사람의 낙사가 팀 전체를 끝낸다. 피해를 줄 때 엔티티가 붙지 않은 피해원을 쓰는 것이
  * 그 장치다 — {@code LivingEntity} 는 피해원에 실체가 있을 때만 밀어낸다.
+ *
+ * <h2>궤적은 거리 제한을 끄지 않으면 앞부분이 통째로 없다</h2>
+ *
+ * <p>발사점은 <b>흑요석 기둥 꼭대기</b>다. 26.3 의 {@code EndSpikeFeature} 를 풀어 보면 기둥 열
+ * 개가 중앙에서 <b>반경 42</b> 인 원 위에 서고 높이는 {@code 76 + 3n}, 즉 <b>y 76~103</b> 이다.
+ * 사람은 y 63 쯤이므로 섬 가운데에 선 사람과 가장 가까운 기둥 꼭대기 사이가
+ * {@code √(42² + 13~40²)} = <b>44~58 블록</b>이다.
+ *
+ * <p>파티클 기본 사거리는 <b>32 블록</b>이다({@link TrialWarning} 의 「거리 제한을 끄고 보낸다」).
+ * 그래서 짧은 형태로는 <b>꼬리의 기둥 쪽 절반이 누구에게도 그려지지 않았고</b>, 선두 불꽃도 대략
+ * 52 블록짜리 궤적 기준 <b>진행률 0.38 을 넘겨야</b> 비로소 나타났다 — 「5초 동안 궤적이 보입니다」가
+ * 실제로는 <b>처음 2초가 통째로 빈</b> 3초짜리였다. 조준당한 본인이 그 정도이고, 흩어져 있는
+ * 나머지 셋은 더 적게 봤다.
+ *
+ * <p>불덩이가 <b>어느 기둥에서 출발했는지</b>가 이 카드의 예고 전부인데 출발 장면이 없으면 예고가
+ * 아니다. 그래서 이 파일의 파티클은 전부 긴 형태로 보낸다.
  */
 public final class TrialFireball {
 
 	/** 궤적 꼬리 점 사이 간격(블록). 촘촘하게 찍으면 한 발에 파티클 패킷이 수백 개 나간다. */
 	private static final double TRAIL_STEP = 1.5;
-	/** 꼬리 점 수 상한. 기둥이 멀수록 선이 길어지므로 거리에 비례해 늘어나는 것을 여기서 끊는다. */
-	private static final int TRAIL_MAX_POINTS = 24;
+	/**
+	 * 점 사이가 이보다 벌어지면 선이 아니라 점선이다.
+	 *
+	 * <p>상한에 걸린 뒤로는 점이 늘지 않으므로 궤적이 길어질수록 간격만 벌어진다. 어디까지
+	 * 벌어져도 「기둥에서 나에게로 그어진 선」으로 읽히는가가 상한을 정하는 기준이다.
+	 */
+	static final double TRAIL_MAX_GAP = 3.0;
+	/**
+	 * 이 길이까지는 위 간격을 지킨다.
+	 *
+	 * <p>발사점은 <b>가장 가까운</b> 기둥이므로 궤적 길이에 사실상 천장이 있다. 바닐라 기둥은
+	 * 반경 42 원 위에 열 개라 아레나 안 어디서든 60 블록 안이고, 흑요석 발사대(x=100)처럼 섬 밖
+	 * 끝에서 쏴도 70 을 넘기 어렵다. 넉넉히 잡아 여기까지는 간격을 약속한다.
+	 */
+	static final double TRAIL_KEPT_LENGTH = 96.0;
+	/**
+	 * 꼬리 점 수 상한.
+	 *
+	 * <p>숫자를 박지 않고 위 둘에서 뽑는다 — 간격이나 약속 길이를 고치면 상한이 따라와야 하는데,
+	 * 따로 적어 두면 한쪽만 고쳐져 <b>약속이 조용히 깨진다.</b> 점 하나가 패킷 한 장이고 이 카드는
+	 * 궤적 창 내내 매 틱 그리므로 상한 자체는 반드시 있어야 한다.
+	 */
+	private static final int TRAIL_MAX_POINTS = (int) Math.ceil(TRAIL_KEPT_LENGTH / TRAIL_MAX_GAP);
 
 	/**
 	 * 날아가고 있는 한 발.
@@ -218,6 +255,10 @@ public final class TrialFireball {
 	 * <p>선 전체를 매 틱 다 그리면 「불덩이가 온다」가 아니라 「기둥과 내가 빨간 실로 묶였다」가 된다.
 	 * <b>지금까지 날아온 만큼</b>만 성긴 연기로 남기고 선두에만 불꽃을 몰아 찍는다. 그러면 밝은
 	 * 덩어리 하나가 기둥에서 출발해 다가오는 것으로 읽힌다.
+	 *
+	 * <p>세 줄 모두 <b>긴 형태</b>({@code overrideLimiter=true})다. 짧은 형태로 되돌리면 꼬리의
+	 * 기둥 쪽 절반과, 출발 직후의 선두 불꽃이 함께 사라진다 — 클래스 설명의 「궤적은 거리 제한을
+	 * 끄지 않으면 앞부분이 통째로 없다」가 그 이야기다.
 	 */
 	private static void drawTrace(ServerLevel end, Vec3 from, Vec3 to, double progress) {
 		Vec3 head = headAt(from, to, progress);
@@ -225,12 +266,12 @@ public final class TrialFireball {
 		for (int index = 0; index < points; index++) {
 			double along = (double) index / points;
 			Vec3 point = from.add(head.subtract(from).scale(along));
-			end.sendParticles(ParticleTypes.SMOKE, point.x, point.y, point.z, 1,
+			end.sendParticles(ParticleTypes.SMOKE, true, false, point.x, point.y, point.z, 1,
 					0.0, 0.0, 0.0, 0.0);
 		}
-		end.sendParticles(ParticleTypes.FLAME, head.x, head.y, head.z, 8,
+		end.sendParticles(ParticleTypes.FLAME, true, false, head.x, head.y, head.z, 8,
 				0.25, 0.25, 0.25, 0.01);
-		end.sendParticles(ParticleTypes.LARGE_SMOKE, head.x, head.y, head.z, 2,
+		end.sendParticles(ParticleTypes.LARGE_SMOKE, true, false, head.x, head.y, head.z, 2,
 				0.15, 0.15, 0.15, 0.0);
 	}
 
@@ -242,11 +283,15 @@ public final class TrialFireball {
 	 * <p>피해원에 엔티티를 달지 않는 것이 <b>넉백을 막는 장치</b>다. 실체가 붙은 피해원이면
 	 * {@code LivingEntity} 가 스스로 밀어내는데, 엔드 섬 가장자리에서 밀리면 대응 불가 즉사다.
 	 * 폭발 피해형을 쓰므로 폭발 보호는 그대로 듣는다 — 대비한 사람이 손해 보지 않아야 한다.
+	 *
+	 * <p>착탄 연출도 긴 형태로 보낸다. 맞는 사람은 어차피 가깝지만 <b>나머지 셋이 「저기 떨어졌다,
+	 * 피했구나」를 봐야</b> 예고가 완결된다. 아레나 반경이 40 이라 흩어진 팀원은 쉽게 32 블록을
+	 * 넘고, 그러면 하늘에서 날아오던 것이 소리만 남기고 사라진 것으로 보인다.
 	 */
 	private static void detonate(ServerLevel end, Vec3 at, TrialCatalog.Risk.TracedProjectile risk) {
-		end.sendParticles(ParticleTypes.EXPLOSION_EMITTER, at.x, at.y + 0.5, at.z, 1,
+		end.sendParticles(ParticleTypes.EXPLOSION_EMITTER, true, false, at.x, at.y + 0.5, at.z, 1,
 				0.0, 0.0, 0.0, 0.0);
-		end.sendParticles(ParticleTypes.LARGE_SMOKE, at.x, at.y + 0.5, at.z, 20,
+		end.sendParticles(ParticleTypes.LARGE_SMOKE, true, false, at.x, at.y + 0.5, at.z, 20,
 				risk.radius() * 0.4, 0.3, risk.radius() * 0.4, 0.02);
 		end.playSound(null, at.x, at.y, at.z, SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE,
 				3.0F, 1.0F);
@@ -319,14 +364,36 @@ public final class TrialFireball {
 	/**
 	 * 꼬리에 찍을 점 수.
 	 *
-	 * <p>기둥까지의 거리는 월드마다 다르고 아레나 반대편 기둥이면 100 블록이 넘는다. 간격만 정하고
-	 * 두면 한 발에 점 70 개가 나가고, 네 명이 각자 한 발씩 받는 카드가 붙는 순간 파티클 패킷만으로
-	 * 틱이 밀린다. 상한이 있으면 먼 궤적은 성겨질 뿐 선은 그대로 읽힌다.
+	 * <p>기둥까지의 거리는 월드마다 다르다. 간격만 정하고 두면 먼 기둥에서 한 발에 점이 수십 개
+	 * 나가고, 네 명이 각자 한 발씩 받는 카드가 붙는 순간 파티클 패킷만으로 틱이 밀린다. 상한이
+	 * 있으면 먼 궤적은 성겨질 뿐 선은 그대로 읽힌다.
+	 *
+	 * <p>다만 <b>얼마나 성겨지는지</b>를 세어 보지 않으면 상한이 선을 점선으로 만든다. 예전
+	 * 상한 24 는 52 블록 궤적에서 간격 2.2 블록, 70 블록 궤적에서 2.9 블록이었다 —
+	 * {@link #trailGap} 으로 그 값을 직접 묻는다.
 	 */
 	static int trailSamples(double travelled) {
 		if (!(travelled > 0.0)) {
 			return 0;
 		}
 		return Math.min(TRAIL_MAX_POINTS, (int) Math.floor(travelled / TRAIL_STEP));
+	}
+
+	/**
+	 * 그 길이의 꼬리에서 실제로 벌어지는 점 사이 거리(블록).
+	 *
+	 * <p>{@link #drawTrace} 가 {@code index / points} 로 나누므로 간격은 정확히
+	 * {@code 길이 / 점 수}다. 점이 하나도 없을 만큼 짧으면 선두 불꽃 하나뿐이고, 그때는 길이
+	 * 자체가 「빈 구간」이라 그대로 돌려준다.
+	 */
+	static double trailGap(double travelled) {
+		if (!(travelled > 0.0)) {
+			return 0.0;
+		}
+		int points = trailSamples(travelled);
+		if (points <= 0) {
+			return travelled;
+		}
+		return travelled / points;
 	}
 }

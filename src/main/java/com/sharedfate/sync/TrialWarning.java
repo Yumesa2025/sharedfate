@@ -42,10 +42,55 @@ import java.util.Collection;
  * <p>{@link AuraRing} 은 「범위가 켜져 있다」를 보여 주려고 눈높이에 띄우지만, 경고는
  * <b>서 있으면 안 되는 자리</b>를 가리키므로 지면에 붙어야 한다. 엔드 섬은 평평해서 파묻힐
  * 걱정이 적다.
+ *
+ * <h2>거리 제한을 끄고 보낸다</h2>
+ *
+ * <p><b>이 깃발을 끄면 경고가 조용히 사라진다.</b> 「파티클인데 왜 깃발이 필요한가」로 되돌리지
+ * 말 것. 26.3 의 바이트코드가 이렇다.
+ *
+ * <ul>
+ *   <li>서버 — {@code sendParticles} 의 <b>짧은 형태</b>는 {@code overrideLimiter=false} 로
+ *       위임하고, 비공개 오버로드가
+ *       {@code player.blockPosition().closerToCenterThan(점, limiter ? 512 : 32)} 로 거른다.
+ *       <b>32 블록 밖이면 패킷이 아예 나가지 않는다.</b></li>
+ *   <li>클라이언트 — {@code ClientLevel.doAddParticle} 이 같은 깃발을 다시 본다.
+ *       {@code force} 가 거짓이면 {@code camera.distanceToSqr > 1024}(=32 블록)에서 그냥
+ *       돌아간다. 즉 서버를 통과해도 <b>한 번 더 걸린다.</b></li>
+ * </ul>
+ *
+ * <p>엔드 전투는 이 32 블록을 우습게 넘긴다. 아레나 반경이 40 이라 팀원 둘이 80 블록 떨어질 수
+ * 있고, 기둥 꼭대기는 바닥에서 13~40 블록 위다. 「누가 어디를 밟으면 안 되는가」는 <b>밟는 사람이
+ * 아니라 나머지 셋이 봐야</b> 하는 정보이므로, 바닥 표식이라고 가까운 것이 아니다.
+ *
+ * <p>대가는 패킷 수뿐이다 — 차원 안 전원에게 나간다. 팀이 많아야 넷이라 네 배가 상한이고,
+ * 그래서 점 개수에 상한을 두는 것이 이 깃발과 한 쌍이다({@link #MAX_POINTS}).
  */
 public final class TrialWarning {
-	/** 고리 하나에 찍는 파티클 수. 반경이 커져도 개수는 그대로다 — 성겨도 경계는 읽힌다. */
-	private static final int POINTS = 40;
+	/**
+	 * 고리 한 바퀴의 기본 점 수.
+	 *
+	 * <p>하한으로 둔다. 지금 카드가 쓰는 반경(1.5~3)에서는 이 값이 그대로 나오므로 <b>보이는
+	 * 모습이 예전과 같다.</b>
+	 */
+	private static final int BASE_POINTS = 40;
+	/**
+	 * 이웃한 두 점 사이 허용 간격(블록).
+	 *
+	 * <p>개수를 고정해 두면 반경이 커질수록 둘레만 늘어 <b>점 사이가 벌어진다.</b> 반경 3 에서
+	 * 0.47 블록이던 간격이 반경 10 이면 1.57 블록이 되고, 그쯤이면 고리가 아니라 흩뿌려진 점으로
+	 * 읽혀 「경계가 어디인가」를 못 준다. 그래서 개수가 아니라 <b>간격</b>을 정하고 개수를 거기서
+	 * 뽑는다.
+	 */
+	static final double POINT_GAP = 0.5;
+	/**
+	 * 한 고리에 찍는 점 수의 상한.
+	 *
+	 * <p>간격만 정하고 두면 점이 반경에 비례해 끝없이 는다. 점 하나가 패킷 한 장이고
+	 * {@link #markGround} 는 <b>매 틱</b> 불리며, 이제 거리 제한 없이 <b>전원에게</b> 나간다 —
+	 * 상한이 없으면 큰 반경 카드 하나가 파티클 패킷만으로 틱을 민다. 상한에 걸리면 간격이 벌어질
+	 * 뿐 고리는 남는다.
+	 */
+	static final int MAX_POINTS = 80;
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다. */
 	private static final double GROUND_OFFSET = 0.15;
 
@@ -105,20 +150,61 @@ public final class TrialWarning {
 		return new DustParticleOptions(color, 1.0F);
 	}
 
-	/** 파티클을 직접 고르는 형태. 색으로 위험의 종류를 가를 때 쓴다. */
+	/**
+	 * 파티클을 직접 고르는 형태. 색으로 위험의 종류를 가를 때 쓴다.
+	 *
+	 * <p><b>첫 {@code boolean} 을 {@code false} 로 되돌리지 말 것.</b> 그것이 512 블록과 32 블록을
+	 * 가르는 깃발이고, 끄는 순간 이 고리는 <b>보는 사람 발밑 32 블록 안에서만</b> 존재한다 —
+	 * 서버가 패킷을 안 보내고 클라이언트도 한 번 더 거른다. 까닭은 클래스 설명의
+	 * 「거리 제한을 끄고 보낸다」에 적어 두었다.
+	 *
+	 * <p>둘째 {@code boolean}({@code alwaysShow}) 은 「파티클 줄이기」 설정을 무시할지다. 첫
+	 * 깃발이 켜져 있으면 그 검사 자체를 건너뛰므로 값이 무의미하고, 사용자의 설정을 우리가 뒤집을
+	 * 이유도 없어 {@code false} 로 둔다.
+	 */
 	public static void markGround(@Nullable ServerLevel level, @Nullable Vec3 center, double radius,
 			@Nullable ParticleOptions type) {
 		if (level == null || center == null || type == null || !(radius > 0.0)) {
 			return;
 		}
-		for (int index = 0; index < POINTS; index++) {
-			double angle = (Math.PI * 2.0 * index) / POINTS;
-			level.sendParticles(type,
+		int points = ringPoints(radius);
+		for (int index = 0; index < points; index++) {
+			double angle = (Math.PI * 2.0 * index) / points;
+			level.sendParticles(type, true, false,
 					center.x + Math.cos(angle) * radius,
 					center.y + GROUND_OFFSET,
 					center.z + Math.sin(angle) * radius,
 					1, 0.0, 0.0, 0.0, 0.0);
 		}
+	}
+
+	/**
+	 * 이 반경에 찍을 점 수.
+	 *
+	 * <p>둘레를 {@link #POINT_GAP} 으로 나눈 값을 {@link #BASE_POINTS}~{@link #MAX_POINTS} 로
+	 * 자른다. 하한이 있어 작은 고리가 예전보다 성겨지지 않고, 상한이 있어 큰 고리가 패킷을
+	 * 터뜨리지 않는다.
+	 */
+	static int ringPoints(double radius) {
+		if (!(radius > 0.0)) {
+			return 0;
+		}
+		int wanted = (int) Math.ceil((Math.PI * 2.0 * radius) / POINT_GAP);
+		return Math.max(BASE_POINTS, Math.min(MAX_POINTS, wanted));
+	}
+
+	/**
+	 * 그 반경에서 실제로 벌어지는 점 사이 거리(블록).
+	 *
+	 * <p>고리가 <b>고리로 읽히는가</b>를 숫자로 물을 수 있는 유일한 값이다. 점 수만 보면 상한에
+	 * 걸린 큰 고리가 촘촘한 줄 알게 된다.
+	 */
+	static double ringGap(double radius) {
+		int points = ringPoints(radius);
+		if (points <= 0) {
+			return 0.0;
+		}
+		return (Math.PI * 2.0 * radius) / points;
 	}
 
 	/**
