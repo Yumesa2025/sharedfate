@@ -118,13 +118,18 @@ public final class TrialCrystalGuard {
 	/**
 	 * 매 틱. {@code DragonTrialManager} 가 이 카드를 들고 있는 팀마다 부른다.
 	 *
+	 * <p>{@code key} 는 이 위험을 가리키는 열쇠다({@code 카드 id + '#' + 카드 안 위험
+	 * 순번}). {@link TrialRisks} 가 겹침 금지 목록을 이 열쇠로 관리하므로, 자리를 잡는
+	 * 실행기는 <b>반드시 이 값을 그대로 넘겨야 한다</b> — 스스로 만들어 쓰면 두 곳에서
+	 * 만든 열쇠가 언젠가 갈라진다.
+	 *
 	 * @param dragon  이 카드는 드래곤을 건드리지 않는다. 위험 실행기들이 <b>같은 모양의 진입점</b>을
 	 *                갖게 하려고 받아만 둔다 — 실행기마다 인자가 다르면 배선하는 쪽이 갈래마다
 	 *                다른 호출을 적게 되고, 그것이 곧 「새 카드를 배선에서 빠뜨리는」 길이다
 	 * @param granted 이 카드를 받은 틱. 주기는 <b>월드 시간이 아니라 여기서부터</b> 센다
 	 */
 	public static void tick(ServerLevel end, @Nullable EnderDragon dragon,
-			List<ServerPlayer> members, long granted, long now,
+			List<ServerPlayer> members, String key, long granted, long now,
 			TrialCatalog.Risk.CrystalGuard risk) {
 		if (end == null || risk == null) {
 			return;

@@ -158,7 +158,7 @@ public final class DragonTrialManager {
 				continue;
 			}
 			PENDING_SUMMON.put(teamId, now + SUMMON_DELAY_TICKS);
-			for (ServerPlayer member : membersOf(server, team)) {
+			for (ServerPlayer member : onlineMembers(server, team)) {
 				if (member.level().dimension() != Level.END) {
 					TitleMessenger.showTitle(member, Component.literal("엔드로 이동합니다"),
 							Component.literal("팀이 최종 보스에 들어섰습니다"), 5, 40, 10);
@@ -211,7 +211,7 @@ public final class DragonTrialManager {
 
 	private static void summonTeam(MinecraftServer server, ServerLevel end, ShareTeam team) {
 		Vec3 landing = ARRIVAL_POINT;
-		for (ServerPlayer member : membersOf(server, team)) {
+		for (ServerPlayer member : onlineMembers(server, team)) {
 			if (member.level().dimension() == Level.END) {
 				continue;
 			}
@@ -292,7 +292,7 @@ public final class DragonTrialManager {
 				finished.add(entry.getKey());
 				continue;
 			}
-			List<ServerPlayer> members = membersOf(server, team);
+			List<ServerPlayer> members = membersOf(server, team, end);
 			detectTriggers(end, dragon, session);
 			openTrialWhenDue(server, end, session, members, now);
 			// 패시브는 시련과 다르다. 팀이 뽑는 것이 아니라 언제나 있는 판이므로 카드와 무관하게
@@ -304,8 +304,44 @@ public final class DragonTrialManager {
 			finished.forEach(SESSIONS::remove);
 			// 전투가 끝났는데 룰렛만 남으면 다음 전투 첫 틱에 옛 카드가 튀어나온다.
 			finished.forEach(DragonTrialManager::resetTrialDelay);
+			endTrials();
 			persist();
 		}
+	}
+
+	/**
+	 * 마지막 전투가 닫히는 틱에 시련이 판에 걸어 둔 것을 전부 되돌린다.
+	 *
+	 * <h2>이것이 없어서 실제로 일어나던 일</h2>
+	 *
+	 * <p>{@link #tickSessions} 는 드래곤이 죽은 틱에 세션을 지우기만 하고 여기를 지나지 않았다.
+	 * 실행기들은 마지막 틱을 한 번도 못 받으므로 <b>스스로 되돌릴 기회가 없다.</b>
+	 *
+	 * <ul>
+	 *   <li>「크리스탈 보호막」 — 화살 면역이 켜진 채 남아 월드가 바뀔 때까지 엔드 크리스탈이
+	 *       화살에 맞지 않았다</li>
+	 *   <li>「밤의 군세」 — 20초가 끝나기 전에 드래곤이 죽으면 엔더맨이 <b>영영 적대</b>로 남았다.
+	 *       26.3 바닐라는 이 분노를 풀어 주지 않는다</li>
+	 * </ul>
+	 *
+	 * <h2>세션 하나가 아니라 마지막 하나에서 부른다</h2>
+	 *
+	 * <p>{@link TrialRisks} 의 상태는 팀별이 아니라 <b>정적 한 벌</b>이다(위험이 값이라 상태를 들
+	 * 수 없다). 그래서 팀 하나가 끝날 때마다 비우면 같은 엔드에서 아직 싸우고 있는 다른 팀의
+	 * 굳은 칸·표적·잡아 둔 자리까지 함께 지워진다. 드래곤은 차원에 하나뿐이라 그 드래곤이
+	 * 죽으면 어차피 모든 세션이 같은 틱에 닫히므로, 「남은 세션이 없을 때」로 미뤄도 되돌리는
+	 * 시점은 달라지지 않는다.
+	 *
+	 * <p>⚠ 실행기들은 이 길이 없던 때에 <b>저마다 안전장치를 만들어 두었다</b>
+	 * ({@code TrialDryWorld.BAN_GRACE_TICKS} 기한, {@code TrialHotbarLock.LAPSE_TICKS} +
+	 * {@code seenAt}, {@code TrialNightHost.fighting}). 그것들은 걷어내지 않았다 — 서버 강제
+	 * 종료처럼 여기를 지나지 못하는 길이 아직 남아 있기 때문이다.
+	 */
+	private static void endTrials() {
+		if (!SESSIONS.isEmpty()) {
+			return;
+		}
+		TrialRisks.clearState();
 	}
 
 	/**
@@ -506,7 +542,45 @@ public final class DragonTrialManager {
 		return null;
 	}
 
-	private static List<ServerPlayer> membersOf(MinecraftServer server, ShareTeam team) {
+	/**
+	 * ⚠ <b>지금 엔드에 서 있는 팀원만.</b> 전투 중에 팀원에게 무엇이든 하는 코드는 이 목록을 쓴다.
+	 *
+	 * <h2>차원을 여기서 가르는 이유</h2>
+	 *
+	 * <p>이 목록은 {@link TrialRisks} 와 {@link DragonPassives} 를 거쳐 실행기 전부에 그대로
+	 * 흘러간다. 실행기들은 <b>중앙 {@code (0, ?, 0)} 에서 잰 수평 거리</b>로 판정하는데, 좌표에는
+	 * 차원이 없다 — <b>오버월드 원점 근처에 선 팀원이 엔드의 고리에 맞고 묶인다.</b>
+	 * 「연쇄 포격」({@code DragonFireBarrage.detonate})·{@code TrialDragonFocus} ·
+	 * {@code TrialEnderPulse} 가 모두 그 길이었고, 그중 연쇄 포격은 이미 시험 서버에 올라가 있다.
+	 *
+	 * <p>실행기마다 따로 거르게 두지 않는다. 열몇 개가 각자 같은 한 줄을 적어야 하고, 하나라도
+	 * 빠뜨리면 그 카드만 오버월드를 때린다 — 컴파일도 시험도 조용한 종류의 사고다. 그래서
+	 * <b>목록을 만드는 이 한 자리</b>에서 자른다.
+	 *
+	 * <p>{@code TrialLandingShock} 과 {@code TrialEnderStorm} 이 자기 파일 안에서 한 번 더 거른다.
+	 * 이제는 중복이지만 남겨 둔다 — 걸러진 목록을 받는다는 보장이 그 파일 밖에 있기 때문이다.
+	 *
+	 * @param end 엔드 월드. 여기 서 있는 사람만 돌려준다
+	 */
+	private static List<ServerPlayer> membersOf(MinecraftServer server, ShareTeam team,
+			ServerLevel end) {
+		List<ServerPlayer> inEnd = new ArrayList<>();
+		for (ServerPlayer member : onlineMembers(server, team)) {
+			if (member.level() == end) {
+				inEnd.add(member);
+			}
+		}
+		return inEnd;
+	}
+
+	/**
+	 * 접속해 있는 팀원 전부. <b>차원을 가리지 않는다.</b>
+	 *
+	 * <p>쓰는 곳이 둘뿐이고 둘 다 <b>엔드 밖에 있는 사람을 찾는 것이 목적</b>이다 — 도착을
+	 * 알리는 자막({@link #detectArrival})과 끌어오는 텔레포트({@link #summonTeam}). 전투 중에
+	 * 팀원에게 무엇이든 하는 코드는 이쪽이 아니라 {@link #membersOf} 를 쓸 것.
+	 */
+	private static List<ServerPlayer> onlineMembers(MinecraftServer server, ShareTeam team) {
 		List<ServerPlayer> online = new ArrayList<>();
 		for (UUID memberId : team.members()) {
 			ServerPlayer member = server.getPlayerList().getPlayer(memberId);

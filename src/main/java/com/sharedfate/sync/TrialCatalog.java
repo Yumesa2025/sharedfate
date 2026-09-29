@@ -34,6 +34,10 @@ import java.util.Set;
  * <p>입장 직후와 체력 30% 는 같은 무게일 수 없다. 트리거마다 풀을 따로 두면 <b>난이도 곡선</b>이
  * 생긴다. 카드 하나가 여러 풀에 속할 수 있으므로 「전멸과 80% 를 한 묶음으로」도, 「30% 에만
  * 나오는 카드」도 만들 수 있다.
+ *
+ * <p>지금은 <b>자리 여섯에 풀 여섯</b>이다. 두 자리가 한 풀을 나눠 쓰던 때가 있었는데
+ * ({@code POOL_MIDDLE}·{@code POOL_LATE}), 그러면 앞 자리에서 뽑힌 카드가 뒤 자리의 풀에서도
+ * 빠져 <b>자리 하나를 고치면 다른 자리가 같이 움직인다.</b> 자리마다 제 풀을 들면 그 얽힘이 없다.
  */
 public final class TrialCatalog {
 
@@ -56,6 +60,27 @@ public final class TrialCatalog {
 	public static final int DELAY_NONE = 0;
 
 	/**
+	 * 그 자리의 카드가 <b>어떻게 뜨는가.</b>
+	 *
+	 * <p>처음에는 여섯 자리가 전부 룰렛이었다. 그런데 「판을 멈추고 이름이 돈다」는 <b>그 자체로
+	 * 무게가 있는 연출</b>이라, 자리마다 카드가 한 장뿐이거나 이미 다른 것이 화면을 채우고 있으면
+	 * 멈춤이 값어치보다 비싸진다. 그래서 무엇을 멈추고 무엇을 보여 줄지를 자리에 적는다.
+	 */
+	public enum Reveal {
+		/** 판을 멈추고 이름이 돌다 멈춘다. 멈춘 것이 그 판의 시련이다. */
+		ROULETTE,
+		/**
+		 * 판은 멈추지만 룰렛은 돌지 않는다. 정해진 카드의 이름과 설명만 보여 준다.
+		 *
+		 * <p>카드가 한 장뿐인 자리에 쓴다. 한 장짜리 풀에서 이름이 도는 것은 결과가 정해진 굴림을
+		 * 보여 주는 것이라 연출이 거짓말이 된다.
+		 */
+		FIXED_SCREEN,
+		/** 아무것도 멈추지 않는다. 화면도 뜨지 않는다. */
+		SILENT
+	}
+
+	/**
 	 * 시련이 나오는 자리.
 	 *
 	 * <p>순서는 대체로 이 차례가 된다 — 크리스탈이 살아 있으면 드래곤 체력이 잘 안 깎이므로
@@ -73,6 +98,12 @@ public final class TrialCatalog {
 	 *
 	 * <p>지금은 {@link #ENTRY} 하나만 0 이 아니다. 그래도 <b>{@code boolean} 하나로 줄이지 말
 	 * 것</b> — 값이 자리에 붙어 있어야 어느 한 자리만 다르게 할 때 여기를 다시 뜯지 않는다.
+	 *
+	 * <h2>「어떻게 뜨는가」도 같은 이유로 여기에 든다</h2>
+	 *
+	 * <p>{@link Reveal} 도 생성자가 인자로 요구한다. 지연과 똑같은 판단이다 — 상수 하나나 기본값을
+	 * 두면 <b>새 자리가 조용히 룰렛을 물려받고</b>, 그 자리에 룰렛이 맞는지는 아무도 다시 묻지
+	 * 않는다. 정하지 않고는 자리를 만들 수 없게 둔다.
 	 */
 	public enum Trigger {
 		/**
@@ -81,31 +112,43 @@ public final class TrialCatalog {
 		 * <p>다른 차원에서 끌려와 떨어진 직후라 어디에 왔는지도 모른다. 그 위에 화면을 겹치면
 		 * 룰렛이 무엇 때문에 떴는지 읽히지 않는다.
 		 */
-		ENTRY("입장", DELAY_SETTLE_TICKS),
+		ENTRY("입장", DELAY_SETTLE_TICKS, Reveal.ROULETTE),
 		/**
 		 * 엔드 크리스탈이 처음 깨졌을 때.
 		 *
 		 * <p>자기가 조준하고 자기가 터뜨린 것이라 원인을 물을 필요가 없다. 곧바로 연다.
 		 */
-		FIRST_CRYSTAL("첫 크리스탈", DELAY_NONE),
+		FIRST_CRYSTAL("첫 크리스탈", DELAY_NONE, Reveal.ROULETTE),
 		/** 엔드 크리스탈이 모두 깨졌을 때. 첫 크리스탈과 같은 이유로 곧바로 연다. */
-		ALL_CRYSTALS("크리스탈 전멸", DELAY_NONE),
+		ALL_CRYSTALS("크리스탈 전멸", DELAY_NONE, Reveal.ROULETTE),
 		/**
 		 * 드래곤 체력이 80% 아래로 처음 내려갔을 때.
 		 *
 		 * <p>체력 문턱 셋도 <b>팀이 깎아서 만든 자리</b>다. 체력 막대가 눈앞에서 내려가는 것을
 		 * 보며 때리던 중이라 원인이 분명하다. 곧바로 연다.
+		 *
+		 * <p>카드가 <b>한 장</b>뿐이라 룰렛을 돌리지 않는다. 판은 멈추고 그 카드의 이름과 설명만
+		 * 보여 준다.
 		 */
-		HEALTH_80("체력 80%", DELAY_NONE),
-		HEALTH_50("체력 50%", DELAY_NONE),
-		HEALTH_30("체력 30%", DELAY_NONE);
+		HEALTH_80("체력 80%", DELAY_NONE, Reveal.FIXED_SCREEN),
+		HEALTH_50("체력 50%", DELAY_NONE, Reveal.ROULETTE),
+		/**
+		 * 드래곤 체력이 30% 아래로 처음 내려갔을 때 — <b>최후의 저항.</b>
+		 *
+		 * <p>아무것도 멈추지 않고 화면도 띄우지 않는다. 이 자리는 굉음·화면 흔들림·엔더맨 소멸·
+		 * 보스바 이름 변경이 <b>이미 「판이 바뀌었다」를 말한다.</b> 거기에 정지 화면을 얹으면
+		 * 멈춤이 두 번 겹친다.
+		 */
+		HEALTH_30("체력 30%", DELAY_NONE, Reveal.SILENT);
 
 		private final String label;
 		private final int delayTicks;
+		private final Reveal reveal;
 
-		Trigger(String label, int delayTicks) {
+		Trigger(String label, int delayTicks, Reveal reveal) {
 			this.label = label;
 			this.delayTicks = delayTicks;
+			this.reveal = reveal;
 		}
 
 		public String label() {
@@ -120,15 +163,33 @@ public final class TrialCatalog {
 		public int delayTicks() {
 			return delayTicks;
 		}
+
+		/** 이 자리의 카드가 어떻게 뜨는가 — 룰렛인가, 정해진 카드의 화면인가, 아무것도 없는가. */
+		public Reveal reveal() {
+			return reveal;
+		}
 	}
 
-	/** 자리 여섯을 묶은 풀 넷. 카드를 적을 때 이 이름으로 적는다. */
+	/**
+	 * 자리 여섯의 풀 여섯. 카드를 적을 때 이 이름으로 적는다.
+	 *
+	 * <p><b>풀을 나눠 쓰지 않는다.</b> 두 자리가 한 풀을 가리키면 앞 자리에서 뽑힌 카드가 뒤
+	 * 자리의 풀에서도 빠지므로, 한 자리의 카드를 고치는 일이 다른 자리를 같이 움직인다. 자리를
+	 * 새로 만드는 사람은 여기에 풀을 하나 더 적을 것.
+	 */
 	public static final Set<Trigger> POOL_ENTRY = EnumSet.of(Trigger.ENTRY);
 	public static final Set<Trigger> POOL_FIRST_CRYSTAL = EnumSet.of(Trigger.FIRST_CRYSTAL);
-	/** 크리스탈 전멸과 체력 80% 는 무게가 비슷해 함께 쓴다. */
-	public static final Set<Trigger> POOL_MIDDLE = EnumSet.of(Trigger.ALL_CRYSTALS, Trigger.HEALTH_80);
-	/** 체력 50% 와 30%. */
-	public static final Set<Trigger> POOL_LATE = EnumSet.of(Trigger.HEALTH_50, Trigger.HEALTH_30);
+	public static final Set<Trigger> POOL_ALL_CRYSTALS = EnumSet.of(Trigger.ALL_CRYSTALS);
+	/** 카드가 <b>한 장</b>뿐인 자리다({@link Reveal#FIXED_SCREEN}). 늘리려면 자리의 연출부터 볼 것. */
+	public static final Set<Trigger> POOL_HEALTH_80 = EnumSet.of(Trigger.HEALTH_80);
+	public static final Set<Trigger> POOL_HEALTH_50 = EnumSet.of(Trigger.HEALTH_50);
+	/**
+	 * 최후의 저항 — <b>지금은 비어 있다.</b>
+	 *
+	 * <p>별개 보스전이라 따로 만든다. 빈 풀은 정상이고 그 자리는 그냥 지나간다
+	 * ({@link #offerable}).
+	 */
+	public static final Set<Trigger> POOL_HEALTH_30 = EnumSet.of(Trigger.HEALTH_30);
 
 	/**
 	 * 위험 하나.
@@ -286,6 +347,123 @@ public final class TrialCatalog {
 		 */
 		record CrystalRevive(int count, int showTicks, float heal) implements Risk {
 		}
+
+		/**
+		 * 중앙에서 바닥 고리가 퍼져 나간다.
+		 *
+		 * <p>피해가 없다. 이 카드가 빼앗는 것은 체력이 아니라 <b>발</b>이다 — 고리가 지나가는 순간
+		 * 바닥을 딛고 있으면 잠시 못 움직인다. 점프하면 통과하므로 요구하는 행동이 하나뿐이다.
+		 *
+		 * @param interval    고리가 새로 퍼지기 시작하는 간격(틱)
+		 * @param travelTicks 중앙에서 {@code maxRadius} 까지 퍼지는 데 걸리는 틱
+		 * @param maxRadius   고리가 닿는 마지막 반경(블록)
+		 * @param rootTicks   고리에 걸린 사람이 묶이는 시간(틱)
+		 */
+		record EnderPulse(int interval, int travelTicks, double maxRadius, int rootTicks)
+				implements Risk {
+		}
+
+		/**
+		 * 크리스탈 하나를 깨면 다른 하나가 잠시 보호막을 두른다.
+		 *
+		 * <p>주기가 없다. 발동을 정하는 것은 시간이 아니라 <b>팀의 행동</b>이다.
+		 *
+		 * @param shieldTicks 보호막이 남아 있는 시간(틱)
+		 */
+		record CrystalLink(int shieldTicks) implements Risk {
+		}
+
+		/**
+		 * 크리스탈 하나가 달아오르고, 제때 못 부수면 빔이 한 사람을 문다.
+		 *
+		 * @param fuseTicks       달아오른 크리스탈을 부술 수 있는 시간(틱). 넘기면 빔이 시작된다
+		 * @param beamTicks       빔이 붙어 있는 시간(틱)
+		 * @param restTicks       빔이 끝나거나 제때 부순 뒤 다음 크리스탈까지 쉬는 시간(틱)
+		 * @param damagePerSecond 빔에 물린 사람이 <b>1초마다</b> 받는 피해
+		 */
+		record CrystalOvercharge(int fuseTicks, int beamTicks, int restTicks, float damagePerSecond)
+				implements Risk {
+		}
+
+		/**
+		 * 가장자리에서 중앙으로 소용돌이가 밀려온다.
+		 *
+		 * <p>{@code knockback} 의 <b>방향</b>은 값이 정하지 않는다 — 안쪽(폭풍 진행 방향)으로만
+		 * 민다. 엔드 중앙 섬은 사방이 허공이고 공유 체력이라 한 사람의 낙사가 팀 전체를 끝낸다.
+		 *
+		 * @param speedPerSecond 소용돌이가 1초에 나아가는 거리(블록)
+		 * @param count          한 번에 도는 소용돌이 수
+		 * @param damage         닿은 사람이 받는 피해
+		 * @param knockback      미는 세기. 방향은 실행기가 정한다
+		 * @param restTicks      소용돌이들이 중앙에 닿은 뒤 새로 시작하기까지 쉬는 시간(틱)
+		 */
+		record EnderStorm(int count, double speedPerSecond, float damage, double knockback,
+				int restTicks) implements Risk {
+		}
+
+		/**
+		 * 엔드가 마른다 — 물과 용암이 사라지고 다시 놓을 수 없게 된다.
+		 *
+		 * <p><b>칸이 하나도 없다.</b> 한 번 터지고 끝나는 카드인데 「얼마나」를 정할 자리가 없기
+		 * 때문이다. 다만 터지고 사라지지는 않는다 — 다시 설치하지 못하는 금지가 전투가 끝날
+		 * 때까지 남는다.
+		 */
+		record DryWorld() implements Risk {
+		}
+
+		/**
+		 * 엔드의 엔더맨이 한꺼번에 적대가 된다.
+		 *
+		 * @param hostileTicks 적대인 시간(틱). 지나면 원래대로 돌아간다
+		 */
+		record NightHost(int hostileTicks) implements Risk {
+		}
+
+		/**
+		 * 정해진 시간 동안 아레나 곳곳에 표시가 떴다가 착탄한다.
+		 *
+		 * <p>지점은 {@code TrialRisks} 의 <b>겹침 금지</b> 목록에 올린다. 한 볼리 안에서만이 아니라
+		 * <b>그때 살아 있는 다른 카드의 지점과도</b> 겹치면 안 된다 — 「낙뢰」와 이 카드가 동시에
+		 * 돌 수 있고, 겹친 자리는 한 틱에 두 발이다.
+		 *
+		 * @param durationTicks 이 카드가 비를 내리는 전체 시간(틱). 한 번 쓰고 끝난다
+		 * @param minInterval   다음 볼리까지의 가장 짧은 간격(틱)
+		 * @param maxInterval   다음 볼리까지의 가장 긴 간격(틱)
+		 * @param minSpots      한 볼리의 가장 적은 지점 수
+		 * @param maxSpots      한 볼리의 가장 많은 지점 수
+		 * @param warnTicks     표시가 뜨고 착탄까지의 시간(틱)
+		 * @param damage        반경 안에 남아 있는 사람이 받는 피해
+		 * @param radius        피해 반경(블록). 바닥 표시도 이 크기다
+		 */
+		record EndRain(int durationTicks, int minInterval, int maxInterval, int minSpots,
+				int maxSpots, int warnTicks, float damage, double radius) implements Risk {
+		}
+
+		/**
+		 * 드래곤이 착지할 때마다 중앙에서 충격이 퍼진다.
+		 *
+		 * <p>주기가 없다. 발동을 정하는 것은 시간이 아니라 <b>드래곤의 착지</b>다.
+		 *
+		 * @param travelTicks 중앙에서 {@code maxRadius} 까지 퍼지는 데 걸리는 틱
+		 * @param maxRadius   고리가 닿는 마지막 반경(블록)
+		 * @param damage      고리가 지나갈 때 바닥을 딛고 있던 사람이 받는 피해
+		 * @param knockback   바깥으로 미는 거리(블록). <b>섬 밖으로 밀면 안 된다</b> —
+		 *                    근거는 {@code TrialLandingShock} 에 적어 두었다
+		 */
+		record LandingShock(int travelTicks, double maxRadius, float damage, double knockback)
+				implements Risk {
+		}
+
+		/**
+		 * 핫바의 몇 칸이 굳는다.
+		 *
+		 * <p>쌓이지 않는다. 주기마다 굳는 칸이 <b>옮겨 다닐 뿐</b> 개수는 늘 {@code slots} 다.
+		 *
+		 * @param interval 굳는 칸이 옮겨 가는 간격(틱)
+		 * @param slots    한 번에 굳는 칸 수
+		 */
+		record HotbarLock(int interval, int slots) implements Risk {
+		}
 	}
 
 	/**
@@ -334,7 +512,7 @@ public final class TrialCatalog {
 					new Risk.TracedProjectile(200, 40, 14.0F, 4.35, 1)),
 			new Trial("sharedfate:lightning_storm", "낙뢰",
 					"6초마다 아레나 열 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
-					POOL_MIDDLE,
+					POOL_ALL_CRYSTALS,
 					// 실제로 맞아 보고 정한 값이다. 두 곳은 「비켜야 할 이유」가 거의 없었고 피해 5 는
 					// 약했다. 열 곳으로 늘리고 피해를 12 로 올렸는데, 그러고도 「아직 안 아픈 정도」라
 					// 하여 18 로 올렸다.
@@ -367,8 +545,47 @@ public final class TrialCatalog {
 					new Risk.DragonFocus(Risk.Focus.CRYSTAL_BREAKER, 200, 400, 5, 6.0F)),
 			new Trial("sharedfate:crystal_revival", "부활",
 					"모든 크리스탈이 되살아납니다. 드래곤이 중앙 상공에서 그것을 지켜봅니다.",
-					POOL_LATE,
-					new Risk.CrystalRevive(10, 100, 0.0F)));
+					POOL_HEALTH_50,
+					new Risk.CrystalRevive(10, 100, 0.0F)),
+			new Trial("sharedfate:ender_pulse", "엔더 파동",
+					"20초마다 중앙에서 바닥 고리가 퍼집니다. 지나갈 때 땅을 딛고 있으면 잠시 묶입니다.",
+					POOL_ENTRY,
+					new Risk.EnderPulse(400, 80, 42.0, 60)),
+			new Trial("sharedfate:hotbar_lock", "굳는 손",
+					"30초마다 핫바 두 칸이 굳습니다. 굳은 칸의 물건은 휘두를 수도 쓸 수도 없습니다.",
+					POOL_ENTRY,
+					new Risk.HotbarLock(600, 2)),
+			new Trial("sharedfate:crystal_link", "연결된 수정",
+					"크리스탈을 부수면 가장 가까운 다른 크리스탈이 8초 동안 보호막을 두릅니다.",
+					POOL_FIRST_CRYSTAL,
+					new Risk.CrystalLink(160)),
+			new Trial("sharedfate:crystal_overcharge", "수정 과충전",
+					"크리스탈 하나가 붉게 달아오릅니다. 15초 안에 부수지 못하면 한 명이 10초 동안 빔에 물립니다.",
+					POOL_FIRST_CRYSTAL,
+					new Risk.CrystalOvercharge(300, 200, 400, 1.0F)),
+			new Trial("sharedfate:ender_storm", "엔더폭풍",
+					"가장자리에서 중앙으로 소용돌이 둘이 밀려옵니다. 닿으면 아프고 안쪽으로 밀려납니다.",
+					POOL_ALL_CRYSTALS,
+					// 넉백 세기는 실행기가 정한다. 여기 적힌 1.0 은 「민다」는 사실을 값으로 남긴
+					// 것이고, 방향은 값이 아니라 규칙이다 — 반드시 안쪽이다.
+					new Risk.EnderStorm(2, 2.0, 2.0F, 1.0, 500)),
+			new Trial("sharedfate:dry_world", "메마른 세계",
+					"엔드의 물과 용암이 증발하고, 그 뒤로는 물·용암·서리눈을 놓을 수 없습니다.",
+					POOL_ALL_CRYSTALS,
+					new Risk.DryWorld()),
+			new Trial("sharedfate:night_host", "밤의 군세",
+					"엔드의 엔더맨 전원이 20초 동안 적대가 되어 쳐다보지 않아도 달려옵니다.",
+					POOL_HEALTH_50,
+					new Risk.NightHost(400)),
+			new Trial("sharedfate:end_rain", "종말의 비",
+					"30초 동안 아레나 곳곳에 표시가 떴다가 떨어집니다. 표시된 자리에 서 있으면 크게 다칩니다.",
+					POOL_HEALTH_50,
+					new Risk.EndRain(600, 40, 60, 10, 15, 30, 10.0F, 2.5)),
+			new Trial("sharedfate:landing_shock", "착지 충격",
+					"드래곤이 착지할 때마다 중앙에서 충격이 퍼집니다. 땅을 딛고 있으면 맞고 밀려납니다.",
+					POOL_HEALTH_80,
+					// 궤적 40 은 실행기가 정할 값이다. 넉백 8 의 근거는 TrialLandingShock 에 있다.
+					new Risk.LandingShock(40, 15.0, 4.0F, 8.0)));
 
 	private TrialCatalog() {
 	}

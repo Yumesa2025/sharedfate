@@ -96,15 +96,39 @@ class TrialDelayTest {
 	}
 
 	@Test
-	void 지연을_안_정하고_자리를_만드는_길이_없다() {
+	void 지연과_연출을_안_정하고_자리를_만드는_길이_없다() {
 		// 열거형 생성자의 앞 두 인자는 컴파일러가 붙이는 이름과 순번이다. 그 뒤가 우리가 적는
-		// 값이고 마지막이 지연이다. 지연을 안 받는 생성자가 하나라도 생기면 그 길로 지연 없는
-		// 자리가 들어오고, 그 자리는 조용히 「자리를 모를 때」의 값을 쓰게 된다.
+		// 값 — 이름 · 지연 · 어떻게 뜨는가다. 둘 중 하나라도 안 받는 생성자가 생기면 그 길로
+		// 정하지 않은 자리가 들어오고, 그 자리는 조용히 「자리를 모를 때」의 값을 쓰게 된다.
 		for (Constructor<?> constructor : Trigger.class.getDeclaredConstructors()) {
 			Class<?>[] parameters = constructor.getParameterTypes();
-			assertEquals(4, parameters.length,
-					"지연을 안 받는 Trigger 생성자가 생겼다 — 자리를 지연 없이 만들 수 있게 된다");
-			assertEquals(int.class, parameters[3], "마지막 인자가 지연이어야 한다");
+			assertEquals(5, parameters.length,
+					"지연이나 연출을 안 받는 Trigger 생성자가 생겼다 —"
+							+ " 자리를 정하지 않고 만들 수 있게 된다");
+			assertEquals(int.class, parameters[3], "넷째 인자가 지연이어야 한다");
+			assertEquals(TrialCatalog.Reveal.class, parameters[4],
+					"다섯째 인자가 「어떻게 뜨는가」여야 한다");
+		}
+	}
+
+	@Test
+	void 자리_여섯이_전부_어떻게_뜨는지를_들고_있다() {
+		Map<Trigger, TrialCatalog.Reveal> expected = new EnumMap<>(Trigger.class);
+		expected.put(Trigger.ENTRY, TrialCatalog.Reveal.ROULETTE);
+		expected.put(Trigger.FIRST_CRYSTAL, TrialCatalog.Reveal.ROULETTE);
+		expected.put(Trigger.ALL_CRYSTALS, TrialCatalog.Reveal.ROULETTE);
+		// 카드가 한 장뿐이다. 결과가 정해진 굴림을 보여 주면 연출이 거짓말이 된다.
+		expected.put(Trigger.HEALTH_80, TrialCatalog.Reveal.FIXED_SCREEN);
+		expected.put(Trigger.HEALTH_50, TrialCatalog.Reveal.ROULETTE);
+		// 최후의 저항은 굉음·화면 흔들림·엔더맨 소멸·보스바 이름 변경이 이미 「판이 바뀌었다」를
+		// 말한다. 거기에 정지 화면을 얹으면 멈춤이 두 번 겹친다.
+		expected.put(Trigger.HEALTH_30, TrialCatalog.Reveal.SILENT);
+
+		assertEquals(expected.size(), Trigger.values().length,
+				"자리를 새로 만들었으면 어떻게 뜰지를 정하고 여기에도 적어라");
+		for (Trigger trigger : Trigger.values()) {
+			assertEquals(expected.get(trigger), trigger.reveal(),
+					trigger.label() + " 가 뜨는 방식이 바뀌었다");
 		}
 	}
 

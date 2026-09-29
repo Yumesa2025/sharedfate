@@ -5,6 +5,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LightningBolt;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
@@ -17,8 +18,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -131,6 +134,42 @@ class TrialRisksTest {
 		assertFalse(TrialRisks.stageJustChanged(101), "아직 아무 층도 아니다");
 		assertFalse(TrialRisks.stageJustChanged(99));
 		assertFalse(TrialRisks.stageJustChanged(0), "발동 틱에 한 번 더 울리면 층이 넷이 된다");
+	}
+
+	/**
+	 * 예고가 ≤50틱이어도 첫 층의 소리가 나간다.
+	 *
+	 * <p>{@link TrialWarning#stageFor} 는 남은 틱을 100 / 50 / 14 로 가른다. 30틱짜리 예고는
+	 * <b>처음부터 MARK 구간 안에서 시작</b>하므로 「직전 틱의 층과 다른가」만 물으면 영영 거짓이고,
+	 * IMMINENT 로 넘어갈 때까지 소리가 한 번도 안 나간다. 중앙 가까이 선 사람처럼 예고가 아예
+	 * IMMINENT 구간에서 시작하면 <b>한 번도 못 듣는다.</b>
+	 *
+	 * <p>이 함정에 「종말의 비」와 「착지 충격」이 각자 따로 막는 줄을 적어 걸려 있었다. 예고가
+	 * 짧은 카드가 나올 때마다 같은 줄을 다시 적어야 하는 모양이라 한가운데로 옮겼고, 그 자리를
+	 * 여기서 못박는다.
+	 */
+	@Test
+	void 예고가_짧아도_첫_층을_잃지_않는다() {
+		assertTrue(TrialRisks.stageJustChanged(30, 30), "30틱 예고의 첫 틱 — MARK 를 여기서 알린다");
+		assertTrue(TrialRisks.stageJustChanged(10, 10),
+				"중앙에 선 사람은 처음부터 IMMINENT 다. 여기서 안 울리면 한 번도 못 듣는다");
+		assertFalse(TrialRisks.stageJustChanged(29, 30), "첫 틱 다음은 층이 바뀔 때만이다");
+		assertTrue(TrialRisks.stageJustChanged(14, 30), "짧은 예고 안에서도 층 경계는 그대로다");
+
+		int rings = 0;
+		for (int remaining = 30; remaining >= 0; remaining--) {
+			if (TrialRisks.stageJustChanged(remaining, 30)) {
+				rings++;
+			}
+		}
+		assertEquals(2, rings, "30틱 예고에 들어 있는 층은 MARK 와 IMMINENT 둘뿐이다");
+
+		// 예고가 길면 두 형태의 답이 같아야 한다 — 첫 층의 경계를 지나는 틱이 반드시 있다.
+		for (int remaining = INTERVAL - 1; remaining >= 0; remaining--) {
+			assertEquals(TrialRisks.stageJustChanged(remaining),
+					TrialRisks.stageJustChanged(remaining, INTERVAL - 1),
+					"예고가 긴 위험에서는 두 형태가 갈리면 안 된다: " + remaining);
+		}
 	}
 
 	// ------------------------------------------------------------------ 대상 뽑기
@@ -357,7 +396,8 @@ class TrialRisksTest {
 					case TrialCatalog.Risk.TracedProjectile shot -> assertTrue(
 							shot.traceTicks() >= TrialWarning.TICKS_SIDESTEP,
 							trial.name() + " — 궤적이 옆으로 비킬 시간보다 짧으면 피할 수 없다");
-					// 아래 셋은 터지는 순간이 없다. 상태를 걸거나 판을 바꾼다.
+					// 아래는 터지는 순간이 없거나 예고가 주기와 다른 데서 나온다. 그래도 음수 값은
+					// 어느 쪽이든 뜻이 없으므로 여기서 함께 붙잡는다.
 					case TrialCatalog.Risk.CrystalGuard ignored -> {
 					}
 					case TrialCatalog.Risk.DragonFocus focus -> assertTrue(
@@ -366,6 +406,43 @@ class TrialRisksTest {
 					case TrialCatalog.Risk.CrystalRevive revive -> assertTrue(
 							revive.showTicks() >= 0,
 							trial.name() + " — 연출 길이가 음수면 뜻이 없다");
+					// 고리가 퍼지는 시간이 곧 예고다. 주기보다 길면 다음 고리가 앞 고리를 덮는다.
+					case TrialCatalog.Risk.EnderPulse pulse -> assertTrue(
+							pulse.travelTicks() > 0 && pulse.travelTicks() <= pulse.interval(),
+							trial.name() + " — 퍼지는 시간이 주기를 넘으면 고리가 겹쳐 쌓인다");
+					case TrialCatalog.Risk.CrystalLink link -> assertTrue(
+							link.shieldTicks() >= 0,
+							trial.name() + " — 보호막 시간이 음수면 뜻이 없다");
+					// 도화선이 부수러 갈 시간이다. 옆걸음보다 짧으면 알아채기도 전에 끝난다.
+					case TrialCatalog.Risk.CrystalOvercharge overcharge -> assertTrue(
+							overcharge.fuseTicks() >= TrialWarning.TICKS_SIDESTEP,
+							trial.name() + " — 도화선이 반응할 시간보다 짧으면 부술 수 없다");
+					case TrialCatalog.Risk.EnderStorm storm -> assertTrue(
+							storm.speedPerSecond() > 0.0 && storm.restTicks() >= 0,
+							trial.name() + " — 멈춰 선 소용돌이는 영영 중앙에 닿지 않는다");
+					case TrialCatalog.Risk.DryWorld ignored -> {
+					}
+					case TrialCatalog.Risk.NightHost host -> assertTrue(
+							host.hostileTicks() >= 0,
+							trial.name() + " — 적대 시간이 음수면 뜻이 없다");
+					// 표시가 뜨고 착탄까지가 예고 전부다. 옆으로 비킬 시간보다 짧으면 못 피한다.
+					case TrialCatalog.Risk.EndRain rain -> {
+						assertTrue(rain.warnTicks() >= TrialWarning.TICKS_SIDESTEP,
+								trial.name() + " — 예고가 옆으로 비킬 시간보다 짧으면 사후 통보다");
+						assertTrue(rain.minInterval() <= rain.maxInterval()
+										&& rain.minSpots() <= rain.maxSpots(),
+								trial.name() + " — 아래위가 뒤집힌 범위는 굴릴 수 없다");
+						assertTrue(rain.minInterval() > rain.warnTicks(),
+								trial.name() + " — 다음 볼리가 앞 볼리의 예고 안에 들어오면"
+										+ " 표시가 서로를 덮는다");
+					}
+					// 착지는 주기가 아니라 드래곤이 정한다. 퍼지는 시간이 곧 예고다.
+					case TrialCatalog.Risk.LandingShock shock -> assertTrue(
+							shock.travelTicks() > 0,
+							trial.name() + " — 퍼지는 시간이 0 이면 예고 없이 동시에 맞는다");
+					case TrialCatalog.Risk.HotbarLock lock -> assertTrue(
+							lock.interval() > 0 && lock.slots() > 0,
+							trial.name() + " — 주기나 칸 수가 0 이하면 아무 일도 없는 카드다");
 				}
 			}
 		}
@@ -386,7 +463,7 @@ class TrialRisksTest {
 		assertEquals(0.0, TrialRisks.spotMinGap(0.0));
 		assertEquals(0.0, TrialRisks.spotMinGap(-4.0), "반경이 없으면 지킬 간격도 없다");
 
-		Vec3 origin = new Vec3(0.0, 64.0, 0.0);
+		TrialRisks.LiveSpot origin = live(0.0, 64.0, 0.0, 3.0);
 		assertFalse(TrialRisks.clearOfTaken(List.of(origin), new Vec3(6.0, 70.0, 0.0), 3.0),
 				"정확히 두 배면 두 고리가 한 점에서 닿는다. 그 점에 선 사람은 두 번 맞는다");
 		assertTrue(TrialRisks.clearOfTaken(List.of(origin), new Vec3(6.01, 70.0, 0.0), 3.0));
@@ -394,10 +471,29 @@ class TrialRisksTest {
 				"첫 지점은 비교할 상대가 없다");
 	}
 
+	/**
+	 * 크기가 다른 고리끼리는 <b>두 반경의 합</b>으로 잰다.
+	 *
+	 * <p>「낙뢰」는 반경 3, 「종말의 비」는 2.5 다. 한쪽의 두 배로 재면 작은 쪽 기준일 때 겹친
+	 * 것을 통과시킨다 — 그 자리는 18 + 10 = 28 이라 팀 체력 20 을 한 틱에 넘긴다.
+	 */
+	@Test
+	void 반경이_다른_고리는_두_반경의_합으로_잰다() {
+		assertEquals(5.5, TrialRisks.spotMinGap(3.0, 2.5), 1.0E-9);
+
+		TrialRisks.LiveSpot lightning = live(0.0, 64.0, 0.0, 3.0);
+		assertFalse(TrialRisks.clearOfTaken(List.of(lightning), new Vec3(5.4, 64.0, 0.0), 2.5),
+				"5.4 칸이면 반경 3 과 2.5 짜리 고리가 겹친다 — 그 자리는 한 틱에 두 발이다");
+		assertTrue(TrialRisks.clearOfTaken(List.of(lightning), new Vec3(5.51, 64.0, 0.0), 2.5));
+		// 작은 쪽의 두 배(5.0)로만 쟀다면 5.4 를 통과시켰을 것이다.
+		assertTrue(TrialRisks.spotMinGap(3.0, 2.5) > TrialRisks.spotMinGap(2.5),
+				"작은 쪽 기준으로 재면 큰 고리가 남의 자리를 덮는다");
+	}
+
 	@Test
 	void 간격_검사는_높이를_묻지_않는다() {
 		// 고리는 바닥에 그려지고 insideMark 도 세로를 보지 않는다. y 가 달라도 위에서 보면 겹친다.
-		assertFalse(TrialRisks.clearOfTaken(List.of(new Vec3(0.0, 0.0, 0.0)),
+		assertFalse(TrialRisks.clearOfTaken(List.of(live(0.0, 0.0, 0.0, 3.0)),
 				new Vec3(1.0, 120.0, 1.0), 3.0));
 	}
 
@@ -615,6 +711,189 @@ class TrialRisksTest {
 		assertFalse(TrialRisks.insideMark(new Vec3(2.01, 64.0, 0.0), center, 2.0));
 	}
 
+	// ------------------------------------------------------------------ 타입과 실행기
+
+	/**
+	 * 위험 타입마다 그것을 돌리는 실행기.
+	 *
+	 * <p>{@code default} 없는 switch 라 실행을 안 붙이면 빌드가 깨진다. 그래도 여기에 적어 두는
+	 * 것은 <b>컴파일러가 「어디로 갔는지」까지는 안 보기 때문</b>이다 — 타입을 늘리면서 남의
+	 * 실행기로 잘못 보내도 빌드는 통과한다.
+	 *
+	 * <p>{@link TrialCatalog.Risk.DelayedStrike} 만 분배기 자신이 돌린다.
+	 */
+	private static final Map<String, String> EXECUTORS = Map.ofEntries(
+			Map.entry("DelayedStrike", "TrialRisks"),
+			Map.entry("TracedProjectile", "TrialFireball"),
+			Map.entry("CrystalGuard", "TrialCrystalGuard"),
+			Map.entry("DragonFocus", "TrialDragonFocus"),
+			Map.entry("CrystalRevive", "TrialCrystalRevive"),
+			Map.entry("EnderPulse", "TrialEnderPulse"),
+			Map.entry("CrystalLink", "TrialCrystalLink"),
+			Map.entry("CrystalOvercharge", "TrialCrystalOvercharge"),
+			Map.entry("EnderStorm", "TrialEnderStorm"),
+			Map.entry("DryWorld", "TrialDryWorld"),
+			Map.entry("NightHost", "TrialNightHost"),
+			Map.entry("EndRain", "TrialEndRain"),
+			Map.entry("LandingShock", "TrialLandingShock"),
+			Map.entry("HotbarLock", "TrialHotbarLock"));
+
+	/**
+	 * 위험 타입이 전부 실행기에 연결돼 있다.
+	 *
+	 * <p>실행기의 진입점 모양이 같은지도 함께 본다. 모양이 갈라지면 분배기의 분기가 갈래를 갖게
+	 * 되고, 그때부터는 타입을 늘릴 때마다 배선을 새로 생각해야 한다.
+	 */
+	@Test
+	void 위험_타입마다_실행기가_붙어_있다() {
+		byte[] compiled = classBytes(TrialRisks.class);
+		Class<?>[] types = TrialCatalog.Risk.class.getPermittedSubclasses();
+		assertEquals(EXECUTORS.size(), types.length,
+				"위험 타입을 늘렸으면 EXECUTORS 에도 적어라 — 어느 실행기로 갔는지는"
+						+ " 컴파일러가 봐 주지 않는다");
+		for (Class<?> type : types) {
+			String executor = EXECUTORS.get(type.getSimpleName());
+			assertNotNull(executor, type.getSimpleName() + " 의 실행기가 적혀 있지 않다");
+			if (executor.equals(TrialRisks.class.getSimpleName())) {
+				// 분배기 자신이 돌린다. 클래스 이름으로 찾을 것이 없다.
+				continue;
+			}
+			assertTrue(references(compiled, executor),
+					type.getSimpleName() + " 이 " + executor + " 로 가지 않는다 —"
+							+ " 분배기가 그 이름을 한 번도 부르지 않는다");
+			Class<?> owner = executorClass(executor);
+			assertEquals(void.class, method(owner, "clearState").getReturnType(),
+					executor + " 에 clearState 가 없다. 지난 판의 상태가 다음 판으로 샌다");
+			// 열쇠(String)를 받는 것이 서명의 일부다. 받지 않으면 자리를 잡는 실행기가 겹침 금지
+			// 목록의 열쇠를 스스로 만들어야 하고, 두 곳에서 만든 열쇠는 언젠가 갈라진다.
+			assertEquals(void.class, method(owner, "tick", ServerLevel.class, EnderDragon.class,
+					List.class, String.class, long.class, long.class, type).getReturnType(),
+					executor + " 의 진입점 모양이 다른 실행기와 다르다");
+		}
+	}
+
+	/**
+	 * 새 실행기의 상태도 함께 비운다.
+	 *
+	 * <p>위험은 값(레코드)이라 상태를 들 수 없어 실행기마다 정적 맵을 쓴다. 한 곳이라도 빠지면
+	 * 지난 판의 조준점·표적·설치 금지가 다음 판으로 샌다 — 컴파일도 로그도 조용한 사고다.
+	 */
+	@Test
+	void 상태를_비우는_길이_실행기_전부를_지난다() {
+		byte[] compiled = classBytes(TrialRisks.class);
+		for (String executor : EXECUTORS.values()) {
+			if (executor.equals(TrialRisks.class.getSimpleName())) {
+				continue;
+			}
+			assertTrue(references(compiled, executor), executor + " 를 분배기가 모른다");
+		}
+		assertTrue(references(compiled, "clearState"),
+				"분배기가 실행기의 상태를 비우는 길 자체가 없다");
+	}
+
+	// ------------------------------------------------------------------ 자리마다 제 풀
+
+	/**
+	 * 자리 여섯이 풀을 나눠 쓰지 않는다.
+	 *
+	 * <p>두 자리가 한 풀을 가리키면 앞 자리에서 뽑힌 카드가 뒤 자리의 풀에서도 빠진다
+	 * ({@link TrialCatalog#offerable}). 그러면 <b>한 자리의 카드를 고치는 일이 다른 자리를 같이
+	 * 움직인다</b> — 난이도 곡선을 자리마다 따로 잡으려고 풀을 나눈 뜻이 사라진다.
+	 */
+	@Test
+	void 자리_여섯이_풀을_나눠_쓰지_않는다() {
+		List<Set<TrialCatalog.Trigger>> pools = List.of(
+				TrialCatalog.POOL_ENTRY, TrialCatalog.POOL_FIRST_CRYSTAL,
+				TrialCatalog.POOL_ALL_CRYSTALS, TrialCatalog.POOL_HEALTH_80,
+				TrialCatalog.POOL_HEALTH_50, TrialCatalog.POOL_HEALTH_30);
+		assertEquals(TrialCatalog.Trigger.values().length, pools.size(),
+				"자리를 새로 만들었으면 그 자리의 풀도 만들고 여기에 적어라");
+
+		Set<TrialCatalog.Trigger> seen = EnumSet.noneOf(TrialCatalog.Trigger.class);
+		for (Set<TrialCatalog.Trigger> pool : pools) {
+			assertEquals(1, pool.size(), "풀 하나에 자리 하나다: " + pool);
+			TrialCatalog.Trigger only = pool.iterator().next();
+			assertTrue(seen.add(only), only.label() + " 의 풀이 둘이다");
+		}
+		assertEquals(TrialCatalog.Trigger.values().length, seen.size(),
+				"풀이 없는 자리가 있다 — 그 자리는 영영 아무것도 주지 않는다");
+
+		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
+			assertEquals(1, trial.pools().size(),
+					trial.name() + " 가 자리 여럿에 걸쳐 있다. 한 자리에서 뽑히면 다른 자리에서"
+							+ " 조용히 사라진다");
+		}
+	}
+
+	/**
+	 * 체력 80% 풀에 카드가 정확히 한 장이다.
+	 *
+	 * <p>이 자리는 룰렛을 돌리지 않고 정해진 카드의 화면만 띄운다
+	 * ({@link TrialCatalog.Reveal#FIXED_SCREEN}). 카드가 둘이 되는 순간 <b>둘 중 하나가 영영 안
+	 * 나오거나</b>, 결과가 정해진 화면이 거짓말을 하게 된다. 늘리려면 자리의 연출부터 볼 것.
+	 */
+	@Test
+	void 체력_80_풀에는_카드가_한_장뿐이다() {
+		List<TrialCatalog.Trial> cards =
+				TrialCatalog.offerable(TrialCatalog.Trigger.HEALTH_80, List.of());
+		assertEquals(1, cards.size(), "실제로 들어 있는 카드: " + cards);
+		assertEquals("sharedfate:landing_shock", cards.getFirst().id());
+		assertEquals(TrialCatalog.Reveal.FIXED_SCREEN, TrialCatalog.Trigger.HEALTH_80.reveal(),
+				"한 장짜리 자리에서 이름이 돌면 결과가 정해진 굴림을 보여 주는 것이 된다");
+	}
+
+	/**
+	 * 최후의 저항 자리는 지금 비어 있다.
+	 *
+	 * <p>별개 보스전이라 따로 만든다. 빈 풀은 정상이고 그 자리는 그냥 지나간다 — 여기서 멈추면
+	 * 그 사실을 다음 사람이 오해한 것이다.
+	 */
+	@Test
+	void 체력_30_풀은_비어_있어도_지나간다() {
+		assertTrue(TrialCatalog.offerable(TrialCatalog.Trigger.HEALTH_30, List.of()).isEmpty(),
+				"최후의 저항은 이번 작업에 들어가지 않았다");
+	}
+
+	// ------------------------------------------------------------------ 카드가 달라도 겹치면 안 된다
+
+	/**
+	 * 서로 다른 카드의 지점끼리도 겹치지 않는다.
+	 *
+	 * <p>⚠ <b>이 시험이 지키는 것이 「즉사 메커닉 0개」의 마지막 구멍이다.</b> 「낙뢰」(피해 18)는
+	 * 크리스탈 전멸에서, 「종말의 비」(피해 10)는 체력 50% 에서 온다. 자리가 다르지만 시련은 전투가
+	 * 끝날 때까지 쌓이므로 <b>둘 다 받고 나면 같은 틱에 함께 돈다.</b> 겹친 자리에 선 사람은
+	 * <b>28</b> 을 한 틱에 받고 팀 공유 체력은 20 이다.
+	 *
+	 * <p>한 카드 안에서만 떼어 놓던 옛 규칙으로는 이것을 막지 못한다.
+	 */
+	@Test
+	void 카드가_달라도_지점끼리_겹치지_않는다() {
+		TrialCatalog.Risk.DelayedStrike lightning = onlyStrike("sharedfate:lightning_storm");
+		TrialCatalog.Risk.EndRain rain = endRainCard();
+		float together = lightning.damage() + rain.damage();
+		assertTrue(together > PerkHealthRules.effectiveMaxHealth(null),
+				"둘이 겹쳐도 안 죽는다면 이 시험을 지울 이유가 생긴다. 실제 합: " + together);
+
+		double gap = TrialRisks.spotMinGap(lightning.radius(), rain.radius());
+		RandomSource random = RandomSource.create(20260930L);
+		for (int round = 0; round < 1000; round++) {
+			List<Vec3> storm = roll(random, lightning.count(), lightning.radius());
+			List<TrialRisks.LiveSpot> alive = new ArrayList<>();
+			for (Vec3 spot : storm) {
+				alive.add(new TrialRisks.LiveSpot(spot, lightning.radius()));
+			}
+			for (Vec3 drop : roll(random, rain.maxSpots(), rain.radius(), alive)) {
+				for (Vec3 spot : storm) {
+					assertTrue(flatDistance(spot, drop) > gap,
+							"낙뢰 고리와 종말의 비 고리가 " + flatDistance(spot, drop)
+									+ " 칸이다. 겹친 자리는 한 틱에 " + together + " 라"
+									+ " 팀 체력 " + PerkHealthRules.effectiveMaxHealth(null)
+									+ " 을 넘긴다");
+				}
+			}
+		}
+	}
+
 	// ------------------------------------------------------------------ 도우미
 
 	private static Method declared(Class<?> owner, String name, Class<?>... parameters) {
@@ -678,18 +957,35 @@ class TrialRisksTest {
 	 * 숫자를 따로 들면 <b>실제와 다른 조건에서</b> 확인한 것이 된다.
 	 */
 	private static List<Vec3> roll(RandomSource random, int count, double radius) {
+		return roll(random, count, radius, List.of());
+	}
+
+	/**
+	 * 이미 살아 있는 지점이 있는 판에서 굴린다.
+	 *
+	 * <p>{@code alive} 가 있는 것이 핵심이다. 시련은 전투가 끝날 때까지 쌓이므로 새 카드가
+	 * 자리를 잡는 순간 아레나에는 이미 다른 카드의 고리가 서 있다.
+	 */
+	private static List<Vec3> roll(RandomSource random, int count, double radius,
+			List<TrialRisks.LiveSpot> alive) {
+		List<TrialRisks.LiveSpot> taken = new ArrayList<>(alive);
 		List<Vec3> spots = new ArrayList<>();
 		for (int index = 0; index < count; index++) {
 			for (int attempt = 0; attempt < TrialRisks.SPOT_TRIES; attempt++) {
 				Vec3 candidate = TrialRisks.arenaOffset(random.nextDouble(), random.nextDouble(),
 						TrialRisks.ARENA_RADIUS);
-				if (TrialRisks.clearOfTaken(spots, candidate, radius)) {
+				if (TrialRisks.clearOfTaken(taken, candidate, radius)) {
 					spots.add(candidate);
+					taken.add(new TrialRisks.LiveSpot(candidate, radius));
 					break;
 				}
 			}
 		}
 		return spots;
+	}
+
+	private static TrialRisks.LiveSpot live(double x, double y, double z, double radius) {
+		return new TrialRisks.LiveSpot(new Vec3(x, y, z), radius);
 	}
 
 	private static boolean anyPairTooClose(List<Vec3> spots, double radius) {
@@ -747,6 +1043,38 @@ class TrialRisksTest {
 			case TrialCatalog.Risk.TracedProjectile shot -> shot;
 			case TrialCatalog.Risk risk -> throw new AssertionError(
 					"「기둥 화염구」의 위험이 궤적 투사체가 아니다: " + risk);
+		};
+	}
+
+	/** 같은 패키지의 실행기 클래스. 이름으로 찾는다 — 없으면 배선이 끊긴 것이다. */
+	private static Class<?> executorClass(String simpleName) {
+		String qualified = TrialRisks.class.getPackageName() + '.' + simpleName;
+		try {
+			return Class.forName(qualified);
+		} catch (ClassNotFoundException missing) {
+			throw new AssertionError(qualified + " 가 없다. 실행기 파일을 만들었는지 볼 것",
+					missing);
+		}
+	}
+
+	/** 실행기의 메서드 하나. 진입점 모양이 갈라지면 여기서 멈춘다. */
+	private static Method method(Class<?> owner, String name, Class<?>... parameters) {
+		try {
+			return owner.getDeclaredMethod(name, parameters);
+		} catch (NoSuchMethodException missing) {
+			throw new AssertionError(owner.getSimpleName() + "." + name
+					+ " 가 없거나 모양이 다르다. 실행기 진입점은 전부 같은 모양이어야 한다",
+					missing);
+		}
+	}
+
+	private static TrialCatalog.Risk.EndRain endRainCard() {
+		TrialCatalog.Trial trial = TrialCatalog.byId("sharedfate:end_rain");
+		assertTrue(trial != null && trial.risks().size() == 1, "「종말의 비」 카드가 없다");
+		return switch (trial.risks().getFirst()) {
+			case TrialCatalog.Risk.EndRain rain -> rain;
+			case TrialCatalog.Risk risk -> throw new AssertionError(
+					"「종말의 비」의 위험이 종말의 비가 아니다: " + risk);
 		};
 	}
 

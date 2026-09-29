@@ -31,6 +31,7 @@ import com.sharedfate.net.SelectedSlotPayload;
 import com.sharedfate.net.SharedFateNetworking;
 import com.sharedfate.net.TeamSyncPayload;
 import com.sharedfate.net.TeamWipePayload;
+import com.sharedfate.net.TrialHotbarLockPayload;
 import com.sharedfate.net.TrialRoulettePayload;
 import com.sharedfate.net.WorldResetPayload;
 import com.sharedfate.perk.effect.HideHudEffect;
@@ -145,6 +146,19 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(TrialRoulettePayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> openTrialRoulette(context.client(), payload)));
+		// 시련 「굳는 손」이 굳혀 둔 핫바 칸. HotbarHighlight 가 그리기 스레드에서 읽으므로
+		// 갱신도 클라이언트 본 스레드에서 한다.
+		//
+		// 받은 시각을 함께 적어 둔다. 「그만 그려라」를 보내 주는 사람이 없기 때문이다 —
+		// 드래곤이 죽는 틱에 서버가 세션만 닫고 지나가는 길이 있어 끄는 패킷을 기대할 수 없다.
+		// 월드가 아직 없으면 시각을 잴 수 없으므로 버린다. 서버는 1초마다 다시 보낸다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialHotbarLockPayload.TYPE,
+				(payload, context) -> context.client().execute(() -> {
+					if (context.client().level == null) {
+						return;
+					}
+					ClientHotbarLock.update(payload, context.client().level.getGameTime());
+				}));
 
 		// 접속하자마자 자기 판을 한 번 알린다. 서버는 로그에만 적는다 — 막는 일은 규약
 		// 번호가 하고, 이것은 「누가 어떤 클라이언트를 쓰는지」를 서버에서 볼 수 있게 하는
@@ -154,6 +168,9 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
 			ClientTeamState.clear();
 			ClientSwapTimer.clear();
+			// 남겨 두면 다음 서버의 첫 화면에 남의 판 붉은 칸이 뜬다. 낡으면 스스로 지우지만
+			// (STALE_TICKS 3초) 그 3초가 곧 다른 서버의 첫 3초다.
+			ClientHotbarLock.clear();
 			SelectedSlotReporter.reset();
 			DamageAlertHud.clear();
 			ExpandedInventoryManager.clearNegotiatedClientLayout();

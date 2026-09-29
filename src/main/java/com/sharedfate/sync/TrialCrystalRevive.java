@@ -182,10 +182,12 @@ public final class TrialCrystalRevive {
 	/**
 	 * 이미 발동한 카드들.
 	 *
-	 * <p><b>열쇠에 주의.</b> 공개 진입점이 카드 id 를 받지 않으므로 「받은 틱 + 위험 값」으로
-	 * 열쇠를 만든다. 값이 완전히 같은 부활 위험 둘을 한 카드에 걸면 두 번이 한 번으로 합쳐지는데,
-	 * 그때는 진입점에 열쇠 인자를 더해야 한다 — {@link TrialRisks} 가 {@code id + '#' + index} 로
-	 * 푼 것과 같은 문제다.
+	 * <p><b>열쇠에 주의.</b> 「받은 틱 + 위험 값」으로 만든 내부 열쇠다. 값이 완전히 같은 부활
+	 * 위험 둘을 한 카드에 걸면 두 번이 한 번으로 합쳐진다.
+	 *
+	 * <p>✅ <b>진입점이 이제 {@code key} 를 받는다.</b> 그 구멍을 막으려면 여기를 그 열쇠로
+	 * 바꾸면 되는데, {@link #step} 도 함께 열쇠를 받아야 하고 그 시험이 열여섯 자리에서 부른다 —
+	 * 값이 겹치는 카드가 아직 없어 이번에는 그대로 두었다. {@link TrialFireball} 에 같은 글이 있다.
 	 *
 	 * <p>정적이라 월드보다 오래 산다. {@link #clearState()} 를 부르지 않으면 <b>다음 판에서 같은
 	 * 틱에 받은 카드가 죽은 카드가 된다.</b>
@@ -213,13 +215,18 @@ public final class TrialCrystalRevive {
 	 * <p>{@code members} 가 비어 있어도 돈다. 되살아나는 것은 사람이 보고 있든 아니든 전투의
 	 * 사실이고, 여기서 물러서면 전원이 잠깐 접속을 끊는 것으로 카드를 지울 수 있게 된다.
 	 *
+	 * <p>{@code key} 는 이 위험을 가리키는 열쇠다({@code 카드 id + '#' + 카드 안 위험
+	 * 순번}). {@link TrialRisks} 가 겹침 금지 목록을 이 열쇠로 관리하므로, 자리를 잡는
+	 * 실행기는 <b>반드시 이 값을 그대로 넘겨야 한다</b> — 스스로 만들어 쓰면 두 곳에서
+	 * 만든 열쇠가 언젠가 갈라진다.
+	 *
 	 * @param granted 카드를 받은 틱. 연출은 월드 시간이 아니라 여기서부터 센다
 	 * @param members <b>지금은 쓰지 않는다.</b> 액션바 자막을 걷어낸 뒤로 이 카드가 사람 목록을
 	 *     볼 일이 없어졌다 — 소리도 표식도 크리스탈 자리에서 나간다. 그래도 받는 것은 모든 위험
 	 *     실행기가 같은 모양이어야 {@code TrialRisks} 의 분기가 한 줄로 유지되기 때문이다
 	 */
 	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
-			@Nullable List<ServerPlayer> members, long granted, long now,
+			@Nullable List<ServerPlayer> members, String key, long granted, long now,
 			@Nullable TrialCatalog.Risk.CrystalRevive risk) {
 		if (end == null || risk == null || risk.count() <= 0) {
 			return;
@@ -230,12 +237,12 @@ public final class TrialCrystalRevive {
 			return;
 		}
 
-		Key key = new Key(granted, risk);
+		Key seatKey = new Key(granted, risk);
 		if (step == Step.SHOW) {
-			show(end, dragon, key, granted, now, risk);
+			show(end, dragon, seatKey, granted, now, risk);
 			return;
 		}
-		finish(end, dragon, key, risk);
+		finish(end, dragon, seatKey, risk);
 	}
 
 	/**

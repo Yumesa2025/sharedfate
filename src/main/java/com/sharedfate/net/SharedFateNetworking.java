@@ -125,7 +125,16 @@ public final class SharedFateNetworking {
 	//     새 묶음이 하나 늘었으므로 옛 클라이언트는 이것을 읽지 못한다. 시련은 **브랜치
 	//     `feature/dragon-trials` 안에만 있고 main 에 올리지 않으므로**, 이 번호가 배포판으로
 	//     나가는 것은 시련을 실제로 내보내기로 정한 뒤다.
-	public static final int PROTOCOL_VERSION = 30;
+	// 31: 시련 「굳는 손」이 굳혀 둔 핫바 칸(TrialHotbarLockPayload 신설).
+	//     막는 일은 전부 서버가 한다 — 이 묶음은 **붉은 표시 하나만** 나른다. 그래서 못 읽는
+	//     클라이언트는 손이 똑같이 굳는데 화면에는 아무 표시가 없다. 어느 칸이 굳었는지 모른 채
+	//     30초마다 두 칸이 옮겨 다니는 것이라 사람은 「모드가 고장 났다」로 읽는다. 위 ★ 규칙이
+	//     말하는 **조용히 덜 동작하는** 경우 그대로다.
+	//     새 묶음이 하나 늘었으므로 옛 클라이언트는 이것을 읽지 못한다. 30 과 마찬가지로 시련은
+	//     브랜치 `feature/dragon-trials` 안에만 있고, 이 번호가 배포판으로 나가는 것은 시련을
+	//     실제로 내보내기로 정한 뒤다. ⚠ 올린 이상 **서버와 클라이언트 jar 을 둘 다 바꿔야
+	//     한다** — 한쪽만 올리면 악수 단계에서 걸려 아예 못 들어온다.
+	public static final int PROTOCOL_VERSION = 31;
 
 	private SharedFateNetworking() {
 	}
@@ -140,6 +149,8 @@ public final class SharedFateNetworking {
 		PayloadTypeRegistry.clientboundPlay().register(PerkOfferPayload.TYPE, PerkOfferPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				TrialRoulettePayload.TYPE, TrialRoulettePayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(
+				TrialHotbarLockPayload.TYPE, TrialHotbarLockPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(PerkSyncPayload.TYPE, PerkSyncPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				PerkCloseOfferPayload.TYPE, PerkCloseOfferPayload.CODEC);

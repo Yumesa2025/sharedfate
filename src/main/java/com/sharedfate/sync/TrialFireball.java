@@ -111,10 +111,13 @@ public final class TrialFireball {
 	/**
 	 * 지금 날고 있는 것들.
 	 *
-	 * <p><b>열쇠에 주의.</b> 공개 진입점이 카드 id 를 받지 않으므로 「받은 틱 + 위험 값」으로 열쇠를
-	 * 만든다. 실제로는 이 위험을 가진 카드가 하나뿐이라 충분하지만, 언젠가 <b>값이 완전히 같은
-	 * 화염구 위험 둘을 한 카드에</b> 걸면 두 발이 한 발로 합쳐진다. 그때는 진입점에 열쇠 인자를
-	 * 더해야 한다 — {@code TrialRisks} 가 {@code id + '#' + index} 로 푼 문제와 같은 것이다.
+	 * <p><b>열쇠에 주의.</b> 「받은 틱 + 위험 값」으로 만든 내부 열쇠다. 실제로는 이 위험을 가진
+	 * 카드가 하나뿐이라 충분하지만, 언젠가 <b>값이 완전히 같은 화염구 위험 둘을 한 카드에</b>
+	 * 걸면 두 발이 한 발로 합쳐진다.
+	 *
+	 * <p>✅ <b>진입점이 이제 {@code key}(= {@code 카드 id + '#' + 순번})를 받는다.</b> 위 구멍을
+	 * 막으려면 여기를 그 열쇠로 바꾸면 된다 — 전제가 없어서 못 하던 일이었다. 지금 바꾸지 않은
+	 * 것은 값이 겹치는 카드가 아직 없어 이번 변경에 섞을 이유가 없어서다.
 	 */
 	private static final Map<Key, Volley> VOLLEYS = new HashMap<>();
 
@@ -130,10 +133,15 @@ public final class TrialFireball {
 	 * <p>{@code dragon} 은 이 카드가 쓰지 않는다. 그래도 받는 것은 다섯 실행기의 진입점을 같은
 	 * 모양으로 두어 {@code DragonTrialManager} 의 배선이 갈래 없이 한 줄로 끝나게 하기 위해서다.
 	 *
+	 * <p>{@code key} 는 이 위험을 가리키는 열쇠다({@code 카드 id + '#' + 카드 안 위험
+	 * 순번}). {@link TrialRisks} 가 겹침 금지 목록을 이 열쇠로 관리하므로, 자리를 잡는
+	 * 실행기는 <b>반드시 이 값을 그대로 넘겨야 한다</b> — 스스로 만들어 쓰면 두 곳에서
+	 * 만든 열쇠가 언젠가 갈라진다.
+	 *
 	 * @param granted 카드를 받은 틱. 주기는 월드 시간이 아니라 여기서부터 센다
 	 */
 	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
-			@Nullable List<ServerPlayer> members, long granted, long now,
+			@Nullable List<ServerPlayer> members, String key, long granted, long now,
 			@Nullable TrialCatalog.Risk.TracedProjectile risk) {
 		if (end == null || members == null || members.isEmpty() || risk == null) {
 			return;
@@ -154,12 +162,12 @@ public final class TrialFireball {
 			return;
 		}
 
-		Key key = new Key(granted, risk);
+		Key volleyKey = new Key(granted, risk);
 		long cycle = TrialRisks.strikeIndex(now, granted, interval);
-		Volley volley = VOLLEYS.get(key);
+		Volley volley = VOLLEYS.get(volleyKey);
 		if (volley == null || volley.index() != cycle) {
 			volley = fire(end, members, cycle, risk);
-			VOLLEYS.put(key, volley);
+			VOLLEYS.put(volleyKey, volley);
 		}
 		if (volley.shots().isEmpty()) {
 			return;
@@ -173,7 +181,7 @@ public final class TrialFireball {
 				detonate(end, shot.to(), risk);
 			}
 			// 터진 발을 들고 있으면 다음 주기의 첫 틱에 옛 궤적이 한 번 더 그려진다.
-			VOLLEYS.remove(key);
+			VOLLEYS.remove(volleyKey);
 		}
 	}
 

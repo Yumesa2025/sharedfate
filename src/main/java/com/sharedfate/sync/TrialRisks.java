@@ -20,6 +20,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,25 +81,6 @@ public final class TrialRisks {
 	 * 나왔다(지점 5천만 개 중 8개). 실질적으로 늘 열 곳이 다 선다.
 	 */
 	static final int SPOT_TRIES = 8;
-	/**
-	 * 지점끼리 지켜야 하는 최소 간격을 반경의 몇 배로 볼 것인가.
-	 *
-	 * <h2>이 숫자가 「즉사 메커닉 0개」를 지키는 자리다</h2>
-	 *
-	 * <p>고리 둘의 중심이 <b>반경의 두 배보다 가까우면</b> 두 원이 겹치고, 그 겹친 구역에 선 사람은
-	 * 한 틱에 두 번 맞는다. 「낙뢰」가 피해 12 · 열 곳이므로 겹치면 24 — 팀 공유 체력 20 을 넘어
-	 * <b>가득 찬 상태에서 즉사</b>다. 전멸은 곧 월드 삭제다.
-	 *
-	 * <p>그냥 굴리면 그 일이 얼마나 자주 나는지: 반경 40 아레나에 반경 3 짜리 지점을 무작위로
-	 * 놓을 때 <b>겹침 구역이 하나라도 생길 확률이 두 곳이면 2.1%, 열 곳이면 62.8%</b>다
-	 * (세 겹까지 생기는 판도 2.9%, 그건 36 피해다). 이 규칙을 넣으면 0% 가 된다.
-	 *
-	 * <p><b>카드 값이 아니라 여기에 건 이유.</b> 값을 고치는 사람은 피해와 개수만 본다. 규칙을
-	 * 카드마다 적어 두면 다음에 개수를 늘리는 사람이 그것을 빠뜨리고, 그때는 아무도 안 죽어 보다가
-	 * 어느 판에서 한 번 전멸한다. 그래서 {@link TrialCatalog.Risk.Aim#RANDOM_SPOT} <b>전체</b>에
-	 * 건다 — 값이 무엇이든 겹침 구역은 생기지 않는다.
-	 */
-	private static final double SPOT_MIN_GAP_FACTOR = 2.0;
 
 	/** 플레이어 중력(블록/틱²). 띄울 높이를 속도로 바꿀 때 쓴다. */
 	private static final double GRAVITY_PER_TICK = 0.08;
@@ -116,8 +98,35 @@ public final class TrialRisks {
 	private static final Map<String, Cycle<UUID>> TRAIL_PICKS = new HashMap<>();
 	/** 위험마다 이번 주기에 터지기로 한 자리. */
 	private static final Map<String, Cycle<Vec3>> SPOT_PICKS = new HashMap<>();
+	/**
+	 * ⚠ <b>지금 바닥에 살아 있는 위험 지점 전부.</b> 열쇠는 위험 하나다.
+	 *
+	 * <h2>한 카드 안에서만 떼어 놓는 것으로는 모자라다</h2>
+	 *
+	 * <p>전에는 같은 카드의 지점끼리만 간격을 지켰다. 그런데 시련은 전투가 끝날 때까지 <b>쌓인다</b> —
+	 * 「낙뢰」(피해 18)와 「종말의 비」(피해 10)는 자리가 달라 서로 다른 트리거에서 오지만,
+	 * 한번 받고 나면 <b>둘 다 동시에 돈다.</b> 두 고리가 겹친 자리에 선 사람은 한 틱에 <b>28</b> 을
+	 * 받고 팀 공유 체력은 20 이다. 그 한 틱에 전멸이고 전멸은 곧 월드 삭제다.
+	 *
+	 * <p>그래서 검사 범위를 <b>살아 있는 모든 지점</b>으로 넓혔다. 새로 지점을 잡는 쪽은 자기
+	 * 카드가 아니라 이 목록 전체에서 떨어져야 한다.
+	 *
+	 * <p>⚠ <b>앞으로 추가되는 카드도 이 목록에 들어가야 한다.</b> 바닥에 표시를 띄우고 그 자리를
+	 * 때리는 위험을 새로 만들면서 {@link #reserveSpots} 를 지나지 않으면, 그 카드만 남의 고리
+	 * 위에 겹쳐 떨어진다 — 컴파일도 시험도 조용하고, 실제 전투에서 어느 판에 한 번 전멸한다.
+	 */
+	private static final Map<String, List<LiveSpot>> LIVE_SPOTS = new LinkedHashMap<>();
 	/** 띄워진 사람과 낙하 피해 면제가 끝나는 시각. */
 	private static final Map<UUID, Long> FALL_GRACE = new HashMap<>();
+
+	/**
+	 * 살아 있는 위험 지점 하나.
+	 *
+	 * <p>반경을 함께 든다. 카드마다 고리 크기가 다르므로({@code 낙뢰} 3, {@code 종말의 비} 2.5)
+	 * 지켜야 할 간격이 <b>두 반경의 합</b>이고, 한쪽 반경만으로는 계산할 수 없다.
+	 */
+	record LiveSpot(Vec3 at, double radius) {
+	}
 
 	/**
 	 * 한 주기 동안 붙잡아 두는 대상.
@@ -160,6 +169,8 @@ public final class TrialRisks {
 		}
 		TRAIL_PICKS.keySet().retainAll(keys);
 		SPOT_PICKS.keySet().retainAll(keys);
+		// 없어진 카드가 잡아 둔 지점을 놓지 않으면 아레나 일부가 영영 막힌 채로 남는다.
+		LIVE_SPOTS.keySet().retainAll(keys);
 
 		recordTrails(members, lookbackNeeded(active));
 		relieveFalls(members, now);
@@ -168,16 +179,34 @@ public final class TrialRisks {
 			long granted = session.grantedTick(entry.trialId());
 			// default 를 넣지 말 것. 이 switch 가 위험 타입과 실행을 묶어 두는 유일한 장치다.
 			switch (entry.risk()) {
-				case TrialCatalog.Risk.DelayedStrike strike ->
-						runDelayedStrike(end, members, entry.key(), granted, now, strike);
-				case TrialCatalog.Risk.TracedProjectile shot ->
-						TrialFireball.tick(end, dragon, members, granted, now, shot);
-				case TrialCatalog.Risk.CrystalGuard guard ->
-						TrialCrystalGuard.tick(end, dragon, members, granted, now, guard);
-				case TrialCatalog.Risk.DragonFocus focus ->
-						TrialDragonFocus.tick(end, dragon, members, granted, now, focus);
-				case TrialCatalog.Risk.CrystalRevive revive ->
-						TrialCrystalRevive.tick(end, dragon, members, granted, now, revive);
+				case TrialCatalog.Risk.DelayedStrike strike -> runDelayedStrike(
+						end, members, entry.key(), granted, now, strike);
+				case TrialCatalog.Risk.TracedProjectile shot -> TrialFireball.tick(
+						end, dragon, members, entry.key(), granted, now, shot);
+				case TrialCatalog.Risk.CrystalGuard guard -> TrialCrystalGuard.tick(
+						end, dragon, members, entry.key(), granted, now, guard);
+				case TrialCatalog.Risk.DragonFocus focus -> TrialDragonFocus.tick(
+						end, dragon, members, entry.key(), granted, now, focus);
+				case TrialCatalog.Risk.CrystalRevive revive -> TrialCrystalRevive.tick(
+						end, dragon, members, entry.key(), granted, now, revive);
+				case TrialCatalog.Risk.EnderPulse pulse -> TrialEnderPulse.tick(
+						end, dragon, members, entry.key(), granted, now, pulse);
+				case TrialCatalog.Risk.CrystalLink link -> TrialCrystalLink.tick(
+						end, dragon, members, entry.key(), granted, now, link);
+				case TrialCatalog.Risk.CrystalOvercharge overcharge -> TrialCrystalOvercharge.tick(
+						end, dragon, members, entry.key(), granted, now, overcharge);
+				case TrialCatalog.Risk.EnderStorm storm -> TrialEnderStorm.tick(
+						end, dragon, members, entry.key(), granted, now, storm);
+				case TrialCatalog.Risk.DryWorld dry -> TrialDryWorld.tick(
+						end, dragon, members, entry.key(), granted, now, dry);
+				case TrialCatalog.Risk.NightHost host -> TrialNightHost.tick(
+						end, dragon, members, entry.key(), granted, now, host);
+				case TrialCatalog.Risk.EndRain rain -> TrialEndRain.tick(
+						end, dragon, members, entry.key(), granted, now, rain);
+				case TrialCatalog.Risk.LandingShock shock -> TrialLandingShock.tick(
+						end, dragon, members, entry.key(), granted, now, shock);
+				case TrialCatalog.Risk.HotbarLock lock -> TrialHotbarLock.tick(
+						end, dragon, members, entry.key(), granted, now, lock);
 			}
 		}
 	}
@@ -195,6 +224,15 @@ public final class TrialRisks {
 		TrialCrystalGuard.clearState();
 		TrialDragonFocus.clearState();
 		TrialCrystalRevive.clearState();
+		TrialEnderPulse.clearState();
+		TrialCrystalLink.clearState();
+		TrialCrystalOvercharge.clearState();
+		TrialEnderStorm.clearState();
+		TrialDryWorld.clearState();
+		TrialNightHost.clearState();
+		TrialEndRain.clearState();
+		TrialLandingShock.clearState();
+		TrialHotbarLock.clearState();
 		CrystalWatch.clearState();
 	}
 
@@ -202,6 +240,7 @@ public final class TrialRisks {
 		TRAILS.clear();
 		TRAIL_PICKS.clear();
 		SPOT_PICKS.clear();
+		LIVE_SPOTS.clear();
 		FALL_GRACE.clear();
 	}
 
@@ -239,7 +278,7 @@ public final class TrialRisks {
 						deepest = Math.max(deepest, strike.lookback());
 					}
 				}
-				// 아래 넷은 발자국을 쓰지 않는다. 지금 자리나 크리스탈을 본다.
+				// 아래는 전부 발자국을 쓰지 않는다. 지금 자리나 크리스탈이나 드래곤을 본다.
 				case TrialCatalog.Risk.TracedProjectile ignored -> {
 				}
 				case TrialCatalog.Risk.CrystalGuard ignored -> {
@@ -247,6 +286,24 @@ public final class TrialRisks {
 				case TrialCatalog.Risk.DragonFocus ignored -> {
 				}
 				case TrialCatalog.Risk.CrystalRevive ignored -> {
+				}
+				case TrialCatalog.Risk.EnderPulse ignored -> {
+				}
+				case TrialCatalog.Risk.CrystalLink ignored -> {
+				}
+				case TrialCatalog.Risk.CrystalOvercharge ignored -> {
+				}
+				case TrialCatalog.Risk.EnderStorm ignored -> {
+				}
+				case TrialCatalog.Risk.DryWorld ignored -> {
+				}
+				case TrialCatalog.Risk.NightHost ignored -> {
+				}
+				case TrialCatalog.Risk.EndRain ignored -> {
+				}
+				case TrialCatalog.Risk.LandingShock ignored -> {
+				}
+				case TrialCatalog.Risk.HotbarLock ignored -> {
 				}
 			}
 		}
@@ -303,7 +360,9 @@ public final class TrialRisks {
 		if (stage == null) {
 			return;
 		}
-		boolean changed = stageJustChanged(remaining);
+		// 예고는 한 주기 통째다. 주기가 시작되는 틱의 남은 틱이 interval - 1 이므로 그것이
+		// 이 위험의 예고 길이다 — 주기가 짧은(≤51틱) 카드가 새로 나와도 첫 층을 잃지 않는다.
+		boolean changed = stageJustChanged(remaining, strike.interval() - 1);
 		ParticleOptions mark = TrialWarning.dust(markColor(strike.impact()));
 		for (Vec3 spot : spots) {
 			if (stage != TrialWarning.Stage.APPROACH) {
@@ -443,8 +502,9 @@ public final class TrialRisks {
 	 *
 	 * <p>자리는 주기마다 한 번만 굴리고 그대로 들고 간다. 매 틱 다시 굴리면 예고가 예고가 아니다.
 	 *
-	 * <p>앞에서 뽑은 자리를 넘겨 주며 굴린다 — <b>고리끼리 겹치면 그 겹친 구역이 즉사 구역</b>이기
-	 * 때문이다. 까닭은 {@link #SPOT_MIN_GAP_FACTOR} 에 적어 두었다.
+	 * <p>지점은 {@link #reserveSpots} 를 지나 <b>살아 있는 지점 목록 전체</b>에서 떨어진 자리로
+	 * 잡는다 — 고리끼리 겹치면 그 겹친 구역이 즉사 구역이기 때문이다. 까닭은 {@link #LIVE_SPOTS}
+	 * 와 {@link #spotMinGap} 에 적어 두었다.
 	 */
 	private static List<Vec3> spotsInArena(ServerLevel end, String key, long cycle,
 			TrialCatalog.Risk.DelayedStrike strike) {
@@ -452,36 +512,84 @@ public final class TrialRisks {
 		if (picked != null && picked.index() == cycle) {
 			return picked.targets();
 		}
-		List<Vec3> spots = new ArrayList<>();
-		for (int index = 0; index < strike.count(); index++) {
-			Vec3 spot = groundSpot(end, spots, strike.radius());
-			if (spot != null) {
-				spots.add(spot);
-			}
-		}
+		List<Vec3> spots = reserveSpots(end, key, strike.count(), strike.radius());
 		SPOT_PICKS.put(key, new Cycle<>(cycle, spots));
 		return spots;
 	}
 
 	/**
-	 * 아레나 안에서 발 디딜 수 있고 이미 뽑은 자리와 겹치지 않는 자리 하나.
+	 * ⚠ 지점을 잡는 <b>유일한 길</b>. 살아 있는 다른 지점 전부에서 떨어진 자리만 돌려준다.
+	 *
+	 * <p>앞서 이 열쇠로 잡아 둔 것은 먼저 놓는다 — 지난 주기의 고리는 이미 터졌으므로 새 주기의
+	 * 자리를 막으면 안 된다.
+	 *
+	 * <p>⚠ <b>바닥에 표시를 띄우고 그 자리를 때리는 카드를 새로 만들면 반드시 여기를 지날 것.</b>
+	 * 직접 굴리면 그 카드만 남의 고리 위에 겹치고, 「낙뢰」 18 과 「종말의 비」 10 이 겹친 자리는
+	 * 한 틱에 28 이라 팀 공유 체력 20 을 넘긴다. 까닭은 {@link #LIVE_SPOTS} 에 있다.
+	 *
+	 * @param key    이 위험을 가리키는 열쇠. {@code 카드 id + '#' + 위험 순번} 꼴이다
+	 * @param count  잡고 싶은 개수. 자리를 못 찾으면 적힌 것보다 적게 돌아온다 —
+	 *               겹치느니 한 발 빠지는 쪽이다
+	 * @param radius 고리 반경. 지켜야 할 간격이 여기서 나온다
+	 */
+	static List<Vec3> reserveSpots(ServerLevel end, String key, int count, double radius) {
+		LIVE_SPOTS.remove(key);
+		List<LiveSpot> taken = liveSpots();
+		List<Vec3> spots = new ArrayList<>();
+		List<LiveSpot> mine = new ArrayList<>();
+		for (int index = 0; index < count; index++) {
+			Vec3 spot = groundSpot(end, taken, radius);
+			if (spot == null) {
+				continue;
+			}
+			spots.add(spot);
+			LiveSpot live = new LiveSpot(spot, radius);
+			// 방금 잡은 것도 곧바로 목록에 넣는다. 같은 볼리 안에서도 겹치면 안 된다.
+			taken.add(live);
+			mine.add(live);
+		}
+		LIVE_SPOTS.put(key, mine);
+		return spots;
+	}
+
+	/**
+	 * 이 열쇠가 잡아 둔 지점을 놓는다.
+	 *
+	 * <p>한 번 터지고 끝나는 카드는 스스로 놓아야 한다. 주기로 도는 카드는 {@link #reserveSpots}
+	 * 가 다음 주기에 알아서 놓는다.
+	 */
+	static void releaseSpots(String key) {
+		LIVE_SPOTS.remove(key);
+	}
+
+	/** 지금 바닥에 살아 있는 지점 전부. 위험을 가리지 않는다 — 겹침은 카드를 가려 주지 않는다. */
+	static List<LiveSpot> liveSpots() {
+		List<LiveSpot> all = new ArrayList<>();
+		for (List<LiveSpot> held : LIVE_SPOTS.values()) {
+			all.addAll(held);
+		}
+		return all;
+	}
+
+	/**
+	 * 아레나 안에서 발 디딜 수 있고 살아 있는 지점 어느 것과도 겹치지 않는 자리 하나.
 	 *
 	 * <p>다시 굴리는 까닭이 둘이다.
 	 *
 	 * <ul>
 	 *   <li><b>허공</b> — 중앙 섬은 둥글지 않아 반경 안에도 빈 곳이 있다. 거기서 터지면 예고도
 	 *       피해도 뜻이 없다</li>
-	 *   <li><b>겹침</b> — 앞 고리와 너무 가까우면 겹친 구역에 선 사람이 한 틱에 두 번 맞는다.
-	 *       {@link #SPOT_MIN_GAP_FACTOR} 를 볼 것</li>
+	 *   <li><b>겹침</b> — 살아 있는 고리와 너무 가까우면 겹친 구역에 선 사람이 한 틱에 두 번
+	 *       맞는다. {@link #spotMinGap} 을 볼 것</li>
 	 * </ul>
 	 *
 	 * <p>둘 다 같은 굴림으로 거른다. 한쪽만 통과한 자리는 쓰지 않는다.
 	 *
-	 * @param taken  이번 주기에 이미 뽑아 둔 자리들
+	 * @param taken  지금 살아 있는 지점들. <b>자기 카드의 것만이 아니다</b>
 	 * @param radius 고리 반경. 최소 간격이 여기서 나온다
 	 * @return 끝내 못 찾으면 {@code null}. 그 지점은 이번 주기에 빠진다
 	 */
-	private static @Nullable Vec3 groundSpot(ServerLevel end, List<Vec3> taken, double radius) {
+	private static @Nullable Vec3 groundSpot(ServerLevel end, List<LiveSpot> taken, double radius) {
 		RandomSource random = end.getRandom();
 		for (int attempt = 0; attempt < SPOT_TRIES; attempt++) {
 			Vec3 offset = arenaOffset(random.nextDouble(), random.nextDouble(), ARENA_RADIUS);
@@ -620,15 +728,52 @@ public final class TrialRisks {
 	}
 
 	/**
+	 * 층이 방금 바뀌었는가. 예고가 시작되는 틱을 <b>모르는</b> 형태다.
+	 *
+	 * <p>예고가 100틱보다 길게 시작하는 위험에만 쓸 것 — 그때는 첫 층
+	 * ({@link TrialWarning.Stage#APPROACH}, ≤100)의 경계를 지나는 틱이 반드시 있어
+	 * 아래 {@link #stageJustChanged(int, int)} 와 답이 같다.
+	 *
+	 * @see #stageJustChanged(int, int)
+	 */
+	static boolean stageJustChanged(int remaining) {
+		return stageJustChanged(remaining, Integer.MAX_VALUE);
+	}
+
+	/**
 	 * 층이 방금 바뀌었는가.
 	 *
 	 * <p>{@link TrialWarning#sound} 는 부를 때마다 울리므로 호출자가 직전 층과 비교해야 한다.
 	 * 남은 틱은 1씩 줄어드니 직전 틱의 층은 {@code remaining + 1} 로 구하면 된다 — 지난 층을
 	 * 따로 저장하지 않아도 되고, 저장하지 않으니 어긋날 일도 없다.
+	 *
+	 * <h2>⚠ 예고가 ≤50틱이면 그 비교만으로는 한 층이 통째로 빠진다</h2>
+	 *
+	 * <p>{@link TrialWarning#stageFor} 는 남은 틱을 100 / 50 / 14 로 가른다. 예고가 30틱인
+	 * 위험(「종말의 비」의 {@code warnTicks}, 「착지 충격」에서 중앙 가까이 선 사람)은
+	 * <b>처음부터 MARK 구간(≤50) 안에서 시작</b>하므로 {@code stageFor(remaining)} 과
+	 * {@code stageFor(remaining + 1)} 이 영영 같다. 그러면 예고가 IMMINENT 로 넘어갈 때까지
+	 * 소리가 한 번도 안 나가고, 중앙에 선 사람은 처음부터 IMMINENT 라 <b>아예 한 번도 못 듣는다.</b>
+	 *
+	 * <p>고칠 자리를 여기로 잡은 이유. 전에는 {@code TrialEndRain} 과 {@code TrialLandingShock}
+	 * 이 <b>각자 따로</b> 「출발 틱이면 무조건 울린다」를 적어 막고 있었다. 예고가 짧은 카드가
+	 * 새로 나올 때마다 같은 줄을 다시 적어야 하고, 한 번 빠뜨리면 그 카드만 조용해진다 —
+	 * 소리와 표식 둘뿐인 신호에서 한 갈래를 잃는 것이라 로그에도 시험에도 안 남는다.
+	 *
+	 * @param remaining 발동까지 남은 틱
+	 * @param lead      이 예고가 <b>시작될 때의</b> 남은 틱. {@code remaining} 이 여기에
+	 *                  닿아 있는 틱이 예고의 첫 틱이고, 그 틱은 직전 층이 아예 없으므로
+	 *                  「바뀌었다」로 본다
 	 */
-	static boolean stageJustChanged(int remaining) {
+	static boolean stageJustChanged(int remaining, int lead) {
 		TrialWarning.Stage now = TrialWarning.stageFor(remaining);
-		return now != null && now != TrialWarning.stageFor(remaining + 1);
+		if (now == null) {
+			return false;
+		}
+		if (remaining >= lead) {
+			return true;
+		}
+		return now != TrialWarning.stageFor(remaining + 1);
 	}
 
 	/**
@@ -702,26 +847,47 @@ public final class TrialRisks {
 	/**
 	 * 고리 둘의 중심이 이보다 가까우면 겹친다.
 	 *
-	 * <p>두 원이 한 점도 공유하지 않으려면 중심 거리가 <b>반경의 합</b>보다 커야 한다. 지금은 한
-	 * 위험의 고리가 모두 같은 반경이라 반경의 두 배다. 경계에 정확히 닿는 경우
-	 * ({@code 거리 == 반경의 두 배})도 겹침으로 본다 — {@link #insideMark} 가 경계를 「안」으로
-	 * 보므로 그 접점에 선 사람은 두 발을 다 맞는다.
+	 * <h2>이 함수가 「즉사 메커닉 0개」를 지키는 자리다</h2>
+	 *
+	 * <p>두 원이 한 점도 공유하지 않으려면 중심 거리가 <b>두 반경의 합</b>보다 커야 한다. 경계에
+	 * 정확히 닿는 경우({@code 거리 == 합})도 겹침으로 본다 — {@link #insideMark} 가 경계를
+	 * 「안」으로 보므로 그 접점에 선 사람은 두 발을 다 맞는다.
+	 *
+	 * <p>반경 둘을 따로 받는 것은 <b>카드마다 고리 크기가 다르기 때문</b>이다. 「낙뢰」는 3,
+	 * 「종말의 비」는 2.5 다. 한쪽 반경의 두 배로 재면 큰 쪽 기준일 때 필요 이상으로 빡빡하고
+	 * 작은 쪽 기준일 때 <b>겹친 것을 통과시킨다.</b>
+	 *
+	 * <p>겹침이 얼마나 흔한지: 반경 40 아레나에 반경 3 짜리 지점을 그냥 무작위로 놓으면
+	 * <b>겹침 구역이 하나라도 생길 확률이 두 곳이면 2.1%, 열 곳이면 62.8%</b>다(세 겹까지 생기는
+	 * 판도 2.9%). 이 규칙을 넣으면 0% 가 된다.
+	 *
+	 * <p><b>카드 값이 아니라 여기에 건 이유.</b> 값을 고치는 사람은 피해와 개수만 본다. 규칙을
+	 * 카드마다 적어 두면 다음에 개수를 늘리는 사람이 그것을 빠뜨리고, 그때는 아무도 안 죽어 보다가
+	 * 어느 판에서 한 번 전멸한다.
 	 */
+	static double spotMinGap(double first, double second) {
+		return Math.max(0.0, first) + Math.max(0.0, second);
+	}
+
+	/** 같은 반경 둘일 때. 반경의 두 배다. */
 	static double spotMinGap(double radius) {
-		return Math.max(0.0, radius) * SPOT_MIN_GAP_FACTOR;
+		return spotMinGap(radius, radius);
 	}
 
 	/**
-	 * 이 후보가 이미 뽑은 자리 전부에서 충분히 멀리 있는가.
+	 * 이 후보가 살아 있는 지점 전부에서 충분히 멀리 있는가.
+	 *
+	 * <p>보는 것은 자기 카드의 지점이 아니라 <b>{@link #LIVE_SPOTS} 전체</b>다. 시련은 전투가
+	 * 끝날 때까지 쌓이므로 서로 다른 카드의 고리가 같은 틱에 함께 살아 있다.
 	 *
 	 * <p>높이는 보지 않는다. 고리는 바닥에 그려지고 {@link #insideMark} 도 세로를 묻지 않으므로,
 	 * y 가 다른 두 고리도 위에서 보면 그대로 겹친다.
 	 */
-	static boolean clearOfTaken(List<Vec3> taken, Vec3 candidate, double radius) {
-		double gap = spotMinGap(radius);
-		for (Vec3 spot : taken) {
-			double dx = candidate.x - spot.x;
-			double dz = candidate.z - spot.z;
+	static boolean clearOfTaken(List<LiveSpot> taken, Vec3 candidate, double radius) {
+		for (LiveSpot spot : taken) {
+			double gap = spotMinGap(radius, spot.radius());
+			double dx = candidate.x - spot.at().x;
+			double dz = candidate.z - spot.at().z;
 			if (dx * dx + dz * dz <= gap * gap) {
 				return false;
 			}
@@ -741,7 +907,7 @@ public final class TrialRisks {
 	 * <p>겹칠 수 있는 개수는 노리는 법에 따라 다르다.
 	 *
 	 * <ul>
-	 *   <li>{@link TrialCatalog.Risk.Aim#RANDOM_SPOT} — <b>1</b>. {@link #SPOT_MIN_GAP_FACTOR} 가
+	 *   <li>{@link TrialCatalog.Risk.Aim#RANDOM_SPOT} — <b>1</b>. {@link #spotMinGap} 이
 	 *       겹침 구역을 없애므로 어느 자리에 서 있어도 고리 하나에만 든다. <b>그 규칙을 지우면 이
 	 *       숫자가 거짓이 되고, 그 순간 낙뢰는 즉사 카드다</b></li>
 	 *   <li>{@link TrialCatalog.Risk.Aim#TRAIL} — <b>{@code count}</b>. 사람마다 따로 뽑은
@@ -765,9 +931,26 @@ public final class TrialRisks {
 			// 발사 간격을 넘지 않아 두 발이 같은 틱에 닿지 않고, 착탄도 반경 안 모두가 아니라
 			// 표적에게만 묻는다(공유 체력에서 범위 피해는 팀원별로 합산된다).
 			case TrialCatalog.Risk.DragonFocus focus -> hits(focus.damage(), 1);
-			// 아래 둘은 피해를 주지 않는다. 시간을 빼앗거나 판을 바꾼다.
+			// 종말의 비는 낙뢰와 같은 방식으로 자리를 잡는다 — reserveSpots 가 살아 있는 지점
+			// 전체에서 떼어 놓으므로 한 사람은 한 발만 맞는다. 그 규칙을 지우면 이 숫자가 거짓이
+			// 되고, 낙뢰(18)와 겹친 자리는 28 이라 팀 체력 20 을 한 틱에 넘긴다.
+			case TrialCatalog.Risk.EndRain rain -> hits(rain.damage(), 1);
+			// 고리 하나가 중앙에서 한 번 지나간다. 같은 틱에 두 번 닿는 자리가 없다.
+			case TrialCatalog.Risk.LandingShock shock -> hits(shock.damage(), 1);
+			// 소용돌이 둘이 서로 가까워지는 순간이 있으므로 둘 다 닿는 자리를 셈에 넣는다.
+			case TrialCatalog.Risk.EnderStorm storm -> hits(storm.damage(), storm.count());
+			// 빔은 한 사람만 물고 초에 한 번 들어간다. 한 틱에 올 수 있는 가장 큰 값이 그 몫이다.
+			case TrialCatalog.Risk.CrystalOvercharge overcharge ->
+					hits(overcharge.damagePerSecond(), 1);
+			// 아래는 전부 우리가 주는 피해가 없다. 시간을 빼앗거나 발을 묶거나 판을 바꾼다.
 			case TrialCatalog.Risk.CrystalGuard ignored -> 0.0F;
 			case TrialCatalog.Risk.CrystalRevive ignored -> 0.0F;
+			case TrialCatalog.Risk.EnderPulse ignored -> 0.0F;
+			case TrialCatalog.Risk.CrystalLink ignored -> 0.0F;
+			case TrialCatalog.Risk.DryWorld ignored -> 0.0F;
+			// 엔더맨은 바닐라 값으로 때린다. 우리가 적은 피해가 없으므로 여기서 셀 것도 없다.
+			case TrialCatalog.Risk.NightHost ignored -> 0.0F;
+			case TrialCatalog.Risk.HotbarLock ignored -> 0.0F;
 		};
 	}
 

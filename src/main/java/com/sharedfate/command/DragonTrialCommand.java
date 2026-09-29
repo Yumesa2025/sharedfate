@@ -229,11 +229,17 @@ public final class DragonTrialCommand {
 		if (pools.equals(TrialCatalog.POOL_FIRST_CRYSTAL)) {
 			return "첫 크리스탈 풀";
 		}
-		if (pools.equals(TrialCatalog.POOL_MIDDLE)) {
-			return "중반 풀";
+		if (pools.equals(TrialCatalog.POOL_ALL_CRYSTALS)) {
+			return "크리스탈 전멸 풀";
 		}
-		if (pools.equals(TrialCatalog.POOL_LATE)) {
-			return "후반 풀";
+		if (pools.equals(TrialCatalog.POOL_HEALTH_80)) {
+			return "체력 80% 풀";
+		}
+		if (pools.equals(TrialCatalog.POOL_HEALTH_50)) {
+			return "체력 50% 풀";
+		}
+		if (pools.equals(TrialCatalog.POOL_HEALTH_30)) {
+			return "체력 30% 풀";
 		}
 		StringBuilder joined = new StringBuilder();
 		for (TrialCatalog.Trigger trigger : pools) {
@@ -297,6 +303,33 @@ public final class DragonTrialCommand {
 			case TrialCatalog.Risk.CrystalRevive revive -> "크리스탈 부활 · "
 					+ revive.count() + "개 · 연출 " + ticks(revive.showTicks())
 					+ (revive.heal() > 0.0F ? " · 개당 회복 " + revive.heal() : "");
+			case TrialCatalog.Risk.EnderPulse pulse -> "엔더 파동 · 간격 "
+					+ ticks(pulse.interval()) + " · 퍼짐 " + ticks(pulse.travelTicks())
+					+ " · 최대 반경 " + pulse.maxRadius() + "블록 · 구속 "
+					+ ticks(pulse.rootTicks());
+			case TrialCatalog.Risk.CrystalLink link -> "연결된 수정 · 보호막 "
+					+ ticks(link.shieldTicks());
+			case TrialCatalog.Risk.CrystalOvercharge overcharge -> "수정 과충전 · 도화선 "
+					+ ticks(overcharge.fuseTicks()) + " · 빔 " + ticks(overcharge.beamTicks())
+					+ " · 쉼 " + ticks(overcharge.restTicks()) + " · 초당 피해 "
+					+ overcharge.damagePerSecond();
+			case TrialCatalog.Risk.EnderStorm storm -> "엔더폭풍 · " + storm.count() + "개 · 초당 "
+					+ storm.speedPerSecond() + "블록 · 피해 " + storm.damage() + " · 넉백 "
+					+ storm.knockback() + "(안쪽) · 쉼 " + ticks(storm.restTicks());
+			case TrialCatalog.Risk.DryWorld ignored ->
+					"메마른 세계 · 한 번 · 물·용암 증발 및 설치 금지";
+			case TrialCatalog.Risk.NightHost host -> "밤의 군세 · 한 번 · 엔더맨 적대 "
+					+ ticks(host.hostileTicks());
+			case TrialCatalog.Risk.EndRain rain -> "종말의 비 · 한 번 · 지속 "
+					+ ticks(rain.durationTicks()) + " · 간격 " + rain.minInterval() + "~"
+					+ rain.maxInterval() + "틱 · " + rain.minSpots() + "~" + rain.maxSpots()
+					+ "곳 · 예고 " + ticks(rain.warnTicks()) + " · 피해 " + rain.damage()
+					+ " · 반경 " + rain.radius() + "블록";
+			case TrialCatalog.Risk.LandingShock shock -> "착지 충격 · 퍼짐 "
+					+ ticks(shock.travelTicks()) + " · 최대 반경 " + shock.maxRadius()
+					+ "블록 · 피해 " + shock.damage() + " · 넉백 " + shock.knockback() + "블록";
+			case TrialCatalog.Risk.HotbarLock lock -> "굳는 손 · 간격 " + ticks(lock.interval())
+					+ " · " + lock.slots() + "칸";
 		};
 	}
 

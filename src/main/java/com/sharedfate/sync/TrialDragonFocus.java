@@ -230,11 +230,16 @@ public final class TrialDragonFocus {
 	 * <p>드래곤이 없거나 죽어 있으면 날고 있던 구체까지 버린다 — 죽는 연출이 도는 동안 구체가
 	 * 착탄하면 <b>이미 끝난 전투가 사람을 죽인다.</b>
 	 *
+	 * <p>{@code key} 는 이 위험을 가리키는 열쇠다({@code 카드 id + '#' + 카드 안 위험
+	 * 순번}). {@link TrialRisks} 가 겹침 금지 목록을 이 열쇠로 관리하므로, 자리를 잡는
+	 * 실행기는 <b>반드시 이 값을 그대로 넘겨야 한다</b> — 스스로 만들어 쓰면 두 곳에서
+	 * 만든 열쇠가 언젠가 갈라진다.
+	 *
 	 * @param granted 카드를 받은 틱. 주기를 여기서부터 센다
 	 * @param now     지금 게임 시각
 	 */
 	public static void tick(ServerLevel end, @Nullable EnderDragon dragon,
-			List<ServerPlayer> members, long granted, long now,
+			List<ServerPlayer> members, String key, long granted, long now,
 			TrialCatalog.Risk.DragonFocus risk) {
 		if (end == null || risk == null || dragon == null || !dragon.isAlive()
 				|| dragon.isDeadOrDying()) {

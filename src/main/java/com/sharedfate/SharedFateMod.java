@@ -244,6 +244,22 @@ public class SharedFateMod implements ModInitializer {
 				com.sharedfate.sync.PreStartRestrictions::onBeforeBlockBreak);
 		// 수면 차단 증강(no_sleep)의 집행 지점. null 을 돌려주면 평소대로 잔다.
 		EntitySleepEvents.ALLOW_SLEEPING.register(PerkWorldRules::onAllowSleep);
+		// 시련 「굳는 손」이 굳은 핫바 칸의 휘두르기·쓰기를 막는 지점 넷.
+		//
+		// ⚠ 아래 증강 UseItemCallback 네 줄보다 반드시 먼저 등록한다. Fabric 은 등록 순서대로
+		// 부르고 PASS 가 아닌 첫 답에서 멈추므로, 뒤에 두면 굳은 칸에 든 증강 아이템이 효과를
+		// 먼저 내고 나서 막힌다 — 사람 눈에는 「막혔는데 소모됐다」가 된다.
+		//
+		// 블록 부수기(AttackBlockCallback · PlayerBlockBreakEvents)에는 일부러 붙이지 않는다.
+		// 까닭은 TrialHotbarLock 의 「블록 부수기는 막지 않는다」에 적어 두었다.
+		net.fabricmc.fabric.api.event.player.AttackEntityCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onAttackEntity);
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onUseItem);
+		net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onUseBlock);
+		net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onUseEntity);
 		// 나무를 광물로 바꾸는 증강(ore_exchange)의 등록 지점. 허공 우클릭에서만 발화한다.
 		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
 				com.sharedfate.perk.PerkOreExchange::onUseItem);
@@ -259,6 +275,20 @@ public class SharedFateMod implements ModInitializer {
 		// 「비행 부적」을 들고 허공 우클릭했을 때만 발화한다.
 		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
 				com.sharedfate.perk.PerkFlightCharm::onUseItem);
+		// 시련 「메마른 세계」가 엔드에서 물·용암·서리눈을 놓지 못하게 하는 지점 둘.
+		//
+		// 손에 든 물·용암·물고기 양동이는 use 에서 스스로 자리를 찾으므로 UseItemCallback 이
+		// 잡고(주손·보조손이 한 줄로 함께 막힌다), 서리눈 양동이는 BlockItem 이라 useOn 으로
+		// 놓이므로 ItemEvents.USE_ON 이 잡는다.
+		//
+		// ⚠ USE_ON 은 통과가 null 이다(PASS 가 아니다). PASS 를 돌려주면 그것이 그대로
+		// ItemStack.useOn 의 결과가 되어 모든 아이템의 useOn 이 죽는다. UseBlockCallback 으로
+		// 바꾸지도 말 것 — 그쪽은 블록 상호작용보다 앞이라 서리눈 양동이를 든 채 상자도 못 연다.
+		// 디스펜서는 사람이 아니라 이 사건이 하나도 안 터지므로 BucketEmptyBanMixin 이 맡는다.
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
+				com.sharedfate.sync.TrialDryWorld::onUseItem);
+		net.fabricmc.fabric.api.event.player.ItemEvents.USE_ON.register(
+				com.sharedfate.sync.TrialDryWorld::onUseItemOn);
 		EffectSync.register();
 		ServerTickEvents.END_SERVER_TICK.register(EffectSync::tick);
 		ServerTickEvents.END_SERVER_TICK.register(StatMirror::tick);

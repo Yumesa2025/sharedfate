@@ -57,7 +57,8 @@
     "AnvilMenuQuickMoveMixin",
     "ServerPlayerCritMixin",
     "ServerPlayerDeathMessageMixin",
-    "SlotAccessor"
+    "SlotAccessor",
+    "BucketEmptyBanMixin"
   ],
   "injectors": {
     "defaultRequire": 1
