@@ -269,6 +269,30 @@ public final class DragonTrialCommand {
 				}
 				yield line.toString();
 			}
+			case TrialCatalog.Risk.TracedProjectile shot -> "궤적 투사체 · 간격 "
+					+ ticks(shot.interval()) + " · 궤적 " + ticks(shot.traceTicks())
+					+ " · 피해 " + shot.damage() + " · 반경 " + shot.radius() + "블록 · "
+					+ shot.count() + "발";
+			case TrialCatalog.Risk.CrystalGuard guard -> {
+				StringBuilder line = new StringBuilder("크리스탈 수호 · ");
+				if (guard.arrowImmune()) {
+					line.append("투사체 면역 ");
+				}
+				if (guard.restoreCage()) {
+					line.append("쇠창살 재생 ");
+				}
+				if (guard.digSlowdown()) {
+					line.append("채굴 피로 I ");
+				}
+				yield line.toString().trim();
+			}
+			case TrialCatalog.Risk.DragonFocus focus -> "표적 고정 · "
+					+ (focus.focus() == TrialCatalog.Risk.Focus.CRYSTAL_BREAKER
+							? "크리스탈을 깬 사람" : "무작위")
+					+ " · 재지정 " + ticks(focus.retargetTicks());
+			case TrialCatalog.Risk.CrystalRevive revive -> "크리스탈 부활 · "
+					+ revive.count() + "개 · 연출 " + ticks(revive.showTicks())
+					+ (revive.heal() > 0.0F ? " · 개당 회복 " + revive.heal() : "");
 		};
 	}
 

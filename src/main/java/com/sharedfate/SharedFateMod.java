@@ -82,6 +82,8 @@ public class SharedFateMod implements ModInitializer {
 			WorldResetCoordinator.onServerStarted(server);
 			// 전투 중에 서버가 내려갔다 올라오면 체력만 강화된 채 타이머가 0 인 상태가 된다.
 			com.sharedfate.sync.DragonTrialManager.onServerStarted(server);
+			// 시련 룰렛도 시간을 멈춘다. 얼어 있는 채로 뜨는 일이 없게 여기서도 확인한다.
+			com.sharedfate.sync.TrialFreeze.onServerStarted(server);
 			// 발전과제 달성 알림 끄기. 회차마다 월드가 새로 만들어지므로 월드에 한 번 적어
 			// 두는 방식으로는 유지되지 않는다.
 			WorldGameRules.onServerStarted(server);
@@ -96,6 +98,10 @@ public class SharedFateMod implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STOPPING.register(TeamRosterStore::onServerStopping);
 		// 종료 직전에 시간 정지를 되돌린다. reset 은 서버가 완전히 멈춘 뒤라 너무 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(PerkManager::onServerStopping);
+		// 얼려 둔 채로 종료하지 않는다. 다음 기동이 정지 상태를 물려받지는 않지만, 저장이
+		// 멈춘 시각으로 남는 것과 종료 로그가 얼어붙는 것을 막는다.
+		ServerLifecycleEvents.SERVER_STOPPING.register(
+				com.sharedfate.sync.TrialFreeze::onServerStopping);
 		// 비행 허가는 저장보다 먼저 걷어내야 한다. SERVER_STOPPED 는 이미 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(
 				com.sharedfate.perk.PerkFlightCharm::onServerStopping);

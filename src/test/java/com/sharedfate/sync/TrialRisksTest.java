@@ -242,6 +242,18 @@ class TrialRisksTest {
 					case TrialCatalog.Risk.DelayedStrike strike -> assertTrue(
 							strike.interval() > TrialWarning.TICKS_SCATTER,
 							trial.name() + " — 주기가 예고보다 짧으면 경고가 통째로 잘린다");
+					case TrialCatalog.Risk.TracedProjectile shot -> assertTrue(
+							shot.traceTicks() >= TrialWarning.TICKS_SCATTER,
+							trial.name() + " — 궤적이 흩어질 시간보다 짧으면 피할 수 없다");
+					// 아래 셋은 터지는 순간이 없다. 상태를 걸거나 판을 바꾼다.
+					case TrialCatalog.Risk.CrystalGuard ignored -> {
+					}
+					case TrialCatalog.Risk.DragonFocus focus -> assertTrue(
+							focus.retargetTicks() >= 0,
+							trial.name() + " — 재지정 간격이 음수면 뜻이 없다");
+					case TrialCatalog.Risk.CrystalRevive revive -> assertTrue(
+							revive.showTicks() >= 0,
+							trial.name() + " — 연출 길이가 음수면 뜻이 없다");
 				}
 			}
 		}
@@ -278,6 +290,10 @@ class TrialRisksTest {
 		assertTrue(trial != null && trial.risks().size() == 1, id + " 카드가 없다");
 		return switch (trial.risks().getFirst()) {
 			case TrialCatalog.Risk.DelayedStrike strike -> strike;
+			// 이 시험이 보는 것은 예고 타격뿐이다. 카드의 위험 타입이 바뀌면 조용히 지나가지 않고
+			// 여기서 멈춰야 한다 — 시험이 무엇을 보는지 모르게 되는 것이 더 나쁘다.
+			case TrialCatalog.Risk risk -> throw new AssertionError(
+					id + " 카드의 위험이 예고 타격이 아니다: " + risk);
 		};
 	}
 }

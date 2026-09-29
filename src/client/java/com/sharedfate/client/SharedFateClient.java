@@ -14,6 +14,7 @@ import com.sharedfate.client.perk.DoubleJumpHandler;
 import com.sharedfate.client.perk.PerkClientState;
 import com.sharedfate.client.perk.PerkDrawScreen;
 import com.sharedfate.client.perk.PerkOfferScreen;
+import com.sharedfate.client.trial.TrialRouletteScreen;
 import com.sharedfate.net.ClientVersionPayload;
 import com.sharedfate.net.StatSnapshotPayload;
 import com.sharedfate.net.DamageAlertPayload;
@@ -30,6 +31,7 @@ import com.sharedfate.net.SelectedSlotPayload;
 import com.sharedfate.net.SharedFateNetworking;
 import com.sharedfate.net.TeamSyncPayload;
 import com.sharedfate.net.TeamWipePayload;
+import com.sharedfate.net.TrialRoulettePayload;
 import com.sharedfate.net.WorldResetPayload;
 import com.sharedfate.perk.effect.HideHudEffect;
 import com.sharedfate.inventory.ExpandedInventoryManager;
@@ -138,6 +140,11 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkSetSyncPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> ClientPerkSets.update(payload)));
+		// 엔드 시련 룰렛 — 네트워크 스레드에서 화면을 열 수 없으므로 클라이언트 스레드로
+		// 넘긴다. 이 화면에는 뒤따르는 패킷이 없다. 연출도 닫는 것도 화면이 혼자 한다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialRoulettePayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> openTrialRoulette(context.client(), payload)));
 
 		// 접속하자마자 자기 판을 한 번 알린다. 서버는 로그에만 적는다 — 막는 일은 규약
 		// 번호가 하고, 이것은 「누가 어떤 클라이언트를 쓰는지」를 서버에서 볼 수 있게 하는
@@ -261,6 +268,23 @@ public class SharedFateClient implements ClientModInitializer {
 			return;
 		}
 		client.setScreenAndShow(new PerkDrawScreen(payload));
+	}
+
+	/**
+	 * 엔드 시련 룰렛을 연다.
+	 *
+	 * <p>후보가 하나도 없으면 열지 않는다({@code TrialRouletteScreen.shouldOpen}). 서버가 그런
+	 * 패킷을 만들지 않지만 <b>패킷은 밖에서 오는 값</b>이고, 빈 룰렛이 4초 동안 떠 있다가
+	 * 사라지면 고장으로 읽힌다.
+	 *
+	 * <p>사망 화면만은 밀어내지 않는다 — 증강 쪽과 같은 이유다. 연출을 못 봐도 시련은 서버가
+	 * 이미 정해 두었으므로 진행이 막히지 않는다.
+	 */
+	private static void openTrialRoulette(Minecraft client, TrialRoulettePayload payload) {
+		if (client.gui.screen() instanceof DeathScreen || !TrialRouletteScreen.shouldOpen(payload)) {
+			return;
+		}
+		client.setScreenAndShow(new TrialRouletteScreen(payload));
 	}
 
 	/**

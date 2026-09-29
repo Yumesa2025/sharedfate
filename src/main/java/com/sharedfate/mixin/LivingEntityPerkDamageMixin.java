@@ -185,7 +185,10 @@ public abstract class LivingEntityPerkDamageMixin {
 	private void sharedfate$skipDuplicateSharedEffectDamage(ServerLevel level, DamageSource source,
 			float amount, CallbackInfoReturnable<Boolean> callback) {
 		LivingEntity self = (LivingEntity) (Object) this;
-		if (PerkChoiceSession.blocksDamage(self) || GameStartManager.blocksDamage(self)) {
+		// 시련 룰렛도 시간을 멈춘다. 바닐라 정지는 플레이어를 얼리지 않으므로 화면을 읽는
+		// 4초 사이에 용암·낙하·불이 그대로 들어온다 — 증강 선택과 같은 이유로 여기서 버린다.
+		if (PerkChoiceSession.blocksDamage(self) || GameStartManager.blocksDamage(self)
+				|| com.sharedfate.sync.TrialFreeze.blocksDamage(self)) {
 			callback.setReturnValue(false);
 			return;
 		}

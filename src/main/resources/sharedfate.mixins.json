@@ -19,6 +19,7 @@
     "PlayerSweepFriendlyFireMixin",
     "LivingEntityHurtSoundMixin",
     "ServerLevelSanctuaryTickMixin",
+    "EndCrystalGuardMixin",
     "LivingEntityPerkDamageMixin",
     "LivingEntitySharedHealMixin",
     "MobEffectInstanceSharedTickMixin",

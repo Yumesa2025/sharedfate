@@ -257,6 +257,12 @@ public final class PerkChoiceSession {
 		if (server == null || team == null || teamState == null || state != null) {
 			return false;
 		}
+		// 엔드 시련 룰렛도 시간을 멈춘다. 둘이 겹치면 나중에 녹는 쪽이 앞의 상태를 「얼어
+		// 있었다」로 기억해 아무도 녹이지 않는 상태가 만들어진다. 선택권은 대기열에 그대로
+		// 남으므로 미루는 쪽이 싸다 — 얼어붙은 서버는 콘솔 없이 되돌릴 방법이 없다.
+		if (com.sharedfate.sync.TrialFreeze.isActive()) {
+			return false;
+		}
 		if (!teamState.perksEnabled || teamState.pending.isEmpty()) {
 			return false;
 		}

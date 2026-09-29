@@ -116,7 +116,16 @@ public final class SharedFateNetworking {
 	//     칸이 하나 늘어 형식 자체가 바뀌었으므로 옛 클라이언트는 이 묶음을 읽지 못한다.
 	//     값을 숫자가 아니라 이름("team_wipe"/"run_reset")으로 싣는 이유는
 	//     GameOverCountdown.Reason.id() 에 적어 두었다.
-	public static final int PROTOCOL_VERSION = 29;
+	// 30: 엔드 시련 룰렛 화면(TrialRoulettePayload 신설).
+	//     시련은 처음에 타이틀 글자를 갈아 끼우는 것으로 만들어 규약을 올리지 않았다. 그쪽이
+	//     싸고, 배포판 클라이언트로 그대로 시험할 수 있다는 이점이 컸다. 그런데 **드래곤이
+	//     때리는 중에 화면 위로 지나가는 글자는 읽히지 않는다** — 무엇을 받았는지 모른 채
+	//     싸우게 되고, 이 모드에서 전멸은 월드 삭제다. 사람이 「증강 고르는 것처럼 멈추고
+	//     뽑는다」로 정했다(2026-09-29).
+	//     새 묶음이 하나 늘었으므로 옛 클라이언트는 이것을 읽지 못한다. 시련은 **브랜치
+	//     `feature/dragon-trials` 안에만 있고 main 에 올리지 않으므로**, 이 번호가 배포판으로
+	//     나가는 것은 시련을 실제로 내보내기로 정한 뒤다.
+	public static final int PROTOCOL_VERSION = 30;
 
 	private SharedFateNetworking() {
 	}
@@ -129,6 +138,8 @@ public final class SharedFateNetworking {
 		PayloadTypeRegistry.clientboundPlay().register(TeamWipePayload.TYPE, TeamWipePayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SwapTimerPayload.TYPE, SwapTimerPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(PerkOfferPayload.TYPE, PerkOfferPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(
+				TrialRoulettePayload.TYPE, TrialRoulettePayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(PerkSyncPayload.TYPE, PerkSyncPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				PerkCloseOfferPayload.TYPE, PerkCloseOfferPayload.CODEC);

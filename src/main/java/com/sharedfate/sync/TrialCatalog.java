@@ -105,6 +105,73 @@ public final class TrialCatalog {
 		record DelayedStrike(Aim aim, int interval, int lookback, float damage, double radius,
 				double launch, int count) implements Risk {
 		}
+
+		/**
+		 * 흑요석 기둥에서 날아오는 불덩이.
+		 *
+		 * <h2>왜 바닐라 화염구를 쓰지 않는가</h2>
+		 *
+		 * <p>{@code LargeFireball} 의 블록 파괴는 {@code mobGriefing} 게임룰에 묶여 있어 우리가
+		 * 끌 수 없다. 끄면 크리퍼까지 함께 꺼진다. 불도 폭발에 딸려 붙는다. 엔드 섬에 구멍이
+		 * 뚫리면 다음 전투부터 발판이 달라지므로 <b>궤적을 파티클로 그리고 착탄을 직접 처리</b>한다 —
+		 * 보이는 것은 같고 값은 전부 우리 것이다.
+		 *
+		 * @param interval   발사 간격(틱)
+		 * @param traceTicks 궤적을 보여 주는 시간. 이만큼 날아온다
+		 * @param damage     착탄 반경 안의 사람이 받는 피해
+		 * @param radius     착탄 반경(블록)
+		 * @param count      한 번에 몇 발. 사람마다 한 발씩 노린다
+		 */
+		record TracedProjectile(int interval, int traceTicks, float damage, double radius,
+				int count) implements Risk {
+		}
+
+		/**
+		 * 크리스탈을 깨기 어렵게 만든다.
+		 *
+		 * <p>피해를 주지 않고 <b>시간을 빼앗는</b> 축이다. 보상이 없는 이상 한 풀의 카드가 전부
+		 * 「맞으면 아프다」면 룰렛이 무엇을 뽑든 같은 판이 된다.
+		 *
+		 * @param arrowImmune  참이면 크리스탈이 투사체에 맞지 않는다. 올라가서 깨야 한다
+		 * @param restoreCage  참이면 모든 크리스탈에 쇠창살이 다시 생긴다. 없던 탑에도 생긴다
+		 * @param digSlowdown  참이면 팀 전원에게 채굴 피로 I. <b>등급은 0 고정이다</b> —
+		 *                     26.3 이 등급별 공식을 바꿨는데 등급 0 만 두 판이 같다
+		 */
+		record CrystalGuard(boolean arrowImmune, boolean restoreCage, boolean digSlowdown)
+				implements Risk {
+		}
+
+		/** 드래곤이 누구를 노리는가. */
+		enum Focus {
+			/** 무작위 한 명. 주기마다 다시 고른다. */
+			RANDOM,
+			/** 크리스탈을 가장 최근에 깬 사람. 깬 적이 없으면 무작위로 물러난다. */
+			CRYSTAL_BREAKER
+		}
+
+		/**
+		 * 드래곤의 공격이 한 사람에게 쏠린다.
+		 *
+		 * <p>드래곤은 일반 몹과 타겟 구조가 다르다 — 페이즈가 행동을 정한다. 그래서 「미워한다」를
+		 * 심는 것이 아니라 <b>사람을 노리는 페이즈로 밀어넣고 그 대상을 지정</b>한다.
+		 *
+		 * @param focus        대상을 고르는 법
+		 * @param retargetTicks 대상을 다시 고르는 간격. 한 사람이 영영 물리면 그 사람만 게임을 한다
+		 */
+		record DragonFocus(Focus focus, int retargetTicks) implements Risk {
+		}
+
+		/**
+		 * 크리스탈이 되살아난다.
+		 *
+		 * <p>연출이 도는 동안 드래곤은 중앙 상공에 머문다 — <b>때릴 수 없는 시간이 곧 대가</b>다.
+		 *
+		 * @param count     되살릴 개수. 남은 자리가 그보다 적으면 있는 만큼만
+		 * @param showTicks 복구 연출 길이. 이 동안 드래곤이 중앙에 머문다
+		 * @param heal      되살아난 크리스탈 하나당 드래곤이 회복하는 양
+		 */
+		record CrystalRevive(int count, int showTicks, float heal) implements Risk {
+		}
 	}
 
 	/**
@@ -135,10 +202,30 @@ public final class TrialCatalog {
 					"12초마다 한 사람이 2초 전에 있던 자리가 터집니다. 맞으면 하늘로 떠오릅니다.",
 					POOL_ENTRY,
 					new Risk.DelayedStrike(Risk.Aim.TRAIL, 240, 40, 6.0F, 2.0, 4.0, 1)),
+			new Trial("sharedfate:pillar_fireball", "기둥 화염구",
+					"10초마다 가장 가까운 흑요석 기둥에서 불덩이가 날아옵니다. 5초 동안 궤적이 보입니다.",
+					POOL_ENTRY,
+					new Risk.TracedProjectile(200, 100, 6.0F, 3.0, 1)),
 			new Trial("sharedfate:lightning_storm", "낙뢰",
 					"6초마다 아레나 두 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
 					POOL_MIDDLE,
-					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, 120, 0, 5.0F, 3.0, 0.0, 2)));
+					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, 120, 0, 5.0F, 3.0, 0.0, 2)),
+			new Trial("sharedfate:crystal_ward", "크리스탈 보호막",
+					"남은 크리스탈이 화살에 맞지 않습니다. 올라가서 깨야 합니다.",
+					POOL_FIRST_CRYSTAL,
+					new Risk.CrystalGuard(true, false, false)),
+			new Trial("sharedfate:iron_cage", "쇠창살과 무딘 곡괭이",
+					"모든 크리스탈에 쇠창살이 다시 생기고 팀 전원이 채굴 피로에 걸립니다.",
+					POOL_FIRST_CRYSTAL,
+					new Risk.CrystalGuard(false, true, true)),
+			new Trial("sharedfate:dragon_mark", "표적",
+					"크리스탈을 깬 사람에게 드래곤의 공격이 집중됩니다.",
+					POOL_FIRST_CRYSTAL,
+					new Risk.DragonFocus(Risk.Focus.CRYSTAL_BREAKER, 100)),
+			new Trial("sharedfate:crystal_revival", "부활",
+					"모든 크리스탈이 되살아납니다. 드래곤이 중앙 상공에서 그것을 지켜봅니다.",
+					POOL_LATE,
+					new Risk.CrystalRevive(10, 100, 0.0F)));
 
 	private TrialCatalog() {
 	}

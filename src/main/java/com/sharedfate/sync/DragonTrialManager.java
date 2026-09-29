@@ -7,8 +7,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import com.sharedfate.net.TrialRoulettePayload;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityTypes;
@@ -50,6 +50,13 @@ public final class DragonTrialManager {
 	private static final int ARRIVAL_GRACE_TICKS = 60;
 	/** 엔드 섬 가장자리. 흑요석 기둥과 크리스탈 사거리를 피한다. */
 	private static final double ARRIVAL_RADIUS = 40.0;
+	/**
+	 * 자리가 터지고 룰렛이 열리기까지.
+	 *
+	 * <p>엔드에 떨어지는 순간이나 크리스탈이 깨지는 순간에 곧바로 화면을 겹치면 <b>무엇 때문에
+	 * 떴는지 읽히지 않는다.</b> 자리가 터진 것을 먼저 겪게 하고 잠깐 뒤에 뽑는다.
+	 */
+	private static final int TRIAL_DELAY_TICKS = 300;
 
 	private static final net.minecraft.resources.Identifier HEALTH_MODIFIER_ID =
 			SharedFateMod.id("trial/dragon_health");
@@ -57,14 +64,13 @@ public final class DragonTrialManager {
 	private static final Map<UUID, DragonTrialSession> SESSIONS = new HashMap<>();
 	private static final Map<UUID, Long> PENDING_SUMMON = new HashMap<>();
 	/**
-	 * 지금 룰렛이 돌고 있는 팀.
+	 * 룰렛을 열 수 있는 가장 이른 시각.
 	 *
-	 * <p><b>저장하지 않는다.</b> 연출 도중에 서버가 내려가면 이 맵만 사라지고 자리는 줄에 그대로
-	 * 남으므로, 다시 뜰 때 룰렛이 처음부터 다시 돈다. 자리를 줄에서 꺼내는
-	 * {@link DragonTrialSession#beginChoice} 를 <b>룰렛이 끝날 때</b> 부르는 이유가 이것이다 —
-	 * 시작할 때 꺼내면 연출 도중 종료가 그 자리를 통째로 삼킨다.
+	 * <p><b>저장하지 않는다.</b> 재시작하면 다시 세는데, 그때는 어차피 자리가 줄에 남아 있고
+	 * 15초가 더 걸릴 뿐이다. 반대로 이것을 저장했다가 값이 어긋나면 룰렛이 영영 안 열린다 —
+	 * 잃는 것보다 지키기 어려운 쪽이 더 비싸다.
 	 */
-	private static final Map<UUID, TrialRoulette> SPINS = new HashMap<>();
+	private static final Map<UUID, Long> READY_AT = new HashMap<>();
 	/** 전투를 열 때의 크리스탈 수. 「처음 깨졌다」를 이것과 비교해 판단한다. */
 	private static final Map<UUID, Integer> CRYSTALS_AT_START = new HashMap<>();
 
@@ -157,7 +163,13 @@ public final class DragonTrialManager {
 
 	/** 매 틱. 소환 카운트다운과 시련 타이머를 돌린다. */
 	public static void tick(@Nullable MinecraftServer server) {
-		if (server == null || SharedFateMod.config.dragonHealthPerMember <= 0) {
+		if (server == null) {
+			return;
+		}
+		// 정지는 설정 검사보다 앞이다. 얼려 둔 채로 설정이 0 이 되면 녹일 사람이 없어진다.
+		TrialFreeze.tick(server);
+		applyFinishedTrial(server);
+		if (SharedFateMod.config.dragonHealthPerMember <= 0) {
 			return;
 		}
 		ServerLevel end = server.getLevel(Level.END);
@@ -276,13 +288,13 @@ public final class DragonTrialManager {
 			}
 			List<ServerPlayer> members = membersOf(server, team);
 			detectTriggers(end, dragon, session);
-			tickRoulette(end, session, members, now);
-			TrialRisks.tick(end, members, session, now);
+			openTrialWhenDue(server, end, session, members, now);
+			TrialRisks.tick(end, dragon, members, session, now);
 		}
 		if (!finished.isEmpty()) {
 			finished.forEach(SESSIONS::remove);
 			// 전투가 끝났는데 룰렛만 남으면 다음 전투 첫 틱에 옛 카드가 튀어나온다.
-			finished.forEach(SPINS::remove);
+			finished.forEach(READY_AT::remove);
 			persist();
 		}
 	}
@@ -333,51 +345,60 @@ public final class DragonTrialManager {
 	}
 
 	/**
-	 * 룰렛을 돌리고, 멈추면 그 카드를 쌓는다.
+	 * 끝난 룰렛의 결과를 실제로 쌓는다.
 	 *
-	 * <p><b>고르게 하지 않는다.</b> 선택 화면은 클라이언트가 그려야 하고 그러면 통신 규약이 30
-	 * 으로 올라간다 — 서버와 지인 전원이 같은 날 함께 판을 올려야 한다. 룰렛은 타이틀을 갈아
-	 * 끼우는 것뿐이라 전부 바닐라 패킷이고 <b>규약이 29 그대로</b>다. 자세한 이유는
-	 * {@link TrialRoulette} 에 적었다.
+	 * <p>자리를 <b>여기서야</b> 줄에서 꺼낸다. 열 때 꺼내면 연출 도중 서버가 내려갔을 때 그
+	 * 자리가 통째로 사라진다. 지금은 연출만 사라지고 자리는 줄에 남아 다시 뜰 때 처음부터 돈다.
 	 */
-	private static void tickRoulette(ServerLevel end, DragonTrialSession session,
-			List<ServerPlayer> members, long now) {
-		TrialRoulette spinning = SPINS.get(session.teamId());
-		if (spinning == null) {
-			startRoulette(end, session, members, now);
+	private static void applyFinishedTrial(MinecraftServer server) {
+		TrialFreeze.Finished done = TrialFreeze.poll();
+		if (done == null) {
 			return;
 		}
-		TrialCatalog.Trial shown = spinning.advance(now);
-		if (shown != null) {
-			showSpinFrame(members, spinning, shown);
-		}
-		if (!spinning.finished(now)) {
+		// 다음 자리도 처음부터 다시 센다. 연달아 터지면 숨 쉴 틈 없이 두 번 얼어붙는다.
+		READY_AT.remove(done.teamId());
+		DragonTrialSession session = SESSIONS.get(done.teamId());
+		if (session == null) {
 			return;
 		}
-		SPINS.remove(session.teamId());
-		// 자리를 이제야 줄에서 꺼낸다. 시작할 때 꺼내면 연출 도중 서버가 죽었을 때 자리가 사라진다.
+		ServerLevel end = server.getLevel(Level.END);
+		long now = end == null ? server.overworld().getGameTime() : end.getGameTime();
 		TrialCatalog.Trigger trigger = session.beginChoice();
-		TrialCatalog.Trial result = spinning.result();
-		if (!session.choose(result.id(), now)) {
+		if (!session.choose(done.trialId(), now)) {
 			session.skipChoice();
+			persist();
 			return;
 		}
-		announce(members, result);
+		TrialCatalog.Trial trial = TrialCatalog.byId(done.trialId());
 		SharedFateMod.LOGGER.info("[END] {} 에서 시련 {}장째 — {} (줄에 {}개 남음)",
-				trigger == null ? "?" : trigger.label(), session.trialCount(), result.name(),
-				session.queuedCount());
+				trigger == null ? "?" : trigger.label(), session.trialCount(),
+				trial == null ? done.trialId() : trial.name(), session.queuedCount());
 		persist();
 	}
 
 	/**
-	 * 줄 맨 앞의 자리로 룰렛을 연다.
+	 * 자리가 터지고 {@link #TRIAL_DELAY_TICKS} 이 지나면 룰렛을 연다.
+	 *
+	 * <h2>왜 곧바로 열지 않는가</h2>
+	 *
+	 * <p>엔드에 떨어지는 순간이나 크리스탈이 깨지는 순간은 판이 가장 시끄러운 때다. 그 위에
+	 * 화면을 겹쳐 띄우면 무엇 때문에 떴는지 읽히지 않는다. 자리가 터진 것을 <b>먼저 겪게</b> 하고
+	 * 잠깐 뒤에 뽑는다.
 	 *
 	 * <p>풀이 비어 있으면 아무것도 주지 않고 지나간다 — 카드를 채워 가는 동안에는 빈 풀이
 	 * 정상이고 오류가 아니다.
 	 */
-	private static void startRoulette(ServerLevel end, DragonTrialSession session,
-			List<ServerPlayer> members, long now) {
-		if (!session.shouldOfferTrial()) {
+	private static void openTrialWhenDue(MinecraftServer server, ServerLevel end,
+			DragonTrialSession session, List<ServerPlayer> members, long now) {
+		if (TrialFreeze.isActive() || !session.shouldOfferTrial() || members.isEmpty()) {
+			return;
+		}
+		Long readyAt = READY_AT.get(session.teamId());
+		if (readyAt == null) {
+			READY_AT.put(session.teamId(), now + TRIAL_DELAY_TICKS);
+			return;
+		}
+		if (now < readyAt) {
 			return;
 		}
 		TrialCatalog.Trigger trigger = session.peekTrigger();
@@ -385,42 +406,48 @@ public final class DragonTrialManager {
 		if (pool.isEmpty()) {
 			session.beginChoice();
 			session.skipChoice();
+			READY_AT.remove(session.teamId());
 			SharedFateMod.LOGGER.info("[END] {} — 줄 수 있는 카드가 없어 지나갑니다",
 					trigger == null ? "?" : trigger.label());
 			persist();
 			return;
 		}
+		if (pool.size() > TrialRoulettePayload.MAX_OPTIONS) {
+			// 코덱 상한을 넘으면 패킷이 터진다. 카드가 그만큼 늘면 풀을 쪼갤 때가 된 것이다.
+			pool = pool.subList(0, TrialRoulettePayload.MAX_OPTIONS);
+		}
 		TrialRoulette roulette = TrialRoulette.open(trigger, pool, now, end.getRandom());
 		if (roulette == null) {
 			return;
 		}
-		SPINS.put(session.teamId(), roulette);
-		for (ServerPlayer member : members) {
-			member.level().playSound(null, member.getX(), member.getY(), member.getZ(),
-					SoundEvents.ENDER_DRAGON_GROWL, SoundSource.HOSTILE, 1.0F, 0.6F);
+		int spinTicks = TrialRoulette.TOTAL_TICKS;
+		// 정지를 먼저 건다. 화면만 띄우고 시간이 흐르면 글을 읽는 동안 맞는다.
+		if (!TrialFreeze.begin(server, session.teamId(), roulette.result().id(), members,
+				spinTicks + TrialFreeze.HOLD_TICKS)) {
+			return;
 		}
+		sendRoulette(members, trigger, pool, roulette.result(), spinTicks);
 	}
 
-	/** 룰렛이 한 칸 돌았다. 칸이 바뀔 때만 부른다 — 매 틱 보내면 글자가 떨린다. */
-	private static void showSpinFrame(List<ServerPlayer> members, TrialRoulette roulette,
-			TrialCatalog.Trial shown) {
-		for (ServerPlayer member : members) {
-			TitleMessenger.showTitle(member,
-					Component.literal("시련 — " + roulette.trigger().label()),
-					Component.literal(shown.name()), 0, 20, 5);
-			member.level().playSound(null, member.getX(), member.getY(), member.getZ(),
-					SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.HOSTILE, 0.6F, 1.6F);
+	/**
+	 * 후보와 결과를 한 번에 보낸다. <b>연출은 클라이언트가 돌린다.</b>
+	 *
+	 * <p>칸이 바뀔 때마다 보내면 4초에 열다섯 번이고 그중 하나만 늦어도 화면이 튄다. 결과는 이미
+	 * 정해져 있으므로 늦게 닿아도 답이 달라지지 않는다.
+	 */
+	private static void sendRoulette(List<ServerPlayer> members,
+			@Nullable TrialCatalog.Trigger trigger, List<TrialCatalog.Trial> pool,
+			TrialCatalog.Trial result, int spinTicks) {
+		List<TrialRoulettePayload.TrialOption> options = new ArrayList<>();
+		for (TrialCatalog.Trial trial : pool) {
+			options.add(new TrialRoulettePayload.TrialOption(
+					trial.id(), trial.name(), trial.description()));
 		}
-	}
-
-	/** 멈춘 카드를 알린다. 무엇이 일어나는지는 여기서 한 번만 읽힌다. */
-	private static void announce(List<ServerPlayer> members, TrialCatalog.Trial trial) {
+		TrialRoulettePayload payload = new TrialRoulettePayload(
+				trigger == null ? "시련" : trigger.label(),
+				Math.max(0, pool.indexOf(result)), spinTicks, options);
 		for (ServerPlayer member : members) {
-			TitleMessenger.showTitle(member,
-					Component.literal("시련 — " + trial.name()),
-					Component.literal(trial.description()), 5, 80, 20);
-			member.level().playSound(null, member.getX(), member.getY(), member.getZ(),
-					SoundEvents.ENDER_DRAGON_GROWL, SoundSource.HOSTILE, 1.0F, 0.6F);
+			ServerPlayNetworking.send(member, payload);
 		}
 	}
 
@@ -453,7 +480,8 @@ public final class DragonTrialManager {
 		SESSIONS.clear();
 		PENDING_SUMMON.clear();
 		CRYSTALS_AT_START.clear();
-		SPINS.clear();
+		READY_AT.clear();
+		TrialFreeze.reset();
 		TrialRisks.clearState();
 	}
 
@@ -464,7 +492,7 @@ public final class DragonTrialManager {
 			return;
 		}
 		SESSIONS.remove(team.teamId());
-		SPINS.remove(team.teamId());
+		READY_AT.remove(team.teamId());
 		summonTeam(server, end, team);
 		startSession(server, end, team, end.getGameTime());
 	}
@@ -520,7 +548,7 @@ public final class DragonTrialManager {
 		if (server == null || session == null) {
 			return false;
 		}
-		SPINS.remove(team.teamId());
+		READY_AT.remove(team.teamId());
 		session.restore(List.of(), session.firedNames(), session.queuedNames(), false, Map.of());
 		TrialRisks.clearState();
 		persist();

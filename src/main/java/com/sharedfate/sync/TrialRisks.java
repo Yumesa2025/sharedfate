@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -107,8 +108,8 @@ public final class TrialRisks {
 	 * <p>카드가 한 장도 없으면 발자국조차 쌓지 않는다 — 시련 없이 드래곤만 잡는 판에서 매 틱
 	 * 좌표를 쌓아 둘 이유가 없다.
 	 */
-	public static void tick(@Nullable ServerLevel end, @Nullable List<ServerPlayer> members,
-			@Nullable DragonTrialSession session, long now) {
+	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
+			@Nullable List<ServerPlayer> members, @Nullable DragonTrialSession session, long now) {
 		if (end == null || session == null || members == null || members.isEmpty()) {
 			return;
 		}
@@ -136,13 +137,32 @@ public final class TrialRisks {
 			switch (entry.risk()) {
 				case TrialCatalog.Risk.DelayedStrike strike ->
 						runDelayedStrike(end, members, entry.key(), granted, now, strike);
+				case TrialCatalog.Risk.TracedProjectile shot ->
+						TrialFireball.tick(end, dragon, members, granted, now, shot);
+				case TrialCatalog.Risk.CrystalGuard guard ->
+						TrialCrystalGuard.tick(end, dragon, members, granted, now, guard);
+				case TrialCatalog.Risk.DragonFocus focus ->
+						TrialDragonFocus.tick(end, dragon, members, granted, now, focus);
+				case TrialCatalog.Risk.CrystalRevive revive ->
+						TrialCrystalRevive.tick(end, dragon, members, granted, now, revive);
 			}
 		}
 	}
 
-	/** 월드가 바뀌거나 서버가 내려갈 때. 사람에게 붙은 것이 다음 판으로 새지 않게 한다. */
+	/**
+	 * 월드가 바뀌거나 서버가 내려갈 때. 사람에게 붙은 것이 다음 판으로 새지 않게 한다.
+	 *
+	 * <p><b>실행기를 하나 더 만들면 여기에 반드시 더하라.</b> 위험은 값(레코드)이라 상태를 들 수
+	 * 없어 저마다 정적 맵을 쓴다. 빠뜨리면 지난 판의 조준점·표적·화살 면역이 다음 판으로 샌다 —
+	 * 컴파일도 시험도 조용한 종류의 사고다.
+	 */
 	public static void clearState() {
 		forget();
+		TrialFireball.clearState();
+		TrialCrystalGuard.clearState();
+		TrialDragonFocus.clearState();
+		TrialCrystalRevive.clearState();
+		CrystalWatch.clearState();
 	}
 
 	private static void forget() {
@@ -185,6 +205,15 @@ public final class TrialRisks {
 					if (strike.aim() == TrialCatalog.Risk.Aim.TRAIL) {
 						deepest = Math.max(deepest, strike.lookback());
 					}
+				}
+				// 아래 넷은 발자국을 쓰지 않는다. 지금 자리나 크리스탈을 본다.
+				case TrialCatalog.Risk.TracedProjectile ignored -> {
+				}
+				case TrialCatalog.Risk.CrystalGuard ignored -> {
+				}
+				case TrialCatalog.Risk.DragonFocus ignored -> {
+				}
+				case TrialCatalog.Risk.CrystalRevive ignored -> {
 				}
 			}
 		}
