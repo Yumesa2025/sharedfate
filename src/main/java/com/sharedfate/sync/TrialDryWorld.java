@@ -82,6 +82,18 @@ import java.util.Set;
  * <b>분배기가 고쳐진 지금도 기한을 깃발로 되돌리지 말 것</b> — 서버 강제 종료처럼 분배기가
  * 그 길을 지나지 못하는 경우가 아직 남아 있고, 기한을 두어 잃는 것은 전투가 끝난 뒤의 2초뿐이다.
  *
+ * <h2>최후의 저항에서도 금지만 이어진다</h2>
+ *
+ * <p>드래곤 체력 30% 에서 {@code DragonLastStand} 가 열리면 <b>걸려 있던 시련이 전부
+ * 멈춘다</b> — 그 팀의 {@code TrialRisks.tick} 이 아예 안 불리므로 {@link #tick} 도 멈추고,
+ * 기한 방식이라 금지가 2초 뒤 저절로 풀렸다. <b>그것이 사람 뜻과 반대였다.</b> 「최후의
+ * 저항에서도 남습니까」의 답이 <b>「최후에서 남아도 될 거 같아」</b> 였다.
+ *
+ * <p>그래서 시련 전체를 되살리는 대신 <b>이 금지 하나만</b> 이어 준다 —
+ * {@link #holdBanDuringLastStand} 를 {@code DragonLastStand} 가 매 틱 부른다. 되살아나는 것은
+ * 기한 한 칸뿐이고 증발도 양동이 비우기도 다시 돌지 않는다. 전투가 끝날 때 확실히 풀리는
+ * 근거는 그 메서드 설명에 겹 둘로 적어 두었다.
+ *
  * <h2>오버월드를 건드리지 않는다</h2>
  *
  * <p>증발도 금지도 <b>{@link Level#END} 안에서만</b>이다. 팀원은 전투 중에도 오버월드에 있을 수
@@ -214,11 +226,13 @@ public final class TrialDryWorld {
 
 		// ── 「끝까지」 ──────────────────────────────────────────────────────────
 		// 매 틱 기한을 다시 민다. 깃발이 아니라 기한인 까닭은 클래스 설명에 있다.
-		// TODO 「최후의 저항」(드래곤 체력 30%)에 들어가면 걸려 있던 시련이 전부 멈춘다. 이
-		//      설치 금지가 그 「전부」에 드는지는 아직 정해지지 않았다(사람에게 물어 둔 상태다).
-		//      지금은 「끝까지 남는다」다 — 최후의 저항이 아직 없어 부딪힐 곳이 없다. 풀기로
-		//      정해지면 고칠 곳은 이 한 줄이다(그 틱에 밀지 않으면 2초 뒤 저절로 풀린다).
-		banUntil = now + BAN_GRACE_TICKS;
+		//
+		// ⚠ 「최후의 저항」(드래곤 체력 30%)에 들어가면 걸려 있던 시련이 전부 멈추고 이
+		//   메서드도 더는 불리지 않는다. 그래도 이 금지만은 남는다 — 사람이 「최후에서
+		//   남아도 될 거 같아」라고 정했다. 남기는 길은 여기가 아니라
+		//   #holdBanDuringLastStand 이고, 그쪽이 최후의 저항이 도는 동안 같은 기한을 대신
+		//   밀어 준다. 클래스 설명의 「최후의 저항에서도 금지만 이어진다」를 볼 것.
+		holdBan(now);
 
 		// ── 「한 번」 ──────────────────────────────────────────────────────────
 		// 넣는 데 성공한 틱이 곧 터지는 틱이다. 「터진 적 있나」를 따로 세지 않으므로 세다가
@@ -236,11 +250,102 @@ public final class TrialDryWorld {
 	}
 
 	/**
+	 * 최후의 저항이 도는 동안 <b>설치 금지만</b> 이어 준다.
+	 *
+	 * <h2>왜 이 하나만 되살리는가</h2>
+	 *
+	 * <p>최후의 저항에 들어가면 걸려 있던 시련이 <b>전부</b> 멈춘다 —
+	 * {@code DragonTrialManager.tickSessions} 가 그 팀의 {@code TrialRisks.tick} 을 아예
+	 * 부르지 않는다. 그래서 {@link #tick} 이 기한을 못 밀고 금지가 2초 뒤 저절로 풀렸다.
+	 *
+	 * <p><b>그것이 사람 뜻과 반대였다.</b> 「메마른 세계의 물 설치 금지가 최후의 저항에서도
+	 * 남습니까」라고 물었을 때 답이 <b>「최후에서 남아도 될 거 같아」</b> — 남기는 쪽이었다.
+	 * 그래서 {@code DragonLastStand} 가 매 틱 이것을 부른다.
+	 *
+	 * <p><b>시련 전체를 되살리는 것이 아니다.</b> 되살아나는 것은 기한 한 칸뿐이고, 증발도
+	 * 양동이 비우기도 다시 돌지 않는다({@link #DRIED} 가 이미 그 틱을 들고 있고 애초에 이 길은
+	 * {@link #tick} 을 지나지 않는다). 최후의 저항은 「붙어서 때리는 싸움」이라 MLG 물받이를
+	 * 되돌려 주면 페이즈의 압박이 한 겹 사라진다.
+	 *
+	 * <h2>⚠ 전투가 끝나면 반드시 풀린다 — 겹이 둘이다</h2>
+	 *
+	 * <ol>
+	 *   <li><b>그 자리에서</b> — 드래곤을 잡으면 {@code DragonLastStand.onFightClosed} 가
+	 *       {@code TrialRisks.clearState()} 를 부르고 그 안에 {@link #clearState()} 가 있다.
+	 *       기한이 {@link Long#MIN_VALUE} 로 돌아가 <b>그 틱에</b> 풀린다. 마지막 세션이
+	 *       닫히는 {@code DragonTrialManager.endTrials} 도 같은 길이다</li>
+	 *   <li><b>기한</b> — 위 둘을 다 못 지나도 우리를 부르는 쪽이 멈추면
+	 *       {@link #BAN_GRACE_TICKS} 뒤에 저절로 풀린다. 기한 방식을 그대로 둔 값이 이것이다 —
+	 *       서버 강제 종료처럼 뒷정리를 못 지나는 길이 아직 남아 있다</li>
+	 * </ol>
+	 *
+	 * <p>곧 <b>다음 판까지 물을 못 놓는 일은 구조적으로 일어나지 않는다.</b>
+	 *
+	 * @param end     최후의 저항이 도는 월드. 엔드가 아니면 아무 일도 하지 않는다
+	 * @param session 그 팀의 세션. 이 카드를 <b>실제로 뽑은 팀</b>에게만 금지가 이어진다
+	 * @param now     지금 게임 시각. {@link #tick} 과 같은 시계여야 한다
+	 */
+	public static void holdBanDuringLastStand(@Nullable ServerLevel end,
+			@Nullable DragonTrialSession session, long now) {
+		if (end == null || end.dimension() != Level.END || !holdsDryWorld(session)) {
+			return;
+		}
+		holdBan(now);
+	}
+
+	/**
+	 * 금지 기한을 이 틱 기준으로 다시 민다.
+	 *
+	 * <p>{@link #tick} 과 {@link #holdBanDuringLastStand} 가 <b>함께 쓰는 한 줄</b>이다. 기한을
+	 * 얼마나 미는지를 두 곳에 적으면 한쪽만 고쳐져 최후의 저항에서만 금지가 깜빡인다.
+	 */
+	static void holdBan(long now) {
+		banUntil = now + BAN_GRACE_TICKS;
+	}
+
+	/**
+	 * 이 세션이 「메마른 세계」를 뽑았는가.
+	 *
+	 * <p>카드 id 를 문자열로 비교하지 않고 <b>위험 타입</b>으로 본다. id 를 적어 두면 카드
+	 * 이름을 바꾸는 날 이 금지만 조용히 안 이어진다 — 컴파일도 시험도 조용한 종류다.
+	 *
+	 * <p>월드 없이 답이 정해지므로 시험이 직접 부른다.
+	 */
+	static boolean holdsDryWorld(@Nullable DragonTrialSession session) {
+		if (session == null) {
+			return false;
+		}
+		for (String id : session.chosen()) {
+			TrialCatalog.Trial trial = TrialCatalog.byId(id);
+			if (trial == null) {
+				continue;
+			}
+			for (TrialCatalog.Risk risk : trial.risks()) {
+				if (risk instanceof TrialCatalog.Risk.DryWorld) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** 금지가 언제까지 살아 있는가. 시험이 「확실히 풀렸는지」를 묻는 자리다. */
+	static long banDeadline() {
+		return banUntil;
+	}
+
+	/**
 	 * 월드가 바뀌거나 서버가 내려갈 때.
 	 *
 	 * <p><b>설치 금지를 반드시 여기서 내린다.</b> 금지가 전투보다 오래 살면 다음 판, 나아가 새로
 	 * 만든 월드에서도 양동이를 못 쓰게 된다. 기한이라 시간이 지나면 저절로 풀리지만, 판을
 	 * 리셋하는 순간 기한도 <b>그 자리에서</b> 없애야 2초를 기다리지 않는다.
+	 *
+	 * <p>⚠ <b>이제 금지를 미는 곳이 둘이다</b>({@link #tick} 과
+	 * {@link #holdBanDuringLastStand}). 그래도 내리는 곳은 여기 하나다 — 드래곤을 잡으면
+	 * {@code DragonLastStand.onFightClosed} 가, 마지막 세션이 닫히면
+	 * {@code DragonTrialManager.endTrials} 가 {@code TrialRisks.clearState()} 를 거쳐 여기로
+	 * 온다. <b>미는 길을 하나 더 만드는 사람은 내리는 길이 그것도 덮는지 먼저 볼 것.</b>
 	 *
 	 * <p>증발시킨 블록은 되돌리지 않는다. 월드에 없어진 블록을 나중에 되살리려면 「우리가
 	 * 지운 것」을 기억해야 하는데, 그 기억은 서버 재시작 한 번으로 어긋나고 어긋난 기억은 남의

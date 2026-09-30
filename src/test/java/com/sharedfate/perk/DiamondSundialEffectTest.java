@@ -65,7 +65,8 @@ class DiamondSundialEffectTest {
 	void 기본값이_설명과_맞는다() {
 		assertEquals(20, DiamondSundialEffect.DEFAULT_RADIUS, "반경 기본값은 20칸이다");
 		assertEquals(10, DiamondSundialEffect.DEFAULT_DURATION_SECONDS, "지속 기본값은 10초다");
-		assertEquals(30, DiamondSundialEffect.DEFAULT_COOLDOWN_SECONDS, "쿨타임 기본값은 30초다");
+		assertEquals(90, DiamondSundialEffect.DEFAULT_COOLDOWN_SECONDS,
+				"쿨타임 기본값은 1분 30초다 — 30초는 너무 세서 2026-09-30 에 늘렸다");
 		assertEquals(16, DiamondSundialEffect.DEFAULT_MAX_RESULTS, "한 번에 최대 16개다");
 	}
 

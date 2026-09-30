@@ -31,6 +31,7 @@ TYPES = OrderedDict([
     ("gamble", ("도박", 2)),
     ("mobility", ("기동", 2)),
     ("blessing", ("가호", 2)),
+    ("pioneer", ("개척", 2)),
     ("bond", ("결속", 2)),
 ])
 

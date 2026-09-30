@@ -119,6 +119,9 @@ public class SharedFateMod implements ModInitializer {
 			PeriodicPerkManager.reset();
 			com.sharedfate.sync.AbsorptionRechargeManager.reset();
 			com.sharedfate.sync.DragonTrialManager.clearState();
+			// 순간이동 자물쇠의 「거절을 알린 시각」 기억. 1분이면 스스로 지워지지만, 엔드
+			// 전투 상태를 버리는 자리에 나란히 두어 다음 기동에 남는 것이 없게 한다.
+			com.sharedfate.sync.EndFightTeleportLock.reset();
 			com.sharedfate.sync.SharedAreaDamage.clearState();
 			com.sharedfate.perk.PerkSupplyDrops.reset();
 			PerkHolderManager.reset();
@@ -140,6 +143,10 @@ public class SharedFateMod implements ModInitializer {
 			PerkWorldRules.reset();
 			com.sharedfate.sync.PreStartRestrictions.reset();
 			PerkCompassTargets.reset();
+			// 나침반 토글과 유적 좌표는 저장하지 않는 파생 상태다. 서버가 멈출 때 비워 두지
+			// 않으면 다음 판에서 「누른 적도 없는데 엔더 요새를 가리키는」 나침반이 나온다.
+			com.sharedfate.perk.PerkCompassToggle.reset();
+			com.sharedfate.perk.PerkRuinSurvey.reset();
 			com.sharedfate.perk.PerkGearManager.reset();
 			PerkLegacyGear.reset();
 			TimedPerkEffects.reset();
@@ -161,6 +168,9 @@ public class SharedFateMod implements ModInitializer {
 				com.sharedfate.sync.DragonTrialManager::tick);
 		ServerPlayerEvents.JOIN.register(player -> {
 			com.sharedfate.perk.PerkFlightCharm.onPlayerJoin(player);
+			// 유적 좌표는 저장하지 않으므로 서버를 다시 켜면 비어 있다. 여기서 한 번 채운다.
+			// 이미 있으면 아무 일도 하지 않는다 — 접속할 때마다 구조물을 다시 찾지 않는다.
+			com.sharedfate.perk.PerkRuinSurvey.onPlayerJoin(player);
 			TeamManager manager = TeamManager.get(player.level().getServer());
 			if (manager.consumeExperienceClear(player.getUUID())) {
 				StatMirror.setTotalExperience(player, 0);
@@ -275,6 +285,13 @@ public class SharedFateMod implements ModInitializer {
 		// 「비행 부적」을 들고 허공 우클릭했을 때만 발화한다.
 		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
 				com.sharedfate.perk.PerkFlightCharm::onUseItem);
+		// 세트 「개척 2」의 나침반 토글. 나침반을 들고 허공 우클릭했을 때만 발화한다.
+		// 위 넷과 같은 사건에 붙지만 서로 다른 아이템만 받으므로 부딪히지 않는다.
+		//
+		// ⚠ 세트가 없으면 반드시 PASS 를 돌려준다. 여기서 SUCCESS 를 흘리면 바닐라 나침반을
+		// 자철석에 대고 쓰는 길(CompassItem.useOn)이 통째로 막힌다.
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
+				com.sharedfate.perk.PerkCompassToggle::onUseItem);
 		// 시련 「메마른 세계」가 엔드에서 물·용암·서리눈을 놓지 못하게 하는 지점 둘.
 		//
 		// 손에 든 물·용암·물고기 양동이는 use 에서 스스로 자리를 찾으므로 UseItemCallback 이

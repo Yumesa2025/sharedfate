@@ -44,6 +44,14 @@ public final class OwnedPerkPanel {
 
 	private static final int SEPARATOR = 0xFF2A313A;
 
+	/**
+	 * 「유적 감별사」 좌표의 글자색.
+	 *
+	 * <p>팀 화면의 증강 탭과 고를 때 띄운 채팅 한 줄이 쓰는 것과 같은 물색이다. 같은 값을 세
+	 * 곳에서 읽는 사람이 「이게 그거」를 색으로 알아채야 한다.
+	 */
+	private static final int RUIN_COORD = 0xFF55FFFF;
+
 	/** 목록이 비었을 때의 안내. */
 	private static final int EMPTY = 0xFF8790A0;
 
@@ -97,6 +105,10 @@ public final class OwnedPerkPanel {
 		}
 
 		int wrap = layout.wrapWidth(SCROLLBAR_WIDTH + 2);
+		// 「유적 감별사」 좌표를 목록 맨 위에 둔다. 팀 화면은 목록 오른쪽에 세우지만 이 겹판은
+		// 화면 한가운데 선 모달이라({@link OwnedPerkPanelLayout}) 오른쪽에 빈자리가 없다 —
+		// 그쪽에는 지금 고르는 카드가 있다. 자세한 근거는 아래 addRuinCoords 에 있다.
+		addRuinCoords(font, wrap);
 		for (PerkSyncPayload.Owned perk : owned) {
 			// 이름 뒤에 세트 유형을 흐린 글씨로 붙인다 — 「짐꾼 가호」처럼. 한 줄에 다 넣는
 			// 이유는 줄이 늘면 목록이 금세 길어져서다. 무유형 증강 열둘에는 안 붙는다.
@@ -121,6 +133,49 @@ public final class OwnedPerkPanel {
 			}
 		}
 		scroll = PanelScroll.clamp(scroll, contentHeight, layout.viewHeight());
+	}
+
+	/**
+	 * 「유적 감별사」 좌표를 목록 <b>맨 위</b>에 넣는다. 그 증강이 없으면 아무것도 안 한다.
+	 *
+	 * <h2>왜 오른쪽이 아닌가</h2>
+	 *
+	 * <p>팀 화면의 증강 탭은 목록 오른쪽 빈자리에 좌표를 세운다. <b>여기서는 그럴 수 없다</b> —
+	 * 이 겹판은 {@link com.sharedfate.ui.OwnedPerkPanelLayout} 이 화면 한가운데 세우는 모달이고,
+	 * 그 오른쪽에 있는 것은 빈자리가 아니라 <b>지금 고르는 카드</b>다. 거기에 글자를 얹으면 카드를
+	 * 덮는다. 모달 자체를 넓히는 것도 안 된다 — 폭 상한 320 은 「글줄이 길어지면 눈이 다음 줄을
+	 * 못 찾는다」는 근거로 잡은 값이다.
+	 *
+	 * <h2>왜 그래도 넣는가</h2>
+	 *
+	 * <p>규약 35 에서 설명 뒤 괄호 덧붙임을 지웠다. 여기에 안 넣으면 이 겹판에서는 「유적
+	 * 감별사」가 좌표 없는 이름 한 줄로만 남는다 — 두 화면이 다른 말을 하게 된다. 고르는 동안
+	 * 「내가 이미 뭘 가졌나」를 보는 판인데, 그 증강이 들고 있는 값이 안 보이면 반쪽이다.
+	 *
+	 * <h2>왜 맨 위인가</h2>
+	 *
+	 * <p>머리글 아래 첫 줄이면 스크롤하지 않아도 보인다. 목록과 함께 굴러가므로
+	 * {@code OwnedPerkPanelLayout} 을 건드릴 일이 없다 — 머리글 자리를 늘리면 {@code listTop} 이
+	 * 옮겨 가고, 그 계산에는 이미 제 시험이 붙어 있다.
+	 */
+	private void addRuinCoords(Font font, int wrap) {
+		List<String> coords = PerkClientState.ruinCoords();
+		if (coords.isEmpty()) {
+			return;
+		}
+		// 접어 둔 줄을 먼저 모은다. 마지막 한 줄만 키를 늘려야 하는데, 한 좌표가 두 줄로 접힐
+		// 수 있어 「마지막 좌표의 마지막 줄」을 미리 알 수 없다.
+		List<FormattedCharSequence> wrapped = new ArrayList<>();
+		for (String coord : coords) {
+			wrapped.addAll(font.split(Component.literal(coord), wrap));
+		}
+		for (int index = 0; index < wrapped.size(); index++) {
+			// 마지막 줄만 키를 늘려 아래 증강 목록과 벌린다. 빈 줄을 넣는 것보다 스크롤 계산이
+			// 단순하다 — 증강과 증강 사이를 벌리는 것과 같은 방식이다.
+			boolean last = index == wrapped.size() - 1;
+			add(new Line(wrapped.get(index), RUIN_COORD,
+					font.lineHeight + (last ? ENTRY_GAP : 0)));
+		}
 	}
 
 	private void add(Line line) {

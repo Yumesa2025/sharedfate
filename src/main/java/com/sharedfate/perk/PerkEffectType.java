@@ -17,6 +17,10 @@ import com.sharedfate.perk.effect.DamageTakenBlockingEffect;
 import com.sharedfate.perk.effect.DamageTakenFromEffect;
 import com.sharedfate.perk.effect.HungerOnDamageEffect;
 import com.sharedfate.perk.effect.CompassTargetEffect;
+import com.sharedfate.perk.effect.CompassToggleEffect;
+import com.sharedfate.perk.effect.RuinSurveyEffect;
+import com.sharedfate.perk.effect.SmeltingSpeedEffect;
+import com.sharedfate.perk.effect.VillagerTradeEffect;
 import com.sharedfate.perk.effect.NoSleepEffect;
 import com.sharedfate.perk.effect.TimeLockEffect;
 import com.sharedfate.perk.effect.EchoMiningEffect;
@@ -202,6 +206,10 @@ public enum PerkEffectType {
 	FLIGHT_CHARM("flight_charm", FlightCharmEffect::fromJson),
 	SWAP_EXEMPT("swap_exempt", SwapExemptEffect::fromJson),
 	INVENTORY_SLOTS("inventory_slots", InventorySlotsEffect::fromJson),
+	SMELTING_SPEED("smelting_speed", SmeltingSpeedEffect::fromJson),
+	COMPASS_TOGGLE("compass_toggle", CompassToggleEffect::fromJson),
+	VILLAGER_TRADE("villager_trade", VillagerTradeEffect::fromJson),
+	RUIN_SURVEY("ruin_survey", RuinSurveyEffect::fromJson),
 	CUSTOM("custom", CustomEffect::fromJson);
 
 	/** 효과 하나를 만드는 팩토리. 정의가 잘못됐으면 {@code null}을 돌려준다. */

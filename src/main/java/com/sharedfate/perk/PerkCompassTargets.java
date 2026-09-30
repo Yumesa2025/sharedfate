@@ -4,6 +4,7 @@ import com.mojang.datafixers.util.Pair;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.inventory.ExpandedInventoryManager;
 import com.sharedfate.perk.effect.CompassTargetEffect;
+import com.sharedfate.perk.effect.CompassToggleEffect;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.SharedItemList;
 import com.sharedfate.team.TeamManager;
@@ -13,6 +14,7 @@ import net.minecraft.core.GlobalPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -104,6 +106,25 @@ import java.util.function.Predicate;
  *
  * <p>증강을 쓰지 않는 팀은 {@link #targets} 가 곧바로 빈 목록을 돌려주므로 목록 두 개를 훑는
  * 것이 전부다.
+ *
+ * <h2>세트 「개척 2」의 토글</h2>
+ * <p>{@link PerkCompassToggle} 이 켜져 있으면 <b>{@link #choose} 가 고른 것 대신</b> 토글의
+ * 대체 정의(엔더 요새)를 쓴다. 후보를 하나 늘리는 것이 아니라 갈아치우는 까닭은
+ * {@link com.sharedfate.perk.effect.CompassToggleEffect} 에 적어 두었다 — 마을과 엔더 요새는
+ * 둘 다 오버월드라 후보로 나란히 두면 「먼저 얻은 것」 규칙에 걸려 마을이 언제나 이긴다.
+ *
+ * <p>토글 효과만 있고 {@code compass_target} 은 하나도 없는 팀도 있을 수 있다 — 개척 증강
+ * 넷 중 나침반을 주는 것은 둘뿐이라, 나머지 둘로 2단계를 채우면 그렇게 된다. 그때도 토글은
+ * 그대로 동작한다. 켜면 팀이 가진 아무 나침반이나 엔더 요새를 가리키고, 끄면 평범한
+ * 나침반으로 돌아간다.
+ *
+ * <h2>나침반 이름</h2>
+ * <p>지금 무엇을 가리키는지는 아이템 이름으로만 보인다. 이름은
+ * {@code DataComponents.ITEM_NAME} 에 넣는다. {@code CUSTOM_NAME} 이 아니다 —
+ * {@code ItemStack.getHoverName} 은 {@code CUSTOM_NAME} 을 먼저 보고 없을 때만
+ * {@code ITEM_NAME} 을 보므로, {@code ITEM_NAME} 을 쓰면 <b>모루로 손수 지어 준 이름을 덮지
+ * 않는다.</b> 게다가 생존에서 {@code ITEM_NAME} 을 붙일 방법이 없어 <b>붙어 있으면 우리 것</b>이
+ * 확실하다. {@code tracked == false} 로 우리 지시 자리를 가려내는 것과 같은 요령이다.
  */
 public final class PerkCompassTargets {
 	/** 나침반을 훑는 주기. */
@@ -184,13 +205,41 @@ public final class PerkCompassTargets {
 				SharedFateMod.LOGGER.warn("나침반 지시 증강을 적용하지 못했습니다.", error);
 			}
 		}
-		// 해체된 팀의 캐시는 남겨 둘 이유가 없다.
+		// 해체된 팀의 캐시는 남겨 둘 이유가 없다. 토글 기억과 유적 좌표도 같은 기준으로 턴다.
+		// 셋 다 저장하지 않는 파생 상태라 여기 한 곳에서 함께 털어야 새지 않는다.
 		CACHE.keySet().retainAll(living);
+		PerkCompassToggle.retainAll(living);
+		PerkRuinSurvey.retainAll(living);
+	}
+
+	/**
+	 * 한 팀의 나침반을 지금 맞아야 할 모습으로 곧바로 맞춘다.
+	 *
+	 * <p>{@link #tick} 이 20틱마다 부르는 것과 같은 일을 한다. {@link PerkCompassToggle} 이
+	 * 우클릭을 받은 그 자리에서도 부른다 — 1초를 기다리게 하면 누른 사람 눈에는 「안 눌렸다」로
+	 * 보여 한 번 더 누르게 되고, 그러면 도로 제자리다.
+	 */
+	public static void refreshTeam(@Nullable MinecraftServer server, @Nullable ShareTeam team,
+			@Nullable TeamState state) {
+		if (server == null || team == null || state == null) {
+			return;
+		}
+		try {
+			updateTeam(server, team, state);
+		} catch (RuntimeException error) {
+			SharedFateMod.LOGGER.warn("나침반 지시 증강을 적용하지 못했습니다.", error);
+		}
 	}
 
 	private static void updateTeam(MinecraftServer server, ShareTeam team, TeamState state) {
 		List<CompassTargetEffect> candidates = targets(state);
-		if (candidates.isEmpty()) {
+		CompassToggleEffect toggle = PerkCompassToggle.effectOf(state);
+		// 세트가 깨졌으면 여기서 켬이 지워진다. 「엔더 요새를 가리킨 채로 남는다」를 막는
+		// 자리가 이 한 줄이다.
+		PerkCompassToggle.forgetIfUnavailable(team.teamId(), toggle);
+		boolean alternate = PerkCompassToggle.isAlternate(team.teamId(), toggle);
+
+		if (candidates.isEmpty() && toggle == null) {
 			CACHE.remove(team.teamId());
 			if (clearTargets(state) > 0) {
 				broadcast(server, team);
@@ -198,11 +247,21 @@ public final class PerkCompassTargets {
 			return;
 		}
 		// 증강 풀을 다시 읽으면 정의 객체가 새로 만들어진다. 그때 남는 옛 항목을 여기서 턴다.
-		pruneCache(team.teamId(), candidates);
+		// 토글의 대체 정의도 캐시 열쇠가 되므로 함께 살려 둬야 한다 — 빼 두면 켤 때마다
+		// 엔더 요새를 다시 찾는다.
+		List<CompassTargetEffect> known = new ArrayList<>(candidates);
+		if (toggle != null) {
+			known.add(toggle.alternate());
+		}
+		pruneCache(team.teamId(), known);
 
 		List<Member> members = onlineMembers(server, team);
-		CompassTargetEffect effect = choose(candidates, presences(members));
+		CompassTargetEffect effect = alternate && toggle != null
+				? toggle.alternate()
+				: choose(candidates, presences(members));
 		ServerPlayer scout = effect == null ? null : scoutFor(members, effect);
+		// 이름은 토글을 가진 팀에만 붙인다. 토글이 없으면 평범한 나침반 이름 그대로다.
+		String name = toggle == null ? null : toggle.nameFor(alternate);
 		int changed;
 		if (scout == null) {
 			// 지금 팀원이 서 있는 차원에 맞는 정의가 하나도 없다. 평범한 나침반으로 돌려 둔다.
@@ -210,7 +269,7 @@ public final class PerkCompassTargets {
 			changed = clearTargets(state);
 		} else {
 			GlobalPos target = locate(server, team.teamId(), effect, scout);
-			changed = target == null ? clearTargets(state) : applyTarget(state, target);
+			changed = target == null ? clearTargets(state) : applyTarget(state, target, name);
 		}
 		if (changed > 0) {
 			broadcast(server, team);
@@ -427,8 +486,14 @@ public final class PerkCompassTargets {
 		return tracker != null && !tracker.tracked() && tracker.target().isPresent();
 	}
 
-	/** 팀의 나침반이 이 자리를 가리키게 한다. 실제로 바뀐 개수를 돌려준다. */
-	public static int applyTarget(TeamState state, GlobalPos target) {
+	/**
+	 * 팀의 나침반이 이 자리를 가리키게 한다. 실제로 바뀐 개수를 돌려준다.
+	 *
+	 * <p>{@code name} 을 주면 아이템 이름도 그것으로 맞춘다({@code ITEM_NAME}). {@code null}
+	 * 이면 우리가 붙여 둔 이름을 걷어낸다 — 세트를 잃은 팀의 나침반에 「엔더 요새 나침반」이
+	 * 남아 있으면 안 된다.
+	 */
+	public static int applyTarget(TeamState state, GlobalPos target, @Nullable String name) {
 		LodestoneTracker wanted = new LodestoneTracker(Optional.of(target), false);
 		return visitCompasses(state, stack -> {
 			LodestoneTracker existing = stack.get(DataComponents.LODESTONE_TRACKER);
@@ -436,23 +501,63 @@ public final class PerkCompassTargets {
 				// 플레이어가 직접 만든 자철석 나침반. 증강이 빼앗아 갈 물건이 아니다.
 				return false;
 			}
-			if (wanted.equals(existing)) {
-				return false;
+			boolean changed = false;
+			if (!wanted.equals(existing)) {
+				stack.set(DataComponents.LODESTONE_TRACKER, wanted);
+				changed = true;
 			}
-			stack.set(DataComponents.LODESTONE_TRACKER, wanted);
-			return true;
+			return applyName(stack, name) || changed;
 		});
 	}
 
-	/** 우리가 꽂아 둔 성분을 걷어내 평범한 나침반으로 되돌린다. 실제로 바뀐 개수를 돌려준다. */
+	/** 이름 없이 자리만 맞추던 예전 호출을 위해 남겨 둔다. */
+	public static int applyTarget(TeamState state, GlobalPos target) {
+		return applyTarget(state, target, null);
+	}
+
+	/**
+	 * 우리가 꽂아 둔 성분을 걷어내 평범한 나침반으로 되돌린다. 실제로 바뀐 개수를 돌려준다.
+	 *
+	 * <p>이름도 함께 걷는다. 바늘만 되돌리고 이름을 남기면 「엔더 요새 나침반」이라 적힌 채
+	 * 아무 데도 안 가리키는 물건이 된다.
+	 */
 	public static int clearTargets(TeamState state) {
 		return visitCompasses(state, stack -> {
+			boolean changed = applyName(stack, null);
 			if (!isOurs(stack.get(DataComponents.LODESTONE_TRACKER))) {
-				return false;
+				return changed;
 			}
 			stack.remove(DataComponents.LODESTONE_TRACKER);
 			return true;
 		});
+	}
+
+	/**
+	 * 나침반 이름을 맞춘다. 실제로 바뀌었으면 참.
+	 *
+	 * <p>{@code ITEM_NAME} 만 본다. 생존에서 그 성분을 바꿀 방법이 없으므로 <b>기본값과 다르면
+	 * 우리 것</b>이고, 모루로 지어 준 이름({@code CUSTOM_NAME})은 건드리지도 가리지도 않는다 —
+	 * {@code ItemStack.getHoverName} 이 {@code CUSTOM_NAME} 을 먼저 보기 때문이다.
+	 *
+	 * <p><b>걷을 때 {@code remove} 를 쓰면 안 된다.</b> 26.3 의 모든 아이템은 기본 성분에
+	 * {@code ITEM_NAME} 을 갖고 있다(나침반은 {@code item.minecraft.compass}). 지워 버리면
+	 * {@code getItemName()} 이 빈 글자를 돌려줘 <b>이름 없는 나침반</b>이 된다. 그래서 되돌릴
+	 * 때는 기본값을 <b>다시 넣는다</b> — {@code PatchedDataComponentMap} 은 넣는 값이 기본값과
+	 * 같으면 덧칠 항목을 아예 지우므로, 결과는 손댄 적 없는 나침반과 완전히 같다.
+	 */
+	private static boolean applyName(ItemStack stack, @Nullable String name) {
+		Component fallback = stack.getPrototype().get(DataComponents.ITEM_NAME);
+		Component existing = stack.get(DataComponents.ITEM_NAME);
+		// 기울임을 끈다. 바닐라는 이름을 붙인 아이템을 기울여 쓰는데, 이 이름은 사람이 지은
+		// 것이 아니라 「지금 무엇을 가리키는가」라는 상태 표시라 평범하게 보이는 편이 맞다.
+		Component wanted = name == null
+				? fallback
+				: Component.literal(name).withStyle(style -> style.withItalic(false));
+		if (wanted == null || wanted.equals(existing)) {
+			return false;
+		}
+		stack.set(DataComponents.ITEM_NAME, wanted);
+		return true;
 	}
 
 	/**

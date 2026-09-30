@@ -234,9 +234,16 @@ public final class PositionSwapManager {
 		}
 		List<Position> origins = players.stream().map(Position::capture).toList();
 		int[] donors = derangedDonors(players.size(), random);
+		// 엔드 전투 중 엔드 밖으로 나가게 되는 사람은 제자리에 남는다. 그 사람 몫의
+		// 「이동했습니다」 알림과 발밑 폭발을 함께 빼야 하므로 누가 실제로 움직였는지 적어 둔다.
+		boolean[] moved = new boolean[players.size()];
 
 		for (int index = 0; index < players.size(); index++) {
 			Position destination = origins.get(donors[index]);
+			if (EndFightTeleportLock.blocks(players.get(index), destination.level())) {
+				EndFightTeleportLock.refuse(players.get(index));
+				continue;
+			}
 			if (!destination.teleport(players.get(index))) {
 				rollback(players, origins, index);
 				Component failure = Component.literal("위치 교환에 실패해 원래 위치로 되돌렸습니다.");
@@ -245,6 +252,7 @@ public final class PositionSwapManager {
 						players.get(index).getPlainTextName());
 				return false;
 			}
+			moved[index] = true;
 		}
 
 		// 방금 비운 자리(자기 원래 위치, origins.get(index))에서 0.5초 뒤 터진다. 이미 전원
@@ -257,6 +265,11 @@ public final class PositionSwapManager {
 				immune.add(player.getUUID());
 			}
 			for (int index = 0; index < players.size(); index++) {
+				// 제자리에 남은 사람의 자리에는 터뜨리지 않는다. 그 사람은 자리를 비운 적이
+				// 없고, 폭발이 블록을 부수는 설정이면 서 있는 발밑이 파인다.
+				if (!moved[index]) {
+					continue;
+				}
 				for (SwapExplosionEffect explosion : explosions) {
 					scheduleSwapExplosion(origins.get(index), immune, explosion);
 				}
@@ -264,12 +277,15 @@ public final class PositionSwapManager {
 		}
 
 		for (int index = 0; index < players.size(); index++) {
+			if (!moved[index]) {
+				continue;
+			}
 			String donorName = players.get(donors[index]).getPlainTextName();
-			ServerPlayer moved = players.get(index);
-			moved.sendSystemMessage(Component.literal(
+			ServerPlayer arrived = players.get(index);
+			arrived.sendSystemMessage(Component.literal(
 					"위치 교환! " + donorName + "님의 위치로 이동했습니다."));
 			// 카운트다운이 0이 된 순간을 화면에서도 확인할 수 있게 짧은 타이틀을 함께 띄운다.
-			TitleMessenger.showTitle(moved,
+			TitleMessenger.showTitle(arrived,
 					Component.literal("위치 교환!").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD),
 					Component.literal(donorName + "님의 위치").withStyle(ChatFormatting.WHITE),
 					0, SWAP_TITLE_STAY_TICKS, SWAP_TITLE_FADE_OUT_TICKS);
@@ -362,6 +378,9 @@ public final class PositionSwapManager {
 
 		/** 이 자리로 옮긴다. 보고 있던 방향까지 원래 주인의 것으로 맞춘다. */
 		boolean teleport(ServerPlayer player) {
+			if (refusedByEndFight(player)) {
+				return true;
+			}
 			return player.teleportTo(level, x, y, z, Set.<Relative>of(), yaw, pitch, true);
 		}
 
@@ -371,8 +390,36 @@ public final class PositionSwapManager {
 		 * <p>여럿을 한곳에 모을 때 쓴다.
 		 */
 		boolean gather(ServerPlayer player) {
+			if (refusedByEndFight(player)) {
+				return true;
+			}
 			return player.teleportTo(level, x, y, z, Set.<Relative>of(),
 					player.getYRot(), player.getXRot(), true);
+		}
+
+		/**
+		 * 엔드 전투 중에 엔드 밖으로 내보내는 이동인가. 그렇다면 옮기지 않고 당사자에게 알린다.
+		 *
+		 * <p><b>이 자리가 마지막 방어선이다.</b> 사람을 옮기는 길은 다섯이고(순열 교환·집합·
+		 * 정거장·시차·소집) 전부 이 레코드를 지난다. 부르는 쪽을 하나라도 빠뜨려도 여기서
+		 * 걸린다 — 이 저장소가 「한쪽만 막으면 반드시 샌다」를 여러 번 겪은 까닭이다.
+		 *
+		 * <p>막힌 것을 <b>실패로 돌려주지 않는다.</b> {@code false} 를 돌려주면
+		 * {@link #swapTeamPositions} 가 「이동 실패」로 보고 전원을 되돌리며 경고를 쏟고,
+		 * {@link #rollback} 이 다시 이 검사에 걸려 오류 로그까지 남는다. 옮기지 않은 것은
+		 * 사고가 아니라 규칙이므로 부르는 쪽은 하던 일을 그대로 마쳐야 한다.
+		 *
+		 * <p>그 대신 「옮겼다」는 알림이 거짓말이 되지 않게, 알림을 내보내는 쪽
+		 * ({@link #swapTeamPositions}·{@link StaggeredSwapManager}·{@link RallyPointManager}·
+		 * {@link RallyShardManager})은 부르기 <b>전에</b> {@link EndFightTeleportLock#blocks}
+		 * 로 한 번 더 가려낸다.
+		 */
+		private boolean refusedByEndFight(ServerPlayer player) {
+			if (!EndFightTeleportLock.blocks(player, level)) {
+				return false;
+			}
+			EndFightTeleportLock.refuse(player);
+			return true;
 		}
 	}
 }

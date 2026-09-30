@@ -83,7 +83,8 @@ public final class RallyPointManager {
 		if (players.size() < 2) {
 			return;
 		}
-		int anchor = random.nextInt(players.size());
+		// 엔드 전투 중에는 기준점을 엔드 안으로 돌린다. 까닭은 TeamGathering.gatherTeam 과 같다.
+		int anchor = EndFightTeleportLock.preferEndAnchor(players, random.nextInt(players.size()));
 		List<PositionSwapManager.Position> origins =
 				players.stream().map(PositionSwapManager.Position::capture).toList();
 		PositionSwapManager.Position destination = origins.get(anchor);
@@ -145,6 +146,10 @@ public final class RallyPointManager {
 	/**
 	 * 원래 자리로 그대로 돌려보낸다. <b>안전성 검사는 하지 않는다.</b> 15초 사이에 그 자리가
 	 * 용암·구덩이·블록으로 막혔어도 검사 없이 보낸다.
+	 *
+	 * <p>딱 하나 보는 것이 엔드 전투다. 여기가 들고 있는 좌표는 <b>15초 전</b>의 것이라,
+	 * 그사이에 팀이 엔드로 소환됐으면 이 복귀가 전원을 엔드 밖 옛 자리로 도로 끌어낸다.
+	 * 그 사람은 제자리(엔드)에 남기고 「돌아왔습니다」도 보내지 않는다.
 	 */
 	private static void returnHome(MinecraftServer server, PendingReturn pending) {
 		for (int i = 0; i < pending.moverIds.size(); i++) {
@@ -153,6 +158,10 @@ public final class RallyPointManager {
 				continue;
 			}
 			PositionSwapManager.Position origin = pending.moverOrigins.get(i);
+			if (EndFightTeleportLock.blocks(mover, origin.level())) {
+				EndFightTeleportLock.refuse(mover);
+				continue;
+			}
 			if (origin.teleport(mover)) {
 				mover.sendSystemMessage(Component.literal("정거장에서 원래 자리로 돌아왔습니다."));
 			} else {

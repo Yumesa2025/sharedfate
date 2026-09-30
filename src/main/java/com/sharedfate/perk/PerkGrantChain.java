@@ -88,9 +88,9 @@ final class PerkGrantChain {
 			}
 			Perk current = queue.poll();
 
-			// 즉시 지급은 정확히 이 일곱 곳에서만 일어난다. item_grant · legacy_gear ·
-			// diamond_sundial · rally_shard 는 서로를 부르지 않는(더 받게 하지 않는) 단순
-			// 지급·몰수라 큐에 넣을 것이 없다.
+			// 즉시 지급은 정확히 이 여덟 곳에서만 일어난다. item_grant · legacy_gear ·
+			// diamond_sundial · rally_shard · flight_charm · ruin_survey 는 서로를 부르지
+			// 않는(더 받게 하지 않는) 단순 지급·몰수·조사라 큐에 넣을 것이 없다.
 			PerkItemGrants.grantOnChoice(server, team, state, current);
 			PerkLegacyGear.sacrificeOnChoice(server, team, state, current);
 			// 「엑스레이」와 소집의 조각은 커스텀 컴포넌트를 붙여야 해서 item_grant 로 줄 수 없다.
@@ -98,6 +98,10 @@ final class PerkGrantChain {
 			PerkDiamondSundial.grantOnChoice(server, team, state, current);
 			PerkRallyShard.grantOnChoice(server, team, state, current);
 			PerkFlightCharm.grantOnChoice(server, team, state, current);
+			// 「유적 감별사」는 물건을 주지 않는다. 대신 이 자리에서 구조물을 한 번 찾아 두고
+			// 채팅 한 줄을 띄운다. 탐색이 비싸서 고르는 순간 딱 한 번만 돈다 —
+			// PerkRuinSurvey 의 「언제 찾는가」를 보라. 줄 것이 없으므로 큐에 넣지 않는다.
+			PerkRuinSurvey.surveyOnChoice(server, team, state, current);
 
 			for (Perk granted : PerkGambler.grantOnChoiceDetailed(server, team, state, current, random)) {
 				enqueue(queue, visited, granted);

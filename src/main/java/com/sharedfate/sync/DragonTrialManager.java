@@ -36,10 +36,16 @@ import java.util.UUID;
  * 올렸다 내리면 보스바가 한 번 튀고, 그 사이 틱에 맞은 피해가 다른 최대치를 기준으로 계산된다.
  * 그래서 {@link #strengthenDragon} 을 <b>부르지 않는 것</b>이 유일한 갈림이다.
  *
- * <p>끈 팀에게 꺼지는 것은 넷이다 — 시련 카드(룰렛)·고정 시련(체력 80·30%)·기본
- * 패시브({@link DragonPassives})·드래곤 체력 강화. 앞의 둘은 {@link DragonTrialSession} 이
- * 자리를 아예 세지 않아 저절로 꺼지고, 뒤의 둘은 {@link #tickSessions} 와
- * {@link #startSession} 이 각각 건너뛴다.
+ * <p>끈 팀에게 꺼지는 것은 다섯이다 — 시련 카드(룰렛)·고정 시련(체력 80%)·최후의
+ * 저항({@link DragonLastStand})·기본 패시브({@link DragonPassives})·드래곤 체력 강화. 앞의
+ * 둘은 {@link DragonTrialSession} 이 자리를 아예 세지 않아 저절로 꺼지고, 뒤의 셋은
+ * {@link #tickSessions} 와 {@link #startSession} 이 각각 건너뛴다.
+ *
+ * <h2>체력 30% 는 카드가 아니다</h2>
+ *
+ * <p>{@code Trigger.HEALTH_30} 이 터지면 룰렛이 열리는 대신 {@link DragonLastStand} 가
+ * 열린다 — <b>별개의 보스전</b>이라 {@code TrialCatalog.POOL_HEALTH_30} 은 비어 있다. 그때부터
+ * 이 파일의 세션 루프는 그 팀의 <b>룰렛·시련·패시브를 전부 건너뛴다.</b>
  *
  * <p><b>팀을 엔드로 부르는 것은 끄지 않는다.</b> 그것은 시련이 아니라 「최종 보스는 팀이 함께
  * 선다」는 이 모드의 규칙이고, 시련을 껐다고 혼자 들어가게 두면 나머지는 다른 차원에서 공유
@@ -52,6 +58,11 @@ import java.util.UUID;
  * 코드는 시험할 수도 없고 다음 사람이 읽을 때 헷갈린다. 끝나는 길은 <b>드래곤 사망</b>과
  * <b>팀 전멸</b> 둘뿐이다.
  *
+ * <p>그 반대쪽 — <b>들어온 사람이 밖으로 새는 것</b> — 은 실제로 일어났다. 우리 뒤에 도는
+ * 순간이동들이 같은 틱에 자리를 덮어썼기 때문이고, 그것을 {@code EndFightTeleportLock} 이
+ * 막는다. 자물쇠가 새는 날을 위한 그물이 {@link #recallStragglers} 다 — 전투 중에 엔드 밖에
+ * 남은 팀원을 몇 초마다 다시 부른다.
+ *
  * <h2>왜 전원을 부르는가</h2>
  *
  * <p>한 명만 들어가면 나머지는 다른 차원에서 공유 체력만 깎이는 것을 구경하게 된다. 최종 보스는
@@ -63,7 +74,7 @@ public final class DragonTrialManager {
 	/** 소환까지 기다리는 시간. 예고이지 말리는 장치가 아니다. */
 	private static final int SUMMON_DELAY_TICKS = 60;
 	/** 도착 직후 무적. 떨어지자마자 브레스에 맞아 팀이 절반 깎이는 것을 막는다. */
-	private static final int ARRIVAL_GRACE_TICKS = 60;
+	static final int ARRIVAL_GRACE_TICKS = 60;
 	/**
 	 * 팀이 떨어지는 자리. 엔드 섬 <b>한가운데</b>다.
 	 *
@@ -95,6 +106,19 @@ public final class DragonTrialManager {
 	private static final Map<UUID, Long> READY_AT = new HashMap<>();
 	/** 전투를 열 때의 크리스탈 수. 「처음 깨졌다」를 이것과 비교해 판단한다. */
 	private static final Map<UUID, Integer> CRYSTALS_AT_START = new HashMap<>();
+	/**
+	 * 팀마다 다음으로 「밖에 남은 사람이 있나」를 볼 시각.
+	 *
+	 * <p>저장하지 않는다. 재시작하면 첫 틱에 한 번 보고 지나가는데, 그것이 오히려 맞다 —
+	 * 재시작 직후는 밖에 남은 사람이 있을 가능성이 가장 높은 순간이다.
+	 */
+	private static final Map<UUID, Long> RECALL_AT = new HashMap<>();
+	/**
+	 * 밖에 남은 사람을 다시 부르는 간격(틱). 2초.
+	 *
+	 * <p>근거는 {@link #recallStragglers} 에 적어 두었다.
+	 */
+	static final int RECALL_INTERVAL_TICKS = 40;
 
 	/** 전투 상태를 적어 두는 곳. 서버가 뜰 때 정해진다. */
 	private static @Nullable java.nio.file.Path stateFile;
@@ -187,13 +211,34 @@ public final class DragonTrialManager {
 		}
 	}
 
-	/** 매 틱. 소환 카운트다운과 시련 타이머를 돌린다. */
+	/**
+	 * 매 틱. 소환 카운트다운과 시련 타이머를 돌린다.
+	 *
+	 * <h2>⚠ 이 파일은 {@code END_SERVER_TICK} 에서 <b>가장 먼저</b> 돈다</h2>
+	 *
+	 * <p>{@code SharedFateMod} 의 등록 순서가 곧 실행 순서인데 {@code DragonTrialManager::tick}
+	 * 이 그 줄 맨 앞에 있다. 곧 <b>여기서 사람을 엔드로 옮겨 놓아도 같은 틱의 뒤쪽에서 다른
+	 * 것들이 그 자리를 덮어쓸 수 있다.</b> 사람을 옮기는 길이 다섯이고(순열 교환 · 집합 ·
+	 * 정거장 · 시차 · 소집의 조각) 전부 우리 뒤에 돈다 — 같은 틱에 부딪히면 <b>엔드 소환이
+	 * 구조적으로 진다.</b> 실제로 「엔드에 끌려 들어갔다가 도로 나온다」가 그것이었다.
+	 *
+	 * <p>지금은 {@code EndFightTeleportLock} 이 그 다섯을 막아 부딪히지 않는다. 그래도 이
+	 * 사실을 여기 남겨 둔다 — <b>순서로 이기려 들지 말 것.</b> 등록 순서를 바꿔 뒤로 옮기면
+	 * 이번에는 우리가 남의 순간이동을 덮어쓰게 되고, 어느 쪽이 이기는지가 등록 파일의 줄 순서에
+	 * 달린 상태로 돌아간다. 막아야 하는 것은 순서가 아니라 <b>옮기는 행위</b>다.
+	 *
+	 * <p>자물쇠가 새는 날을 대비한 그물이 {@link #recallStragglers} 다. 순서 경쟁에서 져서
+	 * 누가 밖으로 떨어져도 몇 초 뒤에 다시 끌어온다.
+	 */
 	public static void tick(@Nullable MinecraftServer server) {
 		if (server == null) {
 			return;
 		}
 		// 정지는 설정 검사보다 앞이다. 얼려 둔 채로 설정이 0 이 되면 녹일 사람이 없어진다.
 		TrialFreeze.tick(server);
+		// 드래곤을 잡은 팀의 무적. 세션이 이미 닫힌 뒤라 아래 세션 루프에 둘 수 없고, 사람이
+		// 엔드를 떠난 뒤에도 유지돼야 해서 엔드 검사보다도 앞이다.
+		DragonLastStand.tickVictory(server);
 		applyFinishedTrial(server);
 		// ⚠ 이 줄은 <b>서버 전체</b>를 끄는 스위치다. 팀 설정의 「드래곤 시련」과 다르다 —
 		// 여기서 돌아가면 팀을 엔드로 부르는 것까지 함께 멈춘다. 시련을 끈 팀에게
@@ -209,7 +254,113 @@ public final class DragonTrialManager {
 		long now = end.getGameTime();
 		detectArrival(server, end, now);
 		tickPendingSummons(server, end, now);
+		// ⚠ 세션을 돌리기 전이다. tickSessions 는 세션을 지울 수 있고, 지워진 팀을 다시
+		// 부르는 것은 「전투가 끝났는데 엔드로 끌려간다」가 된다.
+		recallStragglers(server, end, now);
 		tickSessions(server, end, now);
+	}
+
+	/**
+	 * 전투가 열려 있는데 <b>엔드 밖에 남은 팀원</b>을 다시 부른다.
+	 *
+	 * <h2>이것이 없어서 실제로 일어나던 일</h2>
+	 *
+	 * <p>{@link #detectArrival} 은 세션이 이미 열려 있으면 <b>통째로 건너뛴다.</b> 그래서 한 번
+	 * 소환한 뒤에 밖으로 나간 사람은 <b>다시는 불리지 않았다.</b> 나가는 길이 둘이다.
+	 *
+	 * <ul>
+	 *   <li><b>낡은 좌표를 쓰는 순간이동</b>(정거장 · 시차)이 사람을 엔드 밖에 떨어뜨린다.
+	 *       {@code EndFightTeleportLock} 이 이제 막지만, 자물쇠가 새면 그대로 밖에 남는다</li>
+	 *   <li><b>소환될 때 오프라인이었던 팀원.</b> {@link #summonTeam} 은 접속해 있는 사람만
+	 *       옮기므로, 전투 도중에 들어온 사람은 영영 밖이다</li>
+	 * </ul>
+	 *
+	 * <p>공유 체력이라 밖에 남은 사람은 <b>싸우지 않으면서 체력만 같이 깎인다.</b> 싸우는 쪽만
+	 * 위험을 지고 전멸하면 월드가 지워진다.
+	 *
+	 * <h2>{@link #summonTeam} 을 그대로 부른다</h2>
+	 *
+	 * <p>안전 착지점 {@link #ARRIVAL_POINT} 와 도착 무적 {@link #ARRIVAL_GRACE_TICKS} 가 그
+	 * 안에 있다. 여기서 다시 짜면 두 벌이 되어 「언젠가 한쪽만 고쳐진다」가 된다. 이미 엔드에
+	 * 있는 사람은 그쪽이 스스로 건너뛴다.
+	 *
+	 * <h2>무엇을 보고 부르는가</h2>
+	 *
+	 * <ul>
+	 *   <li><b>오프라인은 세지 않는다.</b> {@link #onlineMembers} 가 접속한 사람만 준다.
+	 *       접속하지 않은 사람은 부를 수도 없고, 들어오면 그 뒤 첫 검사에서 잡힌다</li>
+	 *   <li><b>관전자는 세지 않는다.</b> 판에 끼어들지 않는 사람이라 밖에 있어도 팀이 손해를
+	 *       보지 않는다. ⚠ 다만 <b>다른 사람 때문에 소환이 돌면 관전자도 함께 끌려온다</b> —
+	 *       {@link #summonTeam} 은 관전자를 가리지 않고, 그쪽을 고치는 것보다 이 한 줄을 적어
+	 *       두는 편이 싸다. 「최종 보스는 팀이 함께 선다」에 어긋나지도 않는다</li>
+	 *   <li><b>차원으로 가른다.</b> 엔드가 아니면 밖이다. 좌표로 재지 않는다 — 오버월드 원점
+	 *       근처가 엔드 중앙과 같은 좌표라는 함정은 {@link #membersOf} 에 적혀 있다</li>
+	 *   <li>{@code dragonHealthPerMember <= 0} 이면 {@link #tick} 이 여기 오기 전에 되돌아간다.
+	 *       소환이 없는 서버에서는 재소환도 없다 — 자물쇠가 보는 조건과 같은 값이다</li>
+	 * </ul>
+	 *
+	 * <h2>{@value #RECALL_INTERVAL_TICKS} 틱마다인 이유</h2>
+	 *
+	 * <p>매 틱 부르면 안 된다. 재소환은 <b>사람을 화면째로 끌어오는 일</b>이고, 우리 뒤에 도는
+	 * 순간이동과 같은 틱에 맞붙으면 사람이 두 자리 사이에서 떨린다.
+	 *
+	 * <p>2초로 잡은 근거가 둘이다. 「운명 공동체」의 {@code gather} 쿨타임이 <b>20틱</b>이라
+	 * 1초로 두면 그쪽과 <b>같은 박자로 맞붙는다</b>. 그리고 {@link #ARRIVAL_GRACE_TICKS} 가
+	 * 60틱이라 40틱마다면 연달아 끌려와도 <b>도착 무적이 끊기지 않는다.</b>
+	 *
+	 * <h2>최후의 저항 중에도 돈다</h2>
+	 *
+	 * <p>{@link #tickSessions} 가 아니라 여기 {@link #tick} 에 있다. 그쪽에 두면 시련을 끈 팀과
+	 * {@link DragonLastStand} 가 도는 팀에서 {@code continue} 에 걸려 빠진다 — 붙박이 드래곤과
+	 * 싸우는 도중에 한 명이 밖에 남는 것이 가장 나쁜 경우다.
+	 */
+	private static void recallStragglers(MinecraftServer server, ServerLevel end, long now) {
+		if (SESSIONS.isEmpty()) {
+			return;
+		}
+		for (UUID teamId : new ArrayList<>(SESSIONS.keySet())) {
+			Long nextAt = RECALL_AT.get(teamId);
+			if (nextAt != null && now < nextAt) {
+				continue;
+			}
+			RECALL_AT.put(teamId, now + RECALL_INTERVAL_TICKS);
+			ShareTeam team = TeamManager.get(server).teamById(teamId);
+			if (team == null) {
+				continue;
+			}
+			List<ServerPlayer> outside = strayMembers(server, team, end);
+			if (outside.isEmpty()) {
+				continue;
+			}
+			StringBuilder names = new StringBuilder();
+			for (ServerPlayer stray : outside) {
+				if (!names.isEmpty()) {
+					names.append(", ");
+				}
+				names.append(stray.getPlainTextName());
+			}
+			SharedFateMod.LOGGER.info("[END] 팀 '{}' 전투 중 엔드 밖에 남은 팀원을 다시 부릅니다 — {}",
+					team.name(), names);
+			summonTeam(server, end, team);
+		}
+	}
+
+	/**
+	 * 전투 중인데 엔드 밖에 있는 팀원들. <b>관전자는 빼고 센다.</b>
+	 *
+	 * <p>돌려주는 목록은 로그에만 쓴다. 실제로 옮기는 것은 {@link #summonTeam} 이다 — 부를지
+	 * 말지를 정하는 것과 옮기는 것을 나눠 두어야 옮기는 쪽이 한 벌로 남는다.
+	 */
+	private static List<ServerPlayer> strayMembers(MinecraftServer server, ShareTeam team,
+			ServerLevel end) {
+		List<ServerPlayer> outside = new ArrayList<>();
+		for (ServerPlayer member : onlineMembers(server, team)) {
+			if (member.isSpectator() || member.level() == end) {
+				continue;
+			}
+			outside.add(member);
+		}
+		return outside;
 	}
 
 	private static void tickPendingSummons(MinecraftServer server, ServerLevel end, long now) {
@@ -346,21 +497,39 @@ public final class DragonTrialManager {
 			if (dragon == null || !dragon.isAlive()) {
 				SharedFateMod.LOGGER.info("[END] 팀 '{}' 드래곤 처치 — {}초 · 시련 {}장",
 						team.name(), session.elapsedTicks(now) / 20, session.trialCount());
+				// 최후의 저항이 돌고 있었으면 여기가 「처치」다 — 시련이 사라지고 팀이 무적이
+				// 되며 보스바 이름이 되돌아간다. 돌고 있지 않았으면 아무 일도 하지 않는다.
+				DragonLastStand.onFightClosed(end, team);
 				finished.add(entry.getKey());
 				continue;
 			}
 			// 시련을 끈 팀은 여기서 통째로 지나간다. 바닐라 드래곤전이므로 자리도 카드도
 			// 패시브도 없고, 남는 일은 위의 「드래곤이 죽었는가」 하나뿐이다.
 			//
-			// ⚠ 안쪽 넷 중 앞의 셋(자리 감지·룰렛·위험)은 세션이 자리를 세지 않아 어차피
+			// ⚠ 안쪽 다섯 중 셋(자리 감지·룰렛·위험)은 세션이 자리를 세지 않아 어차피
 			// 아무 일도 안 한다. 그래도 한 줄로 묶어 두는 것은 DragonPassives 때문이다 —
 			// 그쪽은 카드와 무관하게 「언제나 있는 판」이라 스스로 멈출 근거가 없고, 여기서
 			// 안 막으면 시련을 끈 팀도 연쇄 포격을 맞는다.
+			//
+			// ⚠ 최후의 저항도 이 줄에 함께 걸린다. 그것도 시련의 일부라 끈 팀은 붙박이
+			// 드래곤을 만나지 않고 바닐라 드래곤전을 끝까지 한다.
 			if (!session.trialsEnabled()) {
 				continue;
 			}
 			List<ServerPlayer> members = membersOf(server, team, end);
-			detectTriggers(end, dragon, session);
+			boolean lastStandBegins = detectTriggers(end, dragon, session);
+			// ⚠ 최후의 저항은 카드가 아니라 별개의 보스전이고, 열리는 순간 아래 셋을 전부
+			// 멈춘다 — 룰렛·시련·패시브. 「시련이 전부 멈춥니다」가 이 continue 한 줄이다.
+			DragonLastStand.Standing standing = DragonLastStand.tick(server, end, dragon, team,
+					session, members, lastStandBegins, now);
+			if (standing != DragonLastStand.Standing.OFF) {
+				if (standing == DragonLastStand.Standing.ENTERED) {
+					// 진입하며 줄에 남아 있던 자리를 비웠다. 저장해 두지 않으면 재시작 뒤에
+					// 「선택 대기 중」인 채로 되살아나 룰렛이 영영 안 열리는 팀이 된다.
+					persist();
+				}
+				continue;
+			}
 			openTrialWhenDue(server, end, session, members, now);
 			// 패시브는 시련과 다르다. 팀이 뽑는 것이 아니라 언제나 있는 판이므로 카드와 무관하게
 			// 돈다 — 섞으면 「이번 판이 왜 어려웠나」를 나눌 수 없다.
@@ -371,6 +540,9 @@ public final class DragonTrialManager {
 			finished.forEach(SESSIONS::remove);
 			// 전투가 끝났는데 룰렛만 남으면 다음 전투 첫 틱에 옛 카드가 튀어나온다.
 			finished.forEach(DragonTrialManager::resetTrialDelay);
+			// 재소환 시계도 함께 버린다. 남겨 두면 다음 전투의 첫 검사가 앞 전투의 시각을
+			// 물려받아 최대 2초 늦게 돈다 — 소환 직후가 가장 어긋나기 쉬운 순간이다.
+			finished.forEach(RECALL_AT::remove);
 			endTrials();
 			persist();
 		}
@@ -416,8 +588,13 @@ public final class DragonTrialManager {
 	 *
 	 * <p>체력은 <b>강화된 최대치</b> 기준이다. 크리스탈로 회복해 문턱을 오르내려도
 	 * {@link DragonTrialSession#fire} 가 처음 한 번만 센다.
+	 *
+	 * @return {@code HEALTH_30} 이 <b>이번 틱에 처음</b> 터졌는가. 곧 최후의 저항이 열리는
+	 *         순간인가다. 진입 연출은 딱 한 번만 돌아야 하는데 「처음 한 번」을 아는 곳이
+	 *         {@link DragonTrialSession#fire} 하나뿐이라 그 답을 여기서 내보낸다 —
+	 *         {@code DragonLastStand} 가 체력 비율을 다시 재면 문턱이 두 곳이 된다
 	 */
-	private static void detectTriggers(ServerLevel end, EnderDragon dragon,
+	private static boolean detectTriggers(ServerLevel end, EnderDragon dragon,
 			DragonTrialSession session) {
 		int crystals = countCrystals(end);
 		Integer atStart = CRYSTALS_AT_START.get(session.teamId());
@@ -432,7 +609,7 @@ public final class DragonTrialManager {
 
 		float max = dragon.getMaxHealth();
 		if (!(max > 0.0F)) {
-			return;
+			return false;
 		}
 		float ratio = dragon.getHealth() / max;
 		if (ratio <= 0.80F) {
@@ -441,9 +618,10 @@ public final class DragonTrialManager {
 		if (ratio <= 0.50F) {
 			session.fire(TrialCatalog.Trigger.HEALTH_50);
 		}
-		if (ratio <= 0.30F) {
-			session.fire(TrialCatalog.Trigger.HEALTH_30);
-		}
+		// 문턱 값은 DragonLastStand.ENTRY_HEALTH_RATIO 와 같아야 한다. 저쪽은 이 값을 읽지
+		// 않고 「터졌는가」만 받으므로 실제로 재는 곳은 여기 하나다.
+		return ratio <= DragonLastStand.ENTRY_HEALTH_RATIO
+				&& session.fire(TrialCatalog.Trigger.HEALTH_30);
 	}
 
 	/** 지금 엔드에 살아 있는 크리스탈 수. 철장에 갇힌 것도 센다. */
@@ -768,15 +946,42 @@ public final class DragonTrialManager {
 		return teamId == null ? null : SESSIONS.get(teamId);
 	}
 
+	/**
+	 * 이 팀이 <b>전원 소환을 기다리는 중</b>인가. 세션이 열리기 전의 {@value #SUMMON_DELAY_TICKS}
+	 * 틱 구간이다.
+	 *
+	 * <h2>왜 밖으로 여는가</h2>
+	 *
+	 * <p>엔드 입장을 감지한 뒤 전원을 옮길 때까지 3초가 비어 있다({@link #SUMMON_DELAY_TICKS}).
+	 * 그 사이에는 {@link #sessionOf} 가 아직 {@code null} 이라, <b>밖에서 보면 전투가 열리지
+	 * 않은 것과 구별되지 않는다.</b> 그래서 {@code EndFightTeleportLock} 이 그 3초를 덮으려고
+	 * 「팀원 하나가 이미 엔드에 있으면」으로 <b>근사</b>하고 있었다.
+	 *
+	 * <p>근사가 나쁜 것은 틀려서가 아니라 <b>「전투가 열리는 중인가」의 답이 두 곳에 있게
+	 * 되기 때문</b>이다. 입장 판정을 고치면 두 군데를 봐야 하고, 한쪽만 고치면 3초짜리 구멍이
+	 * 조용히 돌아온다. 사실을 들고 있는 것은 {@link #PENDING_SUMMON} 하나이므로 그것을 연다.
+	 *
+	 * <p>⚠ {@link #sessionOf} 와 <b>겹치지 않는다.</b> 소환이 끝나면 같은 틱에
+	 * {@link #PENDING_SUMMON} 에서 빠지고 {@link #SESSIONS} 에 들어간다 — 곧 「전투가 열려
+	 * 있는가」는 둘을 <b>함께</b> 물어야 한다.
+	 */
+	public static boolean pendingSummon(@Nullable UUID teamId) {
+		return teamId != null && PENDING_SUMMON.containsKey(teamId);
+	}
+
 	/** 월드가 바뀌거나 서버가 내려갈 때. 남은 상태를 버린다. */
 	public static void clearState() {
 		SESSIONS.clear();
 		PENDING_SUMMON.clear();
 		CRYSTALS_AT_START.clear();
 		READY_AT.clear();
+		RECALL_AT.clear();
 		TrialFreeze.reset();
 		TrialRisks.clearState();
 		DragonPassives.clearState();
+		// ⚠ 여기는 SERVER_STOPPED 에서도 불려 월드를 만질 수 없다. 저쪽이 정적 상태만
+		// 버리는 까닭과, 나머지를 어디서 되돌리는지는 DragonLastStand.clearState 에 있다.
+		DragonLastStand.clearState();
 	}
 
 	/** 시험·명령용. 지금 당장 전투를 연다. */
@@ -787,6 +992,7 @@ public final class DragonTrialManager {
 		}
 		SESSIONS.remove(team.teamId());
 		resetTrialDelay(team.teamId());
+		RECALL_AT.remove(team.teamId());
 		summonTeam(server, end, team);
 		startSession(server, end, team, end.getGameTime());
 	}

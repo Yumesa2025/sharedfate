@@ -19,6 +19,33 @@ import java.util.Set;
 import java.util.UUID;
 
 public final class StatMirror {
+	/**
+	 * 팀 공유 레벨의 기본 상한.
+	 *
+	 * <p><b>전에는 상한이 아예 없었다.</b> 공유 경험치가 쌓이는 대로 레벨이 41·42·… 로 끝없이
+	 * 올라갔는데, 증강 구간은 {@link com.sharedfate.perk.PerkMilestones#MAX} 인 40 에서 끝나므로
+	 * 그 위의 숫자는 아무것도 뜻하지 않는 장식이었다. 2026-09-30 에 직접 플레이해 본 사람이
+	 * 「레벨이 40이면 그 이상 안 오르게, 맥스가 40이니」라고 해서 여기서 멈춘다.
+	 *
+	 * <p>상한은 「증강을 더 주지 않는다」가 아니라 <b>레벨 자체가 오르지 않는다</b>는 뜻이다.
+	 * 40 에서 멈춘 화면이 곧 「이 회차에서 받을 증강을 다 받았다」는 표시가 된다.
+	 */
+	public static final int BASE_LEVEL_CAP = 40;
+
+	/**
+	 * 드래곤 시련({@code TeamState.dragonTrialsEnabled})을 켠 팀의 상한.
+	 *
+	 * <p>시련을 켠 팀은 회차가 드래곤전까지 이어지므로 10 레벨을 더 준다. 이 값을 가르는 설정은
+	 * 팀을 만들 때 정해지고 그 뒤로 바뀌는 경로가 없어, 한 회차 안에서 상한이 움직이는 일은 없다.
+	 *
+	 * <p><b>⚠ 41~50 구간에는 아직 증강도 세트도 없다.</b> {@code PerkMilestones.MAX} 는 40
+	 * 그대로라 41~50 에서는 증강 선택권이 한 번도 열리지 않는다. 레벨만 오르고 보상이 비는
+	 * 것이 <b>지금은 맞는 상태다</b> — 그 구간의 증강·세트는 「추후 추가 예정」이고 아직 무엇을
+	 * 줄지 정해진 것이 없다. 나중에 채우는 사람은 여기와 {@code PerkMilestones} 두 곳을 함께
+	 * 보면 된다.
+	 */
+	public static final int TRIAL_LEVEL_CAP = 50;
+
 	private static final Map<UUID, Snapshot> LAST = new HashMap<>();
 	private static final Set<UUID> SUPPRESSED_TEAMS = new HashSet<>();
 	private static final Set<UUID> DAMAGE_CAPTURED_THIS_TICK = new HashSet<>();
@@ -50,6 +77,45 @@ public final class StatMirror {
 	private StatMirror() {
 	}
 
+	/** 이 팀의 공유 레벨 상한. 시련을 켠 팀만 {@link #TRIAL_LEVEL_CAP} 이다. */
+	public static int levelCap(@Nullable TeamState state) {
+		return state != null && state.dragonTrialsEnabled ? TRIAL_LEVEL_CAP : BASE_LEVEL_CAP;
+	}
+
+	/**
+	 * 상한 레벨에 <b>정확히</b> 닿는 경험치 점수. 공유 경험치는 이 값을 넘지 않는다.
+	 *
+	 * <p>{@code progress = 0} 인 지점을 고른 것은 한 가지 이유 때문이다. 상한 레벨의 막대를
+	 * 가득 채운 지점({@code 다음 레벨 − 1})을 쓰면 화면이 「곧 41 이 된다」고 말하는데 영원히
+	 * 오르지 않아, 사람이 버그로 읽는다. 빈 막대로 멈추면 「여기가 끝이다」가 한눈에 보인다.
+	 */
+	public static int experienceCap(@Nullable TeamState state) {
+		return experiencePointsFor(levelCap(state), 0.0F);
+	}
+
+	/**
+	 * 공유 경험치를 상한 안으로 자른다. 공유 풀에 경험치를 써 넣는 자리는 모두 여기를 지난다.
+	 *
+	 * <h2>넘친 몫은 버린다 — 쌓아 두지 않는다</h2>
+	 * <p>사람이 정해 주지 않아 여기서 고른 것이다. 까닭은 둘이다.
+	 *
+	 * <p>하나. 넘친 경험치를 어딘가에 적어 두면, 나중에 41~50 구간의 증강이 생겨 상한이 풀리는
+	 * 순간 <b>그동안 모아 둔 몫이 한꺼번에 터져</b> 팀이 몇 레벨을 건너뛰고 증강 선택 화면이
+	 * 줄줄이 뜬다. 상한에 닿은 뒤에 딴 경험치는 「받을 것이 없는 동안 딴 것」이므로 그 회차에
+	 * 값을 쳐 줄 근거가 없다.
+	 *
+	 * <p>둘. 쌓아 두려면 {@code TeamState} 에 저장 항목이 하나 더 붙고 저장 형식을 올려야 한다.
+	 * 값 하나를 정하는 일에 저장 형식을 건드릴 이유가 없다.
+	 *
+	 * <p>상한에 닿은 뒤에도 경험치 오브는 그대로 떨어지고 그대로 먹힌다 — 먹은 몫이 공유 풀에
+	 * 더해지지 않을 뿐이다. 오브를 없애지 않는 것은, 없애는 자리가 팀마다 다른 상한을 알 수 없는
+	 * 곳들이라 한 팀의 상한 때문에 다른 팀의 경험치까지 사라질 수 있기 때문이다.
+	 */
+	private static int clampToLevelCap(TeamState state, long points) {
+		long bounded = Math.max(0L, Math.min(Integer.MAX_VALUE, points));
+		return (int) Math.min(bounded, experienceCap(state));
+	}
+
 	public static void forget(UUID player) {
 		LAST.remove(player);
 	}
@@ -74,8 +140,7 @@ public final class StatMirror {
 				delta += currentExperiencePoints(player) - last.experiencePoints();
 			}
 		}
-		state.totalExperience = (int) Math.max(0L,
-				Math.min(Integer.MAX_VALUE, state.totalExperience + delta));
+		state.totalExperience = clampToLevelCap(state, (long) state.totalExperience + delta);
 	}
 
 	public static void captureDamageBeforeDeath(MinecraftServer server, ShareTeam team) {
@@ -311,8 +376,10 @@ public final class StatMirror {
 		state.foodLevel = Math.round(clamp(state.foodLevel + delta.foodLevel(), 0.0F, 20.0F));
 		state.saturation = clamp(state.saturation + delta.saturation(), 0.0F, state.foodLevel);
 		if (shareExperience) {
-			long experience = (long) state.totalExperience + delta.totalExperience();
-			state.totalExperience = (int) Math.max(0L, Math.min(Integer.MAX_VALUE, experience));
+			// 상한을 넘은 몫은 여기서 사라진다. 다음 writeBack 이 팀원의 경험치를 잘린 값으로
+			// 되돌리므로, 레벨은 상한에서 멈추고 막대도 더 차지 않는다.
+			state.totalExperience = clampToLevelCap(state,
+					(long) state.totalExperience + delta.totalExperience());
 		}
 	}
 
@@ -376,8 +443,8 @@ public final class StatMirror {
 	}
 
 	public static void addSharedExperience(TeamState state, int points) {
-		long combined = (long) state.totalExperience + Math.max(0, points);
-		state.totalExperience = (int) Math.min(Integer.MAX_VALUE, combined);
+		state.totalExperience = clampToLevelCap(state,
+				(long) state.totalExperience + Math.max(0, points));
 	}
 
 	static int experiencePointsFor(int level, float progress) {

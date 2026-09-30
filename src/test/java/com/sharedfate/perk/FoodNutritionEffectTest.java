@@ -194,7 +194,8 @@ class FoodNutritionEffectTest {
 		state.ownedPerks.clear();
 		state.ownedPerks.add("sharedfate:ascetic");
 		assertEquals(0.0, PerkFoodRules.exhaustionMultiplier(state), "고행자");
-		assertEquals(12.0, PerkHealthRules.lockedMaxHealth(state).orElseThrow());
+		// 12 는 너무 빡빡해 2026-09-30 에 16 으로 올렸다.
+		assertEquals(16.0, PerkHealthRules.lockedMaxHealth(state).orElseThrow());
 	}
 
 	/** 회복량 배율 둘과, 먹기를 막는 증강 하나를 담은 풀. */

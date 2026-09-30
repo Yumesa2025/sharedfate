@@ -84,6 +84,23 @@ public class TeamScreen extends Screen {
 	private static final int PANEL_BG = 0xC0101018;
 
 	/**
+	 * 「유적 감별사」 좌표를 세우는 자리의 왼쪽 여백.
+	 *
+	 * <p>{@link #PANEL_BG} 의 오른쪽 변이 {@code left + PANEL_WIDTH + 6} 이고 스크롤 막대가
+	 * {@code +1}~{@code +4} 를 쓴다. 둘을 지난 자리라야 바탕판 밖의 빈 곳에 선다.
+	 */
+	private static final int RUIN_COORD_GAP = 12;
+
+	/**
+	 * 유적 좌표 글자색.
+	 *
+	 * <p>증강을 처음 골랐을 때 띄운 채팅 한 줄({@code PerkRuinSurvey.announce} 의
+	 * {@code ChatFormatting.AQUA})과 같은 물색이다. 같은 값을 두 곳에서 읽는 사람이 「이게 그거」를
+	 * 색으로 알아채야 한다.
+	 */
+	private static final int RUIN_COORD = 0xFF55FFFF;
+
+	/**
 	 * 세트 툴팁 줄에 쓸 색.
 	 *
 	 * <p>줄을 만드는 계산({@link PerkSetTooltipLines})은 이 화면의 색 상수를 몰라야 해서 색을
@@ -942,6 +959,9 @@ public class TeamScreen extends Screen {
 				+ (overflows ? "  (휠로 넘겨 보세요)" : ""), left, y, TEXT_MAIN);
 
 		renderSets(graphics, left);
+		// 목록 오른쪽, 바탕판 밖의 빈자리다. 잘라내기를 켜기 전에 그려야 한다 — 잘라내기 범위는
+		// 목록 폭뿐이라 그 안에서 그리면 한 글자도 안 나온다.
+		renderRuinCoords(graphics, left);
 
 		// 창 밖으로 나가는 줄이 그려지지 않게 자른다. 자르지 않으면 스크롤한 목록이 머리글과
 		// 아래 단추를 덮어쓴다.
@@ -963,6 +983,44 @@ public class TeamScreen extends Screen {
 
 		// 툴팁은 맨 마지막이다. 잘라내기가 풀린 뒤라야 목록 창 밖까지 뻗을 수 있다.
 		renderPerkTooltip(graphics, left, mouseX, mouseY);
+	}
+
+	/**
+	 * 증강 목록 <b>오른쪽</b>에 세우는 「유적 감별사」 좌표.
+	 *
+	 * <p>사람이 요청한 모양이 이것이다 — 목록 안이 아니라 그 오른쪽에 좌표만 나열한다. 설명
+	 * 문자열 뒤에 괄호로 붙여 보내던 임시 방편은 규약 35 에서 없앴다({@code PerkSyncPayload}
+	 * 의 {@code ruinCoords}). <b>두 곳에 같은 좌표가 뜨면 안 된다.</b>
+	 *
+	 * <p>줄은 서버가 만든 것을 글자 그대로 그린다. 「고대 도시  -1234, 567」처럼 이름표와 x·z 가
+	 * 이미 한 줄에 들어 있어 클라이언트가 접거나 이을 것이 없다. y 는 서버가 넣지 않는다 —
+	 * 파고 들어갈 자리다.
+	 *
+	 * <p>줄 수는 정의가 정하고 {@code RuinSurveyEffect.MAX_STRUCTURES} 만큼까지다. 지금 쓰이는
+	 * 정의는 둘이라 두 줄이지만, 여기서 둘을 못 박지는 않는다.
+	 */
+	private void renderRuinCoords(GuiGraphicsExtractor graphics, int left) {
+		List<String> coords = PerkClientState.ruinCoords();
+		if (coords.isEmpty()) {
+			return;
+		}
+		int x = left + PANEL_WIDTH + RUIN_COORD_GAP;
+		int widest = 0;
+		for (String coord : coords) {
+			widest = Math.max(widest, this.font.width(coord));
+		}
+		// 자리가 모자라면 아예 안 그린다. <b>잘린 좌표는 틀린 좌표다</b> — 「-1234, 5」를 읽고
+		// 떠나는 사람이 나오면 안 된다. 좁은 화면에서 판을 통째로 감추는 다른 곳들
+		// ({@code OwnedPerkPanelLayout}·{@code PerkSetPanelLayout})과 같은 규칙이다.
+		// 좌표는 처음 골랐을 때 띄운 채팅 한 줄에 그대로 남아 있어, 못 그려도 읽을 길이 있다.
+		if (x + widest > this.width) {
+			return;
+		}
+		int y = PANEL_TOP;
+		for (String coord : coords) {
+			graphics.text(this.font, coord, x, y, RUIN_COORD);
+			y += ROW_HEIGHT;
+		}
 	}
 
 	/**

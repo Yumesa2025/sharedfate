@@ -107,6 +107,16 @@ public class SharedFateConfig {
 	 * 만들어져도 유지된다. 자세한 것은 {@link com.sharedfate.sync.WorldGameRules} 에 적어 뒀다.
 	 */
 	public boolean silenceAdvancementMessages = true;
+	/**
+	 * 화면 맨 위에 「SharedFate · N회차 …」 한 줄을 띄운다.
+	 *
+	 * <p>속은 보스바지만 <b>막대는 보이지 않는다</b> — 글자만 남기고 막대를 건너뛰는 일은
+	 * 클라이언트의 {@code BossHealthOverlayMixin} 이 한다. 이름을 그대로 두는 이유는 설정
+	 * 파일 호환이고, 여기를 끄면 보스바 자체가 만들어지지 않아 글자도 함께 사라진다.
+	 *
+	 * <p>모드를 깔지 않은 클라이언트에게는 막대가 그대로 보인다. 다만 {@code requireClientMod}
+	 * 가 그런 접속을 기본적으로 막는다.
+	 */
 	public boolean showRunBossBar = true;
 	public boolean dragonKillEndsRun = true;
 	/**

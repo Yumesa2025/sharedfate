@@ -242,12 +242,26 @@ public final class PerkManager {
 		return changed;
 	}
 
+	/**
+	 * 선택자 한 사람을 뽑는다. 뽑을 사람이 없으면 null.
+	 *
+	 * <p><b>관전자는 뽑지 않는다.</b> 관전자는 표도 못 던지는데
+	 * ({@code PerkChoiceSession.castVote}) 선택자는 될 수 있으면 앞뒤가 안 맞고, 그 사람에게
+	 * 선택권이 가면 <b>시간이 멈춘 채 고를 사람만 없는</b> 상태가 된다. 이 저장소가 다른
+	 * 곳에서도 일관되게 관전자를 뺀다.
+	 *
+	 * <p><b>전원이 관전자면 null 이다.</b> 아무도 접속해 있지 않을 때와 같은 값이고, 그래서
+	 * 같은 길을 지난다 — 선택권은 선택자 없이 대기열에 남고
+	 * ({@link #assignMissingChoosers} 가 다음 접속 때 다시 본다), 강제 선택 세션은 아예
+	 * 열리지 않는다({@code PerkChoiceSession.begin}). 새 예외 경로를 만들지 않는 것이
+	 * 중요하다 — 여기서 던지면 팀 하나 때문에 그 틱이 통째로 죽는다.
+	 */
 	private static @Nullable UUID pickChooser(MinecraftServer server, ShareTeam team, RandomSource random) {
-		List<UUID> online = onlineMembers(server, team);
-		if (online.isEmpty()) {
+		List<UUID> candidates = playableMembers(server, team);
+		if (candidates.isEmpty()) {
 			return null;
 		}
-		return online.get(random.nextInt(online.size()));
+		return candidates.get(random.nextInt(candidates.size()));
 	}
 
 	private static List<UUID> onlineMembers(MinecraftServer server, ShareTeam team) {
@@ -258,6 +272,23 @@ public final class PerkManager {
 			}
 		}
 		return online;
+	}
+
+	/**
+	 * 접속해 있으면서 <b>관전자가 아닌</b> 팀원. 선택자를 뽑을 때 쓰는 후보다.
+	 *
+	 * <p>{@link #onlineMembers} 와 나눠 둔 것은 쓰임이 달라서다. 무적을 걸거나 알림을 보내는
+	 * 자리는 관전자도 대상이지만, <b>고르는 일을 맡기는 자리</b>는 아니다.
+	 */
+	private static List<UUID> playableMembers(MinecraftServer server, ShareTeam team) {
+		List<UUID> playable = new ArrayList<>();
+		for (UUID member : team.members()) {
+			ServerPlayer player = server.getPlayerList().getPlayer(member);
+			if (player != null && !player.isSpectator()) {
+				playable.add(member);
+			}
+		}
+		return playable;
 	}
 
 	// ------------------------------------------------------------------ 접속 이벤트
@@ -282,7 +313,12 @@ public final class PerkManager {
 		}
 		broadcastSync(server, team, state);
 		// 강제 선택이 진행 중이면 늦게 들어온 사람에게도 창을 띄우고 무적을 걸어 준다.
-		PerkChoiceSession.refreshAudience(server);
+		//
+		// refreshAudience 가 아니라 이쪽인 이유는 둘이다. 그쪽은 (1) 전원에게 다시 보내
+		// 남들의 창까지 새로 만들고, (2) 대기열에서 후보를 읽어서 <b>결과를 보여 주는
+		// 동안에는 조용히 되돌아간다</b> — 후보가 이미 빠진 뒤라(commit) 그 몇 초 사이에
+		// 들어온 사람은 시간이 멈춘 세상에 창 없이 서 있게 된다.
+		PerkChoiceSession.onMemberJoined(server, player);
 		remindIfChooser(player, state);
 	}
 
@@ -308,7 +344,9 @@ public final class PerkManager {
 			if (!offer.isChooser(leaving)) {
 				continue;
 			}
-			List<UUID> candidates = new ArrayList<>(onlineMembers(server, team));
+			// 넘겨받을 사람도 관전자면 안 된다. 여기서 관전자에게 넘기면 시간이 멈춘 채
+			// 고를 사람만 없는 상태가 되고, 제한시간 60초를 다 태워야 풀린다.
+			List<UUID> candidates = new ArrayList<>(playableMembers(server, team));
 			candidates.remove(leaving);
 			UUID next = candidates.isEmpty() ? null : candidates.get(random.nextInt(candidates.size()));
 			state.pending.set(i, offer.withChooser(next));
@@ -1007,6 +1045,31 @@ public final class PerkManager {
 		return lines;
 	}
 
+	/**
+	 * 「유적 감별사」가 찾아 둔 좌표 줄들. 그 증강이 없으면 빈 목록.
+	 *
+	 * <p><b>증강 하나가 아니라 팀 하나에 딸린 값이다.</b> 유적 좌표 효과는 팀 전체에 하나뿐이라
+	 * ({@link PerkRuinSurvey#effectOf}) 보유 증강 줄마다 실어 보내면 같은 목록이 되풀이된다.
+	 * 그래서 {@code PerkSyncPayload} 의 별도 칸으로 나가고, 화면은 목록 오른쪽에 따로 세운다.
+	 *
+	 * <p><b>예전에는 설명 문자열 뒤에 괄호로 붙여 보냈다.</b> 통신 형식을 안 늘리려는 임시
+	 * 방편이었고, 그래서는 사람이 요청한 「목록 오른쪽에 두 줄」이 될 수 없었다 — 오른쪽에 따로
+	 * 세우려면 클라이언트가 좌표를 설명과 <b>구분해서</b> 받아야 한다. 규약 35 에서 칸을 늘렸으니
+	 * 덧붙임은 지웠다. 두 곳에 같은 좌표가 뜨면 안 된다.
+	 *
+	 * <p>여기서는 <b>찾지 않는다.</b> {@link PerkRuinSurvey#lines} 는 이미 찾아 둔 것만 돌려주고,
+	 * 찾는 일은 증강을 고를 때와 접속할 때만 일어난다. 동기화는 자주 도는 길이다.
+	 */
+	public static List<String> ruinCoords(ServerPlayer player) {
+		TeamState state = com.sharedfate.team.TeamLookup.stateOf(player.getUUID());
+		MinecraftServer server = player.level().getServer();
+		if (state == null || server == null) {
+			return List.of();
+		}
+		ShareTeam team = TeamManager.get(server).teamOf(player.getUUID());
+		return PerkRuinSurvey.lines(team, state);
+	}
+
 	/** 선택권이 다른 사람에게 넘어갔을 때만 쓰는 알림. 최초 발동 알림은 세션 쪽이 맡는다. */
 	private static void announceOffer(MinecraftServer server, ShareTeam team, PendingOffer offer,
 			@Nullable UUID chooser) {
@@ -1078,7 +1141,8 @@ public final class PerkManager {
 				continue;
 			}
 			ServerPlayNetworking.send(online,
-					new PerkSyncPayload(ownedLines(online), state.pending.size(), chooserName));
+					new PerkSyncPayload(ownedLines(online), state.pending.size(), chooserName,
+							ruinCoords(online)));
 		}
 	}
 }

@@ -133,7 +133,12 @@ public final class StaggeredSwapManager {
 		if (mover != null && !mover.isRemoved() && !mover.isDeadOrDying()) {
 			PositionSwapManager.Position origin = sequence.origins.get(index);
 			PositionSwapManager.Position destination = sequence.origins.get(sequence.donors[index]);
-			if (destination.teleport(mover)) {
+			// 여기 든 좌표는 시퀀스를 시작할 때 찍은 것이다. 걸음 사이가 5~10초라, 그사이에
+			// 팀이 엔드로 소환됐으면 남은 걸음이 전부 엔드 밖 옛 자리로 간다. 그 걸음은
+			// 건너뛴다 — 옮기지 않았으니 「이동했습니다」와 옛 자리 폭발도 함께 뺀다.
+			if (EndFightTeleportLock.blocks(mover, destination.level())) {
+				EndFightTeleportLock.refuse(mover);
+			} else if (destination.teleport(mover)) {
 				mover.sendSystemMessage(Component.literal("위치 교환! 순서가 되어 이동했습니다."));
 				// 이 걸음에서 자리가 바뀐 사람은 이 사람뿐이라, 면역도 이 사람 하나로 충분하다.
 				for (SwapExplosionEffect explosion : sequence.explosions) {

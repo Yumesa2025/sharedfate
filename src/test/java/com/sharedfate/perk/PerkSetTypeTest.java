@@ -36,8 +36,8 @@ class PerkSetTypeTest {
 	}
 
 	@Test
-	void 유형은_열세_개다() {
-		assertEquals(13, PerkSetType.values().length);
+	void 유형은_열네_개다() {
+		assertEquals(14, PerkSetType.values().length);
 	}
 
 	@Test
@@ -48,10 +48,11 @@ class PerkSetTypeTest {
 			assertEquals(type.name().toLowerCase(java.util.Locale.ROOT), type.id());
 		}
 
-		// JSON 에 적힐 문자열이 실제로 이 열세 개다. 이름을 바꾸면 정의 파일도 함께 고쳐야 한다.
+		// JSON 에 적힐 문자열이 실제로 이 열네 개다. 이름을 바꾸면 정의 파일도 함께 고쳐야 한다.
 		assertEquals(
 				Set.of("weapon", "power", "hunt", "mining", "supply", "defense",
-						"survival", "recovery", "swap", "gamble", "mobility", "blessing", "bond"),
+						"survival", "recovery", "swap", "gamble", "mobility", "blessing", "bond",
+						"pioneer"),
 				EnumSet.allOf(PerkSetType.class).stream().map(PerkSetType::id)
 						.collect(java.util.stream.Collectors.toSet()));
 	}
@@ -78,6 +79,9 @@ class PerkSetTypeTest {
 		assertEquals("교환", PerkSetType.SWAP.displayName());
 		assertEquals("도박", PerkSetType.GAMBLE.displayName());
 		assertEquals("기동", PerkSetType.MOBILITY.displayName());
+		assertEquals("가호", PerkSetType.BLESSING.displayName());
+		assertEquals("결속", PerkSetType.BOND.displayName());
+		assertEquals("개척", PerkSetType.PIONEER.displayName());
 	}
 
 	/**
@@ -126,7 +130,7 @@ class PerkSetTypeTest {
 
 	@Test
 	void set_types_가_없으면_무유형이다(@TempDir Path dir) throws IOException {
-		// 무유형은 정상이다. 기본 풀에도 열여섯 개나 있다.
+		// 무유형은 정상이다. 기본 풀에도 열한 개나 있다.
 		write(dir, """
 				{
 				  "perks": [

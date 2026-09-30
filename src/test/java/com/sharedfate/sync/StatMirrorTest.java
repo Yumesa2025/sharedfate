@@ -54,14 +54,72 @@ class StatMirrorTest {
 		assertEquals(20, state.totalExperience);
 	}
 
+	/**
+	 * 오버플로 방지와 레벨 상한은 같은 자리에서 한다. 상한이 생긴 뒤로는 상한이 먼저 걸리므로
+	 * 결과가 {@code Integer.MAX_VALUE} 가 아니라 상한 경험치다. 그래도 <b>음수로 돌지 않는지</b>
+	 * 는 여기서 계속 본다 — 자르는 차례가 뒤집히면 더한 값이 먼저 넘쳐 음수가 된다.
+	 */
 	@Test
-	void 개인_경험치를_공유_풀에_합칠_때_오버플로하지_않는다() {
+	void 개인_경험치를_공유_풀에_합칠_때_오버플로하지_않고_상한에서_멈춘다() {
 		TeamState state = TeamState.fresh(40.0F);
 		state.totalExperience = Integer.MAX_VALUE - 2;
 
 		StatMirror.addSharedExperience(state, 10);
 
-		assertEquals(Integer.MAX_VALUE, state.totalExperience);
+		assertEquals(StatMirror.experienceCap(state), state.totalExperience);
+	}
+
+	// ------------------------------------------------------------------ 레벨 상한
+
+	@Test
+	void 레벨_상한은_기본_40_이고_시련을_켜면_50_이다() {
+		TeamState plain = TeamState.fresh(40.0F);
+		TeamState trials = TeamState.fresh(40.0F);
+		trials.dragonTrialsEnabled = true;
+
+		assertEquals(40, StatMirror.BASE_LEVEL_CAP);
+		assertEquals(50, StatMirror.TRIAL_LEVEL_CAP);
+		assertEquals(40, StatMirror.levelCap(plain));
+		assertEquals(50, StatMirror.levelCap(trials));
+	}
+
+	/** 상한 경험치는 그 레벨의 <b>막대가 빈</b> 지점이다. 까닭은 {@code experienceCap} 에 있다. */
+	@Test
+	void 상한_경험치는_상한_레벨의_빈_막대_지점이다() {
+		TeamState plain = TeamState.fresh(40.0F);
+		TeamState trials = TeamState.fresh(40.0F);
+		trials.dragonTrialsEnabled = true;
+
+		assertEquals(2920, StatMirror.experienceCap(plain));
+		assertEquals(5345, StatMirror.experienceCap(trials));
+		assertEquals(StatMirror.experiencePointsFor(40, 0.0F), StatMirror.experienceCap(plain));
+		assertEquals(StatMirror.experiencePointsFor(50, 0.0F), StatMirror.experienceCap(trials));
+	}
+
+	@Test
+	void 상한에_닿으면_더_쌓이지_않고_넘친_몫은_버린다() {
+		TeamState state = TeamState.fresh(40.0F);
+		state.totalExperience = StatMirror.experienceCap(state) - 5;
+
+		StatMirror.applyDeltas(state, 40.0F, 4.0F,
+				new StatMirror.StatDelta(0.0F, 0.0F, 0.0F, 0.0F, 0, 0.0F, 9_999), true);
+		assertEquals(StatMirror.experienceCap(state), state.totalExperience);
+
+		// 한 번 더 받아도 쌓이지 않는다. 쌓아 두면 상한이 풀리는 날 한꺼번에 터진다.
+		StatMirror.applyDeltas(state, 40.0F, 4.0F,
+				new StatMirror.StatDelta(0.0F, 0.0F, 0.0F, 0.0F, 0, 0.0F, 9_999), true);
+		assertEquals(StatMirror.experienceCap(state), state.totalExperience);
+	}
+
+	@Test
+	void 시련을_켠_팀은_40_을_넘어_50_까지_오른다() {
+		TeamState trials = TeamState.fresh(40.0F);
+		trials.dragonTrialsEnabled = true;
+
+		StatMirror.applyDeltas(trials, 40.0F, 4.0F,
+				new StatMirror.StatDelta(0.0F, 0.0F, 0.0F, 0.0F, 0, 0.0F, 99_999), true);
+
+		assertEquals(StatMirror.experiencePointsFor(50, 0.0F), trials.totalExperience);
 	}
 
 	@Test

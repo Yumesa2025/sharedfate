@@ -27,6 +27,7 @@ import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkResultPayload;
 import com.sharedfate.net.PerkSetSyncPayload;
 import com.sharedfate.net.PerkSyncPayload;
+import com.sharedfate.net.PerkVoteSyncPayload;
 import com.sharedfate.net.SelectedSlotPayload;
 import com.sharedfate.net.SharedFateNetworking;
 import com.sharedfate.net.TeamSyncPayload;
@@ -116,7 +117,8 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkSyncPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> PerkClientState.update(payload.owned(),
-								payload.pendingCount(), payload.chooserName())));
+								payload.pendingCount(), payload.chooserName(),
+								payload.ruinCoords())));
 		// 선택자 뽑기 연출. 서버가 선택창을 보낼 때까지 이 화면이 떠 있는다.
 		ClientPlayNetworking.registerGlobalReceiver(PerkDrawPayload.TYPE,
 				(payload, context) -> context.client().execute(
@@ -125,6 +127,10 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkResultPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> showPerkResult(context.client(), payload)));
+		// 선택자가 아닌 사람들이 던진 표. 세는 일은 서버가 하고 화면은 받은 수를 그린다.
+		ClientPlayNetworking.registerGlobalReceiver(PerkVoteSyncPayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> showPerkVotes(context.client(), payload)));
 		// 클라이언트가 스스로 해야 하는 증강 기능. HUD 가 읽는 값이므로 렌더와 같은
 		// 스레드(클라이언트 본 스레드)에서 갱신한다.
 		ClientPlayNetworking.registerGlobalReceiver(PerkClientFeaturesPayload.TYPE,
@@ -313,6 +319,21 @@ public class SharedFateClient implements ClientModInitializer {
 	private static void showPerkResult(Minecraft client, PerkResultPayload payload) {
 		if (client.gui.screen() instanceof PerkOfferScreen offer) {
 			offer.showResult(payload.perkId(), payload.chooserName(), payload.holdTicks());
+		}
+	}
+
+	/**
+	 * 지금 표가 이렇다고 선택창에 알린다.
+	 *
+	 * <p>선택창이 떠 있지 않으면 아무것도 하지 않는다 — 사망 화면을 보느라 창을 못 받은
+	 * 사람에게 표만 따로 들려 줄 곳이 없다. 값을 어디 모아 두지도 않는다. 표는 그 창이
+	 * 떠 있는 동안에만 뜻이 있고, 창은 새로 뜰 때마다 서버가 보낸 후보와 함께 다시 만들어진다.
+	 *
+	 * <p>구간이 맞는지는 창이 스스로 가린다({@code PerkOfferScreen.updateVotes}).
+	 */
+	private static void showPerkVotes(Minecraft client, PerkVoteSyncPayload payload) {
+		if (client.gui.screen() instanceof PerkOfferScreen offer) {
+			offer.updateVotes(payload);
 		}
 	}
 

@@ -1,6 +1,7 @@
 package com.sharedfate.net;
 
 import com.sharedfate.SharedFateMod;
+import com.sharedfate.perk.PerkChoiceSession;
 import com.sharedfate.perk.PerkClientRules;
 import com.sharedfate.perk.PerkManager;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -178,7 +179,58 @@ public final class SharedFateNetworking {
 	//     30·31·32 와 마찬가지로 시련은 브랜치 `feature/dragon-trials` 안에만 있고, 이 번호가
 	//     배포판으로 나가는 것은 시련을 실제로 내보내기로 정한 뒤다. ⚠ 서버와 클라이언트 jar 을
 	//     둘 다 바꿔야 한다.
-	public static final int PROTOCOL_VERSION = 33;
+	// 34: 증강 선택창에서 <b>선택자가 아닌 사람이 제안</b>할 수 있다
+	//     (PerkVoteC2SPayload · PerkVoteSyncPayload 신설).
+	//
+	//     여태 선택자가 아닌 사람의 창은 <b>보기만 하는 창</b>이었다 — 카드를 눌러도
+	//     PerkOfferScreen.clickable() 이 거짓이라 클릭이 통째로 버려졌고, 다시 뽑기 단추는
+	//     PerkRerollButton.visible(forced, canChoose) 가 거짓이라 아예 그려지지 않아
+	//     <b>남은 리롤 횟수도 보이지 않았다.</b> 그래서 팀은 채팅으로 「2번 눌러」를 외치고
+	//     선택자는 그걸 읽으며 골랐다.
+	//
+	//     이제 카드를 누르면 그 카드 위에 체크가 붙고, 한 명 더 누르면 수가 오른다. 같은
+	//     카드를 다시 누르면 취소, 다른 카드를 누르면 그쪽으로 옮겨 간다. 다시 뽑기도 같은
+	//     장치를 쓰고, 선택자가 아닌 사람에게도 남은 횟수가 보인다.
+	//     ⚠ <b>표는 제안일 뿐이다.</b> 몇 개가 모이든 실제로 고르는 것은 선택자 하나다 —
+	//       서버 어디에도 표를 세어 자동으로 정하는 길이 없다(PerkChoiceSession.castVote).
+	//
+	//     묶음이 둘 는 것뿐이고 기존 형식은 한 바이트도 안 바뀌었다. 그래도 번호를 올리는
+	//     것은 위 ★ 규칙 때문이다 — 이 패킷을 모르는 클라이언트는 <b>눌러도 아무 일이 안
+	//     일어나는 창</b>을 그대로 보게 되고, 옆 사람 화면에는 체크가 뜨는데 자기 화면에만
+	//     안 뜬다. 「내 표가 안 들어간다」는 「모드가 안 맞는다」보다 알아채기 훨씬 어렵고,
+	//     알아챌 때쯤엔 이미 엉뚱한 증강이 팀 전체에 붙어 있다.
+	//
+	//     표를 세는 일은 전부 서버가 한다. 클라이언트가 보내는 것은 「내가 이걸 눌렀다」
+	//     하나뿐이고(PerkVoteC2SPayload), 켤지 끌지 옮길지도 서버가 정한다. 클라이언트가
+	//     센 수를 실어 보내면 두 사람이 같은 틱에 누를 때 화면마다 다른 수가 뜬다.
+	// 35: 「유적 감별사」가 찾아 둔 좌표가 <b>제 칸으로</b> 내려간다
+	//     (PerkSyncPayload 에 ruinCoords 칸 하나).
+	//
+	//     여태는 설명 문자열 뒤에 괄호로 붙여 보냈다 —
+	//     {@code "…  (고대 도시  -1234, 567 · 엔더 요새  890, -123)"}. 통신 형식을 한 바이트도
+	//     안 늘리려는 임시 방편이었고, 옛 클라이언트도 그냥 글자로 읽어 그렸다.
+	//
+	//     그래서는 사람이 요청한 <b>「증강 목록 오른쪽에 좌표 두 줄」</b>이 될 수 없다. 오른쪽에
+	//     따로 세우려면 클라이언트가 좌표를 <b>설명과 구분해서</b> 받아야 하고, 그것이 곧 통신
+	//     형식 변경이다. 설명 안에서 괄호를 찾아 도로 가르는 길도 있지만, 그러면 설명에 괄호를
+	//     쓴 증강이 하나라도 생기는 날 화면이 엉뚱한 글자를 좌표로 세운다.
+	//
+	//     칸은 <b>증강 줄 안이 아니라 묶음 바깥</b>에 뒀다. 유적 좌표 효과는 팀 전체에 하나뿐이라
+	//     (PerkRuinSurvey.effectOf) Owned 안에 넣으면 같은 목록이 보유 증강 수만큼 되풀이된다.
+	//     상한은 정의가 적을 수 있는 구조물 수와 같은 값이다
+	//     (PerkSyncPayload.MAX_RUIN_COORDS = RuinSurveyEffect.MAX_STRUCTURES). 둘을 갈라 두면
+	//     정의상 정당한 네 줄짜리 증강이 패킷 인코딩에서 터진다.
+	//
+	//     칸이 하나 늘어 <b>형식 자체가 바뀌었으므로</b> 옛 클라이언트는 증강 동기화를 아예 읽지
+	//     못한다 — 보유 증강 목록과 대기 중인 선택권 수가 통째로 빈다. 위 ★ 규칙이 말하는
+	//     「조용히 덜 동작하는」 경우가 아니라 눈에 바로 보이는 고장이지만, 그래도 번호를 올려
+	//     악수 단계에서 걸리게 한다.
+	//     ⚠ 서버와 클라이언트 jar 을 둘 다 바꿔야 한다.
+	//
+	//     ⚠ <b>증강을 처음 고를 때 뜨는 채팅 한 줄은 그대로다</b>(PerkRuinSurvey.announce).
+	//     사람이 따로 요청한 것이고, 나중에 다시 읽을 수 있는 자리는 채팅뿐이다. 없어진 것은
+	//     설명 뒤 괄호 하나이고, 그 자리를 목록 오른쪽 두 줄이 대신한다.
+	public static final int PROTOCOL_VERSION = 35;
 
 	private SharedFateNetworking() {
 	}
@@ -209,10 +261,14 @@ public final class SharedFateNetworking {
 				PerkResultPayload.TYPE, PerkResultPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				PerkSetSyncPayload.TYPE, PerkSetSyncPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(
+				PerkVoteSyncPayload.TYPE, PerkVoteSyncPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SelectedSlotC2SPayload.TYPE, SelectedSlotC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(PerkChoiceC2SPayload.TYPE, PerkChoiceC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(
 				PerkRerollC2SPayload.TYPE, PerkRerollC2SPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(
+				PerkVoteC2SPayload.TYPE, PerkVoteC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DoubleJumpPayload.TYPE, DoubleJumpPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(
 				ClientVersionPayload.TYPE, ClientVersionPayload.CODEC);
@@ -229,6 +285,13 @@ public final class SharedFateNetworking {
 		ServerPlayNetworking.registerGlobalReceiver(PerkRerollC2SPayload.TYPE,
 				(payload, context) -> PerkManager.applyReroll(
 						context.player(), payload.milestone()));
+		// 선택자가 아닌 사람의 제안. PerkManager 를 거치지 않고 세션으로 바로 가는 이유는
+		// 표가 저장되는 값이 아니기 때문이다 — 팀 상태(TeamState)에 한 글자도 안 남고
+		// 세션이 사는 동안에만 있다가 세션과 함께 사라진다.
+		// ⚠ 표는 제안일 뿐이다. 세어서 무엇을 고르는 길은 서버 어디에도 없다.
+		ServerPlayNetworking.registerGlobalReceiver(PerkVoteC2SPayload.TYPE,
+				(payload, context) -> PerkChoiceSession.castVote(
+						context.player(), payload.milestone(), payload.target()));
 		// 공중 점프 요청. 세기도 가능 여부도 전부 서버가 다시 따진다.
 		ServerPlayNetworking.registerGlobalReceiver(DoubleJumpPayload.TYPE,
 				(payload, context) -> PerkClientRules.onDoubleJumpRequest(context.player()));

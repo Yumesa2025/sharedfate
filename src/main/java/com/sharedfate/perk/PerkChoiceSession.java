@@ -5,9 +5,11 @@ import com.sharedfate.net.PerkCloseOfferPayload;
 import com.sharedfate.net.PerkDrawPayload;
 import com.sharedfate.net.PerkResultPayload;
 import com.sharedfate.net.PerkOfferPayload;
+import com.sharedfate.net.PerkVoteSyncPayload;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
+import com.sharedfate.ui.PerkVoteBoard;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -19,9 +21,11 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -112,6 +116,39 @@ public final class PerkChoiceSession {
 		 * 익사 피해를 받는다.
 		 */
 		final Map<UUID, Integer> savedAir = new HashMap<>();
+		/**
+		 * 선택자가 아닌 사람들이 던져 둔 표. 열쇠가 <b>던진 사람</b>이라 한 사람은 언제나
+		 * 한 표뿐이고, 값은 후보 증강 id 이거나 {@link PerkVoteBoard#REROLL_TARGET} 이다.
+		 *
+		 * <p>표는 <b>제안일 뿐이다.</b> 여기 몇이 모이든 세션이 스스로 무엇을 고르는 일은
+		 * 없다 — 이 map 을 읽는 곳은 화면에 보낼 수를 세는 자리 하나뿐이다.
+		 *
+		 * <p>넣은 차례를 지키는 map 을 쓴다. 화면이 대상을 후보 차례대로 찾아 그리므로 표의
+		 * 차례 자체는 보이지 않지만, 차례가 흔들리지 않아야 같은 상태를 두 번 보내지 않는지
+		 * 눈으로 확인할 수 있다.
+		 */
+		final Map<UUID, String> votes = new LinkedHashMap<>();
+		/**
+		 * 지금 선택자. {@code sendOffer} 가 보낸 것과 같은 값이다.
+		 *
+		 * <p>{@link #refreshAudience} 가 <b>선택자가 정말 바뀌었는지</b> 가리는 데 쓴다.
+		 * 그 메서드는 선택자가 바뀔 때 말고 다른 자리에서도 불릴 수 있어, 무조건 표를 지우면
+		 * 애먼 표가 날아간다.
+		 */
+		@Nullable UUID chooser;
+		/**
+		 * 지금 화면에 떠 있는 후보. {@code sendOffer} 가 보낸 것을 그대로 둔 사본이다.
+		 *
+		 * <p><b>결과를 보여 주는 동안 늦게 들어온 사람에게 창을 다시 주려면 이것이 있어야
+		 * 한다.</b> 그 시점에는 후보가 {@code TeamState.pending} 에서 이미 빠진 뒤라
+		 * ({@code PerkManager.commit} 이 {@code removeFirst} 한다) 대기열에서 다시 읽을
+		 * 방법이 없다.
+		 */
+		List<PerkOfferPayload.PerkOption> options = List.of();
+		/** 무엇이 정해졌는가. {@link Phase#RESULT} 에서만 채워져 있다. */
+		@Nullable String resultPerkId;
+		/** 고른 사람 이름. 시간이 다 되어 무작위로 정해졌으면 빈 문자열. */
+		String resultChooserName = "";
 		int remainingTicks;
 		int nextWarnIndex;
 		Phase phase = Phase.DRAW;
@@ -190,6 +227,175 @@ public final class PerkChoiceSession {
 			return false;
 		}
 		return current.guarded.contains(player.getUUID());
+	}
+
+	// ------------------------------------------------------------------ 표(제안)
+
+	/**
+	 * 선택자가 아닌 사람이 「이걸 하자」고 던진 표를 받는다.
+	 *
+	 * <p><b>표가 몇 개 모이든 여기서 무엇을 고르는 일은 없다.</b> 이 메서드가 하는 일은
+	 * 표를 켜고 끄고 옮긴 뒤 바뀐 수를 팀에 다시 그려 주는 것뿐이다. 자동으로 정해지거나
+	 * 선택자가 떠밀리면 안 된다 — 고르는 것은 끝까지 선택자 하나다.
+	 *
+	 * <p>클라이언트를 믿지 않는다. 다음 중 하나라도 어긋나면 <b>조용히 무시한다</b>
+	 * ({@code PerkRerollC2SPayload} 와 같은 길이다 — 지연·재전송된 패킷과 조작된 패킷을 한
+	 * 길로 버린다).
+	 *
+	 * <ul>
+	 *   <li>선택창이 떠 있는 단계({@link Phase#CHOOSE})가 아니다 — 뽑기 연출 중에는 아직
+	 *       후보를 본 적이 없고, 결과를 보여 주는 중에는 이미 정해진 뒤다</li>
+	 *   <li>구간이 다르다 — 늦게 도착한 패킷이 다음 회차의 표를 건드리면 안 된다</li>
+	 *   <li>보낸 사람이 이 세션의 팀이 아니다</li>
+	 *   <li><b>보낸 사람이 선택자 본인이다</b> — 선택자는 고르면 되지 제안할 것이 없고,
+	 *       자기 표 한 개가 팀의 뜻처럼 섞여 보이면 숫자가 거짓이 된다</li>
+	 *   <li><b>관전자다</b> — 이 저장소가 다른 곳에서 일관되게 관전자를 빼는 것과 같다</li>
+	 *   <li>대상이 지금 후보에도 없고 「다시 뽑자」도 아니다</li>
+	 *   <li>「다시 뽑자」인데 남은 횟수가 0 이다 — 쓸 수 없는 것을 제안하면 선택자가
+	 *       할 수 없는 일을 하라는 표를 보게 된다</li>
+	 * </ul>
+	 */
+	public static void castVote(ServerPlayer player, int milestone, String target) {
+		State current = state;
+		if (player == null || current == null || current.phase != Phase.CHOOSE
+				|| current.milestone != milestone) {
+			return;
+		}
+		MinecraftServer server = player.level().getServer();
+		if (server == null || player.isSpectator()) {
+			return;
+		}
+		TeamManager manager = TeamManager.get(server);
+		ShareTeam team = manager.teamOf(player.getUUID());
+		TeamState teamState = manager.stateOf(player.getUUID());
+		if (team == null || teamState == null || !team.teamId().equals(current.teamId)
+				|| teamState.pending.isEmpty()) {
+			return;
+		}
+		PendingOffer offer = teamState.pending.getFirst();
+		if (offer.milestone() != milestone || offer.isChooser(player.getUUID())) {
+			return;
+		}
+		if (!acceptsTarget(offer, teamState, target)) {
+			return;
+		}
+
+		// 켤지 끌지 옮길지는 서버가 정한다. 클라이언트가 보낸 것은 「이걸 눌렀다」뿐이다.
+		UUID voter = player.getUUID();
+		String next = PerkVoteBoard.toggle(current.votes.get(voter), target);
+		if (next == null) {
+			// 같은 것을 다시 눌렀다 — 취소다.
+			current.votes.remove(voter);
+		} else {
+			// 처음 던졌거나 다른 쪽으로 옮겼다. 열쇠가 사람이라 옛 표는 저절로 사라진다.
+			current.votes.put(voter, next);
+		}
+		broadcastVotes(server, team, current);
+	}
+
+	/** 표를 던질 수 있는 대상인가. 후보 증강이거나, 쓸 수 있는 「다시 뽑자」다. */
+	private static boolean acceptsTarget(PendingOffer offer, TeamState teamState, String target) {
+		if (target == null || target.isEmpty()) {
+			return false;
+		}
+		if (PerkVoteBoard.isReroll(target)) {
+			return teamState.rerollsRemaining > 0;
+		}
+		return offer.optionIds().contains(target);
+	}
+
+	/**
+	 * 표를 통째로 버린다. 버릴 것이 있었으면 팀에 빈 표를 다시 그려 준다.
+	 *
+	 * <p>부르는 자리는 둘이다 — <b>후보를 다시 뽑았을 때</b>(없어진 카드에 붙은 표는 뜻이
+	 * 없다)와 <b>선택자가 정말 바뀌었을 때</b>(앞 선택자에게 하던 제안이고, 새 선택자가 표를
+	 * 들고 있으면 안 된다). 뒤쪽은 {@link #refreshAudience} 가 바뀌었는지 먼저 견주고 부른다
+	 * — 그 메서드는 선택자가 그대로인 채로도 불릴 수 있어서, 무조건 지우면 아무 일도 없었는데
+	 * 체크가 사라진다. <b>사람이 들어오는 것은 여기 해당하지 않는다</b>
+	 * ({@link #onMemberJoined}).
+	 *
+	 * <p>둘 다 바로 뒤에 {@code sendOffer} 로 선택창을 다시 보내는 자리라, 받는 쪽은 창을
+	 * 새로 만들며 체크도 함께 버린다 — 그래도 여기서 보내 두는 것은 창을 못 받은 사람
+	 * (사망 화면 등)이 옛 체크를 들고 남지 않게 하기 위해서다.
+	 *
+	 * <p>나머지 둘은 여기를 거치지 않는다. <b>무엇이 정해졌을 때</b>는 결과 화면이 고른 카드
+	 * 하나만 남기므로 {@code onChoiceApplied} 가 조용히 비우기만 하고, <b>세션이 통째로 끝나는
+	 * 길</b>은 {@link #finish} 가 {@link #state} 를 버리므로 표도 함께 사라진다.
+	 */
+	private static void clearVotes(MinecraftServer server, ShareTeam team, State current) {
+		if (current.votes.isEmpty()) {
+			return;
+		}
+		current.votes.clear();
+		broadcastVotes(server, team, current);
+	}
+
+	/**
+	 * 접속이 끊겼거나 관전자가 된 사람의 표를 거둔다. 거둔 것이 있으면 다시 그려 준다.
+	 *
+	 * <p><b>나간 사람의 표는 남기지 않는다.</b> 이 장치는 「지금 여기 있는 사람들이 무엇을
+	 * 원하는가」를 보여 주는 것이고, 없는 사람의 표는 선택자가 말을 걸 수도 바꿀 수도 없는데
+	 * 살아 있는 지지처럼 읽힌다. 다시 들어와도 표는 돌아오지 않는다 — 들어온 사람이 다시
+	 * 누르면 그만이고, 그 한 번이 「나는 아직 이걸 원한다」는 뜻이 된다.
+	 *
+	 * <p>이 저장소가 접속이 끊긴 사람의 클라이언트 상태를 {@code DISCONNECT} 에서
+	 * 통째로 잊는 것({@code PerkClientRules.forget} 등)과 같은 모양이다.
+	 */
+	private static void pruneVotes(MinecraftServer server, ShareTeam team, State current,
+			List<ServerPlayer> audience) {
+		if (current.votes.isEmpty()) {
+			return;
+		}
+		Set<UUID> present = new HashSet<>();
+		for (ServerPlayer member : audience) {
+			if (!member.isSpectator()) {
+				present.add(member.getUUID());
+			}
+		}
+		if (current.votes.keySet().retainAll(present)) {
+			broadcastVotes(server, team, current);
+		}
+	}
+
+	/**
+	 * 지금 표를 세션에 참여 중인 팀원 <b>전원</b>에게 보낸다.
+	 *
+	 * <p>선택자에게도 보내는 것이 이 장치의 요점이다 — 표는 선택자가 읽으라고 있는 것이다.
+	 *
+	 * <p>{@code ownVote} 는 받는 사람마다 다르므로 묶음을 사람마다 따로 만든다. 내 표가
+	 * 어디 있는지 안 보이면 취소하려다 오히려 옮기게 된다.
+	 */
+	private static void broadcastVotes(MinecraftServer server, ShareTeam team, State current) {
+		if (server == null || team == null) {
+			return;
+		}
+		List<PerkVoteSyncPayload.Tally> tallies = tally(current.votes);
+		for (UUID member : team.members()) {
+			ServerPlayer online = server.getPlayerList().getPlayer(member);
+			if (online == null) {
+				continue;
+			}
+			String own = current.votes.getOrDefault(member, "");
+			ServerPlayNetworking.send(online,
+					new PerkVoteSyncPayload(current.milestone, tallies, own));
+		}
+	}
+
+	/**
+	 * 표를 대상별 수로 접는다. 0표인 대상은 아예 빠진다.
+	 *
+	 * <p>세션도 서버도 플레이어도 읽지 않는다. 넘긴 map 하나만 보고 값을 만든다.
+	 */
+	static List<PerkVoteSyncPayload.Tally> tally(Map<UUID, String> votes) {
+		Map<String, Integer> counted = new LinkedHashMap<>();
+		for (String target : votes.values()) {
+			counted.merge(target, 1, Integer::sum);
+		}
+		List<PerkVoteSyncPayload.Tally> tallies = new ArrayList<>(counted.size());
+		for (Map.Entry<String, Integer> entry : counted.entrySet()) {
+			tallies.add(new PerkVoteSyncPayload.Tally(entry.getKey(), entry.getValue()));
+		}
+		return List.copyOf(tallies);
 	}
 
 	// ------------------------------------------------------------------ 공기량 고정
@@ -281,6 +487,17 @@ public final class PerkChoiceSession {
 		if (audience.isEmpty()) {
 			return false;
 		}
+		if (!hasPlayableMember(audience)) {
+			// 접속해 있는 팀원이 <b>전원 관전자</b>다. 고를 수 있는 사람이 하나도 없는데
+			// 시간을 60초 멈춰 두면, 아무도 아무것도 못 하다가 무작위로 정해질 뿐이다.
+			// 그래서 <b>열지 않는다.</b> 선택권은 대기열에 그대로 남고, 누군가 생존·모험
+			// 모드로 돌아오면 다음 감지 주기에 저절로 열린다 — 바로 위의 「접속 중인 팀원이
+			// 없음」과 같은 모양이다.
+			//
+			// 로그를 남기지 않는 것도 같은 이유다. 이 길은 감지 주기마다 다시 지나므로
+			// 한 줄씩 적으면 관전 중인 동안 로그가 끝없이 불어난다.
+			return false;
+		}
 
 		ServerTickRateManager tickRate = server.tickRateManager();
 		boolean frozenBefore = tickRate.isFrozen();
@@ -356,6 +573,10 @@ public final class PerkChoiceSession {
 		// 익사 피해는 무적이 막아 주지만 공기량 자체는 얼어 있는 동안에도 계속 줄어든다.
 		// 그대로 두면 선택이 끝나는 순간 이미 산소가 0이라 곧바로 익사 피해를 받는다.
 		restoreAir(current, audience);
+		// 나갔거나 관전자가 된 사람의 표를 거둔다. DISCONNECT 사건에 따로 걸지 않고 여기서
+		// 하는 이유는, 관전 모드로 바꾼 사람에게는 그런 사건이 없기 때문이다. 표는 많아야
+		// 팀원 수만큼이라 매 틱 훑어도 값이 없다.
+		pruneVotes(server, team, current, audience);
 
 		if (current.phase == Phase.DRAW) {
 			if (current.phaseTicks > 0) {
@@ -424,6 +645,13 @@ public final class PerkChoiceSession {
 		// 바로 닫으면 고른 사람 말고는 무엇이 정해졌는지 모른 채 게임으로 돌아간다.
 		current.phase = Phase.RESULT;
 		current.phaseTicks = RESULT_TICKS;
+		// 정해졌으니 제안할 것이 없다. 결과 화면은 고른 카드 하나만 남기므로 체크가 남아
+		// 있으면 「아직 고르는 중」으로 읽힌다.
+		current.votes.clear();
+		// 결과를 보여 주는 동안 들어온 사람에게도 같은 것을 보여 주려면 기억해 둬야 한다.
+		// 이 시점의 후보는 대기열에서 이미 빠졌다.
+		current.resultPerkId = perkId;
+		current.resultChooserName = chooserName == null ? "" : chooserName;
 		PerkResultPayload result = new PerkResultPayload(perkId, chooserName, RESULT_TICKS);
 		for (UUID member : new HashSet<>(current.guarded)) {
 			ServerPlayer online = server == null ? null : server.getPlayerList().getPlayer(member);
@@ -434,10 +662,15 @@ public final class PerkChoiceSession {
 	}
 
 	/**
-	 * 선택자가 바뀌었을 때 열려 있는 창을 다시 보낸다.
+	 * 선택자가 바뀌었을 때 열려 있는 창을 <b>팀 전원에게</b> 다시 보낸다.
 	 *
 	 * <p>선택자가 접속을 끊으면 {@code PerkManager} 가 다른 팀원에게 선택권을 넘긴다. 그때
 	 * 새 선택자의 화면이 관전 모드로 남아 있으면 아무도 고를 수 없어 제한시간까지 방치된다.
+	 *
+	 * <p><b>늦게 들어온 한 사람에게 주는 길은 여기가 아니다</b>({@link #onMemberJoined}).
+	 * 여기는 전원에게 다시 보내므로 남들의 창이 통째로 새로 만들어진다 — 한 사람이 들어올
+	 * 때마다 팀 전체의 카드가 다시 올라오고, 읽던 툴팁과 펴 둔 「현재 증강」 판이 닫힌다.
+	 * 선택 권한이 실제로 바뀌는 자리에서만 그 값을 치를 만하다.
 	 */
 	public static void refreshAudience(MinecraftServer server) {
 		State current = state;
@@ -459,7 +692,125 @@ public final class PerkChoiceSession {
 			current.guarded.add(member.getUUID());
 			captureAir(current, member);
 		}
+		if (current.phase == Phase.DRAW) {
+			// 아직 뽑기 연출 중이다. 선택창을 미리 보내면 남은 연출이 통째로 건너뛰어지고,
+			// 그러고도 연출이 끝나는 틱에 sendOffer 가 한 번 더 와서 창이 두 번 만들어진다.
+			// 여기서는 <b>바뀐 이름으로 남은 만큼</b> 다시 굴려 주기만 한다.
+			PerkDrawPayload draw = drawPayload(server, offer, audience, current.phaseTicks);
+			for (ServerPlayer member : audience) {
+				ServerPlayNetworking.send(member, draw);
+			}
+			current.chooser = offer.chooser().orElse(null);
+			return;
+		}
+		// 선택자가 <b>정말 바뀌었을 때만</b> 표를 지운다. 앞 선택자에게 하던 제안이고, 새
+		// 선택자가 방금까지 표를 던지던 사람일 수도 있기 때문이다.
+		//
+		// 무조건 지우지 않는 것이 중요하다. 이 메서드는 공개돼 있고 선택자가 그대로인 채로도
+		// 불릴 수 있어서, 그때마다 표를 쓸어버리면 아무 일도 없었는데 체크가 사라진다.
+		if (!Objects.equals(current.chooser, offer.chooser().orElse(null))) {
+			clearVotes(server, team, current);
+		}
 		sendOffer(server, offer, teamState, audience);
+		// 창이 새로 만들어졌으므로 체크도 통째로 다시 줘야 한다. 화면은 창을 만들 때 표를
+		// 빈 채로 시작한다.
+		broadcastVotes(server, team, current);
+	}
+
+	/**
+	 * 세션이 도는 도중에 <b>들어온 한 사람</b>에게 지금 상태를 준다.
+	 *
+	 * <p>⚠ 이것이 없으면 그 사람은 <b>시간이 멈춘 세상에 아무 창도 없이</b> 서 있게 된다.
+	 * 무엇을 기다리는지도 모르고, 남이 고를 때까지 아무것도 못 한다.
+	 *
+	 * <p>{@link #refreshAudience} 를 쓰지 않는 이유는 둘이다.
+	 * <ul>
+	 *   <li>그쪽은 <b>전원</b>에게 다시 보내 남들의 창까지 새로 만든다</li>
+	 *   <li>그쪽은 대기열({@code TeamState.pending})에서 후보를 읽는데, 결과를 보여 주는
+	 *       동안에는 후보가 이미 빠진 뒤라({@code PerkManager.commit}) <b>조용히 되돌아간다</b> —
+	 *       그 몇 초 사이에 들어온 사람은 창을 영영 못 받는다</li>
+	 * </ul>
+	 *
+	 * <p>단계마다 주는 것이 다르다.
+	 * <ul>
+	 *   <li><b>뽑기 연출 중</b> — 남은 만큼의 연출을 준다. 남들과 같은 순간에 멈춘다</li>
+	 *   <li><b>선택 중</b> — 선택창과 지금 표. <b>{@code canChoose} 는 이 사람이 선택자인지
+	 *       그대로 따른다</b> — 선택자 본인이 튕겼다 들어온 경우가 가장 급하다</li>
+	 *   <li><b>결과 중</b> — 기억해 둔 후보로 창을 세우고 곧바로 결과를 얹는다. 처음부터 다시
+	 *       고르는 화면이 뜨면 안 된다</li>
+	 * </ul>
+	 *
+	 * <p><b>표는 되살리지 않는다.</b> 나가면서 거둬졌고({@link #pruneVotes}) 그대로 둔다 —
+	 * 창을 다시 주는 것과 표를 되살리는 것은 다른 이야기다. 들어온 사람이 다시 누르면 그만이고,
+	 * 그 한 번이 「나는 아직 이걸 원한다」는 뜻이 된다.
+	 */
+	public static void onMemberJoined(MinecraftServer server, ServerPlayer player) {
+		State current = state;
+		if (server == null || current == null || player == null) {
+			return;
+		}
+		TeamManager manager = TeamManager.get(server);
+		ShareTeam team = manager.teamById(current.teamId);
+		TeamState teamState = manager.stateByTeamId(current.teamId);
+		if (team == null || teamState == null || !team.members().contains(player.getUUID())) {
+			return;
+		}
+		// 들어온 사람도 창이 떠 있는 동안 무적이다. 안 넣으면 얼어 있는 사이에 용암·낙하로
+		// 죽는다 — 이 세션이 막아 주려는 바로 그 피해다.
+		current.guarded.add(player.getUUID());
+		captureAir(current, player);
+
+		if (current.phase == Phase.RESULT) {
+			sendResultTo(server, player, current);
+			return;
+		}
+		if (teamState.pending.isEmpty()) {
+			return;
+		}
+		PendingOffer offer = teamState.pending.getFirst();
+		if (offer.milestone() != current.milestone) {
+			return;
+		}
+		if (current.phase == Phase.DRAW) {
+			ServerPlayNetworking.send(player, drawPayload(server, offer,
+					onlineMembers(server, team), current.phaseTicks));
+			return;
+		}
+		ServerPlayNetworking.send(player, new PerkOfferPayload(
+				offer.milestone(), offer.isChooser(player.getUUID()), true,
+				current.remainingTicks, Math.max(0, teamState.rerollsRemaining),
+				PerkManager.describeOptions(offer)));
+		// 창을 새로 만든 사람이라 체크가 비어 있다. 지금 표를 한 번 들려 보낸다.
+		// 본인 표는 나가면서 거둬졌으므로 언제나 빈 문자열이다.
+		ServerPlayNetworking.send(player, new PerkVoteSyncPayload(current.milestone,
+				tally(current.votes), current.votes.getOrDefault(player.getUUID(), "")));
+	}
+
+	/**
+	 * 결과를 보여 주는 도중에 들어온 사람에게 그 화면을 세워 준다.
+	 *
+	 * <p>묶음을 둘 보낸다 — 먼저 <b>기억해 둔 후보</b>로 선택창을 세우고, 그 위에 결과를
+	 * 얹는다. {@code PerkResultPayload} 는 선택창이 떠 있어야만 먹히기 때문이다
+	 * ({@code SharedFateClient.showPerkResult}). 둘은 같은 차례로 클라이언트 본 스레드에
+	 * 올라가므로 순서가 뒤집히지 않는다.
+	 *
+	 * <p>{@code canChoose} 는 거짓으로 보낸다. 이미 정해진 뒤라 누구도 고를 것이 없다.
+	 *
+	 * <p>마감 자리에는 <b>결과를 붙잡아 두는 남은 틱</b>을 싣는다. 화면은 결과를 보여 주는
+	 * 동안 제한시간 대신 「N초 뒤 다시 시작합니다」를 그리는데, 그 자리가
+	 * {@code hasDeadline()} 뒤에 있어 여기가 0 이면 카운트다운이 통째로 사라진다.
+	 *
+	 * <p>기억해 둔 것이 없으면 아무것도 안 보낸다. 그런 상태로 창을 세우면 카드가 하나도 없는
+	 * 빈 창이 뜨고, 그건 아무 창도 없는 것보다 나쁘다.
+	 */
+	private static void sendResultTo(MinecraftServer server, ServerPlayer player, State current) {
+		if (current.resultPerkId == null || current.options.isEmpty()) {
+			return;
+		}
+		ServerPlayNetworking.send(player, new PerkOfferPayload(current.milestone, false, true,
+				Math.max(1, current.phaseTicks), 0, current.options));
+		ServerPlayNetworking.send(player, new PerkResultPayload(current.resultPerkId,
+				current.resultChooserName, Math.max(1, current.phaseTicks)));
 	}
 
 	/**
@@ -487,6 +838,9 @@ public final class PerkChoiceSession {
 			return;
 		}
 		current.resetDeadline(timeoutTicks);
+		// 카드가 통째로 갈렸다. 없어진 카드에 붙어 있던 표를 그대로 두면 새 카드에 엉뚱한
+		// 체크가 옮겨 붙는다.
+		clearVotes(server, team, current);
 		sendOffer(server, offer, teamState, onlineMembers(server, team));
 	}
 
@@ -568,15 +922,26 @@ public final class PerkChoiceSession {
 	 */
 	private static void sendDraw(MinecraftServer server, PendingOffer offer,
 			List<ServerPlayer> audience) {
+		PerkDrawPayload draw = drawPayload(server, offer, audience, DRAW_TICKS);
+		for (ServerPlayer member : audience) {
+			ServerPlayNetworking.send(member, draw);
+		}
+	}
+
+	/**
+	 * 뽑기 연출 묶음 하나를 만든다.
+	 *
+	 * <p>{@code durationTicks} 를 밖에서 받는 이유는 <b>연출 도중에 들어온 사람</b> 때문이다.
+	 * 그 사람에게 처음 길이를 그대로 주면 남들보다 늦게 끝나고, 그러면 서버가 선택창을 보내는
+	 * 순간에 이름이 아직 굴러가는 화면이 튕겨 나간다. 남은 만큼만 주면 같은 순간에 멈춘다.
+	 */
+	private static PerkDrawPayload drawPayload(MinecraftServer server, PendingOffer offer,
+			List<ServerPlayer> audience, int durationTicks) {
 		List<String> names = new ArrayList<>();
 		for (ServerPlayer member : audience) {
 			names.add(member.getGameProfile().name());
 		}
-		PerkDrawPayload draw =
-				new PerkDrawPayload(names, chooserName(server, offer), DRAW_TICKS);
-		for (ServerPlayer member : audience) {
-			ServerPlayNetworking.send(member, draw);
-		}
+		return new PerkDrawPayload(names, chooserName(server, offer), Math.max(1, durationTicks));
 	}
 
 	private static void sendOffer(MinecraftServer server, PendingOffer offer, TeamState teamState,
@@ -585,11 +950,32 @@ public final class PerkChoiceSession {
 		State current = state;
 		int remaining = current == null ? timeoutTicks : current.remainingTicks;
 		int rerolls = teamState == null ? 0 : Math.max(0, teamState.rerollsRemaining);
+		if (current != null) {
+			// 늦게 들어온 사람에게 다시 줄 수 있게 남겨 둔다. 결과 단계가 되면 후보가
+			// 대기열에서 빠져 여기 말고는 읽을 곳이 없다.
+			current.options = List.copyOf(options);
+			current.chooser = offer.chooser().orElse(null);
+		}
 		for (ServerPlayer member : audience) {
 			ServerPlayNetworking.send(member, new PerkOfferPayload(
 					offer.milestone(), offer.isChooser(member.getUUID()), true, remaining,
 					rerolls, options));
 		}
+	}
+
+	/**
+	 * 이 사람들 중에 <b>실제로 고를 수 있는 사람</b>이 하나라도 있는가.
+	 *
+	 * <p>관전자는 세지 않는다. 이 저장소가 다른 곳에서 일관되게 관전자를 빼고
+	 * ({@code PerkManager.pickChooser} 도 이제 그렇다), 표도 못 던지게 해 두었다.
+	 */
+	private static boolean hasPlayableMember(List<ServerPlayer> audience) {
+		for (ServerPlayer member : audience) {
+			if (!member.isSpectator()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static List<ServerPlayer> onlineMembers(MinecraftServer server, ShareTeam team) {
