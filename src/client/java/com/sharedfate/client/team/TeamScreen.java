@@ -11,6 +11,7 @@ import com.sharedfate.ui.PanelScroll;
 import com.sharedfate.ui.PerkSetLines;
 import com.sharedfate.ui.PerkSetTooltip;
 import com.sharedfate.ui.PerkSetTooltipLines;
+import com.sharedfate.ui.RuinCoordPlacement;
 import com.sharedfate.ui.StatRow;
 import com.sharedfate.ui.TeamDisbandWarning;
 import com.sharedfate.ui.TeamNameInput;
@@ -27,6 +28,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 
 import java.util.ArrayList;
@@ -207,6 +209,20 @@ public class TeamScreen extends Screen {
 	 * 내려가는데, 그리는 쪽이 다른 길이를 쓰면 세트가 증강 목록 위에 겹쳐 찍힌다.
 	 */
 	private List<PerkSetLines.Line> setLines = List.of();
+	/**
+	 * 「유적 감별사」 좌표 줄들. 그 증강이 없으면 빈 목록이다.
+	 *
+	 * <p>{@link #layoutPerkList()} 에서 접어 두고 그 프레임 내내 쓴다. 판 안에 들일 때는
+	 * {@link #setBlockTop()} 이 이 목록의 길이만큼 아래로 내려가므로, 그리는 쪽이 다른 길이를
+	 * 쓰면 세트 줄이 좌표 위에 겹쳐 찍힌다 — {@link #setLines} 와 같은 규칙이다.
+	 */
+	private List<FormattedCharSequence> ruinLines = List.of();
+	/**
+	 * 좌표를 어디에 세울지. {@link RuinCoordPlacement} 가 화면 가로를 보고 정한다.
+	 *
+	 * <p>화면 크기가 바뀌면 달라지므로 {@link #layoutPerkList()} 에서 매번 다시 정한다.
+	 */
+	private RuinCoordPlacement.Spot ruinSpot = RuinCoordPlacement.Spot.NONE;
 	/** 증강 목록 전체의 세로 길이(px). 스크롤 범위의 분모다. */
 	private int perkContentHeight;
 	/** 증강 목록이 보이는 창의 세로 길이(px). */
@@ -626,8 +642,9 @@ public class TeamScreen extends Screen {
 	 */
 	private void layoutPerkList() {
 		perkLines.clear();
-		// 세트 줄을 먼저 정한다. perkListTop() 이 이 목록의 길이를 보고 자리를 내리기 때문에
-		// 순서가 바뀌면 첫 프레임이 옛 길이로 계산된다.
+		// 유적 좌표와 세트 줄을 먼저 정한다. setBlockTop()·perkListTop() 이 이 두 목록의 길이를
+		// 보고 자리를 내리기 때문에, 순서가 바뀌면 첫 프레임이 옛 길이로 계산된다.
+		layoutRuinCoords();
 		setLines = ClientPerkSets.lines(MAX_SET_ROWS);
 		int top = perkListTop();
 		perkViewHeight = Math.max(ROW_HEIGHT, perkListBottom() - top);
@@ -663,9 +680,64 @@ public class TeamScreen extends Screen {
 		perkScroll = PanelScroll.clamp(perkScroll, perkContentHeight, perkViewHeight);
 	}
 
-	/** 세트 덩어리가 시작하는 y. 「보유 증강 N개」 머리글 바로 아래다. */
-	private int setBlockTop() {
+	/**
+	 * 「유적 감별사」 좌표 줄들을 접어 두고 세울 자리를 정한다.
+	 *
+	 * <p>판 안에 들일 때만 접는다. 오른쪽에 세우는 경우는 {@link RuinCoordPlacement} 가 이미
+	 * 「가장 긴 줄이 그대로 들어간다」를 확인한 뒤이므로 접을 것이 없다.
+	 */
+	private void layoutRuinCoords() {
+		List<String> coords = PerkClientState.ruinCoords();
+		int widest = 0;
+		for (String coord : coords) {
+			widest = Math.max(widest, this.font.width(coord));
+		}
+		int left = (this.width - PANEL_WIDTH) / 2;
+		ruinSpot = RuinCoordPlacement.choose(coords.size(), this.width, left, PANEL_WIDTH,
+				RUIN_COORD_GAP, widest);
+		if (ruinSpot == RuinCoordPlacement.Spot.NONE) {
+			ruinLines = List.of();
+			return;
+		}
+		List<FormattedCharSequence> lines = new ArrayList<>(coords.size());
+		for (String coord : coords) {
+			if (ruinSpot == RuinCoordPlacement.Spot.RIGHT) {
+				lines.add(FormattedCharSequence.forward(coord, Style.EMPTY));
+			} else {
+				// 판 안에서는 접는다. 접기는 글자를 버리지 않고 다음 줄로 넘기므로 「잘린 좌표」가
+				// 생기지 않는다 — 증강 이름·설명이 쓰는 폭과 같은 값을 쓴다.
+				lines.addAll(this.font.split(Component.literal(coord), PANEL_WIDTH - 8));
+			}
+		}
+		ruinLines = List.copyOf(lines);
+	}
+
+	/**
+	 * 판 안에 들인 좌표 덩어리가 차지하는 세로. 오른쪽에 세웠거나 없으면 0.
+	 *
+	 * <p>세트 덩어리와 같은 셈({@link PerkSetLines#blockHeight})을 쓴다 — 머리글 아래에 줄
+	 * 몇 개와 틈 하나를 두는 모양이 똑같아서, 계산을 새로 만들면 두 덩어리의 간격이 언젠가
+	 * 갈린다.
+	 */
+	private int ruinBlockHeight() {
+		return ruinSpot == RuinCoordPlacement.Spot.INSIDE
+				? PerkSetLines.blockHeight(ruinLines.size(), ROW_HEIGHT, SET_BLOCK_GAP)
+				: 0;
+	}
+
+	/** 판 안에 들인 좌표 덩어리가 시작하는 y. 「보유 증강 N개」 머리글 바로 아래다. */
+	private int ruinBlockTop() {
 		return PANEL_TOP + ROW_HEIGHT + 2;
+	}
+
+	/**
+	 * 세트 덩어리가 시작하는 y. 머리글과 — 판 안에 들였다면 — 유적 좌표 아래다.
+	 *
+	 * <p>좌표를 판 안에 들이면 그만큼 아래의 모든 것이 내려간다. 여기 한 곳만 내리면
+	 * {@link #perkListTop()} 과 그것을 보는 스크롤·잘라내기가 전부 따라온다.
+	 */
+	private int setBlockTop() {
+		return ruinBlockTop() + ruinBlockHeight();
 	}
 
 	/**
@@ -986,39 +1058,41 @@ public class TeamScreen extends Screen {
 	}
 
 	/**
-	 * 증강 목록 <b>오른쪽</b>에 세우는 「유적 감별사」 좌표.
+	 * 「유적 감별사」 좌표를 그린다. <b>넓으면 목록 오른쪽, 좁으면 판 안 머리글 아래</b>다.
 	 *
-	 * <p>사람이 요청한 모양이 이것이다 — 목록 안이 아니라 그 오른쪽에 좌표만 나열한다. 설명
-	 * 문자열 뒤에 괄호로 붙여 보내던 임시 방편은 규약 35 에서 없앴다({@code PerkSyncPayload}
-	 * 의 {@code ruinCoords}). <b>두 곳에 같은 좌표가 뜨면 안 된다.</b>
+	 * <p>사람이 요청한 모양은 목록 오른쪽이다 — 목록 안이 아니라 그 오른쪽에 좌표만 나열한다.
+	 * 설명 문자열 뒤에 괄호로 붙여 보내던 임시 방편은 규약 35 에서 없앴다
+	 * ({@code PerkSyncPayload} 의 {@code ruinCoords}). <b>두 곳에 같은 좌표가 뜨면 안 된다</b> —
+	 * 그래서 자리는 {@link RuinCoordPlacement} 가 <b>하나만</b> 고른다.
 	 *
 	 * <p>줄은 서버가 만든 것을 글자 그대로 그린다. 「고대 도시  -1234, 567」처럼 이름표와 x·z 가
-	 * 이미 한 줄에 들어 있어 클라이언트가 접거나 이을 것이 없다. y 는 서버가 넣지 않는다 —
-	 * 파고 들어갈 자리다.
+	 * 이미 한 줄에 들어 있어 클라이언트가 이을 것이 없다. y 는 서버가 넣지 않는다 — 파고
+	 * 들어갈 자리다.
+	 *
+	 * <h2>「자리가 모자라면 안 그린다」를 걷어냈다</h2>
+	 *
+	 * <p>예전에는 오른쪽에 안 들어가면 아무것도 안 그렸다. 「잘린 좌표는 틀린 좌표다」는 근거는
+	 * 옳지만, 그 규칙이 실제로 한 일은 <b>1920×1080 의 기본 GUI 배율 4</b>(화면 480×270, 판
+	 * 오른쪽에 남는 자리 78px, 좌표 한 줄 104px)에서 좌표를 영영 안 보이게 만든 것이었다 —
+	 * 사람이 겪은 증상이 바로 이것이다. 이 증강이 하는 일은 「채팅이 올라가도 다시 볼 수 있게
+	 * 좌표를 화면에 남기는 것」이라, 안 그리면 증강 자체가 사라진다.
+	 *
+	 * <p>그래서 안 그리는 대신 판 안으로 들인다. 판은 어느 배율에서나 가로 300 이라 좌표 한 줄이
+	 * 늘 들어가고, 판 안에서는 접을 수 있어 잘릴 일도 없다. 배율별 숫자는
+	 * {@code RuinCoordPlacementTest} 가 붙들고 있다.
 	 *
 	 * <p>줄 수는 정의가 정하고 {@code RuinSurveyEffect.MAX_STRUCTURES} 만큼까지다. 지금 쓰이는
 	 * 정의는 둘이라 두 줄이지만, 여기서 둘을 못 박지는 않는다.
 	 */
 	private void renderRuinCoords(GuiGraphicsExtractor graphics, int left) {
-		List<String> coords = PerkClientState.ruinCoords();
-		if (coords.isEmpty()) {
+		if (ruinSpot == RuinCoordPlacement.Spot.NONE || ruinLines.isEmpty()) {
 			return;
 		}
-		int x = left + PANEL_WIDTH + RUIN_COORD_GAP;
-		int widest = 0;
-		for (String coord : coords) {
-			widest = Math.max(widest, this.font.width(coord));
-		}
-		// 자리가 모자라면 아예 안 그린다. <b>잘린 좌표는 틀린 좌표다</b> — 「-1234, 5」를 읽고
-		// 떠나는 사람이 나오면 안 된다. 좁은 화면에서 판을 통째로 감추는 다른 곳들
-		// ({@code OwnedPerkPanelLayout}·{@code PerkSetPanelLayout})과 같은 규칙이다.
-		// 좌표는 처음 골랐을 때 띄운 채팅 한 줄에 그대로 남아 있어, 못 그려도 읽을 길이 있다.
-		if (x + widest > this.width) {
-			return;
-		}
-		int y = PANEL_TOP;
-		for (String coord : coords) {
-			graphics.text(this.font, coord, x, y, RUIN_COORD);
+		boolean right = ruinSpot == RuinCoordPlacement.Spot.RIGHT;
+		int x = right ? RuinCoordPlacement.rightX(left, PANEL_WIDTH, RUIN_COORD_GAP) : left;
+		int y = right ? PANEL_TOP : ruinBlockTop();
+		for (FormattedCharSequence line : ruinLines) {
+			graphics.text(this.font, line, x, y, RUIN_COORD);
 			y += ROW_HEIGHT;
 		}
 	}
@@ -1213,6 +1287,11 @@ public class TeamScreen extends Screen {
 				+ "|" + ClientTeamState.maxHealth() + "|" + PerkClientState.hasPending()
 				// 증강이 늘면 목록을 다시 접어야 한다. init() 이 그 일을 한다.
 				+ "|" + PerkClientState.owned().size()
+				// 유적 좌표는 글자까지 견준다. 「유적 감별사」를 가진 채로 서버를 다시 켜면
+				// 보유 개수는 그대로인데 좌표만 새로 채워져 오고(PerkRuinSurvey.ensure),
+				// 그때 다시 접지 않으면 화면이 계속 좌표 없는 상태로 남는다. 줄은 넷까지라
+				// (RuinSurveyEffect.MAX_STRUCTURES) 매 틱 이어 붙여도 값이 싸다.
+				+ "|" + String.join("·", PerkClientState.ruinCoords())
 				// 세트가 켜지거나 진행도가 오르면 줄의 글자가 바뀌고, 줄 수가 바뀌면 아래
 				// 증강 목록이 통째로 내려간다. 여기 안 넣으면 세트가 켜져도 화면이 그대로다.
 				+ "|" + ClientPerkSets.signature()

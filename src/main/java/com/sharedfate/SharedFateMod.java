@@ -105,6 +105,10 @@ public class SharedFateMod implements ModInitializer {
 		// 비행 허가는 저장보다 먼저 걷어내야 한다. SERVER_STOPPED 는 이미 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(
 				com.sharedfate.perk.PerkFlightCharm::onServerStopping);
+		// 최후의 저항의 안전지대(엔드 월드 보더)도 저장보다 먼저 되돌려야 한다. 보더는 그
+		// 차원의 SavedData 라 줄어든 채로 저장되면 다음 기동에 파란 벽이 그대로 뜬다.
+		ServerLifecycleEvents.SERVER_STOPPING.register(
+				com.sharedfate.sync.DragonLastStand::onServerStopping);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			TeamLookup.setServer(null);
 			ExpandedInventoryManager.clearRuntimeState();

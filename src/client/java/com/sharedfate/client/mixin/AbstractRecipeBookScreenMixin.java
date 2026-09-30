@@ -73,13 +73,34 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@code CursorTypes.NOT_ALLOWED} 로 바꿔 주므로 눌러 보기 전에 죽은 단추임을 알 수 있다
  * ({@code AbstractButton.extractWidgetRenderState} → {@code AbstractWidget.handleCursor}).
  *
- * <h2>되살려도 추가 27칸은 조합법 창이 세지 않는다</h2>
+ * <h2>되살려도 추가 27칸은 조합법 창이 세지 않았다 — 지금은 센다</h2>
  * <p>「만들 수 있는 것」 판정과 자동 채우기는 {@code RecipeBookComponent.initVisuals} /
  * {@code updateStackedContents} 가 {@code Inventory.fillStackedContents} 로 <b>바닐라
  * 인벤토리만</b> 훑어서 낸다. 이 모드의 추가 27칸은 별도 {@code Container} 라 그 셈에
- * 들어가지 않는다 — 재료를 추가 칸에만 넣어 두면 조합법이 회색으로 남고 눌러도 채워지지
- * 않는다. 없애 두었을 때는 드러나지 않던 것이고 고치려면 메뉴·서버 쪽까지 건드려야 하므로
- * 여기서는 손대지 않았다. 다음 사람이 「왜 회색인가」로 헤매지 않도록 적어 둔다.
+ * 들어가지 않았다 — 재료를 추가 칸에만 넣어 두면 조합법이 회색으로 남고 눌러도 채워지지
+ * 않았다. 없애 두었을 때는 드러나지 않던 것이고 고치려면 메뉴·서버 쪽까지 건드려야 하므로
+ * 되살릴 때는 손대지 않고 적어만 두었다.
+ *
+ * <p>이 화면이 여섯 줄이라 초보자의 재료가 주로 아래 줄에 쌓인다는 것을 생각하면, 조합법을
+ * 되살린 이유(「초보자가 불편하다」)가 회색 앞에서 그대로 무너진다. 그래서 고쳤다.
+ * <b>이 클래스는 한 줄도 바뀌지 않았다</b> — 고칠 자리가 여기가 아니었기 때문이다.
+ *
+ * <ul>
+ *   <li><b>회색인지 아닌지</b>(클라이언트) — {@code InventoryMixin.sharedfate$fillExtraStackedContents}.
+ *       그 줄은 전부터 있었지만 {@code player instanceof ServerPlayer} 로 묶여 있어
+ *       <b>서버에서만</b> 돌았다. 판정하는 쪽은 {@code LocalPlayer} 이므로 한 번도 닿지
+ *       않았다. {@code active()} 로 바꿔 양쪽에서 돈다.</li>
+ *   <li><b>눌러서 자동 채우기</b>(서버) —
+ *       {@code com.sharedfate.mixin.ExpandedPlaceRecipeMixin}. 셈은 이미 맞았는데
+ *       {@code ServerPlaceRecipe} 가 재료를 <b>꺼내는</b> 길과 조합칸을 <b>되돌리는</b> 길이
+ *       {@code Inventory} 만 알아서, 흰색으로 떠 있는 조합법을 눌러도 조합칸이 반만 채워졌다.
+ *       왜 세 자리였고 되돌린 물건이 어디로 가는지는
+ *       {@code com.sharedfate.inventory.ExpandedRecipeFill} 의 클래스 문서에 있다.</li>
+ * </ul>
+ *
+ * <p>다섯 화면이 모두 한 번에 고쳐진다 — 눌렀을 때의 길이 {@code AbstractCraftingMenu}
+ * (인벤토리 2×2·제작대 3×3)와 {@code AbstractFurnaceMenu}(화로·훈연기·용광로) 둘로 모이고,
+ * 그 둘이 다 {@code ServerPlaceRecipe} 로 들어간다.
  */
 @Mixin(AbstractRecipeBookScreen.class)
 public abstract class AbstractRecipeBookScreenMixin {

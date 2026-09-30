@@ -30,6 +30,7 @@
     "ExpandedFurnaceMenuMixin",
     "ExpandedInventoryMenuMixin",
     "ExpandedMerchantMenuMixin",
+    "ExpandedPlaceRecipeMixin",
     "ExpandedStandardMenuMixin",
     "ExpandedQuickMoveFallbackMixin",
     "PlayerEnchantmentLevelMixin",

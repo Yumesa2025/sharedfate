@@ -36,13 +36,21 @@ import java.util.UUID;
 /**
  * 체력 30% — <b>최후의 저항.</b> 카드 한 장이 아니라 별개의 보스전이다.
  *
- * <h2>이 파일이 지금 무엇이고 무엇이 아닌가</h2>
+ * <h2>이 파일이 무엇이고 무엇이 아닌가 — 세 파일이다</h2>
  *
- * <p><b>뼈대다.</b> 진입 연출 · 붙박이 드래곤 · 바닐라 동작 제거 · 처치 처리까지가 들어 있고,
- * <b>패턴 셋과 안전지대는 비어 있다.</b> 비워 둔 자리는 {@link Pattern} 과
- * {@link #runPattern} 과 {@link ZoneClock} 셋뿐이고, 무엇을 채워야 하는지는 그 자리마다
- * 적어 두었다. 고르는 규칙({@link #allowed}·{@link #restTicks})은 <b>이미 여기 있다</b> —
- * 패턴을 붙이는 사람은 그리는 일만 하면 된다.
+ * <p>여기 있는 것은 <b>진입 연출 · 붙박이 드래곤 · 바닐라 동작 제거 · 처치 처리 · 패턴을
+ * 고르는 규칙</b>이다. 그리는 쪽과 안전지대는 파일이 따로다.
+ *
+ * <table border="1">
+ *   <caption>최후의 저항을 이루는 세 파일</caption>
+ *   <tr><th>파일</th><th>맡은 것</th></tr>
+ *   <tr><td>{@code DragonLastStand}</td><td>진입 · 붙박이 · 처치 · {@link #allowed} 로 <b>고르기</b></td></tr>
+ *   <tr><td>{@link DragonLastStandPatterns}</td><td>날개 퍼덕이기 · 부채꼴 브레스 · 번개 5개를 <b>그리기</b></td></tr>
+ *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대(월드 보더) — <b>혼자 도는 시계</b></td></tr>
+ * </table>
+ *
+ * <p>「왜 브레스가 안 나오지」는 <b>여기</b>({@link #allowed}), 「왜 빗나가지」는 <b>패턴</b>,
+ * 「왜 파란 벽이 남았지」는 <b>지대</b> 쪽이다.
  *
  * <h2>왜 카드가 아니라 제 파일인가</h2>
  *
@@ -438,12 +446,14 @@ public final class DragonLastStand {
 	// ------------------------------------------------------------------ ⑤ 패턴이 걸릴 자리
 
 	/**
-	 * 최후의 저항이 돌리는 패턴 셋. <b>지금은 이름만 있고 그리는 것은 비어 있다.</b>
+	 * 최후의 저항이 돌리는 패턴 셋.
 	 *
-	 * <p>고르는 규칙은 이미 {@link #allowed} 에 들어 있으므로, 붙이는 사람이 할 일은
-	 * {@link #runPattern} 의 갈래 셋을 채우고 여기 적힌 길이를 실제 값으로 고치는 것뿐이다.
-	 * 피해 값은 {@link #CONE_BREATH_DAMAGE}·{@link #LIGHTNING_DAMAGE} 에 이미 정해져 있고
-	 * <b>어떤 피해원을 써야 그 값이 뜻대로 되는지</b>까지 그쪽에 적어 두었다.
+	 * <p>고르는 규칙은 {@link #allowed} 에 있고 <b>그리는 것은 {@link DragonLastStandPatterns}</b>
+	 * 에 있다. 파일을 뗀 까닭은 그쪽 클래스 설명에 적어 두었다 — 여기는 이미 붙박이 드래곤과
+	 * 진입 연출로 꽉 차 있다.
+	 *
+	 * <p>피해 값은 {@link #CONE_BREATH_DAMAGE}·{@link #LIGHTNING_DAMAGE} 에 있고, <b>어떤
+	 * 피해원을 골랐고 왜인지</b>는 {@code DragonLastStandPatterns.coneBreath} 에 있다.
 	 */
 	public enum Pattern {
 		/**
@@ -455,6 +465,13 @@ public final class DragonLastStand {
 		 * 한 사람의 낙사가 팀 전체를 끝낸다 — {@code TrialLandingShock}·{@code TrialEnderStorm}
 		 * 이 이미 같은 천장을 들고 있으니 그 둘을 볼 것. 문서가 「강한 넉백 금지」를 이 페이즈에서
 		 * 조건부로 풀었지만, 푼 것은 <b>「섬 안에 머무는 넉백」</b>까지다.
+		 *
+		 * <p>✅ 천장 둘이 걸려 있다 — {@code TrialEnderStorm.pushDistance}(목적지가 반경 32칸
+		 * 안)와 {@code TrialLandingShock.groundedReach}(길에 땅이 이어진 데까지). 둘 다 그쪽
+		 * 함수를 <b>그대로 부른다.</b>
+		 *
+		 * <p>길이 100틱은 값에서 나온다 — 0.6초마다 여덟 번이면 마지막 충격파가 84틱이고 그
+		 * 뒤 12틱이 그 충격파의 몫이라 96틱이다. 100 은 거기에 남은 여유다.
 		 */
 		WING_BEAT(100),
 		/**
@@ -468,23 +485,42 @@ public final class DragonLastStand {
 		 * <p>⚠ 이 카드가 이 저장소에서 <b>「즉사 메커닉 0개」를 처음 깨는 자리</b>다. 대가로
 		 * 붙은 조건 셋을 지울 수 없다 — 5초 예고 · 머리 고정 · 90도(안전지대 반경 12 안에서도
 		 * 옆으로 빠질 곳이 남는다).
+		 *
+		 * <p>✅ 피해원은 {@code explosion(null, null)} 을 골랐다 — 무장 기준 <b>29.48</b> 이라
+		 * 한 대에 전멸이다. {@code magic} 을 안 고른 까닭까지
+		 * {@code DragonLastStandPatterns.coneBreath} 에 적어 두었다.
+		 *
+		 * <p>길이는 <b>예고 100 + 불꽃 20 = 120틱</b>이다. 뒤의 20틱은 파티클뿐이고 피해는
+		 * 101번째 틱에 <b>한 사람당 한 번</b>만 들어간다 — 「잔류 없음」이 사람이 정한 것이다.
 		 */
-		CONE_BREATH(100),
+		CONE_BREATH(DragonLastStandPatterns.CONE_WARN_TICKS
+				+ DragonLastStandPatterns.CONE_AFTERGLOW_TICKS),
 		/**
 		 * 번개 5개 — 「낙뢰」와 같은 방식. 반경 <b>2.55칸</b>(낙뢰 3칸보다 15% 작게) ·
 		 * 피해 {@link #LIGHTNING_DAMAGE} · 드래곤 주변에 몰아서.
 		 *
-		 * <p>⚠ 자리를 {@code TrialRisks.reserveSpots} 로 잡을 것. 다섯 곳이 겹치면 한 틱에 두
-		 * 발이고 무장 기준 13.86 이다.
+		 * <p>⚠ 다섯 곳이 겹치면 한 틱에 두 발이고 무장 기준 13.86 이다.
+		 *
+		 * <p>✅ 겹침은 {@code TrialRisks.reserveSpots} 가 아니라 <b>굳은 배치</b>로 풀었다 —
+		 * 가운데 하나 + 90도씩 벌린 넷이고 회전만 무작위다. 그 함수를 쓸 수 없는 까닭 넷은
+		 * {@code DragonLastStandPatterns.lightningFive} 에 있다. 「겹친다」의 정의는 그대로
+		 * {@code TrialRisks.spotMinGap} 에서 가져와 잰다.
+		 *
+		 * <p>길이는 <b>예고 60 + 여운 10 = 70틱</b>이다.
 		 */
-		LIGHTNING_FIVE(60);
+		LIGHTNING_FIVE(DragonLastStandPatterns.LIGHTNING_WARN_TICKS
+				+ DragonLastStandPatterns.LIGHTNING_AFTER_TICKS);
 
 		/**
 		 * 이 패턴이 차지하는 시간(틱).
 		 *
-		 * <p>⚠ <b>지금 값은 문서에서 읽은 어림이다.</b> 예고와 착탄을 실제로 그리는 사람이
-		 * 확정할 것 — 여기가 실제보다 짧으면 앞 패턴이 끝나기 전에 다음 것이 겹쳐 돌고, 길면
-		 * 드래곤이 아무것도 안 하는 시간이 생긴다.
+		 * <p>세 값 모두 <b>예고와 착탄의 합</b>이고, 어림이 아니라
+		 * {@link DragonLastStandPatterns} 의 상수에서 직접 더한 것이다. 짧으면 앞 패턴이 끝나기
+		 * 전에 다음 것이 겹쳐 돌고, 길면 드래곤이 아무것도 안 하는 시간이 생긴다.
+		 *
+		 * <p>⚠ {@code CONE_BREATH} 의 길이는 <b>안전지대 시계도 읽는다</b> —
+		 * {@code DragonLastStandZone.shrinkLockoutLead} 가 이 값만큼 미리 브레스를 잠가
+		 * 「축소와 브레스 동시 실행 금지」를 실제로 지킨다. 여기를 늘리면 그쪽 잠금도 함께 늘어난다.
 		 */
 		private final int durationTicks;
 
@@ -498,36 +534,34 @@ public final class DragonLastStand {
 	}
 
 	/**
-	 * 안전지대(월드 보더)가 지금 어디까지 왔는가. <b>비어 있는 자리다.</b>
+	 * 안전지대(월드 보더)가 지금 어디까지 왔는가.
 	 *
 	 * <p>안전지대는 패턴이 아니라 <b>혼자 도는 시계</b>라 여기서 뽑히지 않는다. 그런데 브레스를
 	 * 고르는 규칙 둘이 그 시계를 본다 — 「축소 직후 3초 브레스 금지」와 「축소와 브레스 동시
-	 * 금지」. 그래서 고르는 쪽이 쓸 <b>물음 두 개</b>만 여기에 미리 뚫어 둔다.
+	 * 금지」. 그래서 고르는 쪽이 쓸 <b>물음 두 개</b>만 여기에 뚫어 둔다.
 	 *
-	 * <p>안전지대를 붙이는 사람이 할 일은 {@link #zoneClock} 이 진짜 값을 돌려주게 하는 것
-	 * 하나뿐이다. {@link #allowed} 는 고칠 필요가 없다.
+	 * <p>답은 {@link DragonLastStandZone#clock} 이 만든다. {@link #allowed} 는 그대로다.
 	 *
-	 * @param shrinking         지금 보더가 줄어드는 중인가
+	 * @param shrinking         브레스를 지금 시작해서는 안 되는가. ⚠ <b>「지금 줄어드는 중」보다
+	 *                          넓다</b> — 브레스 한 판이 들어갈 자리가 남지 않은 구간까지다.
+	 *                          까닭은 {@link DragonLastStandZone#shrinkLockoutLead} 에 있다
 	 * @param lastShrinkEndedAt 마지막 축소가 끝난 시각. 아직 한 번도 안 줄었으면
 	 *                          {@link Long#MIN_VALUE}
 	 */
 	public record ZoneClock(boolean shrinking, long lastShrinkEndedAt) {
-		/** 아직 안전지대가 없는 지금의 답. 축소가 없으므로 브레스를 막을 일도 없다. */
+		/** 축소가 없는 답. 되감긴 판과 시험이 쓴다. */
 		static final ZoneClock IDLE = new ZoneClock(false, Long.MIN_VALUE);
 	}
 
 	/**
-	 * 지금 안전지대 시계.
+	 * 지금 안전지대 시계. 진입부터의 틱만으로 답이 정해지는 순수 계산이다.
 	 *
-	 * <p>TODO 안전지대(월드 보더 · 45초 → 45초 → 25초 · 마지막 반경 12칸 · 밖이면 초당
-	 *      {@link #OUTSIDE_ZONE_DAMAGE_PER_SECOND} · 115초부터 5초마다 증가 · 넉백으로 밀려나면
-	 *      2초 유예)를 붙이는 사람이 이 메서드가 진짜 값을 돌려주게 할 것. 지금은 언제나
-	 *      {@link ZoneClock#IDLE} 이라 브레스가 축소 때문에 막히는 일이 없다.
-	 *      ⚠ 보더는 <b>전투가 끝나거나 판이 리셋되면 원래대로 되돌려야 한다</b> —
-	 *      {@link #onFightClosed} 와 {@link #clearState()} 둘 다에 되돌리는 줄이 필요하다.
+	 * <p>보더를 실제로 미는 것은 {@link DragonLastStandZone#tick} 이고 {@link #tick} 이 매 틱
+	 * 부른다. 되돌리는 것은 {@link #onFightClosed} 와 {@link #onServerStopping} 둘이다 —
+	 * {@link #clearState()} 에서는 월드를 만질 수 없어 기억만 버린다.
 	 */
 	private static ZoneClock zoneClock(Stand stand, long now) {
-		return ZoneClock.IDLE;
+		return DragonLastStandZone.clock(stand.beganAt, now);
 	}
 
 	/**
@@ -601,12 +635,12 @@ public final class DragonLastStand {
 	}
 
 	/**
-	 * 고른 패턴을 실제로 그린다. <b>지금은 비어 있다.</b>
+	 * 고른 패턴을 실제로 그린다. 그리는 것은 {@link DragonLastStandPatterns} 에 있다.
 	 *
-	 * <p>여기가 다음 사람이 채울 자리다. 갈래 셋을 채우면 그것으로 끝이고, 고르는 쪽
-	 * ({@link #allowed}·{@link #restTicks}·{@link #advance})은 손댈 필요가 없다.
+	 * <p>파일을 뗀 까닭은 그쪽 클래스 설명에 있다. 이 한 줄로 넘기므로 <b>고르는 쪽</b>
+	 * ({@link #allowed}·{@link #restTicks}·{@link #advance})과 <b>그리는 쪽</b>이 서로를 모른다.
 	 *
-	 * <p>채울 때 지킬 것.
+	 * <p>그쪽이 지키고 있는 것.
 	 *
 	 * <ul>
 	 *   <li>파티클은 <b>긴 형식</b>({@code sendParticles(type, true, false, …)}). 짧은 형식은
@@ -615,28 +649,18 @@ public final class DragonLastStand {
 	 *       {@code level.playSound} 를 부르면 <b>사람 수만큼 겹친다</b></li>
 	 *   <li>자막을 쓰지 않는다. {@code TrialWarning.shout} 은 아무도 부르지 않는 상태로 둔다</li>
 	 *   <li>{@code level.getGameTime()} 대신 <b>받은 {@code now}</b> 를 쓴다</li>
-	 *   <li>드래곤은 {@link #hold} 가 좌표를 못박고 있다. 위치를 옮기지 말 것 —
+	 *   <li>드래곤은 {@link #hold} 가 좌표를 못박고 있다. 위치를 옮기지 않는다 —
 	 *       {@code setYRot} 만이 패턴 쪽에 열려 있는 손잡이다</li>
 	 * </ul>
-	 *
-	 * <p>TODO 날개 퍼덕이기 · 부채꼴 브레스 · 번개 5개를 여기에 붙일 것. 값과 조건은
-	 *      {@link Pattern} 의 갈래마다 적어 두었다. 패턴마다 파일을 하나씩 떼어 내는 편이
-	 *      낫다면 {@code DragonFireBarrage} 와 같은 모양을 쓸 것 — 그쪽이 「드래곤을 읽기만
-	 *      하는 실행기」의 본보기다.
 	 *
 	 * @param at 이 패턴이 시작한 시각
 	 */
 	private static void runPattern(ServerLevel end, EnderDragon dragon,
 			List<ServerPlayer> members, Pattern pattern, long at, long now) {
-		// 비어 있다. 채우기 전에도 고르는 쪽은 정상으로 돌아 로그로 확인할 수 있다.
+		DragonLastStandPatterns.run(end, dragon, members, pattern, at, now);
 	}
 
-	/**
-	 * 쉬고 · 고르고 · 돌린다.
-	 *
-	 * <p>패턴이 비어 있어도 이 시계는 돈다. 그래야 붙이는 사람이 「언제 무엇이 뽑히는가」를
-	 * 먼저 눈으로 볼 수 있다.
-	 */
+	/** 쉬고 · 고르고 · 돌린다. */
 	private static void advance(ServerLevel end, EnderDragon dragon, List<ServerPlayer> members,
 			Stand stand, long now) {
 		if (stand.running != null) {
@@ -709,6 +733,11 @@ public final class DragonLastStand {
 		}
 
 		hold(end, dragon, stand);
+		// 안전지대. 패턴처럼 뽑히지 않고 진입과 동시에 시작해 저 혼자 돈다 — 보더를 세우고
+		// 45초 → 45초 → 25초로 좁히고 밖에 있는 사람에게 초당 값을 넣는 것이 전부 저쪽에 있다.
+		// hold 뒤인 것은 중심이 「드래곤을 못박아 둔 자리」라서다.
+		DragonLastStandZone.tick(end, stand.anchor, members == null ? List.of() : members,
+				stand.beganAt, now);
 		// ⚠ 「시련이 전부 멈춘다」의 단 하나뿐인 예외다. 「메마른 세계」의 물·용암·서리눈
 		// 설치 금지만은 최후의 저항에서도 이어진다 — 사람이 「최후에서 남아도 될 거 같아」라고
 		// 정했다. 시련을 되살리는 것이 아니라 그 카드의 기한 한 칸을 대신 밀어 주는 것이고,
@@ -1064,10 +1093,11 @@ public final class DragonLastStand {
 	 *       그러니 이 시점에 이름을 덮어쓰면 보스바가 바닐라 글자로 돌아간다.
 	 *       {@code isAlive()} 가 거짓이라 {@code DragonTrialManager.findDragon} 으로는 못 찾으므로
 	 *       여기서 따로 훑는다</li>
+	 *   <li><b>안전지대를 되돌린다</b> — 월드 보더를 진입 전 값으로 세운다. 되돌리지 않으면 판이
+	 *       끝난 뒤에도 파란 벽이 남고, 그 벽은 <b>월드 저장 파일에 들어 있어</b> 서버를 껐다
+	 *       켜도 그대로다. 월드가 살아 있는 시점이라 여기서 할 수 있다 —
+	 *       {@link #clearState()} 는 {@code SERVER_STOPPED} 에서도 불려 못 한다</li>
 	 * </ul>
-	 *
-	 * <p>TODO 안전지대를 붙이면 <b>월드 보더를 여기서 되돌릴 것.</b> 되돌리지 않으면 판이 끝난
-	 *      뒤에도 파란 벽이 남고, 그 상태는 화면 어디에도 설명되지 않는다.
 	 */
 	public static void onFightClosed(@Nullable ServerLevel end, @Nullable ShareTeam team) {
 		if (team == null || STANDS.remove(team.teamId()) == null) {
@@ -1076,6 +1106,8 @@ public final class DragonLastStand {
 		contactDamageOff = !STANDS.isEmpty();
 		VICTORIOUS_TEAMS.add(team.teamId());
 		TrialRisks.clearState();
+		DragonLastStandPatterns.clearState();
+		DragonLastStandZone.restore(end);
 		restoreBossBarName(end);
 		SharedFateMod.LOGGER.info("[END] 팀 '{}' 최후의 저항 종료 — 팀이 무적이 됩니다", team.name());
 	}
@@ -1153,23 +1185,41 @@ public final class DragonLastStand {
 	 *   <li><b>여기서 되돌리는 것</b> — 정적 상태 전부(도는 팀 · 무적 팀 · 접촉 피해 깃발 ·
 	 *       엔더맨 청소 시각). 무적은 매 틱 다시 걸리는 짧은 상태이상이라 이 깃발이 꺼지면
 	 *       <b>1초 안에 사람에게서도 풀린다</b></li>
-	 *   <li><b>{@link #onFightClosed} 가 되돌리는 것</b> — 보스바 이름. 월드가 살아 있는
-	 *       유일한 시점이다</li>
+	 *   <li><b>{@link #onFightClosed} 가 되돌리는 것</b> — 보스바 이름과 <b>월드 보더</b>.
+	 *       드래곤이 사라진 틱이라 월드가 살아 있다</li>
+	 *   <li><b>{@link #onServerStopping} 이 되돌리는 것</b> — 전투가 끝나지 않은 채로 서버가
+	 *       내려갈 때의 <b>월드 보더</b>. 보더는 그 차원의 {@code SavedData} 라
+	 *       <b>월드 저장 파일에 남는다</b> — 「월드가 함께 사라진다」가 성립하지 않는 유일한
+	 *       되돌림이고, 여기서 할 수 없어 줄이 하나 더 필요했다</li>
 	 *   <li><b>되돌릴 필요가 없는 것</b> — 드래곤의 자세와 이름. 서버를 껐다 켜면 저장된
 	 *       {@code DragonPhase} 와 {@code CustomName} 이 그대로 되살아나고, 그때는
 	 *       {@link #resume} 이 다시 세운다. 월드가 지워지는 길이면 드래곤도 함께 사라진다</li>
 	 * </ul>
-	 *
-	 * <p>TODO 안전지대를 붙이면 <b>월드 보더도 여기서 되돌릴 것.</b> 보더는 월드 저장 파일에
-	 *      남으므로 「월드가 함께 사라진다」가 성립하지 않는다 — 판이 리셋되지 않는 종료에서는
-	 *      다음 기동에 파란 벽이 그대로 떠 있다. {@code SERVER_STOPPING} 쪽에 줄이 하나 더
-	 *      필요할 수 있다({@code TrialFreeze.onServerStopping} 이 같은 이유로 그쪽에 있다).
 	 */
 	public static void clearState() {
 		STANDS.clear();
 		VICTORIOUS_TEAMS.clear();
 		contactDamageOff = false;
 		lastEndermanSweep = Long.MIN_VALUE;
+		DragonLastStandPatterns.clearState();
+		// 월드를 만지지 않는다 — 기억만 버린다. 보더 자체는 onServerStopping 이 먼저 되돌려 두었다.
+		DragonLastStandZone.clearState();
+	}
+
+	/**
+	 * ⚠ 서버가 멈추기 직전. <b>월드 보더를 저장보다 먼저 되돌린다.</b>
+	 *
+	 * <p>{@code SharedFateMod} 가 {@code SERVER_STOPPING} 에 붙인다.
+	 * {@code TrialFreeze.onServerStopping} 이 같은 자리에 같은 이유로 있다 —
+	 * {@code SERVER_STOPPED} 는 레벨이 이미 닫혀 <b>이미 늦다.</b>
+	 *
+	 * <p>이 줄이 없으면 전투 도중에 서버를 내린 판에서 줄어든 보더가 <b>엔드 저장 파일에
+	 * 남는다.</b> 다음 기동에 최후의 저항이 {@link #resume} 으로 되살아나면 그 시계가 다시
+	 * 몰고 가지만, 그 사이에 팀 설정에서 드래곤 시련을 끄거나 팀을 해체하면 <b>아무도 되돌리지
+	 * 않는 파란 벽</b>이 남는다.
+	 */
+	public static void onServerStopping(@Nullable MinecraftServer server) {
+		DragonLastStandZone.onServerStopping(server);
 	}
 
 	// ------------------------------------------------------------------ 시험이 들여다보는 곳
