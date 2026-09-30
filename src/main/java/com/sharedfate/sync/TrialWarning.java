@@ -5,6 +5,7 @@ import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundHurtAnimationPacket;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -56,6 +57,9 @@ import java.util.function.Predicate;
  * {@link #shout} 를 부르는 곳을 전부 걷어냈다 — 메서드는 남아 있지만 아무도 부르지 않는다.
  * 그러니 이 설명을 읽고 「자막도 뜨겠거니」 하고 카드를 설계하지 말 것. <b>「무엇이 언제
  * 오는가」를 소리와 표식 둘만으로 말해야 한다.</b>
+ *
+ * <p>⚠ {@link #shakeEach} 는 이 셈에 들지 않는다. <b>예고가 아니다</b> — 「무엇이 언제 오는가」를
+ * 말하지 않고 「지금 판이 바뀌었다」만 말하는 한 틱짜리 연출이라, 아래 세 단계와 섞이지 않는다.
  *
  * <p>그 두 갈래가 시간을 따라 세 단계로 세진다({@link Stage}). 예전에는 마지막 단계에 자막이
  * 함께 나갔다.
@@ -563,6 +567,36 @@ public final class TrialWarning {
 		}
 		return playEach(level, members, BuiltInRegistries.SOUND_EVENT.wrapAsHolder(sound),
 				volume, pitch);
+	}
+
+	/**
+	 * 화면을 <b>한 번</b> 흔든다. 사람마다 정확히 한 번이다.
+	 *
+	 * <h2>피해는 한 점도 들어가지 않는다</h2>
+	 *
+	 * <p>26.3 에 「화면을 흔든다」는 API 가 없다. 그래서 <b>피격 기울임을 빌린다</b> —
+	 * {@code ClientboundHurtAnimationPacket} 을 그 사람 연결로 직접 보내면
+	 * {@code LivingEntity.animateHurt} 가 {@code hurtDuration}·{@code hurtTime}·{@code hurtDir}
+	 * 을 세우고, 그 셋이 곧 카메라 기울임이다. 나르는 것은 연출뿐이라 <b>체력도 공유 체력도 움직이지
+	 * 않고</b> 통신 규약도 올라가지 않는다(바닐라 꾸러미다).
+	 *
+	 * <p>기울일 방향으로 그 사람의 {@code yRot} 을 넘긴다. 클라이언트가 카메라를 기울일 때 보는
+	 * 것은 {@code hurtDir − yRot} 이라, 자기 시선각을 그대로 주면 <b>정면에서 맞은 것처럼</b>
+	 * 뒤로 젖혀진다 — 무작위로 굴리면 같은 사건을 사람마다 다른 방향으로 보게 된다.
+	 *
+	 * <p>{@link #playEach} 와 같은 거름망을 쓴다. 관전자는 판에 끼어들지 않는 사람이라 흔들지
+	 * 않고, 같은 사람이 목록에 두 번 들어와도 한 번이다.
+	 *
+	 * <p>⚠ <b>매 틱 부르지 말 것.</b> {@code hurtTime} 이 10틱에 걸쳐 잦아드는 것이 곧 흔들림의
+	 * 모양이라, 매 틱 다시 세우면 기울어진 채로 고정된다 — 흔들리는 것이 아니라 화면이 비뚤어진
+	 * 것으로 보인다. 「판이 바뀌었다」를 말하는 <b>한 틱</b>에만 쓴다.
+	 *
+	 * @return 실제로 꾸러미가 나간 사람 수
+	 */
+	public static int shakeEach(@Nullable Collection<ServerPlayer> members) {
+		return eachListener(members, ServerPlayer::isSpectator,
+				member -> member.connection.send(new ClientboundHurtAnimationPacket(
+						member.getId(), member.getYRot())));
 	}
 
 	/**

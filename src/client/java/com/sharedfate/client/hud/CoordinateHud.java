@@ -160,7 +160,7 @@ public class CoordinateHud implements HudElement {
 	 * 좌표·바이옴 아래에 세트를 쌓는다.
 	 *
 	 * <p><b>켜진 것만이 아니라 진행도까지</b> 보여 준다. 대신 <b>한 개도 없는 유형은 뺀다</b> —
-	 * 열한 줄이 다 뜨면 화면 왼쪽 위를 통째로 덮는다. 그 규칙은 {@link PerkSetLines#visible} 이
+	 * 열네 줄이 다 뜨면 화면 왼쪽 위를 통째로 덮는다. 그 규칙은 {@link PerkSetLines#visible} 이
 	 * 들고 있다.
 	 *
 	 * <p>세트가 하나도 없으면 구분선도 긋지 않는다.

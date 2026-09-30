@@ -5,8 +5,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.level.Explosion;
@@ -42,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ol>
  *   <li><b>정적 상태가 새지 않는다</b> — {@link CrystalWatch} 는 월드보다 오래 살고, 화살
  *       면역을 켠 채 잊으면 다음 월드의 크리스탈까지 화살에 맞지 않는다.</li>
- *   <li><b>값이 흔들리지 않는다</b> — 채굴 피로 등급 0, 우리 치수, 카드 둘의 값.</li>
+ *   <li><b>값이 흔들리지 않는다</b> — 채굴 속도 배율 0.85, 우리 치수, 카드 둘의 값.</li>
  *   <li><b>믹스인 대상이 26.3 에 실제로 있다</b> — 이 파일에서 가장 중요한 부분이다.
  *       {@code sharedfate.mixins.json} 에 refmap 이 없어 <b>대상 서술자가 틀려도 빌드가 그냥
  *       통과</b>하고, 크리스탈을 처음 때리는 순간에야 터진다. 그때는 이미 엔드 전투 중이다.</li>
@@ -141,43 +139,54 @@ class TrialCrystalGuardTest {
 	// -------------------------------------------------- 값이 흔들리지 않는가
 
 	/**
-	 * 채굴 피로 <b>등급은 0</b>이다.
+	 * 무딘 곡괭이는 <b>채굴 속도 15% 감소</b>다 — 채굴 피로가 아니다.
 	 *
-	 * <p>26.3 이 등급별 채굴 속도 공식을 바꿨고 <b>등급 0 만 두 판이 같다.</b> 올리면 카드
-	 * 설명과 체감이 어긋나는데, 그 어긋남은 서버를 띄워 곡괭이를 휘둘러 봐야 드러난다.
+	 * <p>사람이 「무딘곡괭이 이거 채굴피로1은 심하고 채굴 속도 15프로감소로」라고 정했다. 채굴
+	 * 피로 I 은 26.3 에서 {@code 0.3^(등급+1)} 이라 <b>70% 감소</b>이고, 그 4분의 1도 안 되는
+	 * 배율을 내는 바닐라 상태이상은 없다. 값이 흔들리면 카드 설명이 그 자리에서 거짓이 된다.
 	 */
 	@Test
-	void 채굴_피로_등급은_0_이다() {
-		assertEquals(0, TrialCrystalGuard.DIG_SLOWDOWN_AMPLIFIER,
-				"등급을 올리지 말 것. 26.3 에서 등급 0 만 26.2 와 같다");
-
-		MobEffectInstance effect = TrialCrystalGuard.digSlowdownEffect();
-		assertSame(MobEffects.MINING_FATIGUE, effect.getEffect());
-		assertEquals(0, effect.getAmplifier(), "실제로 거는 값도 0 이라야 상수가 뜻을 갖는다");
+	void 무딘_곡괭이는_15퍼센트_감소다() {
+		assertEquals(0.85, TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER, 1.0e-9,
+				"15% 감소는 사람이 정한 값이다");
+		assertTrue(TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER < 1.0,
+				"1 이상이면 빨라지는 쪽인데, 이 길은 서버에서만 계산되므로 빨라지지 않는다");
+		assertTrue(TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER > 0.0,
+				"0 이면 그 블록을 영영 캘 수 없다. 이 카드는 시간을 빼앗는 것이지 채굴을 막는 것이 아니다");
 	}
 
 	/**
-	 * 아이콘이 깜빡이지 않는 조건.
+	 * 선언이 시효보다 <b>먼저</b> 닿는다.
 	 *
-	 * <p>효과가 한 번이라도 끝까지 닳으면 바닐라가 제거하고, 다음 갱신에서 다시 붙으면서
-	 * 아이콘이 사라졌다 나타난다. 남은 시간이 충분할 때 같은 등급으로 다시 걸면 바닐라가
-	 * 시간만 늘리므로 제거·추가가 일어나지 않는다.
+	 * <p>상태이상이 아니게 되었으므로 이제 「효과가 끊긴다」가 아니라 「시효가 지난다」다. 갱신
+	 * 주기가 시효보다 길거나 같으면 곡괭이가 주기마다 빨라졌다 느려진다.
 	 */
 	@Test
-	void 채굴_피로는_끊기기_한참_전에_다시_걸린다() {
+	void 무뎌짐은_시효가_지나기_전에_다시_선언된다() {
 		assertTrue(TrialCrystalGuard.DIG_REFRESH_INTERVAL > 0);
-		assertTrue(TrialCrystalGuard.DIG_REFRESH_INTERVAL * 2 < TrialCrystalGuard.DIG_SLOWDOWN_TICKS,
-				"갱신 주기가 지속 시간에 가까우면 한 틱만 밀려도 효과가 끊기고 아이콘이 깜빡인다");
+		assertTrue(TrialCrystalGuard.DIG_REFRESH_INTERVAL < TrialCrystalGuard.DIG_LAPSE_TICKS,
+				"갱신 주기가 시효보다 길면 무뎌짐이 주기마다 풀린다");
+		assertTrue(TrialCrystalGuard.DIG_LAPSE_TICKS > 0,
+				"시효가 없으면 서버 강제 종료 뒤에 곡괭이가 영영 무뎌진 채로 남는다");
 	}
 
-	/** 입자는 끄고 아이콘은 켠다. 이유는 {@code digSlowdownEffect} 주석에 적어 두었다. */
+	/**
+	 * 아무것도 선언되지 않았으면 <b>바닐라 그대로</b>다.
+	 *
+	 * <p>{@code null} 과 서버 쪽이 아닌 플레이어에서 받은 값을 그대로 돌려주는지 본다. 여기서
+	 * 값이 달라지면 <b>시련과 무관한 모든 채굴</b>이 느려진다 — 이 파일에서 살아 있는 서버 없이
+	 * 확인할 수 있는 가장 중요한 성질이다.
+	 */
 	@Test
-	void 채굴_피로는_입자를_끄고_아이콘을_켠다() {
-		MobEffectInstance effect = TrialCrystalGuard.digSlowdownEffect();
+	void 선언이_없으면_채굴_속도를_건드리지_않는다() {
+		TrialCrystalGuard.clearState();
 
-		assertFalse(effect.isAmbient(), "비컨처럼 흐린 테두리가 되면 원인을 짐작할 수 없다");
-		assertFalse(effect.isVisible(), "2초마다 갱신되는 효과라 입자를 켜면 전투 내내 안개가 낀다");
-		assertTrue(effect.showIcon(), "곡괭이가 느려진 이유를 화면에서 읽을 수 있어야 한다");
+		assertEquals(3.5F, TrialCrystalGuard.scaleDestroySpeed(null, 3.5F), 0.0F,
+				"플레이어가 없으면 원래 값이다");
+		assertEquals(0.0F, TrialCrystalGuard.scaleDestroySpeed(null, 0.0F), 0.0F,
+				"0 은 「캘 수 없는 블록」이다. 곱하면 안 된다");
+		assertEquals(Float.NaN, TrialCrystalGuard.scaleDestroySpeed(null, Float.NaN),
+				"유한하지 않은 값은 손대지 않는다");
 	}
 
 	/**
@@ -193,7 +202,7 @@ class TrialCrystalGuardTest {
 		assertEquals(new TrialCatalog.Risk.CrystalGuard(true, false, false), ward,
 				"「크리스탈 보호막」은 화살 면역만 건다");
 		assertEquals(new TrialCatalog.Risk.CrystalGuard(false, true, true), cage,
-				"「쇠창살과 무딘 곡괭이」는 우리와 채굴 피로를 건다");
+				"「쇠창살과 무딘 곡괭이」는 우리를 세우고 채굴 속도를 깎는다");
 		assertNotEquals(ward, cage);
 	}
 

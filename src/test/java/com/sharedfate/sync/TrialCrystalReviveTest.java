@@ -441,6 +441,66 @@ class TrialCrystalReviveTest {
 				"기둥 위에서 내려올 시간은 줘야 한다 — 밀어내지 않고 건너뛰는 것이 이 카드의 약속이다");
 	}
 
+	// ------------------------------------------------------------------ 점 예산
+
+	@Test
+	void 한_틱에_쓰는_점이_예산_안이다() {
+		// 전에는 4틱마다 열 자리를 한꺼번에 그려 그 틱에만 640점이었다. 한 카드 상한을 넘는 수라
+		// 입장 연출이 같은 코드를 부르는 지금은 엔드에 들어갈 때마다 그 틱이 왔다.
+		int worst = TrialCrystalRevive.tickPoints(COUNT);
+		assertEquals(128, worst, "자리 두 곳 × (고리 40 + 덧칠 24) 이다");
+		assertTrue(worst <= DragonFireBarrage.MARK_MAX_POINTS,
+				"한 카드가 쓸 수 있는 점을 넘는다: " + worst);
+		assertTrue(worst + TrialEntrance.HALO_POINTS <= TrialLandingShock.MAX_POINTS_PER_TICK,
+				"입장 연출의 고리까지 같은 틱에 얹히므로 합이 예산 안이어야 한다");
+		assertEquals(0, TrialCrystalRevive.tickPoints(0), "세울 자리가 없으면 그릴 것도 없다");
+	}
+
+	@Test
+	void 자리가_돌아오는_간격이_먼지_수명보다_짧다() {
+		// 26.3 DustParticleBase 의 수명 하한이 8틱이다. 차례가 그보다 늦게 돌아오면 다시 그리기
+		// 전에 첫 점이 죽어 그 자리가 깜빡인다 — 「보이는 것」이 상하는 유일한 길이 이것이다.
+		assertTrue(TrialCrystalRevive.SEAT_STRIDE < 8,
+				"먼지가 죽은 뒤에 덧칠하면 열 자리가 동시에 보이지 않는다");
+		for (int index = 0; index < COUNT; index++) {
+			int drawn = 0;
+			for (long now = GRANTED; now < GRANTED + TrialCrystalRevive.SEAT_STRIDE; now++) {
+				if (TrialCrystalRevive.drawsSeat(index, TrialCrystalRevive.seatPhase(now, GRANTED))) {
+					drawn++;
+				}
+			}
+			assertEquals(1, drawn, "자리 " + index + " 는 한 바퀴에 딱 한 번 차례가 와야 한다");
+		}
+	}
+
+	@Test
+	void 한_바퀴에_쓰는_점은_예전과_같다() {
+		// 「점을 줄였다」가 「연출을 줄였다」가 되면 안 된다. 나눠 그리기는 같은 그림을 틱에 펼치는
+		// 것이라, 한 바퀴 합은 예전의 한 틱 640점과 같아야 한다.
+		int whole = 0;
+		for (long now = GRANTED; now < GRANTED + TrialCrystalRevive.SEAT_STRIDE; now++) {
+			int phase = TrialCrystalRevive.seatPhase(now, GRANTED);
+			for (int index = 0; index < COUNT; index++) {
+				if (TrialCrystalRevive.drawsSeat(index, phase)) {
+					// 자리 하나 몫이 곧 tickPoints(1) 이다 — 고리 40 + 덧칠 24.
+					whole += TrialCrystalRevive.tickPoints(1);
+				}
+			}
+		}
+		assertEquals(640, whole, "자리마다 그리는 그림은 예전과 똑같아야 한다");
+	}
+
+	@Test
+	void 되감긴_판에서도_차례가_어긋나지_않는다() {
+		// 복원 직후 now 가 받은 틱보다 작을 수 있다. 음수 나머지가 나오면 어떤 자리는 영영 차례가
+		// 오지 않아 그 기둥만 표식 없이 남는다.
+		for (long now = GRANTED - 40L; now < GRANTED + 40L; now++) {
+			int phase = TrialCrystalRevive.seatPhase(now, GRANTED);
+			assertTrue(phase >= 0 && phase < TrialCrystalRevive.SEAT_STRIDE, "몫: " + phase);
+		}
+		assertFalse(TrialCrystalRevive.drawsSeat(-1, 0), "없는 자리는 그리지 않는다");
+	}
+
 	/** 기둥 열 개를 흉내 낸 자리들. 실제 좌표는 시드에서 오므로 값 자체에는 뜻이 없다. */
 	private static List<Vec3> seats(int count) {
 		List<Vec3> seats = new ArrayList<>();

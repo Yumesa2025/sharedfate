@@ -247,13 +247,18 @@ class DragonLastStandTest {
 	}
 
 	/**
-	 * <b>어떤 조합에서도 고를 것이 남는다.</b>
+	 * ✅⚠ <b>이제 어느 조합에서도 고를 것이 있다.</b> 패턴이 넷이 되어 구멍이 닫혔다.
 	 *
-	 * <p>비면 드래곤이 아무것도 안 하고, 그 판은 안전지대만 조여 오다 끝난다. 패턴을 넷째로
-	 * 늘리거나 제한을 하나 더 걸 사람이 여기서 멈춰 서면 된다.
+	 * <p>이 시험은 세 번째 모양이다. 처음에는 「어떤 조합에서도 고를 것이 남는다」였고, 번개가
+	 * 패턴 풀에서 빠지면서 그것이 거짓이 되어 <b>「비는 자리가 그 하나뿐인가」</b>로 좁혔다.
+	 * 사람이 공허 흡입과 십자 균열을 더해 <b>다시 「비지 않는가」로 돌아왔다.</b>
+	 *
+	 * <p>근거는 짧다 — 막히는 것은 <b>브레스와 직전 것</b>뿐이고 패턴이 넷이므로 최악이어도
+	 * <b>둘</b>이 남는다. 그래서 남는 수의 <b>하한</b>까지 함께 센다: 제한을 하나 더 거는 사람이
+	 * 「비지는 않네」로 넘기지 못하게, <b>여유가 몇 칸인지</b>를 숫자로 붙들어 둔다.
 	 */
 	@Test
-	void 고를_것이_없는_조합이_없다() {
+	void 어느_조합에서도_고를_것이_있다() {
 		List<DragonLastStand.ZoneClock> clocks = List.of(
 				DragonLastStand.ZoneClock.IDLE,
 				new DragonLastStand.ZoneClock(true, Long.MIN_VALUE),
@@ -263,15 +268,68 @@ class DragonLastStandTest {
 		previous.add(null);
 		previous.addAll(List.of(DragonLastStand.Pattern.values()));
 
+		int fewest = Integer.MAX_VALUE;
 		for (DragonLastStand.Pattern before : previous) {
 			for (DragonLastStand.ZoneClock clock : clocks) {
 				for (long breathReadyAt : new long[] {Long.MIN_VALUE, 1_000L, 10_000L}) {
 					List<DragonLastStand.Pattern> options =
 							open(before, breathReadyAt, clock, 1_010L);
 					assertFalse(options.isEmpty(),
-							"고를 것이 없다: 직전 " + before + " · 보더 " + clock
+							"고를 것이 하나도 없다 — 직전 " + before + " · 보더 " + clock
 									+ " · 브레스 준비 " + breathReadyAt);
 					assertNotNull(DragonLastStand.pick(options, 0.5));
+					fewest = Math.min(fewest, options.size());
+				}
+			}
+		}
+		assertEquals(4, DragonLastStand.Pattern.values().length,
+				"패턴이 넷이라는 전제 위에 아래 하한이 서 있다");
+		assertEquals(2, fewest,
+				"가장 나쁜 조합(직전 것 하나 + 브레스 잠김)에서 남는 수가 " + fewest
+						+ " 다. 제한을 하나 더 걸면 이 수가 줄고, 1 이 되는 날 구멍이 다시 열린다");
+	}
+
+	/**
+	 * 브레스가 열려 있으면 <b>셋</b>이 남는다.
+	 *
+	 * <p>위의 하한 2 가 「브레스 잠김」 하나에만 달려 있다는 것을 따로 못박아 둔다.
+	 */
+	@Test
+	void 브레스가_열려_있으면_셋이_남는다() {
+		for (DragonLastStand.Pattern before : DragonLastStand.Pattern.values()) {
+			List<DragonLastStand.Pattern> options =
+					open(before, Long.MIN_VALUE, DragonLastStand.ZoneClock.IDLE, 1_000L);
+			assertEquals(DragonLastStand.Pattern.values().length - 1, options.size(),
+					"직전 " + before + " 만 빠지고 나머지가 다 남아야 한다 — 실제 " + options);
+		}
+	}
+
+	/**
+	 * ⚠ <b>잠금은 브레스 하나에만 걸려 있다.</b>
+	 *
+	 * <p>새 패턴 둘에 쿨다운이나 축소 잠금을 걸지 않은 것이 판단이고, 그 판단이 코드에서 지켜지는지
+	 * 여기서 붙든다. 「직전 것도 아니고 브레스도 아니면 언제나 열려 있다」가 그 뜻이다.
+	 *
+	 * <p>근거는 {@code DragonLastStand.Pattern} 에 적어 두었다 — 브레스의 제한 셋은 그 카드가
+	 * <b>한 대에 전멸</b>이라 치르는 대가이고, 흡입·균열은 <b>세 대에 전멸</b>인 보통 카드다.
+	 */
+	@Test
+	void 브레스_말고는_잠기지_않는다() {
+		List<DragonLastStand.ZoneClock> clocks = List.of(
+				DragonLastStand.ZoneClock.IDLE,
+				new DragonLastStand.ZoneClock(true, Long.MIN_VALUE),
+				new DragonLastStand.ZoneClock(true, 1_000L),
+				new DragonLastStand.ZoneClock(false, 1_000L));
+		for (DragonLastStand.ZoneClock clock : clocks) {
+			for (long breathReadyAt : new long[] {Long.MIN_VALUE, 1_000L, 10_000L}) {
+				List<DragonLastStand.Pattern> options = open(null, breathReadyAt, clock, 1_010L);
+				for (DragonLastStand.Pattern pattern : DragonLastStand.Pattern.values()) {
+					if (pattern == DragonLastStand.Pattern.CONE_BREATH) {
+						continue;
+					}
+					assertTrue(options.contains(pattern),
+							pattern + " 이 " + clock + " 에서 잠겼다 — 제한을 하나 더 걸었다면"
+									+ " allowed 의 여유 하한(2)을 다시 셀 것");
 				}
 			}
 		}
@@ -368,13 +426,13 @@ class DragonLastStandTest {
 	}
 
 	/**
-	 * 번개 5개 35 는 「낙뢰」와 <b>같은 값이자 같은 계산</b>이다.
+	 * 상시 번개 35 는 「낙뢰」와 <b>같은 값이자 같은 계산</b>이다.
 	 *
 	 * <p>문서가 「낙뢰와 같은 방식」이라고 적어 둔 것을 값으로 지킨다. 두 곳이 갈라지면
-	 * 사람이 배운 「번개는 세 대에 죽는다」가 패턴마다 달라진다.
+	 * 사람이 배운 「번개는 세 대에 죽는다」가 자리마다 달라진다.
 	 */
 	@Test
-	void 번개_다섯은_낙뢰와_같은_값이다() {
+	void 상시_번개는_낙뢰와_같은_값이다() {
 		TrialCatalog.Trial lightning = TrialCatalog.byId("sharedfate:lightning_storm");
 		assertNotNull(lightning);
 		TrialCatalog.Risk.DelayedStrike strike =
@@ -386,6 +444,101 @@ class DragonLastStandTest {
 				GearedDamage.Source.LIGHTNING_BOLT);
 		assertTrue(GearedDamage.wipesInThree(perHit),
 				"무장 기준 세 대에 전멸이어야 한다 — 실제 한 대 " + perHit);
+	}
+
+	/**
+	 * ⚠ <b>공허 흡입 35 는 사람이 적은 「무장 기준 6.9」를 만드는 피해원이라야 한다.</b>
+	 *
+	 * <p>사람이 값과 <b>무장 기준 값을 함께</b> 적었으므로 값이 피해원을 정했다. 실행기가
+	 * {@code explosion} 으로 바꾸면 10.40 이라 「큰 카드 한 대분」이 아니라 <b>두 대에 전멸</b>이
+	 * 되고, 그 어긋남은 로그에 한 줄도 안 남는다.
+	 */
+	@Test
+	void 공허_흡입은_무장_기준_한_대_6점9다() {
+		assertEquals(35.0F, DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F, "사람이 정한 값이다");
+		assertEquals(DragonLastStand.LIGHTNING_DAMAGE, DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F,
+				"상시 번개와 같은 값이다 — 「큰 카드 한 대분」이 그 뜻이다");
+
+		float bolt = GearedDamage.afterGear(DragonLastStand.VOID_SUCTION_DAMAGE,
+				GearedDamage.Source.LIGHTNING_BOLT);
+		assertEquals(6.93F, bolt, 0.02F, "사람이 적은 6.9 는 lightningBolt() 여야 나온다");
+		assertTrue(GearedDamage.wipesInThree(bolt),
+				"세 대에 전멸이어야 한다 — 실제 한 대 " + bolt);
+		assertTrue(GearedDamage.afterGear(DragonLastStand.VOID_SUCTION_DAMAGE,
+						GearedDamage.Source.EXPLOSION) > 7.0F,
+				"explosion 으로 바꾸면 사람이 적은 6.9 가 거짓이 된다");
+	}
+
+	/**
+	 * ⚠ <b>십자 균열 23 은 사람이 적은 「무장 기준 6.8」을 만드는 피해원이라야 한다.</b>
+	 *
+	 * <p>여기는 흡입과 <b>반대쪽</b>이다 — {@code explosion} 이라야 6.77 이고
+	 * {@code lightningBolt} 로 쏘면 4.56 이라 세 번을 다 맞아도 13.7 로 <b>안 죽는다.</b>
+	 * {@code GearedDamage.TARGET_PER_HIT} 이 「난이도 곱이 있는 쪽은 23」이라고 적어 둔 그것이다.
+	 */
+	@Test
+	void 십자_균열은_무장_기준_한_대_6점8다() {
+		assertEquals(23.0F, DragonLastStand.CROSS_FISSURE_DAMAGE, 0.001F, "사람이 정한 값이다");
+
+		float explosion = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
+				GearedDamage.Source.EXPLOSION);
+		assertEquals(6.77F, explosion, 0.02F, "사람이 적은 6.8 은 explosion 이어야 나온다");
+		assertTrue(GearedDamage.wipesInThree(explosion),
+				"세 대에 전멸이어야 한다 — 실제 한 대 " + explosion);
+
+		float bolt = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
+				GearedDamage.Source.LIGHTNING_BOLT);
+		assertTrue(bolt * DragonLastStandPatterns.CROSS_ROUNDS < GearedDamage.TEAM_HEALTH,
+				"lightningBolt() 로 쏘면 세 번을 다 맞아도 안 죽는다 — 실제 한 대 " + bolt);
+	}
+
+	/**
+	 * 새 패턴 둘의 길이가 <b>값에서 나온다.</b>
+	 *
+	 * <p>길이를 손으로 적으면 예고나 흡입 시간을 고치는 사람이 여기를 빠뜨려, 앞 패턴이 끝나기
+	 * 전에 다음 것이 겹쳐 돌거나 드래곤이 아무것도 안 하는 시간이 생긴다.
+	 */
+	@Test
+	void 새_패턴_둘의_길이가_값에서_나온다() {
+		assertEquals(DragonLastStandPatterns.SUCK_WARN_TICKS
+						+ DragonLastStandPatterns.SUCK_PULL_TICKS
+						+ DragonLastStandPatterns.SUCK_AFTERGLOW_TICKS,
+				DragonLastStand.Pattern.VOID_SUCTION.durationTicks());
+		assertEquals(180, DragonLastStand.Pattern.VOID_SUCTION.durationTicks(),
+				"예고 60 + 흡입 100 + 여운 20 이다");
+
+		assertEquals(DragonLastStandPatterns.crossDurationTicks(),
+				DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
+				"칸에 적은 합과 패턴 쪽 계산이 갈라졌다");
+		assertEquals(130, DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
+				"60 + 30 + 30 + 여운 10 이다");
+
+		// 터지는 틱이 길이 안에 들어 있어야 한다. 넘치면 피해가 아예 안 들어간다.
+		assertTrue(DragonLastStandPatterns.SUCK_WARN_TICKS
+						+ DragonLastStandPatterns.SUCK_PULL_TICKS
+						< DragonLastStand.Pattern.VOID_SUCTION.durationTicks(),
+				"흡입이 터지는 틱이 패턴 길이 밖이다");
+		assertTrue(DragonLastStandPatterns.crossFireStep(DragonLastStandPatterns.CROSS_ROUNDS - 1)
+						< DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
+				"마지막 십자가 터지는 틱이 패턴 길이 밖이다");
+	}
+
+	/**
+	 * ⚠ <b>브레스 잠금의 미리 잠그는 길이는 브레스 길이여야 한다.</b>
+	 *
+	 * <p>새 패턴 둘이 브레스보다 <b>길다</b>(180 · 130 대 120). 그래서 「가장 긴 패턴」으로
+	 * 잠금을 잡고 있었다면 여기서 어긋난다 — {@code DragonLastStandZone.shrinkLockoutLead} 가
+	 * 재는 것은 <b>브레스 한 판이 들어갈 자리</b>이고 새 패턴은 축소와 겹쳐도 되므로 그대로여야
+	 * 한다.
+	 */
+	@Test
+	void 미리_잠그는_길이가_브레스_길이_그대로다() {
+		assertEquals(DragonLastStand.Pattern.CONE_BREATH.durationTicks(),
+				DragonLastStandZone.shrinkLockoutLead(),
+				"새 패턴이 더 길다고 잠금을 늘리면 브레스가 나올 자리가 더 줄어든다");
+		assertTrue(DragonLastStand.Pattern.VOID_SUCTION.durationTicks()
+						> DragonLastStand.Pattern.CONE_BREATH.durationTicks(),
+				"이 시험이 붙드는 상황(새 패턴이 브레스보다 길다)이 사라졌으면 설명을 고칠 것");
 	}
 
 	/**

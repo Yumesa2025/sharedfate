@@ -149,7 +149,7 @@ class PerkOfferPayloadTest {
 
 	@Test
 	void 무유형_증강은_빈_문자열이다() {
-		// 열여섯 개가 어느 유형에도 안 들어간다. 카드에 그 줄이 아예 안 그려져야 한다.
+		// 열한 개가 어느 유형에도 안 들어간다. 카드에 그 줄이 아예 안 그려져야 한다.
 		assertFalse(sampleOptions().get(1).hasSetTypes());
 		assertEquals("", sampleOptions().get(1).setTypes());
 	}

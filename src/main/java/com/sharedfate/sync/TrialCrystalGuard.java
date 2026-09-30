@@ -4,8 +4,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -33,19 +31,26 @@ import java.util.List;
  *   <li>{@code arrowImmune} — {@link CrystalWatch} 의 깃발을 세운다. 실제로 막는 일은
  *       {@code EndCrystalGuardMixin} 이 크리스탈 쪽에서 한다.</li>
  *   <li>{@code restoreCage} — 남은 크리스탈에 쇠창살 우리를 다시 세운다.</li>
- *   <li>{@code digSlowdown} — 팀 전원에게 채굴 피로 I.</li>
+ *   <li>{@code digSlowdown} — 팀 전원의 <b>채굴 속도를 15% 깎는다</b>
+ *       ({@link #DIG_SLOWDOWN_MULTIPLIER}). ⚠ 채굴 피로 상태이상이던 자리인데 그것은 70% 감소라
+ *       사람이 「심하다」고 했다. 자세한 것은 그 상수 설명에 있다.</li>
  * </ul>
  *
  * <p>카드 둘이 각각 {@code (true,false,false)} 「크리스탈 보호막」과
  * {@code (false,true,true)} 「쇠창살과 무딘 곡괭이」다. 갈래를 값으로 두었으므로 셋을 섞은
  * 셋째 카드는 {@code TrialCatalog} 에 줄 하나를 더 적는 일이 된다.
  *
- * <h2>깃발을 되돌리지 않으면 다음 월드까지 샌다</h2>
+ * <h2>깃발과 무뎌짐을 되돌리지 않으면 다음 월드까지 샌다</h2>
  *
  * <p>{@link CrystalWatch} 는 정적이라 월드보다 오래 산다. {@code arrowImmune} 을 켠 채 전투가
  * 끝나면 <b>다음 판, 심지어 새로 만든 월드의 크리스탈까지 화살에 맞지 않는다.</b> 그래서
  * {@link #clearState()} 는 조건 없이 깃발을 내린다 — 「내가 켰던가?」를 기억하지 않는 것이
  * 일부러다. 기억하는 순간 그 기억이 어긋날 길이 생긴다.
+ *
+ * <p>무뎌진 곡괭이도 같은 성질이 되었다. 상태이상이던 때는 지속 시간이 닳으면 바닐라가 지워
+ * 주었는데, 이제는 {@link #BLUNTED} 가 사실의 유일한 출처다. 그래서 두 겹으로 막는다 —
+ * {@link #clearState()} 가 맵을 비우고, 그것을 못 지나가는 길(서버 강제 종료)에서는
+ * {@link #DIG_LAPSE_TICKS} 시효가 스스로 풀어 준다.
  *
  * <h2>블록을 놓는 것은 월드를 영구히 바꾸는 일이다</h2>
  *
@@ -67,31 +72,69 @@ public final class TrialCrystalGuard {
 	// ------------------------------------------------------------------ 못박아 둔 값
 
 	/**
-	 * 채굴 피로 등급. <b>0 고정이다 — 절대 올리지 말 것.</b>
+	 * 무뎌진 곡괭이의 채굴 속도 배율. <b>0.85 — 15% 감소. 사람이 정한 값이다.</b>
 	 *
-	 * <p>26.3 이 등급별 채굴 속도 공식을 바꿨는데 <b>등급 0 만 두 판이 같다.</b> 등급을 올리면
-	 * 26.2 로 만든 카드 설명과 실제 체감이 어긋나고, 그 어긋남은 서버를 띄워 곡괭이를 휘둘러
-	 * 봐야 드러난다. 이 카드가 원하는 것은 「곡괭이가 무뎌졌다」이지 「아무것도 못 캔다」가
-	 * 아니므로 등급 0 으로 충분하다.
+	 * <p>사람이 플레이해 보고 <b>「무딘곡괭이 이거 채굴피로1은 심하고 채굴 속도 15프로감소로」</b>
+	 * 라고 정했다.
+	 *
+	 * <h2>왜 상태이상이 아닌가</h2>
+	 *
+	 * <p>예전에는 채굴 피로 I 을 걸었다. 26.3 {@code Player.getDestroySpeed} 의 바이트코드는
+	 * 채굴 피로를 {@code 속도 × 0.3^(등급+1)} 로 먹이므로 <b>등급 0 에서도 70% 감소</b>다. 15% 를
+	 * 내는 등급은 없고(다음 칸이 91% 감소다), <b>15% 를 내는 바닐라 상태이상도 없다.</b>
+	 *
+	 * <h2>어디서 깎는가 — 이 저장소가 이미 쓰는 길을 그대로 쓴다</h2>
+	 *
+	 * <p>26.3 에서 「이 사람이 이 블록을 얼마나 빨리 캐는가」가 한 숫자로 정해지는 곳은
+	 * {@code Player.getDestroySpeed(BlockState)} 하나다. 도구 등급·효율·성급함·채굴 피로·물속·
+	 * 공중이 전부 거기서 합쳐지고, 진행도를 세는 쪽은 그 결과만 받아 간다.
+	 *
+	 * <p>그 자리에는 <b>이미 믹스인이 붙어 있다</b> — {@code PlayerMiningSpeedMixin} 이고
+	 * {@code mining_speed} 증강(실버 7 「광맥 감각」의 대가)이 그 길로 느려진다. 그래서 믹스인을
+	 * 새로 만들지 않았고 {@code sharedfate.mixins.json} 에 <b>더할 줄도 없다.</b> 그쪽 믹스인이
+	 * {@link #scaleDestroySpeed} 를 한 줄 더 부른다.
+	 *
+	 * <p>{@code ServerPlayer} 가 {@code getDestroySpeed} 를 <b>재정의하지 않는다</b>는 것을 26.3
+	 * 클래스 파일로 확인했다 — 재정의되는 메서드에 걸린 믹스인은 조용히 죽고 빌드도 로그도
+	 * 통과한다(이 저장소가 {@code SlotExpandedLockMixin} 에서 이미 겪은 사고다).
+	 *
+	 * <h2>⚠ 잃은 것 둘</h2>
+	 *
+	 * <ul>
+	 *   <li><b>화면 아이콘이 없다.</b> 상태이상이 아니므로 「곡괭이가 왜 느리지」를 화면에서 읽을
+	 *       수 없다. 15% 를 뜻하는 바닐라 아이콘이 없으니 다른 길이 없고, 카드 이름과 설명이 그
+	 *       몫을 한다. 대신 카드가 <b>첫 크리스탈 룰렛</b>에서 이름과 설명을 띄우고 지나간다</li>
+	 *   <li><b>클라이언트는 이 배율을 모른다.</b> 서버에서만 곱하므로 클라이언트가 먼저 「다
+	 *       캤다」고 판단하고, 서버가 {@code hasDelayedDestroy} 로 붙잡아 자기 진행도를 채운 뒤
+	 *       부순다 — <b>블록은 늦게, 그러나 반드시 부서진다.</b> 화면에서는 금이 한 번 되돌아갔다
+	 *       다시 부서지는 것이 보인다. 0.85 는 그 지연이 원래 시간의 18%라 눈에 잘 안 띄는
+	 *       쪽이다({@code PlayerMiningSpeedMixin} 이 「0.5 아래로는 내리지 않는 편이 좋다」고
+	 *       적어 둔 것과 같은 이유다)</li>
+	 * </ul>
 	 */
-	static final int DIG_SLOWDOWN_AMPLIFIER = 0;
+	static final double DIG_SLOWDOWN_MULTIPLIER = 0.85;
 
 	/**
-	 * 한 번 걸 때의 지속 시간(틱). 10초.
+	 * 무뎌짐을 다시 선언하는 간격(틱). 2초.
 	 *
-	 * <p>갱신 주기보다 넉넉히 길어야 한다 — {@link #DIG_REFRESH_INTERVAL} 설명 참고.
-	 */
-	static final int DIG_SLOWDOWN_TICKS = 200;
-
-	/**
-	 * 채굴 피로를 다시 거는 간격(틱). 2초.
-	 *
-	 * <p><b>지속 시간보다 훨씬 짧아야 한다.</b> 효과가 한 번이라도 끝까지 닳으면 바닐라가
-	 * 그것을 제거하고, 다음 갱신에서 다시 붙으면서 <b>화면의 아이콘이 깜빡인다.</b> 남은 시간이
-	 * 충분할 때 같은 등급으로 다시 걸면 바닐라 {@code MobEffectInstance.update} 가 시간만
-	 * 늘리므로 제거·추가가 일어나지 않고, 따라서 깜빡임도 없다.
+	 * <p>상태이상이 아니게 되었으므로 이제 「효과를 다시 건다」가 아니라 <b>「아직 살아 있다」를
+	 * 적는다</b>는 뜻이다. {@link #DIG_LAPSE_TICKS} 보다 <b>반드시 짧아야</b> 한다 — 같거나 길면
+	 * 선언이 닿기 전에 시효가 지나 곡괭이가 주기마다 빨라졌다 느려진다.
 	 */
 	static final int DIG_REFRESH_INTERVAL = 40;
+
+	/**
+	 * 마지막 선언에서 이만큼 지나면 곡괭이가 <b>스스로</b> 돌아온다(틱). 3초.
+	 *
+	 * <p>{@code TrialHotbarLock.LAPSE_TICKS} 와 같은 장치다. 우리가 한 번이라도 틱을 못 받으면
+	 * 그때부터 이 값만큼만 더 무디고 저절로 풀린다 — <b>영영 무뎌진 곡괭이가 생길 수 없는 이유가
+	 * 이 한 줄이다.</b> 서버 강제 종료처럼 {@link #clearState()} 를 지나지 못하는 길이 아직 남아
+	 * 있고, 상태이상과 달리 이쪽은 바닐라가 대신 지워 주지 않는다.
+	 *
+	 * <p>{@link #DIG_REFRESH_INTERVAL}(40) 보다 길고 너무 길지 않은 값이다. 전투가 끝나거나
+	 * 크리스탈이 전멸하면 이만큼 뒤에 곡괭이가 돌아온다.
+	 */
+	static final int DIG_LAPSE_TICKS = 60;
 
 	/** 우리를 살피는 간격(틱). 2초. 사람이 깨는 속도보다 훨씬 빠르다. */
 	static final int CAGE_REPAIR_INTERVAL = 40;
@@ -109,6 +152,25 @@ public final class TrialCrystalGuard {
 	 * <p>바닐라의 {@code 0..3} 과 같다. 크리스탈은 바닥에서 1칸 위에 뜬다.
 	 */
 	static final int CAGE_TOP = 3;
+
+	// ------------------------------------------------------------------ 상태
+
+	/**
+	 * 지금 곡괭이가 무뎌진 사람들 → 마지막으로 그것을 선언한 틱.
+	 *
+	 * <p>정적 맵인 이유는 위험이 값(레코드)이라 상태를 들 수 없기 때문이다. 상태이상을 걸던 때는
+	 * 바닐라가 상태를 들어 주었지만, 직접 깎는 쪽으로 옮긴 뒤로는 <b>「누가 무뎌져 있는가」를 우리가
+	 * 들어야 한다.</b>
+	 *
+	 * <p>열쇠가 {@link ServerPlayer} 가 아니라 <b>UUID</b> 인 것이 중요하다. 죽어서 개체가 갈려도
+	 * 리스폰한 사람에게 그대로 붙어 있고, 재접속하면 명단에서 빠졌다가 돌아온 첫 틱에 다시 선언된다.
+	 *
+	 * <p>⚠ <b>이번 명단에 없는 열쇠를 지우는(retainAll) 방식을 쓰지 말 것.</b> 이 맵은 팀이 아니라
+	 * 사람으로 열쇠를 잡는데 {@link #tick} 은 팀마다 따로 불린다 — 두 팀이 동시에 엔드에 있으면
+	 * A 팀의 틱이 B 팀의 선언을 지운다. {@code TrialHotbarLock.LOCKS} 가 같은 함정을 같은 방법으로
+	 * (시각으로) 피한다.
+	 */
+	private static final java.util.Map<java.util.UUID, Long> BLUNTED = new java.util.HashMap<>();
 
 	private TrialCrystalGuard() {
 	}
@@ -163,13 +225,59 @@ public final class TrialCrystalGuard {
 		}
 		if (digDue && members != null) {
 			for (ServerPlayer member : members) {
-				member.addEffect(digSlowdownEffect());
+				// 걸어 두는 것이 아니라 「아직 무디다」를 적는다. 실제로 깎는 자리는
+				// scaleDestroySpeed 이고, 적힌 시각이 오래되면 저절로 풀린다(DIG_LAPSE_TICKS).
+				BLUNTED.put(member.getUUID(), now);
 			}
+			// 오래된 선언을 버린다. 접속을 끊은 사람과 사라진 팀이 여기서 함께 정리된다.
+			// 남아 있어도 해는 없다 — 읽는 쪽이 시각을 본다. 이것은 살림일 뿐이다.
+			BLUNTED.values().removeIf(seenAt -> now - seenAt > DIG_LAPSE_TICKS);
 		}
 	}
 
+	// ------------------------------------------------------------------ 무딘 곡괭이
+
+	/**
+	 * {@code Player.getDestroySpeed} 가 내놓은 값에 무뎌짐을 먹인다.
+	 *
+	 * <p>{@code PlayerMiningSpeedMixin} 이 {@code mining_speed} 증강 다음에 부른다. 무뎌져 있지
+	 * 않거나 서버 쪽 플레이어가 아니면 받은 값을 <b>그대로</b> 돌려주므로 바닐라와 완전히 같다.
+	 *
+	 * <p>{@code holder.level().getGameTime()} 을 여기서 직접 묻는다. 다른 시련 코드가 받은
+	 * {@code now} 를 쓰는 것과 다른데, 이 자리는 <b>시련의 틱이 아니라 블록을 캐는 길</b>이라
+	 * 넘겨받을 {@code now} 가 없다. {@code TrialHotbarLock.stiff} 도 같은 이유로 같은 것을 부른다.
+	 *
+	 * @param base {@code getDestroySpeed} 의 원래 반환값
+	 * @return 배율을 먹인 값. 해당 없으면 {@code base} 그대로
+	 */
+	public static float scaleDestroySpeed(@Nullable net.minecraft.world.entity.player.Player player,
+			float base) {
+		if (!(base > 0.0F) || !Float.isFinite(base) || !(player instanceof ServerPlayer holder)) {
+			return base;
+		}
+		Long seenAt = BLUNTED.get(holder.getUUID());
+		if (seenAt == null) {
+			return base;
+		}
+		long since = holder.level().getGameTime() - seenAt;
+		if (since < 0L || since > DIG_LAPSE_TICKS) {
+			return base;
+		}
+		float scaled = (float) (base * DIG_SLOWDOWN_MULTIPLIER);
+		// 0 이나 음수가 되면 그 블록을 영영 캘 수 없다. 이 카드는 시간을 빼앗는 것이지
+		// 채굴을 막는 것이 아니다 — 그럴 바에는 원래 값이 낫다.
+		return Float.isFinite(scaled) && scaled > 0.0F ? scaled : base;
+	}
+
+
 	/**
 	 * 월드가 바뀌거나 전투가 끝날 때.
+	 *
+	 * <p><b>무뎌진 곡괭이도 여기서 전부 돌려놓는다.</b> 상태이상이던 때는 지속 시간이 닳으면
+	 * 바닐라가 알아서 지웠지만, 직접 깎는 쪽으로 옮긴 뒤로는 우리 맵이 곧 사실이다. 여기는
+	 * {@code SERVER_STOPPED} 에서도 불려 월드를 만질 수 없는데, 이 맵을 비우는 것은 월드를
+	 * 건드리지 않으므로 그 자리에서도 안전하다 — <b>사람에게 아무것도 걸어 두지 않았다</b>는
+	 * 것이 이 방식의 값어치다.
 	 *
 	 * <p><b>깃발을 조건 없이 내린다.</b> 놓은 쇠창살은 되돌리지 않는다 — 월드에 남은 블록을
 	 * 나중에 지우려면 「우리가 놓은 것」을 기억해야 하는데, 그 기억은 서버 재시작 한 번으로
@@ -181,6 +289,7 @@ public final class TrialCrystalGuard {
 	 */
 	public static void clearState() {
 		CrystalWatch.setArrowImmune(false);
+		BLUNTED.clear();
 	}
 
 	// ------------------------------------------------------------------ 쇠창살 우리
@@ -295,24 +404,4 @@ public final class TrialCrystalGuard {
 				.setValue(IronBarsBlock.EAST, wallAlongX && dx != CAGE_HALF_WIDTH);
 	}
 
-	/**
-	 * 한 번 걸 채굴 피로.
-	 *
-	 * <p>인자 셋은 {@code (ambient, showParticles, showIcon)} 이고 이 저장소가 쓰는 조합
-	 * {@code (false, false, true)} 그대로다({@code PerkResonantMining.grantHaste} 와 같다).
-	 *
-	 * <ul>
-	 *   <li>{@code ambient = false} — 비컨처럼 「주변에서 받는 것」이 아니다. 참으로 두면
-	 *       아이콘 테두리가 흐려져 원인을 짐작하기 어려워진다.</li>
-	 *   <li>{@code showParticles = false} — 2초마다 다시 걸리는 효과라 입자를 켜면 전투 내내
-	 *       사람 주위에 안개가 낀다. 크리스탈과 드래곤을 봐야 하는 판이다.</li>
-	 *   <li>{@code showIcon = true} — <b>아이콘은 켠다.</b> 곡괭이가 갑자기 느려진 이유를
-	 *       화면에서 읽을 수 없으면 카드가 아니라 버그로 보인다. 지속 시간이 갱신 주기보다
-	 *       훨씬 길어 아이콘이 사라졌다 나타나는 일은 없다.</li>
-	 * </ul>
-	 */
-	static MobEffectInstance digSlowdownEffect() {
-		return new MobEffectInstance(MobEffects.MINING_FATIGUE, DIG_SLOWDOWN_TICKS,
-				DIG_SLOWDOWN_AMPLIFIER, false, false, true);
-	}
 }

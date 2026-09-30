@@ -35,7 +35,7 @@ public record PerkSyncPayload(List<Owned> owned, int pendingCount, String choose
 	 * @param rarity      등급 이름. 화면에서 색을 고르는 데 쓴다
 	 * @param setTypes    이 증강이 속한 세트 유형 이름들을
 	 *                    {@link PerkOfferPayload.PerkOption#SET_TYPE_JOINER} 로 이은 것.
-	 *                    어디에도 안 들어가는 증강이 열두 개라 <b>빈 문자열이 정상</b>이다
+	 *                    어디에도 안 들어가는 증강이 열한 개라 <b>빈 문자열이 정상</b>이다
 	 */
 	public record Owned(String name, String description, String rarity, String setTypes) {
 		public static final StreamCodec<RegistryFriendlyByteBuf, Owned> CODEC =
@@ -47,7 +47,7 @@ public record PerkSyncPayload(List<Owned> owned, int pendingCount, String choose
 						Owned::new);
 
 		public Owned {
-			// 무유형 증강이 열두 개다. 서버 쪽 null 하나로 패킷 인코딩이 터지면 안 된다.
+			// 무유형 증강이 열한 개다. 서버 쪽 null 하나로 패킷 인코딩이 터지면 안 된다.
 			setTypes = setTypes == null ? "" : setTypes;
 		}
 

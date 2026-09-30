@@ -1039,9 +1039,12 @@ class TrialRisksTest {
 	/**
 	 * 체력 80% 풀에 카드가 정확히 한 장이다.
 	 *
-	 * <p>이 자리는 룰렛을 돌리지 않고 정해진 카드의 화면만 띄운다
-	 * ({@link TrialCatalog.Reveal#FIXED_SCREEN}). 카드가 둘이 되는 순간 <b>둘 중 하나가 영영 안
-	 * 나오거나</b>, 결과가 정해진 화면이 거짓말을 하게 된다. 늘리려면 자리의 연출부터 볼 것.
+	 * <p>이 자리는 룰렛도 돌리지 않고 <b>화면도 띄우지 않는다</b>({@link TrialCatalog.Reveal#SILENT}).
+	 * 사람이 「80프로떄도 착지강화라고 카드가 안나오고 그냥 안띄워도되니 화면에 강화만 시켜주고」라고
+	 * 정해 {@code FIXED_SCREEN} 에서 옮겨 왔고, 그 자리를 {@link TrialEmpower} 가 「세졌다」로 메운다.
+	 *
+	 * <p>그래서 카드가 둘이 되면 <b>어느 것이 걸렸는지 알 길이 아예 없어진다.</b> 화면이 있던
+	 * 때보다 더 나쁘다 — 늘리려면 자리의 연출부터 다시 정할 것.
 	 */
 	@Test
 	void 체력_80_풀에는_카드가_한_장뿐이다() {
@@ -1049,8 +1052,8 @@ class TrialRisksTest {
 				TrialCatalog.offerable(TrialCatalog.Trigger.HEALTH_80, List.of());
 		assertEquals(1, cards.size(), "실제로 들어 있는 카드: " + cards);
 		assertEquals("sharedfate:landing_shock", cards.getFirst().id());
-		assertEquals(TrialCatalog.Reveal.FIXED_SCREEN, TrialCatalog.Trigger.HEALTH_80.reveal(),
-				"한 장짜리 자리에서 이름이 돌면 결과가 정해진 굴림을 보여 주는 것이 된다");
+		assertEquals(TrialCatalog.Reveal.SILENT, TrialCatalog.Trigger.HEALTH_80.reveal(),
+				"화면을 없앤 것은 사람이 정한 것이다. 이름이 어디에도 안 뜨므로 카드는 한 장이어야 한다");
 	}
 
 	/**

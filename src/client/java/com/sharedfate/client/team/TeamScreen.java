@@ -653,7 +653,7 @@ public class TeamScreen extends Screen {
 		List<PerkSyncPayload.Owned> owned = PerkClientState.owned();
 		for (PerkSyncPayload.Owned perk : owned) {
 			// 이름 뒤에 세트 유형을 흐린 글씨로 붙인다 — 「짐꾼 가호」처럼. 어디에도 안 들어가는
-			// 증강 열둘에는 안 붙는다.
+			// 증강 열하나에는 안 붙는다.
 			Component title = Component.literal("· " + perk.name())
 					.withStyle(style -> style.withColor(rarityColor(perk.rarity())));
 			if (perk.hasSetTypes()) {

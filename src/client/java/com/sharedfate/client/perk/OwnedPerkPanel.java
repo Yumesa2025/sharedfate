@@ -111,7 +111,7 @@ public final class OwnedPerkPanel {
 		addRuinCoords(font, wrap);
 		for (PerkSyncPayload.Owned perk : owned) {
 			// 이름 뒤에 세트 유형을 흐린 글씨로 붙인다 — 「짐꾼 가호」처럼. 한 줄에 다 넣는
-			// 이유는 줄이 늘면 목록이 금세 길어져서다. 무유형 증강 열둘에는 안 붙는다.
+			// 이유는 줄이 늘면 목록이 금세 길어져서다. 무유형 증강 열하나에는 안 붙는다.
 			Component title = Component.literal("· " + perk.name())
 					.withStyle(style -> style.withColor(rarityColor(perk.rarity())));
 			if (perk.hasSetTypes()) {

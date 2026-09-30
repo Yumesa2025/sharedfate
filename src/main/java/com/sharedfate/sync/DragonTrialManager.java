@@ -104,7 +104,17 @@ public final class DragonTrialManager {
 	 * <b>앞 자리의 지연</b>을 물려받는다.
 	 */
 	private static final Map<UUID, Long> READY_AT = new HashMap<>();
-	/** 전투를 열 때의 크리스탈 수. 「처음 깨졌다」를 이것과 비교해 판단한다. */
+	/**
+	 * 기준 크리스탈 수. 「처음 깨졌다」·「전멸」을 이것과 비교해 판단한다.
+	 *
+	 * <p><b>전투가 열릴 때가 아니라 {@link TrialEntrance 입장 연출}이 끝난 뒤에 처음 적힌다.</b>
+	 * 연출이 열 개를 거뒀다 되살리므로, 거두기 전의 개수를 기준으로 삼으면 그 사이에 두 자리가
+	 * 헛되게 터진다. 적는 자리는 {@link #detectTriggers} 하나다.
+	 *
+	 * <p>저장하지 않는다. 재시작하면 <b>그때 남아 있는 개수</b>로 다시 적힌다 — 이미 터진 자리는
+	 * {@link DragonTrialSession} 이 기억하고 있어 다시 세지 않고, 남은 개수가 0 이 되는 순간은
+	 * 그대로 잡힌다.
+	 */
 	private static final Map<UUID, Integer> CRYSTALS_AT_START = new HashMap<>();
 	/**
 	 * 팀마다 다음으로 「밖에 남은 사람이 있나」를 볼 시각.
@@ -427,7 +437,11 @@ public final class DragonTrialManager {
 				: (dragon == null ? 0.0F : dragon.getMaxHealth());
 		// 엔드에 들어선 것 자체가 첫 자리다. 끈 팀에서는 fire 가 거짓을 돌려주고 끝난다.
 		session.fire(TrialCatalog.Trigger.ENTRY);
-		CRYSTALS_AT_START.put(team.teamId(), countCrystals(end));
+		// ⚠ 기준 크리스탈 수를 여기서 적지 않는다. 시련을 켠 팀에서는 TrialEntrance 가 곧
+		// 크리스탈을 전부 거두므로, 여기서 적어 둔 값은 그 순간 「열 개였는데 0 이 됐다」가 되어
+		// 두 자리를 헛되게 터뜨린다. 적는 자리는 detectTriggers 하나뿐이고, 입장 연출이
+		// 끝난 뒤 첫 틱이다.
+		CRYSTALS_AT_START.remove(team.teamId());
 		SharedFateMod.LOGGER.info(
 				"[END] 팀 '{}' 엔드 전투 시작 — 시련 {} · 인원 {}명 · 드래곤 체력 {} · 크리스탈 {}개",
 				team.name(), trials ? "켬" : "끔(바닐라 드래곤전)", memberCount, target,
@@ -517,7 +531,7 @@ public final class DragonTrialManager {
 				continue;
 			}
 			List<ServerPlayer> members = membersOf(server, team, end);
-			boolean lastStandBegins = detectTriggers(end, dragon, session);
+			boolean lastStandBegins = detectTriggers(end, dragon, session, now);
 			// ⚠ 최후의 저항은 카드가 아니라 별개의 보스전이고, 열리는 순간 아래 셋을 전부
 			// 멈춘다 — 룰렛·시련·패시브. 「시련이 전부 멈춥니다」가 이 continue 한 줄이다.
 			DragonLastStand.Standing standing = DragonLastStand.tick(server, end, dragon, team,
@@ -530,6 +544,10 @@ public final class DragonTrialManager {
 				}
 				continue;
 			}
+			// 입장 연출. 룰렛보다 <b>먼저</b> 돌아야 한다 — 룰렛이 뜨면 TrialFreeze 가 판을
+			// 얼려 연출이 그 자리에서 멈춘다. 겹치지 않게 하는 것은 순서가 아니라
+			// TrialCatalog.DELAY_SETTLE_TICKS 가 연출 길이와 한 상수로 묶여 있는 것이다.
+			TrialEntrance.tick(end, dragon, members, session, now);
 			openTrialWhenDue(server, end, session, members, now);
 			// 패시브는 시련과 다르다. 팀이 뽑는 것이 아니라 언제나 있는 판이므로 카드와 무관하게
 			// 돈다 — 섞으면 「이번 판이 왜 어려웠나」를 나눌 수 없다.
@@ -589,21 +607,47 @@ public final class DragonTrialManager {
 	 * <p>체력은 <b>강화된 최대치</b> 기준이다. 크리스탈로 회복해 문턱을 오르내려도
 	 * {@link DragonTrialSession#fire} 가 처음 한 번만 센다.
 	 *
+	 * <h2>⚠ 입장 연출이 도는 동안에는 크리스탈을 세지 않는다</h2>
+	 *
+	 * <p>{@link TrialEntrance} 가 열 개를 한꺼번에 거두고 잠시 뒤 되살린다. 그 사이에 세면
+	 * <b>팀이 아무것도 하지 않았는데</b> 「첫 크리스탈」과 「크리스탈 전멸」이 같은 틱에 터진다.
+	 *
+	 * <p>그래서 기준값({@link #CRYSTALS_AT_START})을 <b>전투가 열릴 때가 아니라 연출이 끝난 뒤에</b>
+	 * 처음 적는다. 그때 서 있는 개수가 이 전투의 기준이고, 되살아난 크리스탈은 무적도 풀려 바닐라와
+	 * 같은 상태다. 부활이 <b>시작될 때</b> 이미 크리스탈이 서는데도 연출이 완전히 끝날 때까지
+	 * 미루는 이유는 {@link TrialEntrance} 클래스 설명에 있다 — 그 구간에 사람이 기둥 위로 올라오면
+	 * 그 크리스탈이 거둬지므로, 거기서 기준값을 적었다면 「첫 크리스탈」이 사람 하나가 올라선
+	 * 것만으로 터진다.
+	 *
+	 * @param now 지금 게임 시각. 입장 연출이 아직 도는지를 이 값으로 판단한다
 	 * @return {@code HEALTH_30} 이 <b>이번 틱에 처음</b> 터졌는가. 곧 최후의 저항이 열리는
 	 *         순간인가다. 진입 연출은 딱 한 번만 돌아야 하는데 「처음 한 번」을 아는 곳이
 	 *         {@link DragonTrialSession#fire} 하나뿐이라 그 답을 여기서 내보낸다 —
 	 *         {@code DragonLastStand} 가 체력 비율을 다시 재면 문턱이 두 곳이 된다
 	 */
 	private static boolean detectTriggers(ServerLevel end, EnderDragon dragon,
-			DragonTrialSession session) {
-		int crystals = countCrystals(end);
-		Integer atStart = CRYSTALS_AT_START.get(session.teamId());
-		if (atStart != null && atStart > 0) {
-			if (crystals < atStart) {
-				session.fire(TrialCatalog.Trigger.FIRST_CRYSTAL);
+			DragonTrialSession session, long now) {
+		if (TrialEntrance.managesCrystals(session, now)) {
+			// 기준값도 적지 않는다. 연출이 끝난 뒤 첫 틱에 그때의 개수로 처음 적힌다.
+			CRYSTALS_AT_START.remove(session.teamId());
+		} else {
+			int crystals = countCrystals(end);
+			// ⚠ 0 을 기준값으로 굳히지 않는다. 굳히면 아래 `atStart > 0` 이 영영 거짓이라
+			// 크리스탈 자리 둘이 그 전투 내내 죽는다 — 기둥이 없는 판이나 되살릴 자리를 하나도
+			// 못 찾은 경우가 그 길이다. 안 적어 두면 크리스탈이 생기는 첫 틱에 적힌다.
+			Integer recorded = CRYSTALS_AT_START.get(session.teamId());
+			if (recorded == null && crystals > 0) {
+				recorded = crystals;
+				CRYSTALS_AT_START.put(session.teamId(), crystals);
 			}
-			if (crystals == 0) {
-				session.fire(TrialCatalog.Trigger.ALL_CRYSTALS);
+			int atStart = recorded == null ? 0 : recorded;
+			if (atStart > 0) {
+				if (crystals < atStart) {
+					session.fire(TrialCatalog.Trigger.FIRST_CRYSTAL);
+				}
+				if (crystals == 0) {
+					session.fire(TrialCatalog.Trigger.ALL_CRYSTALS);
+				}
 			}
 		}
 
@@ -804,12 +848,20 @@ public final class DragonTrialManager {
 				openFixedScreen(server, session, members, drawnAt, result);
 				yield false;
 			}
-			// 판을 멈추지도, 화면을 띄우지도 않는다. 카드만 조용히 걸린다.
+			// 판을 멈추지도, 카드 화면을 띄우지도 않는다. 카드만 조용히 걸린다.
 			//
 			// ⚠ 얼음이 없으면 「얼음이 끝나는 틱」도 없다. 미뤄 두면 카드가 영영 안 걸리므로
 			// 여기서 확정한다. 미룰 이유였던 「연출 도중 서버가 내려간다」도 성립하지 않는다 —
 			// 연출이 없어 뽑는 틱과 쌓는 틱이 같고, 그 사이에 내려갈 틈이 없다.
-			case SILENT -> true;
+			//
+			// 화면이 없다고 아무것도 알리지 않으면 「달성했는데 왜 아무 일도 없지」가 된다.
+			// 사람이 체력 80% 에서 카드 화면을 걷어내며 「화면에 강화만 시켜주고」라고 했고,
+			// 그 「강화」가 TrialEmpower 다 — 무엇이 걸렸는지는 말하지 않고 「세졌다」만 말한다.
+			// ⚠ 어느 카드가 걸렸는지를 여기서 읽지 않는다. 자리가 늘어도 같은 신호를 쓴다.
+			case SILENT -> {
+				TrialEmpower.play(end, findDragon(end), members);
+				yield true;
+			}
 		};
 		if (decideNow) {
 			applyChoice(session, result.id(), now);
@@ -836,6 +888,13 @@ public final class DragonTrialManager {
 
 	/**
 	 * 판은 멈추되 <b>룰렛은 돌지 않는</b> 자리. 정해진 카드의 이름과 설명만 보여 준다.
+	 *
+	 * <h2>⚠ 지금 이 길로 오는 자리가 하나도 없다 — 그래도 지우지 말 것</h2>
+	 *
+	 * <p>{@code Trigger.HEALTH_80} 이 유일한 사용자였는데 사람이 카드 화면을 걷어내
+	 * {@link TrialCatalog.Reveal#SILENT} 로 옮겼다. {@code switch} 갈래는 남아 있지만
+	 * <b>실행되지 않는다.</b> 까닭과 되살릴 조건은 {@link TrialCatalog.Reveal#FIXED_SCREEN} 에
+	 * 적어 두었다.
 	 *
 	 * <h2>후보를 한 장만 보낸다</h2>
 	 *

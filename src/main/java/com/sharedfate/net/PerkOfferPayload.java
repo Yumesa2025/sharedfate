@@ -66,7 +66,7 @@ public record PerkOfferPayload(int milestone, boolean canChoose, boolean forced,
 		public PerkOption {
 			// 아이콘은 없어도 되는 값이라 서버 쪽 null 하나로 패킷 인코딩이 터지면 안 된다.
 			icon = icon == null ? "" : icon;
-			// 유형도 마찬가지다. 무유형 증강이 열여섯 개나 되므로 빈 값이 정상이다.
+			// 유형도 마찬가지다. 무유형 증강이 열한 개나 되므로 빈 값이 정상이다.
 			setTypes = setTypes == null ? "" : setTypes;
 			setTypeIds = setTypeIds == null ? "" : setTypeIds;
 		}

@@ -44,6 +44,17 @@ import java.util.Set;
  * <p>대신 되살릴 자리는 <b>첫 틱에 정해진다.</b> 예전처럼 매 틱 다시 셀 수 없다 — 이미 물건이
  * 서 있는데 대상 목록이 바뀌면 화면과 코드가 어긋난다.
  *
+ * <h2>부르는 곳이 둘이다 — 카드와 입장 연출</h2>
+ *
+ * <p>「부활」 카드({@code sharedfate:crystal_revival}) 말고 {@link TrialEntrance} 도 이 연출을
+ * 그대로 돌린다. 사람이 입장 연출을 정할 때 <b>「이건 이미만든 크리스탈 부활로 연출하면
+ * 될거같은데」</b>라고 했고, 그 말대로 여기를 다시 짜지 않고 불렀다.
+ *
+ * <p>⚠ 그래서 <b>{@link #SPENT} 의 열쇠가 두 자리에서 만들어진다.</b> 열쇠는 「받은 틱 + 위험
+ * 값」이므로 둘이 같은 틱에 같은 값으로 시작하면 한 번으로 합쳐진다. 입장 연출은 그 길을 막으려고
+ * {@code showTicks} 를 카드와 <b>일부러 다르게</b> 두었다({@code TrialEntrance.REVIVE_SHOW_TICKS}).
+ * 여기를 고치는 사람은 그쪽도 함께 볼 것.
+ *
  * <h2>무적은 「영구」가 아니라 「시간」이다 — 이 카드에서 가장 위험한 자리</h2>
  *
  * <p>영영 무적인 크리스탈이 하나라도 남으면 <b>전투가 끝나지 않는다.</b> 그래서 26.3 의 두 가지
@@ -150,8 +161,45 @@ public final class TrialCrystalRevive {
 	 */
 	static final int GUARD_MARGIN_TICKS = 40;
 
-	/** 연출을 다시 그리는 간격(틱). 매 틱 그리면 자리 열 곳의 고리만으로 파티클 패킷이 넘친다. */
-	private static final int PULSE_TICKS = 4;
+	/**
+	 * 자리들을 <b>몇 틱에 나눠</b> 그리는가. 한 틱에 {@code ⌈자리 수 / 이 값⌉} 곳만 그린다.
+	 *
+	 * <h2>예전에는 4틱마다 열 곳을 한꺼번에 그렸다 — 그 틱이 예산을 혼자 넘겼다</h2>
+	 *
+	 * <p>자리 하나가 고리 {@value #RING_POINTS} + 빔 덧칠 {@value #BEAM_POINTS} 이라 열 곳이면
+	 * <b>640점</b>이다. 이 판의 한 틱 예산은 400~440
+	 * ({@code TrialEnderPulse.MAX_POINTS_PER_TICK} · {@code TrialLandingShock.MAX_POINTS_PER_TICK})
+	 * 이고 한 카드 상한은 {@link DragonFireBarrage#MARK_MAX_POINTS} 다. 게다가 시련은 전투가 끝날
+	 * 때까지 <b>쌓이므로</b> 그 틱에 남의 고리도 함께 나간다.
+	 *
+	 * <p>고친 방법은 「종말의 비」({@code TrialEndRain.MARK_MAX_STRIDE})와 「착지 충격」
+	 * ({@code TrialLandingShock.MAX_STRIDE})이 쓰는 <b>나눠 그리기</b>다. 점을 하나도 지우지
+	 * 않았다 — 자리마다 그리는 그림은 예전과 똑같고, 그 자리의 차례가 매 4틱이 아니라
+	 * {@value #SEAT_STRIDE}틱에 한 번 돌아올 뿐이다. 한 바퀴에 쓰는 점의 합도 640 그대로다.
+	 *
+	 * <h2>⚠ 8보다 작아야 한다 — 먼지 수명에 묶인 값이다</h2>
+	 *
+	 * <p>나눠 그려도 열 자리가 <b>동시에</b> 보이는 것은 먼저 찍은 점이 아직 살아 있기 때문이다.
+	 * 고리도 빔 덧칠도 {@link TrialWarning#dust} 의 먼지이고, 26.3 {@code DustParticleBase} 가
+	 * 수명을 {@code max(1, (int)(8.0 / (굴림×0.8 + 0.2)) × 크기)} 로 잡는다 — 크기가 1.0 이라
+	 * <b>최소 8틱</b>이다. 차례가 8틱 이상 만에 돌아오면 다시 그리기 전에 첫 점이 죽어
+	 * <b>자리가 깜빡인다.</b> 5 는 그 하한에서 세 틱 아래라 항상 겹친다.
+	 *
+	 * <p>10 을 <b>나누어 떨어지는</b> 수인 것도 값어치다. 6 이면 어떤 틱은 두 곳, 어떤 틱은 한
+	 * 곳이라 화면 밝기가 틱마다 뛴다. 5 면 매 틱 정확히 두 곳이다.
+	 *
+	 * <p>⚠ <b>고리나 덧칠을 다른 입자로 바꾸면 이 값의 근거가 함께 바뀐다.</b> 그때는
+	 * 그 입자의 수명 하한을 먼저 확인할 것.
+	 *
+	 * <h2>이 연출은 카드보다 입장에서 더 자주 온다</h2>
+	 *
+	 * <p>{@link TrialEntrance} 가 이 연출을 그대로 부르므로 <b>엔드에 들어갈 때마다</b> 이 점이
+	 * 나간다. 카드는 한 판에 뽑히지 않을 수도 있지만 입장은 언제나 있다 — 640점을 그냥 두면 안
+	 * 되는 이유가 그쪽에 있었다. 입장 연출은 같은 구간에 제 고리를 홀수 틱에 얹으므로
+	 * ({@code TrialEntrance.halo}) 두 파일을 합친 가장 바쁜 틱은
+	 * {@code tickPoints(10) + 28} 이다.
+	 */
+	static final int SEAT_STRIDE = 5;
 	/** 선 하나에 덧칠하는 점 수. 빔이 본선이고 이것은 덧칠이라 촘촘할수록 좋다. */
 	private static final int BEAM_POINTS = 24;
 	/**
@@ -273,10 +321,14 @@ public final class TrialCrystalRevive {
 	 *
 	 * <p>사람 목록을 받지 않는다. 자막을 걷어낸 뒤로 이 연출이 내보내는 것은 소리와 표식뿐이고
 	 * 둘 다 <b>크리스탈 자리</b>에서 나가므로, 누가 접속해 있는지를 알 필요가 없다.
+	 *
+	 * <p>⚠ <b>매 틱 전부에 하는 일과 이번 틱 몫만 하는 일이 나뉘어 있다.</b> 무적과 바닐라 빔은
+	 * 열 개 <b>전부</b>에 매 틱 다시 건다 — 무적은 한 틱만 빠뜨려도 그 틱에 깨질 수 있고, 빔은
+	 * 개체 데이터라 점 예산과 무관하다. 파티클(고리·덧칠)만 {@link #SEAT_STRIDE} 로 나눠 그린다.
 	 */
 	private static void show(ServerLevel end, @Nullable EnderDragon dragon, Key key, long granted,
 			long now, TrialCatalog.Risk.CrystalRevive risk) {
-		Vec3 perch = watchPoint(EndPillars.tops(end), WATCH_CLEARANCE);
+		Vec3 perch = perchOver(end);
 		if (dragon != null && dragon.isAlive() && perch != null) {
 			hold(dragon, perch);
 		}
@@ -314,11 +366,13 @@ public final class TrialCrystalRevive {
 				TrialWarning.sound(end, crystal.position(), stage);
 			}
 		}
-		if (TrialRisks.elapsedSinceGrant(now, granted) % PULSE_TICKS != 0L) {
-			return;
-		}
-		for (EndCrystal crystal : raised) {
-			Vec3 seat = crystal.position();
+		// 자리를 전부 그리지 않고 이번 틱의 몫만 그린다. 까닭과 상한은 SEAT_STRIDE 에 있다.
+		int phase = seatPhase(now, granted);
+		for (int index = 0; index < raised.size(); index++) {
+			if (!drawsSeat(index, phase)) {
+				continue;
+			}
+			Vec3 seat = raised.get(index).position();
 			if (stage != null && stage != TrialWarning.Stage.APPROACH) {
 				markSeat(end, seat);
 			}
@@ -329,7 +383,24 @@ public final class TrialCrystalRevive {
 	}
 
 	/**
+	 * 이 판에서 드래곤이 머무는 <b>중앙 상공</b>.
+	 *
+	 * <p>{@link #watchPoint} 와 {@link #WATCH_CLEARANCE} 를 묶어 한 줄로 만든 것뿐이다. 밖으로
+	 * 연 이유는 {@link TrialEntrance} 가 같은 점을 써야 하기 때문이다 — 입장 연출과 「부활」
+	 * 카드가 저마다 「중앙 상공」을 계산하면 <b>두 연출에서 드래곤이 다른 높이에 선다.</b>
+	 *
+	 * @return 기둥이 하나도 없으면 {@code null}
+	 */
+	static @Nullable Vec3 perchOver(@Nullable ServerLevel end) {
+		return watchPoint(EndPillars.tops(end), WATCH_CLEARANCE);
+	}
+
+	/**
 	 * 드래곤을 목표 자리로 당긴다.
+	 *
+	 * <p>{@link TrialEntrance} 도 이것을 쓴다(입장 연출의 「중앙 상공에 나타난다」). 밖으로 연
+	 * 이유는 아래 두 줄 때문이다 — 부위를 함께 밀고 위치 동기화 깃발을 세우는 일을 빠뜨리면
+	 * <b>보이는 곳에 없는데 맞는</b> 한 틱이 생기는데, 그 함정을 연출마다 다시 밟게 할 이유가 없다.
 	 *
 	 * <p>당기기만 하고 속도를 0 으로 눌러 둔다. 비행 AI 는 매 틱 제 목표를 향해 속도를 다시
 	 * 계산하므로 우리가 이기는 유일한 방법은 <b>매 틱 자리를 다시 쓰는 것</b>이다. 가까워지면
@@ -350,7 +421,7 @@ public final class TrialCrystalRevive {
 	 *       이 깃발은 {@code sendChanges} 가 읽고 바로 내려 주는 일회용이라 되돌릴 것이 없다.</li>
 	 * </ul>
 	 */
-	private static void hold(EnderDragon dragon, Vec3 perch) {
+	static void hold(EnderDragon dragon, Vec3 perch) {
 		Vec3 from = dragon.position();
 		Vec3 next = towards(from, perch, WATCH_PULL, WATCH_SNAP);
 		dragon.setPos(next.x, next.y, next.z);
@@ -606,6 +677,49 @@ public final class TrialCrystalRevive {
 	}
 
 	// ------------------------------------------------------------------ 월드 없이 도는 계산
+
+	/**
+	 * 이번 틱에 그릴 자리의 몫.
+	 *
+	 * <p>{@link TrialRisks#elapsedSinceGrant} 에서 뽑으므로 매 틱 1씩 늘고
+	 * {@value #SEAT_STRIDE} 마다 처음으로 돌아온다 — 빈 차례가 순서대로 메워지는 것이 이 값의
+	 * 일이다. 월드 시간을 그대로 쓰지 않는 것은 되감긴 판에서 음수가 나오기 때문이다.
+	 */
+	static int seatPhase(long now, long granted) {
+		return (int) Math.floorMod(TrialRisks.elapsedSinceGrant(now, granted), (long) SEAT_STRIDE);
+	}
+
+	/**
+	 * 이 자리를 이번 틱에 그리는가.
+	 *
+	 * <p>자리 번호를 {@link #SEAT_STRIDE} 로 나눈 나머지가 이번 몫과 같을 때만이다. 그래서
+	 * <b>어떤 자리도 {@value #SEAT_STRIDE}틱 안에 반드시 한 번 차례가 온다</b> — 먼지 수명(최소
+	 * 8틱)보다 짧아 열 자리가 언제나 동시에 보인다.
+	 */
+	static boolean drawsSeat(int index, int phase) {
+		if (index < 0) {
+			return false;
+		}
+		return Math.floorMod(index - phase, SEAT_STRIDE) == 0;
+	}
+
+	/**
+	 * 자리가 이만큼일 때 <b>가장 바쁜 한 틱</b>에 나가는 점 수.
+	 *
+	 * <p>고리와 덧칠이 같은 틱에 나가는 자리 수({@code ⌈자리 / 스트라이드⌉})로 센다. 예산을 묻는
+	 * 자리는 늘 나쁜 쪽을 봐야 하므로 올림이고, 고리가 그려지지 않는 층
+	 * ({@link TrialWarning.Stage#APPROACH})은 이보다 적게 나간다.
+	 *
+	 * <p>{@code TrialCrystalReviveTest} 가 이 값을 예산에 대고 붙들어 둔다 — 점을 늘리는 사람이
+	 * 「그래서 몇 점인가」를 손으로 세지 않게 하는 것이 이 메서드의 존재 이유다.
+	 */
+	static int tickPoints(int seats) {
+		if (seats <= 0) {
+			return 0;
+		}
+		int drawn = (seats + SEAT_STRIDE - 1) / SEAT_STRIDE;
+		return drawn * (RING_POINTS + BEAM_POINTS);
+	}
 
 	/**
 	 * 이번 틱에 무엇을 할 차례인가. <b>{@link Step#REVIVE} 를 돌려주면서 카드를 소모한다.</b>

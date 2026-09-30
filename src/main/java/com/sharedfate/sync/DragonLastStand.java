@@ -36,21 +36,34 @@ import java.util.UUID;
 /**
  * 체력 30% — <b>최후의 저항.</b> 카드 한 장이 아니라 별개의 보스전이다.
  *
- * <h2>이 파일이 무엇이고 무엇이 아닌가 — 세 파일이다</h2>
+ * <h2>이 파일이 무엇이고 무엇이 아닌가 — <b>일곱 파일이다</b></h2>
  *
- * <p>여기 있는 것은 <b>진입 연출 · 붙박이 드래곤 · 바닐라 동작 제거 · 처치 처리 · 패턴을
- * 고르는 규칙</b>이다. 그리는 쪽과 안전지대는 파일이 따로다.
+ * <p>여기 있는 것은 <b>진입 · 붙박이 드래곤 · 바닐라 동작 제거 · 처치 처리 · 패턴을 고르는
+ * 규칙</b>이다. 그리는 쪽과 혼자 도는 시계들은 파일이 따로다.
  *
  * <table border="1">
- *   <caption>최후의 저항을 이루는 세 파일</caption>
+ *   <caption>최후의 저항을 이루는 일곱 파일</caption>
  *   <tr><th>파일</th><th>맡은 것</th></tr>
- *   <tr><td>{@code DragonLastStand}</td><td>진입 · 붙박이 · 처치 · {@link #allowed} 로 <b>고르기</b></td></tr>
- *   <tr><td>{@link DragonLastStandPatterns}</td><td>날개 퍼덕이기 · 부채꼴 브레스 · 번개 5개를 <b>그리기</b></td></tr>
+ *   <tr><td>{@code DragonLastStand}</td><td>진입 · 붙박이 · 처치 · {@link #allowed} 로 <b>고르기</b> ·
+ *       <b>시계의 원점</b>({@code Stand.clockBase})</td></tr>
+ *   <tr><td>{@link DragonLastStandEntry}</td><td><b>2페이지 진입 연출</b> — 드래곤이 내려오고
+ *       보라색 신호기 넷이 켜지고 체력이 차오르는 8초. <b>그동안 시계가 돌지 않는다</b></td></tr>
+ *   <tr><td>{@link DragonLastStandPatterns}</td><td>패턴 <b>넷</b>(날개 · 부채꼴 · 공허 흡입 ·
+ *       십자 균열)을 <b>그리기</b> + <b>상시 번개</b>(뽑히지 않고 혼자 도는 시계)</td></tr>
+ *   <tr><td>{@link DragonLastStandObjects}</td><td><b>오브젝트 파도</b> — 체력 25%·10% 에 두 번만.
+ *       뽑히지 않고 패턴과 <b>함께</b> 돈다</td></tr>
+ *   <tr><td>{@link DragonLastStandConePanel}</td><td>부채꼴의 <b>빨간 투명 면</b>(디스플레이 개체)</td></tr>
+ *   <tr><td>{@link DragonLastStandLights}</td><td><b>신호기 빛과 타이머 바</b>(디스플레이 개체).
+ *       진입 연출과 오브젝트 파도가 함께 쓴다</td></tr>
  *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대(월드 보더) — <b>혼자 도는 시계</b></td></tr>
+ *   <tr><td>{@link DragonLastStandDome}</td><td><b>반구 블록 파괴</b> — 뽑히지 않고 1초마다 도는
+ *       상시 규칙. 블록을 만지는 것은 <b>이 파일 하나뿐</b>이다</td></tr>
  * </table>
  *
  * <p>「왜 브레스가 안 나오지」는 <b>여기</b>({@link #allowed}), 「왜 빗나가지」는 <b>패턴</b>,
- * 「왜 파란 벽이 남았지」는 <b>지대</b> 쪽이다.
+ * 「왜 파란 벽이 남았지」는 <b>지대</b>, 「왜 내 발판이 없어졌지」는 <b>반구</b>, 「왜 아무 일도
+ * 안 일어나지」는 <b>진입 연출</b>(8초 동안 시계가 서 있다), 「이 떠 있는 크리스탈은 무엇이지」는
+ * <b>오브젝트 파도</b> 쪽이다.
  *
  * <h2>왜 카드가 아니라 제 파일인가</h2>
  *
@@ -252,10 +265,19 @@ public final class DragonLastStand {
 	static final float ENTRY_HEAL_FRACTION = 0.20F;
 
 	/**
-	 * 진입 직후 팀이 무적인 시간. 3초.
+	 * <b>진입 연출이 끝난 뒤</b> 팀이 더 무적인 시간. 3초.
 	 *
-	 * <p>화면을 띄우지 않는 자리라({@code Reveal.SILENT}) <b>이 3초가 읽을 시간</b>이기도 하다.
-	 * 방식은 {@code DragonTrialManager.ARRIVAL_GRACE_TICKS} 와 같은 저항 V 다 — 이 저장소가
+	 * <p>이 값이 세 곳을 한꺼번에 정한다 — 무적이 풀리는 틱, <b>첫 패턴을 고르는 틱</b>
+	 * ({@code Stand.nextPatternAt}), <b>상시 번개의 첫 볼리</b>
+	 * ({@code DragonLastStandPatterns.tickLightning}). 셋이 같은 틱이어야 「무적이 풀리는 순간
+	 * 판이 시작된다」가 성립한다.
+	 *
+	 * <p>⚠ <b>실제로 팀이 무적인 시간은 「진입 연출 길이 + 이 값」이다</b>
+	 * ({@code DragonLastStandEntry.LENGTH_TICKS} 160 + 60 = 11초). 예전에는 화면을 띄우지 않는
+	 * 자리라 이 3초가 「읽을 시간」이었는데, 지금은 연출 8초가 그 몫을 하고 이 3초는 <b>연출이
+	 * 끝나고 첫 패턴이 오기까지의 틈</b>이다.
+	 *
+	 * <p>방식은 {@code DragonTrialManager.ARRIVAL_GRACE_TICKS} 와 같은 저항 V 다 — 이 저장소가
 	 * 「무적」이라고 부르는 것이 그것이고, 두 자리가 다른 수단을 쓰면 「무적인데 아팠다」의
 	 * 원인이 두 곳이 된다.
 	 */
@@ -339,18 +361,59 @@ public final class DragonLastStand {
 	static final float CONE_BREATH_DAMAGE = 65.0F;
 
 	/**
-	 * 번개 5개의 <b>적히는</b> 피해.
+	 * 상시 번개의 <b>적히는</b> 피해.
 	 *
 	 * <p>「낙뢰」와 <b>같은 값</b>이다. 문서가 「낙뢰와 같은 방식」이라고 적어 둔 것을 값으로
 	 * 지킨 것이고, 그러려면 피해원도 같아야 한다 — {@code TrialRisks.detonate} 와 같은
 	 * {@code damageSources().lightningBolt()} 다. 무장 기준 한 대 <b>6.93</b> · 세 대
 	 * <b>20.79</b> 로 「큰 카드는 세 대에 전멸」에 그대로 얹힌다.
 	 *
-	 * <p>다섯 개가 한꺼번에 떨어져도 <b>한 사람이 받는 것은 한 발</b>이어야 한다. 겹치면 두 발
-	 * 13.86 이고 세 발이면 전멸이다 — 반경 2.55 짜리 다섯 곳을 놓을 때
-	 * {@code TrialRisks.reserveSpots} 를 반드시 지날 것.
+	 * <p>⚠ 열 개가 한꺼번에 떨어져도 <b>한 사람이 받는 것은 한 발</b>이어야 한다. 겹치면 두 발
+	 * 13.86 이고 세 발이면 전멸이다. <b>사람이 겹침을 허용했으므로</b> 그것을 지키는 것은
+	 * {@code TrialRisks.reserveSpots} 가 아니라 {@code DragonLastStandPatterns.strikeLightning}
+	 * 의 {@code break} 한 줄뿐이다 — 겹침 확률과 넓이를 재어 둔 표가 그쪽에 있다.
 	 */
 	static final float LIGHTNING_DAMAGE = 35.0F;
+
+	/**
+	 * 공허 흡입이 터질 때 원 안에 있으면 들어가는 <b>적히는</b> 피해. <b>사람이 정한 값이다.</b>
+	 *
+	 * <p>사람이 <b>「피해 35(무장 기준 6.9 — 큰 카드 한 대분)」</b>이라고 적었으므로 <b>값이
+	 * 피해원을 정했다</b> — {@code GearedDamage} 로 풀면 이렇다.
+	 *
+	 * <table border="1">
+	 *   <caption>35 가 무장한 사람에게 실제로 들어가는 양</caption>
+	 *   <tr><th>피해원</th><th>들어가는 값</th><th>사람이 적은 6.9 인가</th></tr>
+	 *   <tr><td><b>{@code lightningBolt()}</b></td><td><b>6.93</b></td><td>그렇다 ← 고른 것</td></tr>
+	 *   <tr><td>{@code explosion(null, null)}</td><td>10.40</td><td>아니다</td></tr>
+	 *   <tr><td>{@code magic()}</td><td>12.60</td><td>아니다 · 방어도를 지나간다</td></tr>
+	 * </table>
+	 *
+	 * <p>{@link #LIGHTNING_DAMAGE} 와 <b>값도 피해원도 같다.</b> 그래서 「큰 카드는 세 대에
+	 * 전멸」에 그대로 얹힌다 — 세 대 20.79, 두 대 13.86 이다.
+	 *
+	 * <p>⚠ 상시 번개와 <b>같은 틱에 겹칠 수 있다.</b> 둘이 한 틱에 들어오면 13.86 이라 아직
+	 * 살지만, 거기에 한 대가 더 겹치면 전멸이다 — 흡입은 5초 예고 뒤 <b>한 틱에 한 번</b>뿐이고
+	 * 번개도 <b>한 사람은 한 발</b>이므로 한 틱에 둘이 최대다.
+	 */
+	static final float VOID_SUCTION_DAMAGE = 35.0F;
+
+	/**
+	 * 십자 균열이 터질 때 선 안에 있으면 들어가는 <b>적히는</b> 피해. <b>사람이 정한 값이다.</b>
+	 *
+	 * <p>사람이 <b>「피해 23(무장 기준 6.8)」</b>이라고 적었으므로 여기서도 <b>값이 피해원을
+	 * 정했다.</b> {@code explosion(null, null)} 이 <b>6.77</b> 이고
+	 * {@code lightningBolt()} 는 4.56 이라 사람이 적은 수와 다르다. 마침 {@code explosion} 이 이
+	 * 판의 표준 피해원이다.
+	 *
+	 * <p>{@code GearedDamage.TARGET_PER_HIT} 이 「6.67 을 정확히 맞추려고 값을 다시 굴리지 말
+	 * 것」이라고 적어 두었고 <b>그 문단이 23 을 직접 예로 들고 있다</b> — 「난이도 곱이 없는 쪽은
+	 * 35(한 대 6.93), 있는 쪽은 23(한 대 6.77)」.
+	 *
+	 * <p>세 번 터지므로 <b>세 번 다 맞으면 20.31 로 전멸</b>이다. 그것이 이 패턴의 뜻이다 —
+	 * 사람이 「단순 피하기」라고 했고, 세 번을 다 못 피하면 죽는다.
+	 */
+	static final float CROSS_FISSURE_DAMAGE = 23.0F;
 
 	/**
 	 * 안전지대 밖에 서 있을 때 <b>초당</b> 들어가는 <b>적히는</b> 피해.
@@ -398,8 +461,32 @@ public final class DragonLastStand {
 
 	/** 한 팀의 최후의 저항. */
 	private static final class Stand {
-		/** 진입한 틱. */
+		/** 진입한 틱. <b>진입 연출의 원점</b>이다. */
 		private final long beganAt;
+		/**
+		 * ⚠ <b>시계들의 원점.</b> 안전지대·상시 번개·패턴 고르기가 전부 이것을 본다.
+		 *
+		 * <p>새로 진입한 판에서는 <b>{@code beganAt + DragonLastStandEntry.LENGTH_TICKS}</b> 이고,
+		 * 재시작으로 되살린 판에서는 {@code beganAt} 이다. 사람이 <b>「그땐 시간 재지말고」</b>라고
+		 * 정한 것을 지키는 배선이 이 한 칸이다 — 연출이 도는 동안 두 시계의 {@code elapsed} 가
+		 * 음수라 <b>보더만 서 있고 축소도 밖 피해도 번개도 돌지 않는다.</b>
+		 */
+		private final long clockBase;
+		/**
+		 * 진입 연출이 끝나는 시각. <b>되살린 판에서는 {@link Long#MIN_VALUE}</b> 다.
+		 *
+		 * <p>시각으로 「연출 중인가」를 묻는 자리가 이 한 칸이다. {@link DragonLastStandEntry} 에
+		 * 물으면 안 된다 — 되살린 판은 연출을 아예 돌리지 않아야 하는데 그 사실은 시각만으로는
+		 * 알 수 없다.
+		 */
+		private final long cinematicUntil;
+		/**
+		 * 진입한 틱의 드래곤 체력. <b>연출이 여기서부터 20%p 를 채운다.</b>
+		 *
+		 * <p>{@link DragonLastStandEntry#rampedHealth} 가 매 틱 이 값으로 목표를 다시 세므로,
+		 * 중간에 사람이 때려 체력이 내려가도 <b>차오르는 선이 흔들리지 않는다.</b>
+		 */
+		private final float entryHealth;
 		/**
 		 * 드래곤을 못박아 둘 자리.
 		 *
@@ -422,11 +509,27 @@ public final class DragonLastStand {
 		/** 화면 흔들기가 끝나는 시각. */
 		private long shakeUntil;
 
-		private Stand(long beganAt, Vec3 anchor) {
+		/**
+		 * @param cinematic   진입 연출을 돌릴 판인가. 되살린 판은 거짓이다
+		 * @param entryHealth 진입한 틱의 드래곤 체력. 되살린 판에서는 쓰이지 않는다
+		 */
+		private Stand(long beganAt, Vec3 anchor, boolean cinematic, float entryHealth) {
 			this.beganAt = beganAt;
 			this.anchor = anchor;
-			this.nextPatternAt = beganAt + ENTRY_GRACE_TICKS;
+			this.entryHealth = entryHealth;
+			this.cinematicUntil = cinematic
+					? beganAt + DragonLastStandEntry.LENGTH_TICKS
+					: Long.MIN_VALUE;
+			this.clockBase = cinematic ? this.cinematicUntil : beganAt;
+			// 첫 패턴은 시계가 돌기 시작한 뒤 무적 3초가 지난 틱에 고른다 — 연출이 생기기 전과
+			// 같은 규칙이고 원점만 밀렸다.
+			this.nextPatternAt = this.clockBase + ENTRY_GRACE_TICKS;
 			this.shakeUntil = beganAt + SHAKE_TICKS;
+		}
+
+		/** 지금 진입 연출이 도는 중인가. */
+		private boolean inCinematic(long now) {
+			return now < cinematicUntil;
 		}
 	}
 
@@ -446,7 +549,7 @@ public final class DragonLastStand {
 	// ------------------------------------------------------------------ ⑤ 패턴이 걸릴 자리
 
 	/**
-	 * 최후의 저항이 돌리는 패턴 셋.
+	 * 최후의 저항이 <b>뽑는</b> 패턴. 지금 <b>넷</b>이다.
 	 *
 	 * <p>고르는 규칙은 {@link #allowed} 에 있고 <b>그리는 것은 {@link DragonLastStandPatterns}</b>
 	 * 에 있다. 파일을 뗀 까닭은 그쪽 클래스 설명에 적어 두었다 — 여기는 이미 붙박이 드래곤과
@@ -454,6 +557,31 @@ public final class DragonLastStand {
 	 *
 	 * <p>피해 값은 {@link #CONE_BREATH_DAMAGE}·{@link #LIGHTNING_DAMAGE} 에 있고, <b>어떤
 	 * 피해원을 골랐고 왜인지</b>는 {@code DragonLastStandPatterns.coneBreath} 에 있다.
+	 *
+	 * <h2>⚠ 번개는 여기 없다 — 뽑히지 않는다</h2>
+	 *
+	 * <p>전에 {@code LIGHTNING_FIVE} 라는 칸이 있었다. 사람이 플레이해 보고 <b>「번개는 패턴에
+	 * 추가하지말고 기본이펙트로 계속 터졋으면좋겟어 드래곤 패턴이 아니라」</b>라고 해서 빼고,
+	 * {@link DragonLastStandZone} 처럼 <b>혼자 도는 시계</b>로 옮겼다
+	 * ({@code DragonLastStandPatterns.tickLightning}). <b>되돌려 여기에 다시 넣지 말 것</b> —
+	 * 그러면 「내내 터진다」가 「가끔 뽑힌다」로 되돌아간다.
+	 *
+	 * <h2>✅ 넷이 되어 「날개 → 브레스」 번갈이가 풀렸다</h2>
+	 *
+	 * <p>둘이던 동안은 {@link #allowed} 의 「같은 패턴 연속 금지」 때문에 순서가 <b>완전히 예측
+	 * 가능</b>했고, <b>브레스가 잠기면 고를 것이 하나도 없는 구간</b>까지 있었다. 사람이
+	 * {@link #VOID_SUCTION} 과 {@link #CROSS_FISSURE} 를 더해 그 둘이 함께 사라졌다.
+	 *
+	 * <p>⚠ <b>연속 금지를 지우지 말 것.</b> 넷이 되어서야 그것이 제 일을 한다.
+	 *
+	 * <h2>⚠ 잠금은 브레스 하나에만 걸려 있다</h2>
+	 *
+	 * <p>새 패턴 둘에는 쿨다운도 축소 잠금도 <b>걸지 않았다.</b> 브레스의 제한 셋은 그 카드가
+	 * <b>한 대에 전멸</b>(무장 기준 29.48)이라 치르는 대가이고, 흡입(6.93)과 균열(6.77)은
+	 * <b>세 대에 전멸</b>인 보통 카드라 같은 대가를 치를 이유가 없다. 게다가 제한을 하나 더 걸면
+	 * {@link #allowed} 의 구멍이 되레 <b>넓어진다</b> — {@code DragonLastStandTest} 가 「제한을
+	 * 하나 더 거는 사람은 여기서 멈춘다」라고 적어 둔 그것이다. 축소와 겹쳐도 되는 개별 근거는
+	 * 각 칸의 설명과 {@code DragonLastStandPatterns} 에 있다.
 	 */
 	public enum Pattern {
 		/**
@@ -496,25 +624,54 @@ public final class DragonLastStand {
 		CONE_BREATH(DragonLastStandPatterns.CONE_WARN_TICKS
 				+ DragonLastStandPatterns.CONE_AFTERGLOW_TICKS),
 		/**
-		 * 번개 5개 — 「낙뢰」와 같은 방식. 반경 <b>2.55칸</b>(낙뢰 3칸보다 15% 작게) ·
-		 * 피해 {@link #LIGHTNING_DAMAGE} · 드래곤 주변에 몰아서.
+		 * 공허 흡입 — <b>드래곤 발밑</b>에 검은 원 · 반경 <b>4칸</b> · <b>3초 예고 → 5초 빨아들임
+		 * → 터짐</b> · 피해 {@link #VOID_SUCTION_DAMAGE} · <b>잔류 없음</b> · 한 번에 <b>원 하나.</b>
 		 *
-		 * <p>⚠ 다섯 곳이 겹치면 한 틱에 두 발이고 무장 기준 13.86 이다.
+		 * <p>⚠ <b>원은 드래곤에게 있다.</b> 사람이 <b>「흡입은 드래곤에 검은원이고 드래곤이
+		 * 빨아드리는거임」</b>으로 고쳤다 — 아레나 어딘가의 무작위 자리가 아니다. 그래서 이 패턴은
+		 * <b>붙어서 때리던 사람을 그 자리에서 쫓아낸다.</b>
 		 *
-		 * <p>✅ 겹침은 {@code TrialRisks.reserveSpots} 가 아니라 <b>굳은 배치</b>로 풀었다 —
-		 * 가운데 하나 + 90도씩 벌린 넷이고 회전만 무작위다. 그 함수를 쓸 수 없는 까닭 넷은
-		 * {@code DragonLastStandPatterns.lightningFive} 에 있다. 「겹친다」의 정의는 그대로
-		 * {@code TrialRisks.spotMinGap} 에서 가져와 잰다.
+		 * <p>흡입 세기는 <b>달리기보다 약간 약하다</b>({@code SUCK_SPRINT_RATIO} = 0.85). 곧
+		 * <b>달리면 벗어나는 것이 정답</b>이고 걷거나 가만있으면 끌려든다 — 사람이
+		 * 「반대쪽으로 달려서 도망가야지」라고 했다.
 		 *
-		 * <p>길이는 <b>예고 60 + 여운 10 = 70틱</b>이다.
+		 * <p>⚠ <b>끌어당기는 것은 넉백의 반대라 천장 논리가 다르다.</b> 섬 밖으로 나갈 위험은
+		 * 아예 없고, 대신 <b>세로로 당기면 사람이 들려 공중 감쇠에 들어가 세기가 8.4배가 된다</b> —
+		 * 그래서 <b>수평만</b> 당기고 결과 속도에 천장을 씌운다. 근거는
+		 * {@code DragonLastStandPatterns.SUCK_MAX_INWARD} 에 길게 적어 두었다.
+		 *
+		 * <p>⚠ <b>안전지대가 좁아지면 저절로 어려워진다.</b> 3단계 지대가 반변 12칸인데 중앙에서
+		 * 도망쳐야 하니 <b>예고 3초만 달려도 벽</b>이다(3초에 17칸). <b>이 긴장은 의도다.</b>
+		 *
+		 * <p>길이는 <b>예고 60 + 흡입 100 + 터짐 1 + 여운 19 = 180틱</b>이다. 값에서 직접 더한다.
 		 */
-		LIGHTNING_FIVE(DragonLastStandPatterns.LIGHTNING_WARN_TICKS
-				+ DragonLastStandPatterns.LIGHTNING_AFTER_TICKS);
+		VOID_SUCTION(DragonLastStandPatterns.SUCK_WARN_TICKS
+				+ DragonLastStandPatterns.SUCK_PULL_TICKS
+				+ DragonLastStandPatterns.SUCK_AFTERGLOW_TICKS),
+		/**
+		 * 십자 균열 — 아레나를 가로지르는 <b>폭 3칸</b> 선 넷 · <b>3초 예고 → 터짐 → 1.5초 뒤 다음
+		 * 각도 → 또 → 총 세 번</b> · 피해 {@link #CROSS_FISSURE_DAMAGE} · <b>잔류 없음</b> ·
+		 * <b>낙사도 섬 밖으로 미는 것도 없다.</b>
+		 *
+		 * <p>각도가 <b>세 번 다 다르다</b> — {@code +} → {@code ×} → <b>22.5도 어긋난 십자</b>.
+		 * 사람이 셋 중에 이것을 골랐고 근거는 십자가 90도 대칭이라는 것이다: 대각선으로 <b>두 번</b>
+		 * 돌리면 처음으로 돌아오므로({@code 45 + 45 = 90}) 그대로 두면 세 번이 두 번이 된다.
+		 *
+		 * <p>사람이 <b>「단순 피하기」</b>라고 못박았다. 안전한 자리는 선 사이의 사분면이고 그것은
+		 * 어느 반경에서나 있다.
+		 *
+		 * <p>길이는 <b>60 + 30 + 30 + 여운 10 = 130틱</b>이다. 값에서 직접 더한다
+		 * ({@code DragonLastStandPatterns.crossDurationTicks}).
+		 */
+		CROSS_FISSURE(DragonLastStandPatterns.CROSS_FIRST_WARN_TICKS
+				+ (DragonLastStandPatterns.CROSS_ROUNDS - 1)
+						* DragonLastStandPatterns.CROSS_GAP_TICKS
+				+ DragonLastStandPatterns.CROSS_AFTERGLOW_TICKS);
 
 		/**
 		 * 이 패턴이 차지하는 시간(틱).
 		 *
-		 * <p>세 값 모두 <b>예고와 착탄의 합</b>이고, 어림이 아니라
+		 * <p>두 값 모두 <b>예고와 착탄의 합</b>이고, 어림이 아니라
 		 * {@link DragonLastStandPatterns} 의 상수에서 직접 더한 것이다. 짧으면 앞 패턴이 끝나기
 		 * 전에 다음 것이 겹쳐 돌고, 길면 드래곤이 아무것도 안 하는 시간이 생긴다.
 		 *
@@ -561,7 +718,7 @@ public final class DragonLastStand {
 	 * {@link #clearState()} 에서는 월드를 만질 수 없어 기억만 버린다.
 	 */
 	private static ZoneClock zoneClock(Stand stand, long now) {
-		return DragonLastStandZone.clock(stand.beganAt, now);
+		return DragonLastStandZone.clock(stand.clockBase, now);
 	}
 
 	/**
@@ -577,10 +734,26 @@ public final class DragonLastStand {
 	 *   <li>안전지대 축소와 브레스 <b>동시 실행 금지</b></li>
 	 * </ol>
 	 *
-	 * <p>⚠ <b>빈 목록을 돌려주지 않는다.</b> 막히는 것은 브레스뿐이고 나머지 둘은 서로가
-	 * 서로의 대안이라, 최악이어도 하나는 남는다. 그래도 {@code default} 없이 믿지 않는다 —
-	 * 패턴을 넷째로 늘리면서 제한을 하나 더 걸면 비는 날이 오고, 그날 드래곤이 아무것도 안
-	 * 한다. 시험이 <b>모든 조합에서 비지 않는지</b>를 센다.
+	 * <h2>✅ <b>이제 빈 목록이 없다</b> — 패턴이 넷이 되어 저절로 닫혔다</h2>
+	 *
+	 * <p>한동안 <b>빈 목록이 실제로 나오는 구간</b>이 있었다. 번개가 패턴 풀에서 빠져 남은 것이
+	 * 날개와 브레스 둘뿐이던 때, <b>직전이 날개이고 브레스가 잠겨 있으면</b> 고를 것이 하나도
+	 * 없었다. 브레스가 잠기는 구간이 안전지대 축소 앞뒤 <b>220틱</b>이고
+	 * ({@link DragonLastStandZone#shrinkLockoutLead} 120 + 축소 100) 그것이 <b>세 번</b> 오므로
+	 * 드래곤이 그 구간의 남은 시간 동안 패턴을 하나도 안 돌렸다.
+	 *
+	 * <p>사람이 {@link Pattern#VOID_SUCTION} 과 {@link Pattern#CROSS_FISSURE} 를 더해 그 구멍이
+	 * <b>닫혔다.</b> 증명은 짧다.
+	 *
+	 * <blockquote>막히는 것은 <b>브레스와 직전 것</b>뿐이고 패턴이 <b>넷</b>이므로 최악이어도
+	 * <b>둘</b>이 남는다. 브레스가 열려 있으면 셋이 남는다.</blockquote>
+	 *
+	 * <p>⚠ <b>「연속 금지」를 지우지 말 것.</b> 넷이 되어서야 그것이 제 일을 한다 — 둘일 때는
+	 * 날개↔브레스로 순서가 완전히 예측 가능했다.
+	 *
+	 * <p>⚠ <b>제한을 하나 더 거는 사람은 여기서 멈출 것.</b> 위 증명이 「막히는 것이 둘뿐」에
+	 * 기대고 있다. 셋째 제한을 걸면 남는 것이 하나로 줄고, 그것이 직전 것과 같으면 구멍이 다시
+	 * 열린다 — {@code DragonLastStandTest} 가 <b>모든 조합에서 빈 목록이 나오지 않는지</b>를 센다.
 	 */
 	static List<Pattern> allowed(@Nullable Pattern previous, long breathReadyAt, ZoneClock zone,
 			long now) {
@@ -732,12 +905,28 @@ public final class DragonLastStand {
 			contactDamageOff = true;
 		}
 
-		hold(end, dragon, stand);
+		hold(end, dragon, stand, now);
 		// 안전지대. 패턴처럼 뽑히지 않고 진입과 동시에 시작해 저 혼자 돈다 — 보더를 세우고
 		// 45초 → 45초 → 25초로 좁히고 밖에 있는 사람에게 초당 값을 넣는 것이 전부 저쪽에 있다.
 		// hold 뒤인 것은 중심이 「드래곤을 못박아 둔 자리」라서다.
+		//
+		// ⚠ 넘기는 것이 beganAt 이 아니라 stand.clockBase 다. 진입 연출이 도는 동안 저쪽의
+		// elapsed 가 음수라 「보더는 서지만 축소도 밖 피해도 돌지 않는」 상태가 된다 — 사람이
+		// 「보더가 생기면서 … 그땐 시간 재지말고」라고 정한 것이 그 한 줄이다.
 		DragonLastStandZone.tick(end, stand.anchor, members == null ? List.of() : members,
-				stand.beganAt, now);
+				stand.clockBase, now);
+		// 상시 번개. 이것도 패턴처럼 뽑히지 않고 진입 3초 뒤부터 6초마다 저 혼자 돈다 —
+		// 사람이 「번개는 패턴이 아니라 기본 이펙트로 계속」이라고 정했다. advance 앞인 것은
+		// 패턴과 같은 틱에 함께 돌기 때문이고, 그래서 한 틱 점 예산이 「번개 + 패턴」이다.
+		// 여기도 원점이 stand.clockBase 라 연출 동안은 첫 볼리 시각이 미래다.
+		DragonLastStandPatterns.tickLightning(end, dragon, members == null ? List.of() : members,
+				stand.clockBase, now);
+		// 반구 블록 파괴. 이것도 뽑히지 않고 1초마다 저 혼자 돈다 — 사람이 「드래곤 주변에 y가
+		// 높은 블럭들을 계속 파괴하는게 있으면좋겟고 반구형태로」라고 정했다. 기준 높이가
+		// stand.anchor.y(= 중앙 기반암 포디움 맨 위)라 바닥은 한 칸도 읽지 않는다. 이 순서가
+		// advance 앞인 것은 파티클을 한 점도 쓰지 않아 예산과 무관하기 때문이고, 패턴이 그린
+		// 표식을 블록이 가리는 일도 없다(부수는 것은 표식보다 위다).
+		DragonLastStandDome.tick(end, stand.anchor, now);
 		// ⚠ 「시련이 전부 멈춘다」의 단 하나뿐인 예외다. 「메마른 세계」의 물·용암·서리눈
 		// 설치 금지만은 최후의 저항에서도 이어진다 — 사람이 「최후에서 남아도 될 거 같아」라고
 		// 정했다. 시련을 되살리는 것이 아니라 그 카드의 기한 한 칸을 대신 밀어 주는 것이고,
@@ -746,6 +935,18 @@ public final class DragonLastStand {
 		TrialDryWorld.holdBanDuringLastStand(end, session, now);
 		sweepEndermen(end, now);
 		shake(stand, members, now);
+		// ⚠⚠ 진입 연출 중에는 여기서 돌아간다. 아래 둘이 「시간을 재는」 것이라
+		// (패턴 고르기와 오브젝트 파도) 사람이 「그땐 시간 재지말고」라고 한 그 둘이다.
+		if (stand.inCinematic(now)) {
+			DragonLastStandEntry.tick(end, dragon, members == null ? List.of() : members,
+					stand.anchor, stand.entryHealth, stand.beganAt, now);
+			return standing;
+		}
+		// 오브젝트 파도. 뽑히지 않고 드래곤 체력 25%·10% 에 두 번만 열린다 — 사람이 정했다.
+		// advance 앞인 것은 파도가 패턴을 멈추지 않기 때문이고, 그래도 예산이 안 바뀌는 것은
+		// 이 파도가 매 틱 점을 한 개도 쓰지 않기 때문이다(그쪽 클래스 설명의 「점 예산」).
+		DragonLastStandObjects.tick(end, dragon, members == null ? List.of() : members,
+				stand.anchor, stand.clockBase, now);
 		advance(end, dragon, members == null ? List.of() : members, stand, now);
 		return standing;
 	}
@@ -755,9 +956,15 @@ public final class DragonLastStand {
 	 *
 	 * <p>터진 자리는 저장되지만({@code DragonTrialStore}) 이 파일의 상태는 저장되지 않는다.
 	 * 되살리지 않으면 드래곤이 다시 날아오르고 접촉 피해가 되돌아온다. 반대로 <b>한 번 준 것을
-	 * 다시 주지는 않는다</b> — 체력 +20%p · 팀 체력 회복 · 3초 무적 · 굉음은 {@link #enter} 에만
-	 * 있고 {@link #resume} 에는 없다. 재시작할 때마다 드래곤이 20%p 씩 회복하면 판이 끝나지
+	 * 다시 주지는 않는다</b> — 팀 체력 회복 · 무적 · 굉음은 {@link #enter} 에만 있고
+	 * <b>진입 연출 전체(그 안의 체력 +20%p 를 포함해)</b>는 {@link #resume} 이 만드는
+	 * {@code Stand} 에서 아예 꺼져 있다. 재시작할 때마다 드래곤이 20%p 씩 회복하면 판이 끝나지
 	 * 않는다.
+	 *
+	 * <p>⚠ <b>오브젝트 파도의 문턱도 다시 센다.</b> {@code DragonLastStandObjects} 의
+	 * {@code firedWaves} 는 저장되지 않으므로, 25% 파도를 이미 겪고 재시작한 팀은 그 문턱을
+	 * 한 번 더 받는다. 안전지대와 쉬는 시계가 같은 이유로 그렇게 되어 있고(그쪽 설명의 「짐작해
+	 * 복원하는 것보다 한 번 더 주는 편」), 이 문단이 그 사실의 유일한 기록이다.
 	 */
 	private static boolean resumable(DragonTrialSession session, EnderDragon dragon) {
 		return session.trialsEnabled()
@@ -770,9 +977,15 @@ public final class DragonLastStand {
 	/**
 	 * 진입. <b>여기 적힌 순서가 그대로 문서의 표다.</b>
 	 *
-	 * <p>화면은 띄우지 않는다({@code Reveal.SILENT}). 굉음 · 화면 흔들림 · 엔더맨 소멸 ·
-	 * 보스바 이름이 이미 「판이 바뀌었다」를 말하므로, 거기에 정지 화면을 얹으면 멈춤이 두 번
-	 * 겹친다.
+	 * <p>⚠ <b>이 메서드가 하는 것은 「한 틱에 끝나는 것」뿐이다.</b> 사람이 정한 진입 연출
+	 * (내려오기 · 보더 밖 사람 데려오기 · 보라색 신호기 넷 · 체력이 차오르는 것 · 터지는 소리 ·
+	 * 화면에 「최후의 저항」)은 <b>{@link DragonLastStandEntry} 가 8초에 걸쳐</b> 돌린다. 그리고
+	 * 그 8초 동안 <b>안전지대·번개·패턴·오브젝트 파도가 전부 서 있다</b> — 사람이 「그땐 시간
+	 * 재지말고」라고 정한 것이고, 그것을 지키는 배선은 {@code Stand.clockBase} 한 칸이다.
+	 *
+	 * <p>룰렛 화면은 띄우지 않는다({@code Reveal.SILENT}). 화면 가운데 글자는 연출이 <b>끝나는
+	 * 틱</b>에 한 번 뜨는 「최후의 저항」뿐이고, 그것은 바닐라 타이틀 패킷이라 통신 규약을
+	 * 올리지 않는다.
 	 */
 	private static Stand enter(MinecraftServer server, ServerLevel end, EnderDragon dragon,
 			ShareTeam team, DragonTrialSession session, List<ServerPlayer> members, long now) {
@@ -798,32 +1011,49 @@ public final class DragonLastStand {
 		// 3. 엔더맨이 전부 소멸하고 더 안 나온다. 뒤는 sweepEndermen 이 이어받는다.
 		int endermen = vanishEndermen(end);
 
-		// 4. 드래곤이 중앙으로 강제 이동해 착지하고 다시는 날지 않는다.
+		// 4. 드래곤이 중앙으로 「내려오기 시작한다」. 다시는 날지 않는다.
+		//
+		//    ⚠ 여기서 snapTo 로 한 번에 옮기지 않는다. 사람이 「엔더드래곤이 중앙으로 내려오면서」
+		//    라고 정했고, 실제로 당겨 내리는 것은 DragonLastStandEntry.descend 다 —
+		//    TrialCrystalRevive.hold 로 2초에 걸쳐 온다. 그동안 hold() 도 좌표를 못박지 않는다.
 		Vec3 anchor = podium(end, dragon);
-		Stand stand = new Stand(now, anchor);
+		float entryHealth = dragon.getHealth();
+		Stand stand = new Stand(now, anchor, true, entryHealth);
 		faceTeam(dragon, anchor, members);
-		dragon.snapTo(anchor.x, anchor.y, anchor.z, dragon.getYRot(), dragon.getXRot());
 		dragon.setDeltaMovement(Vec3.ZERO);
 		dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
 
-		// 5. 드래곤 체력 +20%p.
-		float healed = healDragon(dragon);
+		// 5. 드래곤 체력 +20%p — ⚠ 여기서 한 번에 주지 않는다.
+		//    사람이 「점점 체력이 차는거 … 그떄 시각적으로 체력을 올리면되겟지?」라고 정했다.
+		//    DragonLastStandEntry 가 연출 길이에 걸쳐 나눠 올리고, 그 「매 틱 체력을 쓰는 것」이
+		//    동시에 「연출 동안 드래곤이 무적」이다 — 되돌릴 것을 한 칸도 남기지 않는 까닭까지
+		//    그쪽 클래스 설명에 적어 두었다. 목표값을 정하는 곳은 healedHealth 하나뿐이다.
 
 		// 6. 보스바 이름. 바닐라 EnderDragonFight.updateDragon 이 다음 틱에 집어 간다.
 		dragon.setCustomName(BOSS_BAR_NAME);
 
-		// 7. 팀 체력을 가득 채우고 3초간 무적으로 만든다. 4 남은 채로 들어오면 첫 패턴에 끝나
+		// 7. 팀 체력을 가득 채우고 무적으로 만든다. 4 남은 채로 들어오면 첫 패턴에 끝나
 		//    페이즈가 열리지도 않는다.
+		//
+		//    ⚠ 무적이 「진입 연출 길이 + 3초」다. 예전에는 3초뿐이었는데, 연출이 생기면서
+		//    「읽을 시간」이 그 8초로 옮겨 갔다. 연출 동안에도 걸어 두는 까닭은 반구 블록
+		//    파괴가 그때도 돌기 때문이다 — 발밑이 사라진 사람의 낙하를 저항 V 가 막는다.
 		refillTeam(server, team);
-		grantGrace(members, ENTRY_GRACE_TICKS);
+		grantGrace(members, DragonLastStandEntry.LENGTH_TICKS + ENTRY_GRACE_TICKS);
 
 		// 8. 굉음. 화면 흔들림은 Stand.shakeUntil 이 들고 shake 가 매 틱 이어 간다.
 		roar(end, members);
 
+		// 9. 반구 블록 파괴가 이 틱부터 돈다. 세우는 일이 없으므로(시계 한 칸뿐이다) 로그만
+		//    남긴다 — mobGriefing 이 꺼져 있으면 그 사실이 여기에 찍혀야 한다. 그러지 않으면
+		//    「왜 지붕이 안 부서지지」의 답이 어디에도 없다.
+		DragonLastStandDome.logEntry(server);
+
 		SharedFateMod.LOGGER.info(
-				"[END] 팀 '{}' 최후의 저항 — 크리스탈 {}개·엔더맨 {}마리 소멸 · 드래곤 체력 {} · "
-						+ "자리 ({}, {}, {})",
-				team.name(), crystals, endermen, healed,
+				"[END] 팀 '{}' 최후의 저항 — 크리스탈 {}개·엔더맨 {}마리 소멸 · 드래곤 체력 {} → {} "
+						+ "({}틱에 걸쳐) · 자리 ({}, {}, {})",
+				team.name(), crystals, endermen, entryHealth,
+				healedHealth(entryHealth, dragon.getMaxHealth()), DragonLastStandEntry.LENGTH_TICKS,
 				String.format(java.util.Locale.ROOT, "%.1f", anchor.x),
 				String.format(java.util.Locale.ROOT, "%.1f", anchor.y),
 				String.format(java.util.Locale.ROOT, "%.1f", anchor.z));
@@ -838,7 +1068,9 @@ public final class DragonLastStand {
 	 */
 	private static Stand resume(ServerLevel end, EnderDragon dragon, long now) {
 		Vec3 anchor = podium(end, dragon);
-		Stand stand = new Stand(now, anchor);
+		// ⚠ 연출을 돌리지 않는 판이다(둘째 인자 거짓). 그래서 시계의 원점이 지금이고, 체력
+		// +20%p 도 다시 주지 않는다 — 재시작마다 20%p 씩 회복하면 판이 끝나지 않는다.
+		Stand stand = new Stand(now, anchor, false, dragon.getHealth());
 		// 진입 연출을 다시 돌리지 않는다. 흔들기는 그 연출의 일부다.
 		stand.shakeUntil = Long.MIN_VALUE;
 		dragon.snapTo(anchor.x, anchor.y, anchor.z, dragon.getYRot(), dragon.getXRot());
@@ -924,21 +1156,6 @@ public final class DragonLastStand {
 			count++;
 		}
 		return count;
-	}
-
-	/**
-	 * 드래곤 체력 +20%p. 30% 에서 들어오면 50% 가 된다.
-	 *
-	 * @return 올린 뒤의 체력
-	 */
-	private static float healDragon(EnderDragon dragon) {
-		float max = dragon.getMaxHealth();
-		if (!(max > 0.0F)) {
-			return dragon.getHealth();
-		}
-		float target = healedHealth(dragon.getHealth(), max);
-		dragon.setHealth(target);
-		return target;
 	}
 
 	/**
@@ -1045,8 +1262,17 @@ public final class DragonLastStand {
 	 * </ol>
 	 *
 	 * <p>yRot·xRot 은 <b>건드리지 않는다.</b> 머리를 돌리는 것은 패턴의 몫이다.
+	 *
+	 * <h2>⚠ 진입 연출 동안은 <b>자리를 못박지 않는다</b></h2>
+	 *
+	 * <p>사람이 <b>「중앙으로 내려오면서」</b>라고 정했으므로 연출의 첫 2초는 드래곤이 <b>오는
+	 * 중</b>이어야 한다. 여기서 매 틱 좌표를 쓰면 그 2초가 <b>순간이동 한 번</b>이 된다.
+	 *
+	 * <p>그동안 자리를 잡는 것은 {@link DragonLastStandEntry} 다 — 하강이 끝난 뒤에도 매 틱
+	 * {@code TrialCrystalRevive.hold} 로 같은 점을 쓰므로 <b>자리를 잡는 일이 끊기는 틱이 없다.</b>
+	 * 페이즈를 누르는 것과 속도를 0 으로 만드는 것은 연출 중에도 여기서 한다.
 	 */
-	private static void hold(ServerLevel end, EnderDragon dragon, Stand stand) {
+	private static void hold(ServerLevel end, EnderDragon dragon, Stand stand, long now) {
 		EnderDragonPhase<?> phase = dragon.getPhaseManager().getCurrentPhase().getPhase();
 		// ⚠ 죽는 칸만은 덮어쓰지 않는다. 좁지만 실제로 있는 길이다 — 한 틱 안에서 A 의 공격이
 		// 누적 25% 를 넘겨 TAKEOFF 로 밀어내고(그 순간 isSitting() 이 거짓이 된다) 뒤이어 B 의
@@ -1059,9 +1285,13 @@ public final class DragonLastStand {
 		if (phase != EnderDragonPhase.HOVERING) {
 			dragon.getPhaseManager().setPhase(EnderDragonPhase.HOVERING);
 		}
+		dragon.setDeltaMovement(Vec3.ZERO);
+		if (stand.inCinematic(now)) {
+			// 연출이 자리를 몬다. 여기서 못박으면 「내려오면서」가 순간이동이 된다.
+			return;
+		}
 		dragon.snapTo(stand.anchor.x, stand.anchor.y, stand.anchor.z,
 				dragon.getYRot(), dragon.getXRot());
-		dragon.setDeltaMovement(Vec3.ZERO);
 	}
 
 	/** 새로 스폰되거나 순간이동해 들어온 엔더맨을 치운다. 1초마다 한 번이다. */
@@ -1107,6 +1337,12 @@ public final class DragonLastStand {
 		VICTORIOUS_TEAMS.add(team.teamId());
 		TrialRisks.clearState();
 		DragonLastStandPatterns.clearState();
+		DragonLastStandDome.clearState();
+		// 진입 연출의 보라색 신호기와 오브젝트 파도의 흰 선·바·오브젝트를 거둔다. 셋 다
+		// 개체라 남으면 다음 판까지 떠 있다 — 그쪽 클래스 설명의 「다섯 자리」를 볼 것.
+		DragonLastStandEntry.clearState();
+		DragonLastStandObjects.clearState();
+		DragonLastStandLights.drop();
 		DragonLastStandZone.restore(end);
 		restoreBossBarName(end);
 		SharedFateMod.LOGGER.info("[END] 팀 '{}' 최후의 저항 종료 — 팀이 무적이 됩니다", team.name());
@@ -1183,14 +1419,22 @@ public final class DragonLastStand {
 	 *
 	 * <ul>
 	 *   <li><b>여기서 되돌리는 것</b> — 정적 상태 전부(도는 팀 · 무적 팀 · 접촉 피해 깃발 ·
-	 *       엔더맨 청소 시각). 무적은 매 틱 다시 걸리는 짧은 상태이상이라 이 깃발이 꺼지면
-	 *       <b>1초 안에 사람에게서도 풀린다</b></li>
+	 *       엔더맨 청소 시각 · <b>반구 훑기 시계</b>). 무적은 매 틱 다시 걸리는 짧은 상태이상이라
+	 *       이 깃발이 꺼지면
+	 *       <b>1초 안에 사람에게서도 풀린다</b>. ⚠ 그리고 <b>부채꼴의 빨간 면</b>도 여기서
+	 *       사라진다({@code DragonLastStandPatterns.clearState} → {@code ConePanel.drop}) —
+	 *       그것은 파티클이 아니라 <b>개체</b>인데, 지울 수 있는 것은 그쪽이 <b>개체를 들고
+	 *       있기</b> 때문이다. 월드에서 찾아야 했다면 이 자리에서 막혔다</li>
 	 *   <li><b>{@link #onFightClosed} 가 되돌리는 것</b> — 보스바 이름과 <b>월드 보더</b>.
 	 *       드래곤이 사라진 틱이라 월드가 살아 있다</li>
 	 *   <li><b>{@link #onServerStopping} 이 되돌리는 것</b> — 전투가 끝나지 않은 채로 서버가
 	 *       내려갈 때의 <b>월드 보더</b>. 보더는 그 차원의 {@code SavedData} 라
 	 *       <b>월드 저장 파일에 남는다</b> — 「월드가 함께 사라진다」가 성립하지 않는 유일한
 	 *       되돌림이고, 여기서 할 수 없어 줄이 하나 더 필요했다</li>
+	 *   <li>⚠ <b>되돌릴 수 없는 것</b> — <b>반구가 부순 블록.</b> 되살리려면 「우리가 지운 것」을
+	 *       기억해야 하는데 그 기억은 서버 재시작 한 번으로 어긋나고, 어긋난 기억은 남의 건축
+	 *       위에 블록을 놓는다 — {@code TrialDryWorld} 의 증발과 같은 판단이고 근거는
+	 *       {@link DragonLastStandDome#clearState()} 에 있다</li>
 	 *   <li><b>되돌릴 필요가 없는 것</b> — 드래곤의 자세와 이름. 서버를 껐다 켜면 저장된
 	 *       {@code DragonPhase} 와 {@code CustomName} 이 그대로 되살아나고, 그때는
 	 *       {@link #resume} 이 다시 세운다. 월드가 지워지는 길이면 드래곤도 함께 사라진다</li>
@@ -1202,6 +1446,15 @@ public final class DragonLastStand {
 		contactDamageOff = false;
 		lastEndermanSweep = Long.MIN_VALUE;
 		DragonLastStandPatterns.clearState();
+		// 반구의 훑기 시계. 월드를 만지지 않는다 — 부순 블록은 되돌리지 않는다(그쪽 설명).
+		DragonLastStandDome.clearState();
+		// ⚠ 개체를 들고 있는 셋이다. 진입 연출의 보라색 신호기 · 오브젝트 파도의 오브젝트와
+		// 흰 선 · 타이머 바 — 전부 개체라 남으면 다음 판에 뜬다. 월드를 만지지 않는 것은
+		// 그쪽들이 개체를 들고 있기 때문이고, 그것이 UUID 만 적어 두지 않은 유일한 이유다.
+		// ⚠ 파도를 여기서 닫아도 「못 부순 몫」의 회복은 주지 않는다(그쪽 clearState 설명).
+		DragonLastStandEntry.clearState();
+		DragonLastStandObjects.clearState();
+		DragonLastStandLights.drop();
 		// 월드를 만지지 않는다 — 기억만 버린다. 보더 자체는 onServerStopping 이 먼저 되돌려 두었다.
 		DragonLastStandZone.clearState();
 	}
@@ -1217,9 +1470,19 @@ public final class DragonLastStand {
 	 * 남는다.</b> 다음 기동에 최후의 저항이 {@link #resume} 으로 되살아나면 그 시계가 다시
 	 * 몰고 가지만, 그 사이에 팀 설정에서 드래곤 시련을 끄거나 팀을 해체하면 <b>아무도 되돌리지
 	 * 않는 파란 벽</b>이 남는다.
+	 *
+	 * <p>부채꼴의 <b>빨간 면</b>도 여기서 거둔다. 그쪽은 개체라 <b>월드가 살아 있는 자리에서
+	 * 거두는 것이 가장 깔끔하다</b> — 다만 {@link DragonLastStandConePanel} 이 저장 자체를 막고
+	 * ({@code shouldBeSaved()}) 심지도 들고 있어서, 이 줄을 못 지나도 파일에 남지 않는다.
 	 */
 	public static void onServerStopping(@Nullable MinecraftServer server) {
 		DragonLastStandZone.onServerStopping(server);
+		DragonLastStandConePanel.drop();
+		// 진입 연출의 신호기와 오브젝트 파도의 개체들. 저장을 막아 두었으므로 이 줄을 못 지나도
+		// 파일에 남지 않지만, 월드가 살아 있는 자리에서 거두는 것이 가장 깔끔하다.
+		DragonLastStandEntry.clearState();
+		DragonLastStandObjects.clearState();
+		DragonLastStandLights.drop();
 	}
 
 	// ------------------------------------------------------------------ 시험이 들여다보는 곳

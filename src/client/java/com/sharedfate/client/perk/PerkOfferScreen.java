@@ -277,7 +277,7 @@ public class PerkOfferScreen extends Screen {
 	/**
 	 * 세트 판에 그릴 줄 수의 상한.
 	 *
-	 * <p>유형이 열한 가지지만 <b>가진 것이 0인 유형은 {@link PerkSetLines#visible} 이 이미
+	 * <p>유형이 열네 가지지만 <b>가진 것이 0인 유형은 {@link PerkSetLines#visible} 이 이미
 	 * 빼고 준다.</b> 여덟이면 한 회차에 흩어질 수 있는 유형을 거의 다 담는다. 이보다 많아도
 	 * 어차피 카드 높이가 세로를 막는다.
 	 */
@@ -1300,7 +1300,7 @@ public class PerkOfferScreen extends Screen {
 			y += this.font.lineHeight;
 		}
 		// 세트 유형. 이름 바로 아래, 구분선 위다 — 「이 증강이 무엇에 속하는가」는 이름의 일부처럼
-		// 읽혀야지 설명에 섞이면 안 된다. 유형이 없는 증강(열여섯 개)에는 이 자리가 아예 없다.
+		// 읽혀야지 설명에 섞이면 안 된다. 유형이 없는 증강(열한 개)에는 이 자리가 아예 없다.
 		if (!card.setTypeLines().isEmpty()) {
 			y += SET_TYPE_GAP;
 			for (FormattedCharSequence line : card.setTypeLines()) {

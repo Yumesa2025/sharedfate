@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -66,8 +67,9 @@ class TrialDelayTest {
 
 	@Test
 	void 자리마다_지연이_다르다() {
-		assertEquals(300, Trigger.ENTRY.delayTicks(),
-				"입장은 다른 차원에서 떨어진 직후라 어디에 왔는지부터 읽어야 한다");
+		// 입장 연출이 끝나는 시각이 곧 이 지연이다. 사람이 「연출끝나면 룰렛시작」으로 정했다.
+		assertEquals(TrialEntrance.ROULETTE_DELAY_TICKS, Trigger.ENTRY.delayTicks(),
+				"입장 룰렛은 연출이 끝난 뒤에 뜬다. 숫자를 따로 적으면 룰렛이 연출 위에 겹친다");
 		for (Trigger trigger : Trigger.values()) {
 			if (trigger == Trigger.ENTRY) {
 				continue;
@@ -117,8 +119,10 @@ class TrialDelayTest {
 		expected.put(Trigger.ENTRY, TrialCatalog.Reveal.ROULETTE);
 		expected.put(Trigger.FIRST_CRYSTAL, TrialCatalog.Reveal.ROULETTE);
 		expected.put(Trigger.ALL_CRYSTALS, TrialCatalog.Reveal.ROULETTE);
-		// 카드가 한 장뿐이다. 결과가 정해진 굴림을 보여 주면 연출이 거짓말이 된다.
-		expected.put(Trigger.HEALTH_80, TrialCatalog.Reveal.FIXED_SCREEN);
+		// 카드가 한 장뿐이고, 사람이 그 화면마저 걷어냈다 — 「80프로떄도 착지강화라고 카드가
+		// 안나오고 그냥 안띄워도되니 화면에 강화만 시켜주고」. 대신 TrialEmpower 가 「세졌다」를
+		// 소리·입자·화면 흔들림으로 낸다.
+		expected.put(Trigger.HEALTH_80, TrialCatalog.Reveal.SILENT);
 		expected.put(Trigger.HEALTH_50, TrialCatalog.Reveal.ROULETTE);
 		// 최후의 저항은 굉음·화면 흔들림·엔더맨 소멸·보스바 이름 변경이 이미 「판이 바뀌었다」를
 		// 말한다. 거기에 정지 화면을 얹으면 멈춤이 두 번 겹친다.
@@ -156,7 +160,7 @@ class TrialDelayTest {
 		}
 		assertTrue(DragonTrialManager.trialDue(session,
 						FIRED_AT + TrialCatalog.DELAY_SETTLE_TICKS),
-				"15초가 지났으면 열린다. 여기서 거짓이면 룰렛이 영영 안 열린다");
+				"연출 길이가 지났으면 열린다. 여기서 거짓이면 룰렛이 영영 안 열린다");
 	}
 
 	@Test
@@ -201,9 +205,41 @@ class TrialDelayTest {
 				FIRED_AT + TrialCatalog.DELAY_SETTLE_TICKS));
 	}
 
+	/**
+	 * 지연이 <b>입장 연출과 한 상수로 묶여 있다.</b>
+	 *
+	 * <p>이 시험이 지키는 것은 숫자가 아니라 <b>묶여 있다는 사실</b>이다. 두 값이 따로 적히는
+	 * 순간 연출의 단계 길이를 하나만 고쳐도 룰렛이 연출 위에 겹쳐 뜨는데, 그때는 화면이 판을
+	 * 얼려 연출이 멈춘 채로 남는다 — 눈으로 보고서야 알 수 있는 고장이다.
+	 */
 	@Test
-	void 지연_상수가_초와_맞는다() {
-		assertEquals(15 * 20, TrialCatalog.DELAY_SETTLE_TICKS, "15초다");
+	void 지연_상수가_연출_길이와_묶여_있다() {
+		assertEquals(TrialEntrance.ROULETTE_DELAY_TICKS, TrialCatalog.DELAY_SETTLE_TICKS,
+				"입장 지연은 TrialEntrance.ROULETTE_DELAY_TICKS 하나에서 와야 한다");
+		assertEquals(TrialEntrance.CINEMATIC_TICKS + TrialEntrance.SETTLE_TICKS,
+				TrialEntrance.ROULETTE_DELAY_TICKS,
+				"룰렛은 연출이 끝나고 숨 돌리는 틈만큼 뒤에 뜬다");
+		assertTrue(TrialCatalog.DELAY_SETTLE_TICKS > TrialEntrance.CINEMATIC_TICKS,
+				"연출이 끝나기 전에 룰렛이 뜨면 화면이 연출을 얼린 채 덮는다");
 		assertEquals(0, TrialCatalog.DELAY_NONE);
+	}
+
+	/**
+	 * 입장 연출의 단계가 <b>사람이 정한 순서</b>대로다.
+	 *
+	 * <p>「크리스탈 전부없다가 10초뒤 엔더드래곤 중앙위에서 생긴다음 크리스탈 부활」. 10초는
+	 * 사람이 정한 값이고, 드래곤이 자리를 잡는 것이 부활보다 <b>앞</b>이라는 것도 그렇다.
+	 */
+	@Test
+	void 입장_연출의_단계가_사람이_정한_순서다() {
+		assertEquals(10 * 20, TrialEntrance.VANISH_TICKS, "크리스탈이 사라진 채로 10초다");
+		assertTrue(TrialEntrance.PERCH_TICKS > 0,
+				"드래곤이 자리를 잡는 구간이 없으면 「중앙위에서 생긴다음」이 부활과 같은 틱이 된다");
+		assertTrue(TrialEntrance.REVIVE_SHOW_TICKS > 0, "부활 연출이 있어야 한다");
+		assertNotEquals(100, TrialEntrance.REVIVE_SHOW_TICKS,
+				"「부활」 카드와 같은 값이면 TrialCrystalRevive 의 열쇠가 겹칠 수 있다");
+		assertEquals(TrialEntrance.VANISH_TICKS + TrialEntrance.PERCH_TICKS
+						+ TrialEntrance.REVIVE_SHOW_TICKS,
+				TrialEntrance.CINEMATIC_TICKS, "단계 셋을 더한 것이 연출 길이다");
 	}
 }

@@ -27,10 +27,14 @@ import java.util.Set;
  * <p>처음에는 타이틀 글자만 갈아 끼워 규약을 올리지 않았다. 그런데 <b>드래곤이 때리는 중에
  * 화면 위로 지나가는 글자는 읽히지 않았다.</b> 무엇을 받았는지 모른 채 싸우게 되고 전멸은 곧
  * 월드 삭제라, 증강처럼 판을 멈추고 화면을 띄우기로 했다({@link TrialFreeze}). 그 대가로
- * <b>통신 규약이 올라갔다.</b> 지금 값은 <b>33</b> 이다 —
- * {@code SharedFateNetworking.PROTOCOL_VERSION} 이 그것을 든다. ⚠ 여기에 숫자를 적어 두면
- * 규약이 올라갈 때마다 이 줄만 낡으므로, 값을 확인할 일이 있으면 <b>그쪽을 볼 것.</b> 실제로
- * 이 자리는 30 에서 멈춘 채 세 번을 지나쳤다.
+ * <b>통신 규약이 올라갔다.</b> 지금 값은 여기 적지 않는다 —
+ * {@link com.sharedfate.net.SharedFateNetworking#PROTOCOL_VERSION} 이 그것을 들고 있고, 값을
+ * 확인할 일이 있으면 <b>그쪽을 볼 것.</b>
+ *
+ * <p>⚠ 이 문단은 <b>제가 경고한 대로 낡았다.</b> 「여기에 숫자를 적으면 이 줄만 낡는다」고
+ * 적어 두고는 같은 문단에 숫자를 적어, 규약이 <b>30 → 33 → 35</b> 로 오르는 내내 이 줄만
+ * 어긋났다 — 30 에 멈춘 채 세 번을 지나쳤고, 33 으로 고쳐 놓은 뒤에 또 낡았다. 그래서 숫자를
+ * 고치는 대신 <b>가리키게</b> 바꿨다. 다시 숫자를 적지 말 것.
  *
  * <h2>풀을 나누는 이유</h2>
  *
@@ -45,13 +49,26 @@ import java.util.Set;
 public final class TrialCatalog {
 
 	/**
-	 * 자리가 터지고 룰렛이 열리기까지 기다리는 틱. 15초다.
+	 * 자리가 터지고 룰렛이 열리기까지 기다리는 틱.
 	 *
 	 * <p>지금 이 값을 쓰는 자리는 {@link Trigger#ENTRY} 하나뿐이다. 다른 차원에서 순간이동해
 	 * 떨어진 직후라 <b>어디에 왔는지도 모르는 상태</b>이고, 거기에 화면을 겹치면 룰렛이 무엇
 	 * 때문에 떴는지 읽히지 않는다. 떨어진 것을 먼저 겪게 하고 잠깐 뒤에 뽑는다.
+	 *
+	 * <h2>⚠ 이 값은 <b>입장 연출이 끝나는 시각과 묶여 있다</b></h2>
+	 *
+	 * <p>한동안 300틱(15초)이 여기 손으로 적혀 있었다. 그런데 사람이 입장 연출을 넣으면서
+	 * <b>「입장연출 10초후 그뒤로 연출끝나면 룰렛시작」</b>으로 정했다 — 곧 기다리는 이유가
+	 * 「떨어진 것을 먼저 겪게 한다」에서 <b>「연출이 끝날 때까지」</b>로 바뀌었다.
+	 *
+	 * <p>그래서 숫자를 적지 않고 {@link TrialEntrance#ROULETTE_DELAY_TICKS} 를 그대로 든다.
+	 * 두 값을 따로 적어 두면 연출의 단계 길이를 하나만 고쳐도 <b>룰렛이 연출 위에 겹쳐 뜬다</b> —
+	 * 룰렛이 뜨는 순간 {@link TrialFreeze} 가 판을 얼리므로 연출이 그 자리에서 멈춘 채 화면만
+	 * 올라간다. 한 자리에 묶어 두면 그 어긋남이 <b>일어날 수 없다.</b>
+	 *
+	 * <p>단계별 길이와 그 근거는 {@code TrialEntrance} 에 있다. 여기를 직접 고치지 말 것.
 	 */
-	public static final int DELAY_SETTLE_TICKS = 300;
+	public static final int DELAY_SETTLE_TICKS = TrialEntrance.ROULETTE_DELAY_TICKS;
 
 	/**
 	 * 기다리지 않는다. 자리가 터진 <b>그 틱</b>에 룰렛이 열린다.
@@ -77,6 +94,18 @@ public final class TrialCatalog {
 		 *
 		 * <p>카드가 한 장뿐인 자리에 쓴다. 한 장짜리 풀에서 이름이 도는 것은 결과가 정해진 굴림을
 		 * 보여 주는 것이라 연출이 거짓말이 된다.
+		 *
+		 * <h2>⚠ 지금 이것을 쓰는 자리가 <b>하나도 없다</b></h2>
+		 *
+		 * <p>{@link Trigger#HEALTH_80} 이 유일한 사용자였는데 사람이 <b>「80프로떄도 착지강화라고
+		 * 카드가 안나오고 그냥 안띄워도되니 화면에 강화만 시켜주고」</b>라고 해서 {@link #SILENT}
+		 * 로 옮겼다. 그래서 {@code DragonTrialManager.openFixedScreen} 과
+		 * {@link TrialFreeze#FIXED_HOLD_TICKS} 는 <b>지금 한 번도 실행되지 않는다.</b>
+		 *
+		 * <p><b>그래도 지우지 말 것.</b> 셋이 갈려 있는 것 자체가 설계다 — 어떤 자리는 판을 멈추고
+		 * 굴리고, 어떤 자리는 멈추되 굴리지 않고, 어떤 자리는 멈추지 않는다. 카드가 한 장뿐인
+		 * 자리가 하나라도 생기면 그때 다시 쓸 값이고, 그때 다시 만들면 {@code FIXED_HOLD_TICKS}
+		 * 의 「왜 60도 137도 아니고 100인가」를 처음부터 다시 셈해야 한다.
 		 */
 		FIXED_SCREEN,
 		/** 아무것도 멈추지 않는다. 화면도 뜨지 않는다. */
@@ -114,6 +143,10 @@ public final class TrialCatalog {
 		 *
 		 * <p>다른 차원에서 끌려와 떨어진 직후라 어디에 왔는지도 모른다. 그 위에 화면을 겹치면
 		 * 룰렛이 무엇 때문에 떴는지 읽히지 않는다.
+		 *
+		 * <p>이제 그 「잠깐」이 {@link TrialEntrance 입장 연출}의 길이다 — 크리스탈이 전부 사라지고,
+		 * 10초 뒤 드래곤이 중앙 상공에 자리를 잡고, 크리스탈이 되살아난다. <b>그 연출이 끝나는
+		 * 시각과 이 지연이 한 상수에 묶여 있다</b>({@link #DELAY_SETTLE_TICKS}).
 		 */
 		ENTRY("입장", DELAY_SETTLE_TICKS, Reveal.ROULETTE),
 		/**
@@ -130,10 +163,21 @@ public final class TrialCatalog {
 		 * <p>체력 문턱 셋도 <b>팀이 깎아서 만든 자리</b>다. 체력 막대가 눈앞에서 내려가는 것을
 		 * 보며 때리던 중이라 원인이 분명하다. 곧바로 연다.
 		 *
-		 * <p>카드가 <b>한 장</b>뿐이라 룰렛을 돌리지 않는다. 판은 멈추고 그 카드의 이름과 설명만
-		 * 보여 준다.
+		 * <p>카드가 <b>한 장</b>뿐이라 룰렛을 돌리지 않는다. 그리고 <b>화면도 띄우지 않는다.</b>
+		 *
+		 * <h2>화면을 없앤 것은 사람이 정한 것이다</h2>
+		 *
+		 * <p>{@link Reveal#FIXED_SCREEN} 이던 자리다. 사람이 플레이해 보고 <b>「80프로떄도
+		 * 착지강화라고 카드가 안나오고 그냥 안띄워도되니 화면에 강화만 시켜주고」</b>라고 정해
+		 * {@link Reveal#SILENT} 로 옮겼다. 대신 그 틱에 {@link TrialEmpower} 가 「드래곤이 세졌다」를
+		 * 소리·입자·화면 흔들림으로 낸다.
+		 *
+		 * <p>⚠ <b>대가가 있다.</b> 화면이 하던 일은 「착지 충격이 걸렸다」를 <b>글로</b> 알리는
+		 * 것이었고, 이제 그 길이 없다. 다음 착지 때 바닥이 갑자기 터지는데 사람은 이유를 모른다 —
+		 * 카드 문서가 「예고 없이 걸리면 무엇에 맞았는지 알 길이 없다」고 적어 두었던 그것이다.
+		 * <b>사람이 그 사실을 알고 고른 것이므로 되돌리지 말 것.</b>
 		 */
-		HEALTH_80("체력 80%", DELAY_NONE, Reveal.FIXED_SCREEN),
+		HEALTH_80("체력 80%", DELAY_NONE, Reveal.SILENT),
 		HEALTH_50("체력 50%", DELAY_NONE, Reveal.ROULETTE),
 		/**
 		 * 드래곤 체력이 30% 아래로 처음 내려갔을 때 — <b>최후의 저항.</b>
@@ -183,7 +227,11 @@ public final class TrialCatalog {
 	public static final Set<Trigger> POOL_ENTRY = EnumSet.of(Trigger.ENTRY);
 	public static final Set<Trigger> POOL_FIRST_CRYSTAL = EnumSet.of(Trigger.FIRST_CRYSTAL);
 	public static final Set<Trigger> POOL_ALL_CRYSTALS = EnumSet.of(Trigger.ALL_CRYSTALS);
-	/** 카드가 <b>한 장</b>뿐인 자리다({@link Reveal#FIXED_SCREEN}). 늘리려면 자리의 연출부터 볼 것. */
+	/**
+	 * 카드가 <b>한 장</b>뿐인 자리다. 늘리려면 자리의 연출부터 볼 것 — 지금은
+	 * {@link Reveal#SILENT} 라 <b>이름이 어디에도 안 뜬다.</b> 두 장이 되면 어느 것이 걸렸는지
+	 * 알 길이 없어지므로, 카드를 더하는 사람은 {@link Trigger#HEALTH_80} 의 연출을 함께 정해야 한다.
+	 */
 	public static final Set<Trigger> POOL_HEALTH_80 = EnumSet.of(Trigger.HEALTH_80);
 	public static final Set<Trigger> POOL_HEALTH_50 = EnumSet.of(Trigger.HEALTH_50);
 	/**
@@ -297,8 +345,13 @@ public final class TrialCatalog {
 		 *
 		 * @param arrowImmune  참이면 크리스탈이 투사체에 맞지 않는다. 올라가서 깨야 한다
 		 * @param restoreCage  참이면 모든 크리스탈에 쇠창살이 다시 생긴다. 없던 탑에도 생긴다
-		 * @param digSlowdown  참이면 팀 전원에게 채굴 피로 I. <b>등급은 0 고정이다</b> —
-		 *                     26.3 이 등급별 공식을 바꿨는데 등급 0 만 두 판이 같다
+		 * @param digSlowdown  참이면 팀 전원의 <b>채굴 속도가 15% 깎인다</b>
+		 *                     ({@code TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER}).
+		 *                     ⚠ <b>채굴 피로 상태이상이 아니다.</b> 예전에는 채굴 피로 I 을 걸었는데
+		 *                     그것은 바닐라에서 {@code 0.3^(등급+1)} 이라 <b>70% 감소</b>이고, 사람이
+		 *                     플레이해 보고 <b>「무딘곡괭이 이거 채굴피로1은 심하고 채굴 속도
+		 *                     15프로감소로」</b>라고 정했다. 15% 를 내는 바닐라 상태이상이 없어
+		 *                     {@code Player.getDestroySpeed} 에 직접 곱한다
 		 */
 		record CrystalGuard(boolean arrowImmune, boolean restoreCage, boolean digSlowdown)
 				implements Risk {
@@ -651,8 +704,19 @@ public final class TrialCatalog {
 					POOL_FIRST_CRYSTAL,
 					new Risk.CrystalGuard(true, false, false)),
 			new Trial("sharedfate:iron_cage", "쇠창살과 무딘 곡괭이",
-					"모든 크리스탈에 쇠창살이 다시 생기고 팀 전원이 채굴 피로에 걸립니다.",
+					"모든 크리스탈에 쇠창살이 다시 생기고 팀 전원의 채굴 속도가 15% 느려집니다.",
 					POOL_FIRST_CRYSTAL,
+					// 「채굴 피로에 걸립니다」였다. 사람이 플레이해 보고 「무딘곡괭이 이거
+					// 채굴피로1은 심하고 채굴 속도 15프로감소로」라고 해서 바꿨다.
+					//
+					// 채굴 피로 I 은 바닐라에서 0.3^(등급+1) 이라 등급 0 에서도 채굴 속도를
+					// 70% 깎는다(26.3 Player.getDestroySpeed 의 바이트코드에서 읽었다).
+					// 15% 는 그 4분의 1도 안 되는 값이고, 그런 배율을 내는 바닐라 상태이상은
+					// 없다 — 그래서 실행기가 getDestroySpeed 의 결과에 0.85 를 직접 곱한다.
+					// 값과 그 길은 TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER 에 있다.
+					//
+					// ⚠ 상태이상이 아니게 되었으므로 화면에 아이콘이 뜨지 않는다. 카드 이름과
+					// 이 설명이 「곡괭이가 무뎌졌다」를 말하는 유일한 자리다.
 					new Risk.CrystalGuard(false, true, true)),
 			new Trial("sharedfate:dragon_mark", "표적",
 					"크리스탈을 깬 사람이 10초 동안 표적이 되고 드래곤이 구체를 5발 날립니다. 그다음 20초는 쉽니다.",
