@@ -1,5 +1,7 @@
 package com.sharedfate.sync;
 
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ColorParticleOption;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -7,9 +9,11 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +31,8 @@ import java.util.Map;
  * <p>볼리 하나가 열리면 이렇게 보인다.
  *
  * <ol>
- *   <li>바닥에 <b>보라색 고리</b>가 뜬다 — 「여기가 위험하다」</li>
- *   <li><b>동시에</b> 하늘에서 <b>보라색 구체</b>가 그 자리로 떨어지기 시작한다 — 「곧 온다」</li>
+ *   <li>바닥에 <b>빨간 고리</b>가 뜬다 — 「여기가 위험하다」</li>
+ *   <li><b>동시에</b> 하늘에서 <b>빨간 구체</b>가 그 자리로 떨어지기 시작한다 — 「곧 온다」</li>
  *   <li>구체가 <b>땅에 닿는 그 틱에</b> 터진다</li>
  * </ol>
  *
@@ -45,31 +49,79 @@ import java.util.Map;
  * {@link DragonFireBarrage}(연쇄 포격)가 이미 푼 문제라 같은 답을 쓴다 — <b>날아오는 모습은
  * 파티클로 그리고 착탄은 직접 계산한다.</b>
  *
- * <h2>색 — 사람이 보라를 골랐고 규약의 보라와는 다른 보라다</h2>
+ * <h2>색 — 자홍으로 갔다가 <b>규약의 빨강으로 되돌렸다</b></h2>
  *
- * <p>사람이 플레이해 보고 「이펙트도 보라색으로 바꿔줘」라고 했다. 그런데
- * {@link TrialWarning.Colors} 의 규약에서 <b>보라({@code MARKED})는 「너 하나를 노린다」</b>이고
- * 「표적」({@link TrialDragonFocus})이 그 뜻으로 쓰고 있다. 이 카드의 뜻은 정반대에 가깝다 —
- * 아무도 노리지 않고 <b>자리를 노린다.</b> 그래도 사람이 정했으므로 보라로 간다.
+ * <p>경위가 이렇다.
  *
- * <p>대신 <b>「표적」의 보라와 눈으로 갈리게</b> 했다. 가른 것이 색 하나가 아니라 셋이다.
+ * <ol>
+ *   <li>처음에는 {@link TrialWarning#markGround} 를 그냥 불러 <b>규약의 빨강</b>
+ *       ({@link TrialWarning.Colors#DEADLY})을 썼다</li>
+ *   <li>사람이 플레이해 보고 「이펙트도 보라색으로 바꿔줘」라고 해서 보라로 갔는데, 규약의
+ *       보라({@code MARKED} = 「너 하나를 노린다」)는 「표적」({@link TrialDragonFocus})이
+ *       쓰고 있어 그것과 갈라 놓으려고 <b>자홍</b>({@code 0xC800C8})을 따로 만들어 썼다</li>
+ *   <li>다시 플레이해 보고 <b>「보라색이아닌 빨간색원으로다시 복귀하자 이번건 너무
+ *       가시성이안좋아」</b>라고 했다</li>
+ * </ol>
+ *
+ * <p>그래서 <b>규약의 빨강으로 되돌렸다.</b> 자홍을 되돌리는 이유는 <b>가시성 하나</b>이지
+ * 규약이 아니다 — 다만 되돌아간 자리가 마침 규약과도 맞는다. 빨강의 뜻이 <b>「서 있으면
+ * 죽는다」</b>이고 이 카드가 정확히 그것이다.
+ *
+ * <p>⚠ <b>이제 「자리 폭격」·「기둥 화염구」·「연쇄 포격」과 같은 빨강이다.</b> 그것이 규약대로이긴
+ * 하지만, 한 판에 빨간 고리가 여러 종류 뜰 때 <b>무엇이 오는지는 색으로 갈리지 않는다.</b>
+ * 갈리는 것은 남은 셋이다.
  *
  * <ul>
- *   <li><b>색상</b> — {@code MARKED} 는 {@code 0xB44AFF}(R180·G74·B255)로 파랑이 가장 센
- *       <b>연보라</b>이고 색상환에서 275° 다. 이 카드의 {@link #MARK_COLOR} 는 초록이 0 이고
- *       빨강과 파랑이 같아 <b>자홍</b>으로 읽히는 300° 다</li>
- *   <li><b>모양</b> — 「표적」은 <b>한 사람을 따라다니는</b> 고리 하나와 드래곤에서 그 사람까지
- *       그은 선이다. 이쪽은 <b>아무도 따라오지 않는</b> 고리 수십 개가 아레나에 흩어져 한꺼번에
- *       뜬다. 자리가 얼어붙는 것이 이 카드의 회피법 자체다</li>
- *   <li><b>입자 종류</b> — 「표적」의 구체는 <b>먼지</b>({@code DustParticleOptions})라 납작한
- *       단색 사각형이다. 이쪽 구체는 {@code WITCH} 라 <b>애니메이션되는 반투명 별</b>이다.
- *       한 화면에 둘이 같이 떠도 재질부터 다르다</li>
+ *   <li><b>수</b> — 이 카드는 한 볼리에 <b>60~90개</b>가 한꺼번에 뜬다. 「자리 폭격」은 한 곳,
+ *       「기둥 화염구」는 셋, 「연쇄 포격」은 한 줄로 이어진 열이다. 화면이 빨간 고리로 덮이면
+ *       그것이 이 카드다</li>
+ *   <li><b>구체</b> — 이 카드만 하늘에서 같은 색 구체가 내려온다</li>
+ *   <li><b>크기</b> — 반경 2.5 로 이 판에서 가장 작다(3 · 3.5 · 4.35)</li>
  * </ul>
  *
- * <p>⚠ <b>{@link TrialWarning.Colors} 에 색을 더하지 않았다.</b> 그 넷은 <b>먼지 고리의
- * 규약</b>이고 카드 전부가 함께 쓰는 언어다. 여기에 다섯째를 더하면 그 순간 규약이 규약이
- * 아니게 되므로({@code Colors} 의 설명) <b>색을 이 실행기 안에 둔다</b> — 새 카드를 만드는
- * 사람이 이 색을 물려받지 않게 하는 것이 요점이다.
+ * <p>「낙뢰」가 노랑으로 갈라져 나간 것이 정확히 이 문제였다({@code Colors} 의 「노랑의 뜻을 한
+ * 번 바꿨다」) — 한 번에 열 곳이 뜨는 카드가 빨강이면 다른 빨강과 섞였기 때문이다. <b>이 카드는
+ * 그보다 아홉 배 많은데도 빨강으로 되돌아간다</b>: 사람이 자홍의 가시성을 직접 보고 그쪽을
+ * 물렸고, 위의 세 가지로 갈린다고 본다. 여기를 다시 만질 사람은 <b>새 색을 만들지 말고</b>
+ * 이 판단부터 다시 볼 것.
+ *
+ * <p>⚠ <b>{@link TrialWarning.Colors} 에 색을 더하지 않았다.</b> 자홍이던 때도 그랬고 지금은
+ * 아예 규약의 색 하나를 그대로 쓴다. 다섯째를 더하면 그 순간 규약이 규약이 아니게 된다
+ * ({@code Colors} 의 설명).
+ *
+ * <h2>구체도 같은 빨강이다 — 입자를 갈아야 했다</h2>
+ *
+ * <p>사람이 말한 것은 「원」뿐이지만 <b>구체와 고리가 다른 색이면 「저 구체가 여기로 온다」가
+ * 안 읽힌다.</b> 예고가 두 겹인 것이 이 연출의 전부이므로 둘은 같은 색이어야 한다. 그래서
+ * {@link #MARK_COLOR} <b>하나</b>가 고리와 구체와 착탄을 함께 정한다 — 사람이 다르게 원하면
+ * 한 줄로 되돌아간다.
+ *
+ * <p>⚠ <b>구체가 쓰던 {@code WITCH} 로는 빨강을 만들 수 없다.</b> 26.3 의
+ * {@code SpellParticle.WitchProvider} 가 {@code setColor(f, 0, f)}({@code f ∈ [0.35, 0.85)})로
+ * <b>제 색을 자홍으로 직접 칠한다</b> — 서버가 무엇을 보내든 자홍이다. 자홍이던 때는 그것이
+ * 장점이었고 지금은 막힌 길이다.
+ *
+ * <p>그래서 <b>{@code ENTITY_EFFECT}</b> 로 갈았다. 고른 이유가 셋이다.
+ *
+ * <ul>
+ *   <li><b>색을 우리가 정한다.</b> 26.3 의 {@code ParticleResources} 가 이 타입에
+ *       {@code SpellParticle.MobEffectProvider} 를 물리는데, 그쪽은
+ *       {@code ColorParticleOption} 이 실어 보낸 ARGB 를 그대로
+ *       {@code setColor}·{@code setAlpha} 한다</li>
+ *   <li><b>보이는 것은 그대로다.</b> 만들어지는 입자가 {@code WITCH} 와 <b>같은
+ *       {@code SpellParticle} 클래스</b>라 재질(애니메이션되는 반투명 별)도, 중력 {@code -0.1}
+ *       로 천천히 떠올라 떨어지는 구체 뒤로 꼬리가 들리는 것도 같다. 색만 바뀐다</li>
+ *   <li><b>수명이 그대로다.</b> 같은 클래스라 {@code (int)(8.0 / (굴림 × 0.8 + 0.2))} 곧
+ *       <b>8~40틱</b>이고, 아래 「입자 수명」의 계산이 한 줄도 안 바뀐다</li>
+ * </ul>
+ *
+ * <p>⚠ <b>알파를 빼먹으면 통째로 안 보인다.</b> {@code ColorParticleOption.create(타입, int)} 가
+ * 받는 것은 RGB 가 아니라 <b>ARGB</b> 이고, 최상위 바이트가 0 이면 완전 투명이다. 그래서
+ * {@link #ORB_ARGB} 가 {@link #MARK_COLOR} 에 {@code 0xFF000000} 을 얹는다.
+ *
+ * <p>「표적」과 재질로 갈리던 것은 <b>그대로 살아 있다.</b> 그쪽 구체는 먼지
+ * ({@code DustParticleOptions})라 납작한 단색 사각형이고 이쪽은 여전히 별이다. 색도 이제
+ * 연보라 대 빨강이라 더 멀어졌다.
  *
  * <h2>입자 수명 — 30틱 예고에 60틱짜리를 쓰면 안 된다</h2>
  *
@@ -95,9 +147,10 @@ import java.util.Map;
  * <ul>
  *   <li>고리 — {@code DustParticleBase}. 중력이 없어 <b>제자리에 그대로 선다</b>. 경계를
  *       가리키는 선이라 흔들리면 안 된다</li>
- *   <li>구체 — {@code SpellParticle}({@code WITCH}). 26.3 의 {@code WitchProvider} 가
- *       {@code setColor(f, 0, f)}, {@code f ∈ [0.35, 0.85)} 로 <b>순수 자홍</b>을 준다.
- *       중력이 {@code -0.1} 이라 아주 천천히 떠올라, 떨어지는 구체 뒤로 꼬리가 들린다</li>
+ *   <li>구체 — {@code SpellParticle}({@code ENTITY_EFFECT}). 중력이 {@code -0.1} 이라 아주
+ *       천천히 떠올라, 떨어지는 구체 뒤로 꼬리가 들린다. <b>전에는 같은 클래스를 쓰는
+ *       {@code WITCH} 였고 수명도 같았다</b> — 색을 우리가 정할 수 없어 갈았을 뿐이라 이
+ *       계산은 한 줄도 안 바뀐다(위의 「구체도 같은 빨강이다」)</li>
  * </ul>
  *
  * <p>수명 하한이 둘 다 8틱이라 {@link #MARK_MAX_STRIDE} 의 근거가 그대로 살아 있다.
@@ -111,78 +164,135 @@ import java.util.Map;
  * 자막 키도 {@code subtitles.entity.generic.explode} 다. 사람이 「일반적인 폭발음」이라고 한
  * 것이 정확했다 — <b>이름을 믿고 고른 소리였다.</b>
  *
- * <p>그래서 실제로 엔더 소리 파일을 쓰는 것으로 바꿨다. 고른 것이
- * {@link SoundEvents#ENDER_EYE_DEATH}({@code entity/endereye/dead1,2})다. 이 저장소에서 아직
- * 아무도 안 쓰는 유일한 엔더 계열 「깨지는」 소리라, 사람이 이미 배운 신호와 겹치지 않는다 —
- * {@code END_PORTAL_SPAWN} 은 「크리스탈 부활」, {@code SHULKER_BULLET_HIT} 은 「표적」,
- * {@code PORTAL_TRIGGER} 는 「엔더 폭풍」, {@code ENDERMAN_TELEPORT} 는 「엔더 파동」,
- * {@code ENDER_DRAGON_GROWL} 은 경고 첫 층이 쓰고 있다.
+ * <p>그래서 한 번은 실제로 엔더 소리 파일을 쓰는 것으로 바꿨다
+ * ({@code ENDER_EYE_DEATH} = {@code entity/endereye/dead1,2}). <b>그런데 사람이 플레이해 보고
+ * 「그냥 폭발음으로해줘」라고 해서 되돌렸다.</b> 지금 쓰는 것은
+ * {@link SoundEvents#GENERIC_EXPLODE} 다.
+ *
+ * <p>⚠ <b>되돌아간 자리가 {@code DRAGON_FIREBALL_EXPLODE} 가 아닌 것이 중요하다.</b> 그 둘은
+ * <b>같은 소리</b>지만 이름이 다르고, 거짓말하는 이름으로 돌아가면 다음 사람이 「드래곤
+ * 소리인데 왜 폭발음이 나지」로 같은 자리를 다시 판다. <b>값은 되돌리되 이름은 솔직한 쪽을
+ * 쓴다</b> — 위에 적어 둔 발견을 지우지 않는 이유도 같다.
+ *
+ * <p>26.3 의 {@code SoundEvents.GENERIC_EXPLODE} 는 {@code Holder.Reference} 라
+ * {@code TrialWarning.playEach} 의 <b>{@code Holder} 형태</b>로 그대로 들어간다
+ * ({@code ENDER_EYE_DEATH} 는 맨 {@code SoundEvent} 여서 레지스트리에 감싸는 쪽으로 갔었다).
+ * {@code javap} 로 확인한 것이고, 판이 올라 모양이 바뀌면 컴파일이 먼저 깨진다.
  *
  * <p>⚠ <b>이름으로 고르지 말고 {@code sounds.json} 을 열어 볼 것.</b> 이 카드가 그 함정에
  * 한 번 걸렸다.
  *
- * <h2>겹침 금지 규칙을 반드시 태울 것</h2>
+ * <h2>⚠⚠ 이 카드는 <b>겹침 금지 목록 밖</b>이다 — 고리끼리 겹친다</h2>
  *
- * <p>지점을 직접 굴리지 말고 {@link TrialRisks} 의 <b>살아 있는 지점 목록</b>을 지나게 하라. 한
- * 볼리 안에서만 떨어뜨려 놓는 것으로는 모자란다 — 이 카드와 「낙뢰」(피해 18)는 자리가 달라도
- * <b>둘 다 쌓여 동시에 돈다.</b> 두 고리가 겹친 자리에 선 사람은 한 틱에 둘을 다 받고, 팀 공유
- * 체력은 20 이다. 전멸은 곧 월드 삭제다.
+ * <p><b>이 저장소에서 「즉사 메커닉 0개」를 깨는 첫 번째 자리다.</b> 값을 만지기 전에 이 절을
+ * 끝까지 읽을 것.
  *
- * <h2>지점은 {@link TrialRisks#reserveSpots} 로만 잡고 터진 그 틱에 돌려준다</h2>
+ * <h3>어쩌다 이렇게 됐는가</h3>
  *
- * <p>이 파일은 좌표를 스스로 굴리지 않는다. {@code reserveSpots} 는 <b>살아 있는 모든 지점</b>
- * (다른 카드의 것 포함)에서 두 반경의 합보다 멀리 떨어진 자리만 내주므로, 그 길을 지나는 것이
- * 「낙뢰 18 + 종말의 비 23」을 막는 유일한 장치다.
+ * <ol>
+ *   <li>사람이 지점을 두 배(60~90곳)로 올리라고 했다</li>
+ *   <li>그대로 {@code TrialRisks.reserveSpots} 를 지나게 하니 <b>90 을 불러도 84곳밖에 안
+ *       섰고</b>, 같은 목록을 쓰는 「낙뢰」가 <b>9.4곳 → 4.2곳으로 반토막</b> 났다. 그것을
+ *       사람에게 알렸다</li>
+ *   <li>사람이 <b>「서로 겹쳐도 되니까 내가 말한 숫자로 해 줘」</b>라고 했다</li>
+ * </ol>
  *
- * <p>그리고 <b>고리가 터진 그 틱에 {@link TrialRisks#releaseSpots} 로 놓는다.</b> 이 카드의
- * 고리는 예고 30틱 동안만 바닥에 있고 착탄과 함께 사라지므로, 그 뒤로도 자리를 붙들고 있으면
- * 이미 아무것도 없는 곳을 다른 카드가 영영 못 쓰게 된다. {@code LIVE_SPOTS} 는 「지금 바닥에
- * <b>살아 있는</b> 지점」의 목록이지 「이 카드가 쓴 적 있는 자리」의 목록이 아니다.
+ * <p>그래서 이 카드만 목록에서 빠졌다. <b>대가를 알고 고른 값</b>이지 이 파일이 고른 것이
+ * 아니다. 좋은 쪽도 하나 있다 — 이 카드가 자리를 안 잡으므로 <b>「낙뢰」는 열 곳을 도로 다
+ * 받는다</b>(4.2 → 평균 10.00 / 10. 20만 판에서 열 곳이 다 선 판이 100% 였다).
  *
- * <p>⚠ <b>열쇠는 {@code TrialRisks} 가 쓰는 것과 글자 하나까지 같아야 한다.</b> 분배기가 매 틱
- * {@code LIVE_SPOTS.keySet().retainAll(살아 있는 카드의 열쇠)} 로 없어진 카드의 자리를 놓는데,
- * 다른 모양의 열쇠를 쓰면 <b>잡자마자 매 틱 지워진다</b> — 우리는 남의 고리를 피하는데 남은 우리
- * 고리를 못 보는, 한쪽만 새는 상태가 된다.
+ * <h3>⚠ 고리 셋이 겹친 자리는 무장하고도 전멸이다</h3>
  *
- * <p>그래서 <b>열쇠를 만들지 않고 분배기에게 받는다</b>({@link #tick} 의 {@code key}). 한때는
- * 진입점이 열쇠를 안 받아 {@code TrialCatalog.all()} 에서 값으로 되찾는 우회로를 두었는데,
- * 그러면 값이 완전히 같은 위험을 카드 둘에 걸었을 때 앞 카드의 열쇠가 나와 뒤 카드가 겹침
- * 검사에서 빠진다. <b>열쇠를 두 곳에서 만들면 언젠가 갈라진다</b> — 되돌리지 말 것.
- *
- * <h2>⚠ 지점을 늘려도 자리가 그만큼 서지는 않는다 — 그리고 「낙뢰」가 그 값을 치른다</h2>
- *
- * <p>{@code reserveSpots} 는 <b>적힌 것보다 적게 내줄 수 있다.</b> 겹치느니 한 발 빠지는 것이
- * 이 저장소의 규칙이라 그 자체는 오류가 아니다. 다만 <b>얼마나 빠지는지</b>는 알고 값을 정해야
- * 한다. 반경 40 아레나 · 반경 2.5 · 최소 간격 5칸 · {@code SPOT_TRIES} 8 로 20만 판을 굴린
- * 값이다(「낙뢰」는 반경 3 짜리 열 곳이고, 이 카드가 <b>먼저</b> 잡은 뒤 부른 경우다).
+ * <p>피해 23 · {@code explosion(null, null)} 이라 다이아 풀셋 + 보호 IV 기준으로 이렇다
+ * ({@code GearedDamage}).
  *
  * <table border="1">
- *   <caption>20만 판 시뮬레이션</caption>
- *   <tr><th>부른 수</th><th>실제로 선 수(평균)</th><th>최소</th><th>다 서는 판</th>
- *       <th>그 뒤 「낙뢰」가 받는 수</th></tr>
- *   <tr><td>45</td><td>44.94</td><td>42</td><td>94.4%</td><td>9.44 / 10</td></tr>
- *   <tr><td>60</td><td>59.52</td><td>55</td><td>60.8%</td><td>8.11 / 10</td></tr>
- *   <tr><td>75(60~90 의 가운데)</td><td>72.91</td><td>66</td><td>9.6%</td><td>6.11 / 10</td></tr>
- *   <tr><td>90</td><td><b>84.18</b></td><td>74</td><td>0.06%</td><td><b>4.19 / 10</b></td></tr>
+ *   <caption>한 틱에 맞는 발 수</caption>
+ *   <tr><th>발</th><th>실제 피해</th><th></th></tr>
+ *   <tr><td>1</td><td>6.77</td><td>산다</td></tr>
+ *   <tr><td>2</td><td>13.54</td><td>산다</td></tr>
+ *   <tr><td><b>3</b></td><td><b>20.31</b></td><td><b>팀 체력 20 — 전멸</b></td></tr>
  * </table>
  *
- * <p>읽는 법이 둘이다.
+ * <p>「낙뢰」와 겹치는 것도 이제 안 막힌다. <b>낙뢰(6.93) + 비(6.77) = 13.7 이라 둘은
+ * 살지만</b>, 거기에 이 카드의 고리가 하나만 더 겹치면 <b>20.5 로 죽는다.</b>
+ *
+ * <h3>얼마나 자주 그런 자리가 생기는가 — 20만 판을 굴린 값</h3>
+ *
+ * <p>반경 40 아레나에 반경 2.5 짜리 90곳을 겹침 검사 없이 뿌린 경우다. 「가장 깊은 겹침」은
+ * 배치의 모든 원-원 교점에서 덮은 원 수를 세어 구한 <b>정확값</b>이고, 넓이는 몬테카를로다.
+ *
+ * <table border="1">
+ *   <caption>한 볼리의 가장 깊은 겹침(90곳 · 20만 판)</caption>
+ *   <tr><th>깊이</th><th>그런 볼리의 비율</th></tr>
+ *   <tr><td>2겹</td><td>0.005%</td></tr>
+ *   <tr><td>3겹</td><td>28.24%</td></tr>
+ *   <tr><td>4겹</td><td>59.34%</td></tr>
+ *   <tr><td>5겹</td><td>11.35%</td></tr>
+ *   <tr><td>6겹</td><td>1.00%</td></tr>
+ *   <tr><td>7겹</td><td>0.064%</td></tr>
+ *   <tr><td>8겹</td><td>0.005%</td></tr>
+ *   <tr><td>9겹</td><td>0.001%</td></tr>
+ * </table>
+ *
+ * <p>⚠ <b>3겹 이상 구역이 생기는 볼리가 99.995% 다.</b> 사실상 <b>모든 볼리에 즉사 구역이
+ * 하나 이상 있다.</b> 4겹 이상도 71.8% 에 있다.
+ *
+ * <table border="1">
+ *   <caption>그 구역이 아레나 넓이에서 차지하는 비율</caption>
+ *   <tr><th>깊이</th><th>넓이 비율</th><th>반경 40 아레나에서</th></tr>
+ *   <tr><td>1겹 이상</td><td>28.98%</td><td>1457칸²</td></tr>
+ *   <tr><td>2겹 이상</td><td>4.67%</td><td>235칸²</td></tr>
+ *   <tr><td><b>3겹 이상</b></td><td><b>0.513%</b></td><td><b>25.8칸²</b></td></tr>
+ *   <tr><td>4겹 이상</td><td>0.043%</td><td>2.1칸²</td></tr>
+ * </table>
+ *
+ * <p>읽는 법은 이렇다. <b>즉사 구역은 거의 언제나 있지만 아레나의 0.5% 다.</b> 아무 데나 서
+ * 있다가 걸릴 확률이 한 볼리에 0.5% 이고, 그마저 <b>30틱 동안 고리 셋이 겹쳐 보이는 자리</b>라
+ * 눈으로 알아볼 수 있다 — 고리가 <b>비키지 말아야 할 곳</b>이 아니라 <b>가장 비켜야 할 곳</b>을
+ * 말한다는 점에서 예고는 여전히 정직하다.
+ *
+ * <p>그래도 <b>즉사는 즉사다.</b> 이 판의 원칙이 「즉사 메커닉 0개」였고 이 카드가 그것을
+ * 깼다. 값을 되돌리는 것이 아니라 <b>알고 두는 것</b>이 지금의 상태다.
+ *
+ * <h3>지점은 이 파일이 직접 굴린다 — 겹침 검사만 빼고 나머지는 그대로다</h3>
+ *
+ * <p>{@link #rollSpot} 이 {@code TrialRisks.groundSpot} 과 <b>겹침 검사 한 줄만 다르다.</b>
+ * 나머지는 일부러 같게 두었다.
  *
  * <ul>
- *   <li><b>이 카드는 거의 두 배가 된다.</b> 45 → 90 을 부르면 44.94 → 84.18 이라 1.87배다.
- *       사람이 정한 두 배가 실제로도 거의 두 배로 일어난다</li>
- *   <li>⚠ <b>대신 「낙뢰」가 반토막 난다.</b> 9.44 → 4.19 다. 0.3% 의 판에서는 <b>한 곳도 못
- *       받는다.</b> 반대로 「낙뢰」의 주기가 먼저 온 틱이면 「낙뢰」가 열 곳을 다 가져가고 이
- *       카드가 84.18 → 79.20 으로 줄어든다. <b>겹치느니 빠진다가 이 저장소의 규칙이라 그대로
- *       두지만, 낙뢰가 절반으로 준 것은 이 카드가 만든 일이다</b> — 낙뢰의 피해가 약해 보이면
- *       낙뢰 값을 의심하기 전에 여기를 볼 것</li>
+ *   <li>{@link TrialRisks#arenaOffset} 을 그대로 쓴다 — 아레나 반경도 분포(원 안 고르게)도
+ *       남의 카드와 같아야 한다</li>
+ *   <li><b>허공을 뽑지 않는다.</b> 중앙 섬은 둥글지 않아 반경 40 안에도 빈 곳이 있고, 거기서
+ *       터지면 예고도 피해도 뜻이 없다. 하이트맵이 월드 바닥을 돌려주면 다시 굴린다</li>
+ *   <li><b>그 자리의 지표를 재서 담는다.</b> 구체가 제 자리의 땅에 닿으려면 {@code spot.y} 가
+ *       실제 지표여야 한다({@link Volley} 의 설명)</li>
+ *   <li>{@link TrialRisks#SPOT_TRIES} 번까지 다시 굴리고 포기한다 — 허공만 계속 뽑는 경우다</li>
  * </ul>
+ *
+ * <p>⚠ <b>{@code TrialRisks} 쪽은 한 줄도 안 고쳤다.</b> 겹침 금지는 「낙뢰」를 비롯한 다른
+ * 카드에 여전히 필요하고, 거기를 헐겁게 하면 이 카드 하나 때문에 판 전체가 즉사가 된다.
+ * <b>예외는 이 파일 안에서만 만든다.</b>
+ *
+ * <p>그래서 이 카드는 {@code reserveSpots} 도 {@code releaseSpots} 도 부르지 않고
+ * {@code LIVE_SPOTS} 에 한 줄도 올리지 않는다. <b>남의 고리를 피하지도 않고 남이 우리를
+ * 피하지도 않는다</b> — 한쪽만 새는 상태가 아니라 <b>양쪽 다 끈 상태</b>여야 한다. 한쪽만
+ * 되돌리면 「낙뢰」가 다시 반토막 나면서 겹침은 그대로 남는다.
+ *
+ * <p>{@link #tick} 이 받는 {@code key} 는 이제 <b>겹침 목록이 아니라 {@link #RAINS} 의
+ * 열쇠로만</b> 쓴다. 그래도 분배기에게 받는 것은 그대로다 — 열쇠를 두 곳에서 만들면 언젠가
+ * 갈라진다.
+ *
+ * <h3>부른 만큼 다 선다</h3>
+ *
+ * <p>겹침 검사가 없으니 {@link TrialRisks#reserveSpots} 가 자리를 못 찾아 빠지는 일이
+ * 없어졌다. 90 을 부르면 <b>90곳이 다 선다</b>(중앙 섬 위를 뽑는 한). 전에는 84.2곳이었다.
  *
  * <h2>예고 30틱은 「제자리에서 옆으로 비키기」의 하한이다</h2>
  *
  * <p>{@link TrialWarning#TICKS_SIDESTEP} 이 정확히 30틱이고 이 카드의 {@code warnTicks} 가 그
  * 값이다. 이 카드가 요구하는 행동이 딱 그것이기 때문이다 — <b>자리는 볼리가 열리는 순간
- * 얼어붙고</b>({@code reserveSpots} 가 내준 좌표를 착탄까지 그대로 들고 간다) 사람을 따라오지
+ * 얼어붙고</b>(굴린 좌표를 착탄까지 그대로 들고 간다) 사람을 따라오지
  * 않으므로, 사람은 갈 곳을 고를 것도 넷이 합의할 것도 없이 고리 밖으로 한 걸음 나가기만 하면
  * 된다. 여기를 30 아래로 내리면 예고가 아니라 <b>사후 통보</b>다.
  *
@@ -200,6 +310,32 @@ import java.util.Map;
  * ({@link DragonFireBarrage} 의 「팀에게 한 번만」).
  */
 public final class TrialEndRain {
+
+	/**
+	 * ⚠⚠ 한 사람이 <b>한 틱에 맞을 수 있는 고리 수.</b> {@code TrialRisks.worstCaseTickDamage}
+	 * 가 이 값을 곱한다.
+	 *
+	 * <h2>전에는 1 이었고, 그것은 <b>증명된 1</b> 이었다</h2>
+	 *
+	 * <p>{@code TrialRisks.reserveSpots} 가 고리끼리 두 반경의 합보다 멀게 떼어 놓았으므로
+	 * 어느 자리에 서 있어도 고리 하나에만 들었다. <b>사람이 겹침을 허용하면서 그 증명이
+	 * 사라졌다</b> — 까닭은 클래스 설명의 「겹침 금지 목록 밖이다」에 있다.
+	 *
+	 * <h2>지금 이 9 는 <b>증명이 아니라 실측</b>이다</h2>
+	 *
+	 * <p>반경 40 아레나에 반경 2.5 짜리 90곳을 겹침 검사 없이 뿌린 <b>20만 판</b>에서 실제로
+	 * 나온 가장 깊은 겹침이다(1판, 0.001%). 흔한 쪽은 3~4겹이고 3겹 이상이 99.995% 의 볼리에
+	 * 있다 — 분포는 클래스 설명의 표에 있다.
+	 *
+	 * <p>⚠ <b>이것은 천장이 아니다.</b> 무작위로 뿌리는 이상 구조적 상한이 없고, 더 굴리면 더
+	 * 깊은 것이 나온다. 그래도 값을 적어 두는 것은 <b>{@code worstCaseTickDamage} 가 「1」이라고
+	 * 거짓말하는 것을 막기 위해서</b>다. 이 값을 1 로 되돌리려면 겹침 금지를 먼저 되살릴 것.
+	 *
+	 * <p>⚠ <b>이 카드가 안전 시험의 유일한 예외다.</b> 무장 기준으로 3겹이면 20.31 이라 팀 체력
+	 * 20 을 넘는다 — 「즉사 메커닉 0개」를 깬 첫 카드이고, {@code TrialRisksTest} 가 <b>다른
+	 * 카드가 슬쩍 따라 나오지 못하게</b> 이 예외를 이름으로 붙들고 있다.
+	 */
+	static final int WORST_CASE_OVERLAP = 9;
 
 	/**
 	 * 이 카드가 <b>예고 한 틱에</b> 쓸 수 있는 점 수. 고리와 구체를 <b>합쳐</b>서다.
@@ -246,21 +382,37 @@ public final class TrialEndRain {
 	static final int MARK_MAX_STRIDE = 6;
 
 	/**
-	 * 바닥 고리와 구체의 보라.
+	 * ⚠ <b>이 카드의 색 하나.</b> 바닥 고리도 하늘 구체도 착탄도 전부 여기서 나온다.
 	 *
-	 * <p>{@code WITCH} 입자가 26.3 에서 {@code setColor(f, 0, f)}({@code f ∈ [0.35, 0.85)})로
-	 * 내는 <b>순수 자홍</b>에 맞춘 값이다. 하늘에서 떨어지는 것과 바닥에 뜬 것이 같은 색이라야
-	 * 「저 구체가 이 고리로 온다」가 읽힌다.
+	 * <p><b>전에는 자홍({@code 0xC800C8})이었다.</b> 사람이 「이펙트도 보라색으로」라고 해서
+	 * 그리로 갔다가, 플레이해 보고 <b>「보라색이아닌 빨간색원으로다시 복귀하자 이번건 너무
+	 * 가시성이안좋아」</b>라고 해서 되돌렸다. 되돌린 이유는 <b>가시성 하나</b>다 — 규약이 아니라
+	 * 눈이 정한 것이고, 마침 규약과도 맞는다.
 	 *
-	 * <p>⚠ <b>{@link TrialWarning.Colors#MARKED}(0xB44AFF)를 그대로 쓰지 말 것.</b> 그것은
-	 * 「너 하나를 노린다」의 보라이고 「표적」이 쓰고 있다. 클래스 설명의 「색」에 무엇으로
-	 * 갈랐는지 적어 두었다 — 색상환에서 275° 대 300°, 그리고 모양과 입자 종류다.
+	 * <p>돌아온 자리가 {@link TrialWarning.Colors#DEADLY}, 곧 규약의 <b>「서 있으면 죽는다」</b>
+	 * 다. 이 카드가 정확히 그 뜻이라 빌려 쓰는 것이 아니라 <b>제자리로 온 것</b>이다. 처음 이
+	 * 카드를 만들 때도 {@link TrialWarning#markGround} 를 그냥 불러 이 빨강을 썼다.
 	 *
-	 * <p>⚠ <b>이 색을 {@code TrialWarning.Colors} 로 옮기지 말 것.</b> 거기 넷은 카드 전부가
-	 * 함께 쓰는 언어이고, 다섯째가 생기는 순간 규약이 규약이 아니게 된다. 여기 있어야 새 카드를
-	 * 만드는 사람이 물려받지 않는다.
+	 * <p>⚠ <b>상수 하나로 둔 까닭</b>이 있다. 사람이 말한 것은 「원」뿐인데 구체와 착탄까지 같은
+	 * 색이어야 「저 구체가 이 고리로 온다」가 읽히므로 셋이 한 값을 본다. 사람이 다르게 원하면
+	 * <b>여기 한 줄</b>만 고치면 된다 — 색을 세 군데에 나눠 적지 말 것.
+	 *
+	 * <p>⚠ <b>새 색을 만들지 말 것.</b> 자홍이 이 파일 안에 있었던 것은 규약에 다섯째를 더하지
+	 * 않으려는 것이었고, 지금은 아예 규약의 색을 그대로 쓰므로 그 걱정이 없다. 「자리 폭격」·
+	 * 「기둥 화염구」·「연쇄 포격」과 같은 빨강이 된 것은 알고 한 일이다 — 무엇으로 갈리는지는
+	 * 클래스 설명의 「색」에 적어 두었다.
 	 */
-	static final int MARK_COLOR = 0xC800C8;
+	static final int MARK_COLOR = TrialWarning.Colors.DEADLY;
+	/**
+	 * 구체와 착탄 입자에 실어 보내는 <b>ARGB</b>.
+	 *
+	 * <p>⚠ {@code ColorParticleOption.create(타입, int)} 가 받는 것은 RGB 가 아니라 ARGB 이고
+	 * ({@code ARGB.alpha/red/green/blue} 로 뜯는다), <b>최상위 바이트가 0 이면 완전 투명</b>이라
+	 * 구체가 통째로 안 보인다. {@link #MARK_COLOR} 에 불투명을 얹는 자리가 여기다.
+	 *
+	 * <p>색 자체는 {@link #MARK_COLOR} 하나에서 온다 — 여기에 다른 색을 적지 말 것.
+	 */
+	static final int ORB_ARGB = 0xFF000000 | MARK_COLOR;
 	/**
 	 * 고리에서 이웃한 두 점 사이 간격(블록).
 	 *
@@ -355,13 +507,13 @@ public final class TrialEndRain {
 	 * <p>{@code spots} 가 좌표인 것이 핵심이다. 사람을 들고 있으면 매 틱 그 사람의 현재 자리를
 	 * 읽게 되고, 그 순간 표식이 사람을 쫓아다녀 <b>비킬 수 없는 카드</b>가 된다.
 	 *
-	 * <p>⚠ <b>좌표의 {@code y} 가 그 자리의 실제 지표다.</b> {@link TrialRisks#reserveSpots} 가
-	 * 자리를 내줄 때 이미 {@code getHeightmapPos(MOTION_BLOCKING_NO_LEAVES, ...)} 로 그 칸의
-	 * 설 수 있는 높이를 물어 담아 준다 — {@code TrialEnderPulse.Ground} 가 점마다 하는 계산과
-	 * 같은 값이다. 그래서 <b>구체가 떨어질 바닥을 여기서 다시 묻지 않는다</b>: 볼리가 열린
-	 * 틱의 지표를 착탄까지 그대로 들고 가고, 자리마다 높이가 달라도 구체는 제 자리의 땅에 닿는다.
+	 * <p>⚠ <b>좌표의 {@code y} 가 그 자리의 실제 지표다.</b> {@link #rollSpot} 이 자리를 굴릴 때
+	 * 이미 {@code getHeightmapPos(MOTION_BLOCKING_NO_LEAVES, ...)} 로 그 칸의 설 수 있는 높이를
+	 * 물어 담는다 — {@code TrialEnderPulse.Ground} 가 점마다 하는 계산과 같은 값이다. 그래서
+	 * <b>구체가 떨어질 바닥을 여기서 다시 묻지 않는다</b>: 볼리가 열린 틱의 지표를 착탄까지
+	 * 그대로 들고 가고, 자리마다 높이가 달라도 구체는 제 자리의 땅에 닿는다.
 	 *
-	 * @param spots   이번 볼리의 고리 중심들. {@link TrialRisks#reserveSpots} 가 내준 자리뿐이다
+	 * @param spots   이번 볼리의 고리 중심들. {@link #rollSpots} 가 굴린 자리다
 	 * @param landsAt 착탄하는 틱. 볼리가 열린 틱 + {@code warnTicks} 다
 	 */
 	private record Volley(List<Vec3> spots, long landsAt) {
@@ -408,13 +560,13 @@ public final class TrialEndRain {
 	 *       기다리지 않는다 — 배선을 한 줄 빠뜨려 「어느 판에서만 두 번 온다」가 되는 길이 없다</li>
 	 * </ul>
 	 *
-	 * <p>{@link #RAINS} 의 칸은 「끝났는가」가 아니라 <b>「아직 돌려주지 않은 자리가 있는가」</b>를
-	 * 들고 있다. 그래서 끝나는 틱에 정확히 한 번 {@link TrialRisks#releaseSpots} 가 불린다.
+	 * <p>{@link #RAINS} 의 칸은 「끝났는가」가 아니라 <b>「아직 바닥에 떠 있는 볼리가
+	 * 있는가」</b>를 들고 있다. 마지막 볼리가 터진 틱에 정확히 한 번 지워진다.
 	 *
 	 * <p>{@code key} 는 이 위험을 가리키는 열쇠다({@code 카드 id + '#' + 카드 안 위험
-	 * 순번}). {@link TrialRisks} 가 겹침 금지 목록을 이 열쇠로 관리하므로, 자리를 잡는
-	 * 실행기는 <b>반드시 이 값을 그대로 넘겨야 한다</b> — 스스로 만들어 쓰면 두 곳에서
-	 * 만든 열쇠가 언젠가 갈라진다.
+	 * 순번}). ⚠ <b>이 카드는 겹침 금지 목록을 쓰지 않으므로</b> 열쇠가 하는 일은
+	 * {@link #RAINS} 의 칸을 가르는 것뿐이다. 그래도 <b>스스로 만들지 않고 분배기에게 받는다</b> —
+	 * 두 곳에서 만든 열쇠는 언젠가 갈라지고, 값이 같은 위험을 카드 둘에 걸면 둘이 같은 칸을 쓴다.
 	 *
 	 * @param granted 카드를 받은 틱. 비가 내리는 시간은 월드 시간이 아니라 여기서부터 센다
 	 */
@@ -428,7 +580,7 @@ public final class TrialEndRain {
 
 		Downpour run = RAINS.get(key);
 		if (run != null && run.granted() != granted) {
-			// 다른 판에서 받은 카드의 찌꺼기다. 자리를 돌려주고 처음부터 센다.
+			// 다른 판에서 받은 카드의 찌꺼기다. 버리고 처음부터 센다.
 			finish(key);
 			run = null;
 		}
@@ -449,15 +601,15 @@ public final class TrialEndRain {
 		// 순서가 셋이다 — 터뜨리고, 새 볼리를 열고, 떠 있는 것을 그린다. 터뜨리는 것이 먼저라야
 		// 방금 터진 고리가 그 틱에 사라지고, 그리는 것이 마지막이라야 이번 틱에 열린 볼리가
 		// 첫 틱부터 고리와 구체와 소리를 낸다.
-		run = land(end, members, key, run, now, risk);
+		run = land(end, members, run, now, risk);
 		if (raining) {
-			run = openVolley(end, key, run, now, elapsed, risk);
+			run = openVolley(end, run, now, elapsed, risk);
 		}
 		warn(end, members, run, now, risk);
 
 		if (run.volley() == null && !raining) {
-			// 마지막 볼리까지 끝났다. 자리를 돌려주고 기록을 지운다 — 다음 틱부터는 위의
-			// 「끝난 쪽은 영영 되돌아간다」로 빠진다.
+			// 마지막 볼리까지 끝났다. 기록을 지운다 — 다음 틱부터는 위의 「끝난 쪽은 영영
+			// 되돌아간다」로 빠진다.
 			finish(key);
 			return;
 		}
@@ -467,33 +619,34 @@ public final class TrialEndRain {
 	/**
 	 * 월드가 바뀌거나 서버가 내려갈 때.
 	 *
-	 * <p><b>잡아 둔 지점을 {@link TrialRisks} 의 살아 있는 목록에서도 놓을 것.</b> 남겨 두면 다음
-	 * 판의 다른 카드가 아레나 일부를 영영 쓰지 못한다 — 컴파일도 시험도 조용한 종류의 사고다.
+	 * <p><b>전에는 여기서 {@code TrialRisks.releaseSpots} 로 잡아 둔 지점을 놓았다.</b> 이 카드가
+	 * 겹침 금지 목록에서 빠지면서(클래스 설명의 「겹침 금지 목록 밖이다」) 잡아 두는 자리가
+	 * 아예 없어져 놓을 것도 없어졌다. <b>한쪽만 되돌리지 말 것</b> — 잡기를 되살리면 놓기도
+	 * 함께 되살려야 하고, 놓기만 남기면 남의 자리를 지운다.
 	 *
-	 * <p>{@code TrialRisks.clearState()} 는 제 목록을 먼저 비우고 여기를 부르므로 실제로는 지울
-	 * 것이 없을 때가 많다. 그래도 놓는 것은 <b>부르는 순서에 기대지 않기 위해서</b>다 — 순서가
-	 * 바뀌면 조용히 새는 쪽이 이 함수다.
+	 * <p>남은 것은 {@link #RAINS} 뿐이다. 월드가 바뀌면 남은 좌표가 새 판에서 터지므로 반드시
+	 * 비운다.
 	 */
 	public static void clearState() {
-		for (String key : RAINS.keySet()) {
-			TrialRisks.releaseSpots(key);
-		}
 		RAINS.clear();
 	}
 
 	// ------------------------------------------------------------------ 볼리 한 번
 
 	/**
-	 * 착탄할 때가 됐으면 터뜨리고 자리를 돌려준다.
+	 * 착탄할 때가 됐으면 터뜨린다.
 	 *
 	 * <p>착탄하는 틱에는 고리도 구체도 다시 그리지 않는다 — 볼리를 여기서 비우므로 {@link #warn}
 	 * 이 그릴 것이 없다. 같은 틱에 표식을 한 벌 더 보내면 방금 터진 고리가 한 틱 더 살아 있는
 	 * 것으로 보이고, 「터진 자리는 즉시 안전」이 그 한 틱에서 먼저 깨진다 — 「연쇄 포격」이 같은
 	 * 자리에서 같은 판단을 한다.
 	 *
+	 * <p><b>전에는 여기서 {@code TrialRisks.releaseSpots} 로 자리를 놓았다.</b> 이제 잡는 자리가
+	 * 없어 놓을 것도 없다(클래스 설명의 「겹침 금지 목록 밖이다」).
+	 *
 	 * <p>소리는 <b>지점마다가 아니라 사람마다</b> 한 번씩 낸다({@link #impactSound}).
 	 */
-	private static Downpour land(ServerLevel end, List<ServerPlayer> members, String key,
+	private static Downpour land(ServerLevel end, List<ServerPlayer> members,
 			Downpour run, long now, TrialCatalog.Risk.EndRain risk) {
 		Volley volley = run.volley();
 		if (volley == null || now < volley.landsAt()) {
@@ -503,9 +656,6 @@ public final class TrialEndRain {
 			detonate(end, members, spot, risk);
 		}
 		impactSound(end, members);
-		// 고리는 터진 그 틱에 사라진다. 살아 있지 않은 자리를 붙들고 있으면 다른 카드가
-		// 아레나의 그만큼을 영영 못 쓴다.
-		TrialRisks.releaseSpots(key);
 		return run.without();
 	}
 
@@ -516,31 +666,80 @@ public final class TrialEndRain {
 	 * 표식이 착탄 없이 사라지고</b>, 그것은 예고가 거짓말을 한 것이 된다 — 이 전투는 이미 보여 준
 	 * 표식을 무르지 않는다.
 	 *
-	 * <p>{@link TrialRisks#reserveSpots} 가 <b>적힌 것보다 적게 내줄 수 있다.</b> 살아 있는 다른
-	 * 고리들 때문에 자리를 못 찾은 것이고, 그건 정상이다 — 겹치느니 한 발 빠지는 쪽이다. 한 자리도
-	 * 못 얻으면 이번 볼리는 통째로 건너뛰고 <b>다음 볼리 시각은 그대로 굴린다</b>. 매 틱 다시
-	 * 시도하면 아레나가 붐빌 때 예고 없이 뜬금없는 틱에 열린다.
+	 * <p>⚠ <b>자리를 이 파일이 직접 굴린다</b>({@link #rollSpots}). 전에는
+	 * {@code TrialRisks.reserveSpots} 를 지나 남의 고리를 피했는데, 사람이 「서로 겹쳐도 되니까
+	 * 내가 말한 숫자로」라고 정해 그 길에서 빠졌다 — 까닭과 대가는 클래스 설명에 있다.
 	 *
-	 * <p>몇 곳이나 서는지는 클래스 설명의 표에 20만 판 시뮬레이션으로 적어 두었다. <b>90곳을
-	 * 부르면 평균 84.18곳이 서고 그 대신 「낙뢰」가 9.44 → 4.19 로 반토막 난다</b> — 지점 수를
-	 * 다시 만지는 사람은 그 표를 먼저 볼 것.
+	 * <p>이제 <b>부른 만큼 다 선다.</b> 빈 목록이 돌아오는 것은 굴린 자리가 전부 허공일 때뿐인데
+	 * 중앙 섬 위라 사실상 없다. 그래도 그 길을 남겨 둔 것은 <b>한 자리도 못 얻은 볼리를 매 틱
+	 * 다시 열지 않기 위해서</b>다 — 이번 볼리는 통째로 건너뛰고 다음 볼리 시각은 그대로 굴린다.
 	 */
-	private static Downpour openVolley(ServerLevel end, String key, Downpour run, long now,
+	private static Downpour openVolley(ServerLevel end, Downpour run, long now,
 			long elapsed, TrialCatalog.Risk.EndRain risk) {
 		if (run.volley() != null || now < run.nextVolleyAt() || !landsInWindow(elapsed, risk)) {
 			return run;
 		}
 		RandomSource random = end.getRandom();
-		List<Vec3> spots = TrialRisks.reserveSpots(end, key, rolledSpots(random, risk),
-				risk.radius());
+		List<Vec3> spots = rollSpots(end, random, rolledSpots(random, risk));
 		long next = now + rolledInterval(random, risk);
 		if (spots.isEmpty()) {
-			// 예약이 빈 자리를 남겨 두므로 열쇠를 지워 둔다. 「우리가 붙들고 있는 것이 없다」를
-			// 목록에도 그대로 적어 두는 쪽이 다음 사람에게 읽기 쉽다.
-			TrialRisks.releaseSpots(key);
 			return new Downpour(run.granted(), next, null);
 		}
 		return new Downpour(run.granted(), next, new Volley(spots, now + risk.warnTicks()));
+	}
+
+	// ------------------------------------------------------------------ 자리 굴리기
+
+	/**
+	 * 이번 볼리의 자리들. <b>서로 겹쳐도 그대로 둔다.</b>
+	 *
+	 * <p>{@code TrialRisks.reserveSpots} 와 달리 <b>이미 뽑은 자리도, 남의 카드 고리도 보지
+	 * 않는다.</b> 사람이 「서로 겹쳐도 되니까 내가 말한 숫자로 해 줘」라고 정한 것이 이 한 줄이고,
+	 * 그 대가(3겹이면 무장하고도 전멸)는 클래스 설명의 표에 적어 두었다.
+	 *
+	 * <p>⚠ <b>여기에 겹침 검사를 도로 넣지 말 것.</b> 넣는 순간 90 이 84 가 되고 「낙뢰」가
+	 * 반토막 나는 자리로 되돌아간다. 되돌리려면 {@code TrialRisks.reserveSpots} 를 쓰면 되고,
+	 * 그때는 {@link #clearState} 와 {@link #land} 의 놓기도 함께 되살릴 것.
+	 */
+	private static List<Vec3> rollSpots(ServerLevel end, RandomSource random, int count) {
+		List<Vec3> spots = new ArrayList<>(Math.max(0, count));
+		for (int index = 0; index < count; index++) {
+			Vec3 spot = rollSpot(end, random);
+			if (spot != null) {
+				spots.add(spot);
+			}
+		}
+		return spots;
+	}
+
+	/**
+	 * 아레나 안에서 발 디딜 수 있는 자리 하나. <b>겹침은 보지 않는다.</b>
+	 *
+	 * <p>{@code TrialRisks.groundSpot} 에서 <b>겹침 검사 한 줄만 뺀 것</b>이고 나머지는 일부러
+	 * 같게 두었다. 분포도({@link TrialRisks#arenaOffset} — 원 안에 고르게), 아레나 반경도
+	 * ({@code TrialRisks.ARENA_RADIUS}), 다시 굴리는 횟수도({@link TrialRisks#SPOT_TRIES})
+	 * 남의 카드와 같아야 한다 — 숫자를 여기 따로 적으면 아레나가 바뀔 때 한쪽만 따라간다.
+	 *
+	 * <p><b>허공은 여전히 거른다.</b> 중앙 섬은 둥글지 않아 반경 40 안에도 빈 곳이 있고, 거기서
+	 * 터지면 예고도 피해도 뜻이 없다. 하이트맵이 월드 바닥을 돌려주면 그 자리다.
+	 *
+	 * <p><b>담는 {@code y} 는 그 칸의 지표다.</b> 구체가 제 자리의 땅에 닿는 근거가 이것이라
+	 * ({@link Volley} 의 설명) 착탄까지 그대로 들고 간다.
+	 *
+	 * @return 끝내 허공만 뽑으면 {@code null}. 그 자리는 이번 볼리에서 빠진다
+	 */
+	private static @Nullable Vec3 rollSpot(ServerLevel end, RandomSource random) {
+		for (int attempt = 0; attempt < TrialRisks.SPOT_TRIES; attempt++) {
+			Vec3 offset = TrialRisks.arenaOffset(random.nextDouble(), random.nextDouble(),
+					TrialRisks.ARENA_RADIUS);
+			BlockPos ground = end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+					BlockPos.containing(offset.x, 0.0, offset.z));
+			// 허공이면 하이트맵이 월드 바닥을 돌려준다.
+			if (ground.getY() > end.getMinY()) {
+				return new Vec3(offset.x, ground.getY(), offset.z);
+			}
+		}
+		return null;
 	}
 
 	// ------------------------------------------------------------------ 예고
@@ -595,11 +794,12 @@ public final class TrialEndRain {
 		// level.getGameTime() 을 부르면 얼어붙은 판에서 같은 몫만 되풀이돼 고리가 안 닫힌다.
 		int stride = markStride(risk);
 		int phase = markPhase(now, stride);
-		// 먼지는 고리 밖에서 한 번만 만든다. 지점 수만큼 새로 만들 이유가 없다.
+		// 먼지도 구체도 고리 밖에서 한 번만 만든다. 지점 수만큼 새로 만들 이유가 없다.
 		ParticleOptions mark = TrialWarning.dust(MARK_COLOR);
+		ParticleOptions orb = orbParticle();
 		for (Vec3 spot : volley.spots()) {
 			markRing(end, spot, risk.radius(), mark, stride, phase);
-			dropOrb(end, spot, remaining, risk);
+			dropOrb(end, spot, orb, remaining, risk);
 		}
 		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
 		if (stage == null) {
@@ -662,9 +862,9 @@ public final class TrialEndRain {
 	 * 시간을 읽을 수 없다.</b> 선형이면 「절반 내려왔으니 절반 남았다」가 그대로 읽힌다.
 	 * {@code TrialFireball.flightProgress} 와 {@code DragonFireBarrage} 도 같은 이유로 선형이다.
 	 *
-	 * <p>바닥은 {@code spot.y} 다. {@link TrialRisks#reserveSpots} 가 자리를 내줄 때 이미 그 칸의
-	 * 지표를 물어 담아 주므로, <b>자리마다 바닥 높이가 달라도 구체는 제 자리의 땅에 닿는다.</b>
-	 * 여기서 하이트맵을 다시 두드리지 않는 이유이기도 하다 — 매 틱 지점 수만큼 묻게 된다.
+	 * <p>바닥은 {@code spot.y} 다. {@link #rollSpot} 이 자리를 굴릴 때 이미 그 칸의 지표를 물어
+	 * 담으므로, <b>자리마다 바닥 높이가 달라도 구체는 제 자리의 땅에 닿는다.</b> 여기서
+	 * 하이트맵을 다시 두드리지 않는 이유이기도 하다 — 매 틱 지점 수만큼 묻게 된다.
 	 *
 	 * <p>{@code GROUND_OFFSET} 을 더해 고리와 같은 높이에서 끝난다. 마지막으로 그려지는 틱은
 	 * {@code remaining == 1} 이므로 구체는 지표 위 0.8칸쯤에서 마지막으로 보이고, 다음 틱에
@@ -673,12 +873,34 @@ public final class TrialEndRain {
 	 * <p><b>긴 형태</b>다. 짧은 형태로 되돌리면 32칸 밖 구체가 통째로 사라져, 아레나 반대편에서
 	 * 보면 하늘은 비어 있는데 바닥만 터진다.
 	 */
-	private static void dropOrb(ServerLevel end, Vec3 spot, int remaining,
+	private static void dropOrb(ServerLevel end, Vec3 spot, ParticleOptions orb, int remaining,
 			TrialCatalog.Risk.EndRain risk) {
 		double height = orbHeight(remaining, risk.warnTicks());
-		end.sendParticles(ParticleTypes.WITCH, true, false,
+		end.sendParticles(orb, true, false,
 				spot.x, spot.y + GROUND_OFFSET + height, spot.z,
 				ORB_POINTS_PER_SPOT, ORB_SPREAD, ORB_SPREAD, ORB_SPREAD, 0.0);
+	}
+
+	/**
+	 * 구체와 착탄에 쓰는 입자. <b>색은 {@link #MARK_COLOR} 하나에서 온다.</b>
+	 *
+	 * <p><b>전에는 {@code WITCH} 였다.</b> 같은 {@code SpellParticle} 을 만들지만 26.3 의
+	 * {@code WitchProvider} 가 <b>제 색을 자홍으로 직접 칠해</b> 서버가 무엇을 보내든 자홍이다.
+	 * 사람이 빨강으로 되돌리라고 해서 <b>색을 우리가 정할 수 있는 타입</b>으로 갈았다 — 까닭은
+	 * 클래스 설명의 「구체도 같은 빨강이다」에 있다.
+	 *
+	 * <p>{@code ENTITY_EFFECT} 는 {@code SpellParticle.MobEffectProvider} 로 가고 그쪽이
+	 * {@code ColorParticleOption} 의 ARGB 를 그대로 {@code setColor}·{@code setAlpha} 한다.
+	 * <b>만들어지는 입자 클래스가 {@code WITCH} 와 같아</b> 재질도 중력({@code -0.1})도 수명
+	 * (8~40틱)도 그대로다.
+	 *
+	 * <p>⚠ <b>{@link #ORB_ARGB} 를 {@link #MARK_COLOR} 로 바꿔 넣지 말 것.</b> 알파가 0 이 되어
+	 * 구체가 통째로 안 보인다.
+	 *
+	 * <p>매 틱 지점 수만큼 만들지 않도록 <b>부르는 쪽이 한 번만 만들어 돌려 쓴다</b>.
+	 */
+	static ParticleOptions orbParticle() {
+		return ColorParticleOption.create(ParticleTypes.ENTITY_EFFECT, ORB_ARGB);
 	}
 
 	// ------------------------------------------------------------------ 착탄
@@ -690,9 +912,11 @@ public final class TrialEndRain {
 	 * 팀 체력 20 을 훨씬 넘긴다 — 함께 움직이는 것이 공유 체력 게임의 올바른 대응인데 그것이
 	 * 전멸이 된다. 「연쇄 포격」이 같은 이유로 같은 모양을 쓴다.
 	 *
-	 * <p>고리끼리는 {@link TrialRisks#reserveSpots} 가 떼어 놓으므로 <b>한 사람이 한 볼리에 한
-	 * 발</b>만 맞는다. {@code TrialRisks.worstCaseTickDamage} 가 이 카드를 「피해 × 1」로 세는
-	 * 근거가 그 규칙이고, 규칙을 지우면 그 숫자가 거짓이 된다.
+	 * <p>⚠ <b>고리끼리는 이제 겹친다.</b> 전에는 {@code TrialRisks.reserveSpots} 가 떼어 놓아
+	 * 「한 사람이 한 볼리에 한 발」이었고 {@code worstCaseTickDamage} 가 그 근거로 「피해 × 1」을
+	 * 셌는데, 사람이 겹침을 허용하면서 그것이 {@link #WORST_CASE_OVERLAP} 으로 바뀌었다.
+	 * <b>겹친 고리 셋에 선 사람은 이 함수가 세 번 불려 세 발을 맞고, 무장하고도 20.31 이라
+	 * 전멸이다</b> — 분포와 넓이는 클래스 설명의 표에 있다.
 	 *
 	 * <p>팀원 목록을 직접 돈다. 상자로 후보를 추릴 이유가 없다 — 어차피 한 명만 세고, 팀이 아닌
 	 * 사람(관전자·다른 판의 누구)을 때릴 일도 없어야 한다.
@@ -701,11 +925,12 @@ public final class TrialEndRain {
 	 * 한 사람의 낙사가 팀 전체를 끝낸다. 폭발 피해형을 쓰므로 폭발 보호는 그대로 듣는다 —
 	 * 대비한 사람이 손해 보지 않아야 한다.
 	 *
-	 * <h2>연출이 보라 한 겹뿐이다</h2>
+	 * <h2>연출이 한 색 한 겹뿐이다</h2>
 	 *
 	 * <p>{@code EXPLOSION}(회백색 덩어리)을 걷어냈다. 사람이 「이펙트도 보라색으로」라고 했는데
-	 * 그 입자가 정확히 「TNT 처럼 보인다」의 원인이고, 위에 보라를 한 겹 얹어 가리던 것이
-	 * 이전 구현이다. 가리지 말고 <b>보라만 남기는</b> 쪽으로 갔다.
+	 * 그 입자가 정확히 「TNT 처럼 보인다」의 원인이고, 위에 색을 한 겹 얹어 가리던 것이
+	 * 이전 구현이다. 가리지 말고 <b>제 색만 남기는</b> 쪽으로 갔다. <b>색이 자홍에서 빨강으로
+	 * 되돌아간 지금도 그 판단은 그대로다</b> — 착탄도 {@link #MARK_COLOR} 를 쓴다.
 	 *
 	 * <p>덮어씌우던 {@code REVERSE_PORTAL} 도 함께 걷어냈다 — 수명이 <b>60~61틱</b>이라 터진 뒤
 	 * 3초 동안 자국이 남았고, 볼리 간격이 40~60틱이라 <b>그 자국이 다음 볼리의 고리와 겹쳤다.</b>
@@ -715,7 +940,7 @@ public final class TrialEndRain {
 			TrialCatalog.Risk.EndRain risk) {
 		// 착탄 연출도 긴 형태로 보낸다. 맞는 사람은 어차피 가깝지만 나머지 셋이 「저기 떨어졌다,
 		// 피했구나」를 봐야 예고가 완결된다. 아레나 반경 40 이면 흩어진 팀원은 쉽게 32칸을 넘는다.
-		end.sendParticles(ParticleTypes.WITCH, true, false, at.x, at.y + 0.3, at.z,
+		end.sendParticles(orbParticle(), true, false, at.x, at.y + 0.3, at.z,
 				impactPoints(risk), risk.radius() * 0.45, 0.25, risk.radius() * 0.45, 0.02);
 
 		for (ServerPlayer member : members) {
@@ -747,24 +972,27 @@ public final class TrialEndRain {
 	 * 모여 있으면 넉 장이 저마다 넷에게 가서 <b>각자 네 번</b> 들렸다. 지금은
 	 * {@link TrialWarning#playEach} 가 사람마다 그 사람의 연결로 직접 보낸다.
 	 *
-	 * <p>소리는 {@link SoundEvents#ENDER_EYE_DEATH} 다. 왜 이것인지는 클래스 설명의 「소리」에
-	 * 적어 두었다 — 전에 쓰던 {@code DRAGON_FIREBALL_EXPLODE} 는 이름만 드래곤이고 파일은
-	 * {@code entity.generic.explode} 와 같았다.
+	 * <p>소리는 {@link SoundEvents#GENERIC_EXPLODE}, <b>그냥 폭발음</b>이다. 사람이 「그냥
+	 * 폭발음으로해줘」라고 해서 {@code ENDER_EYE_DEATH} 에서 되돌린 것이고, <b>이름이 솔직한
+	 * 쪽</b>을 고른 까닭은 클래스 설명의 「소리」에 적어 두었다 —
+	 * {@code DRAGON_FIREBALL_EXPLODE} 는 같은 소리인데 이름만 드래곤이다.
 	 *
-	 * <p>음높이를 0.7 로 내린다. 이 소리는 원래 엔더의 눈 하나가 깨지는 작은 소리이고, 여기서는
-	 * 수십 곳이 한꺼번에 터지는 순간이라 낮을수록 무게가 맞는다.
+	 * <p>음높이를 0.7 로 내린다. 수십 곳이 한꺼번에 터지는 순간이라 낮을수록 무게가 맞는다.
+	 * <b>이 값은 소리를 바꾸면서도 그대로 두었다</b> — 낮춰 놓은 것이 「한 발」이 아니라
+	 * 「한꺼번에」를 말하기 위해서라 소리가 무엇이든 같다.
 	 */
 	private static void impactSound(ServerLevel end, List<ServerPlayer> members) {
-		TrialWarning.playEach(end, members, SoundEvents.ENDER_EYE_DEATH, 1.0F, 0.7F);
+		TrialWarning.playEach(end, members, SoundEvents.GENERIC_EXPLODE, 1.0F, 0.7F);
 	}
 
+	/**
+	 * 기록을 지운다.
+	 *
+	 * <p><b>전에는 여기서 {@code TrialRisks.releaseSpots} 도 불렀다.</b> 이 카드가 겹침 금지
+	 * 목록에서 빠지면서 놓을 자리가 없어졌다(클래스 설명의 「겹침 금지 목록 밖이다」).
+	 */
 	private static void finish(String key) {
-		if (RAINS.remove(key) == null) {
-			// 이미 돌려줬다. 두 번 놓는 것 자체는 무해하지만, 여기서 걸러 두면 「끝나는 틱에
-			// 정확히 한 번」이 코드에 적힌 사실이 된다.
-			return;
-		}
-		TrialRisks.releaseSpots(key);
+		RAINS.remove(key);
 	}
 
 	// ------------------------------------------------------------------ 월드 없이 도는 계산

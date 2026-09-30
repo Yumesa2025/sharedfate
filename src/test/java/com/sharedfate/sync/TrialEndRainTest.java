@@ -17,8 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 「종말의 비」에서 월드 없이 답이 정해지는 것만 본다.
  *
  * <p>파티클·소리·피해는 {@code ServerLevel} 이 있어야 해서 여기서 볼 수 없다. 그런데 이 카드가
- * 망가지는 길은 거의 전부 그 바깥이다 — <b>한 번만 터져야 하는데 되풀이된다</b>, <b>겹침 금지
- * 목록에 우리 고리가 안 올라간다</b>, <b>예고가 착탄 없이 사라진다</b>, <b>구체가 예고보다 먼저
+ * 망가지는 길은 거의 전부 그 바깥이다 — <b>한 번만 터져야 하는데 되풀이된다</b>, <b>겹침을
+ * 허용한 것이 슬그머니 되돌아간다</b>, <b>예고가 착탄 없이 사라진다</b>, <b>구체가 예고보다 먼저
  * 닿는다</b>. 전멸하면 월드가 지워지는 게임이라 이것들은 돌려 보고 발견할 수 없다.
  *
  * <p>입자와 소리는 <b>컴파일된 클래스 파일의 상수 풀</b>에서 이름으로 본다. 「무엇을 쓰고
@@ -163,41 +163,80 @@ class TrialEndRainTest {
 				600, 40, 60, 10, 15, 30, 10.0F, 0.0)), "반경이 0 이면 고리도 피해도 없다");
 	}
 
-	// ------------------------------------------------------------------ 겹침 금지 목록
+	// ------------------------------------------------------------------ 겹침 금지 목록 밖이다
 
 	/**
-	 * ⚠ <b>지점을 {@link TrialRisks#reserveSpots} 로 잡고 {@link TrialRisks#releaseSpots} 로
-	 * 돌려준다.</b>
+	 * ⚠⚠ <b>이 카드는 겹침 금지 목록을 쓰지 않는다 — 양쪽 다 끈 상태여야 한다.</b>
 	 *
-	 * <p>이 시험이 지키는 것이 「즉사 메커닉 0개」의 마지막 구멍이다. 좌표를 스스로 굴리도록
-	 * 고치면 이 카드의 고리만 「낙뢰」 고리 위에 겹쳐 떨어지고, 겹친 자리는 한 틱에 두 발이라 팀
-	 * 공유 체력 20 을 넘긴다. 컴파일도 다른 시험도 조용하므로 <b>컴파일된 클래스가 그 이름을 실제로
-	 * 들고 있는지</b>를 직접 본다.
+	 * <p>사람이 지점을 90곳으로 올리라고 했는데 {@link TrialRisks#reserveSpots} 를 지나면 84곳
+	 * 밖에 안 서고 같이 걸린 「낙뢰」가 9.4 → 4.2 로 반토막 났다. 그것을 알린 뒤 사람이
+	 * <b>「서로 겹쳐도 되니까 내가 말한 숫자로 해 줘」</b>라고 정했다. <b>전에는 이 자리에
+	 * 「반드시 {@code reserveSpots} 를 지나라」는 시험이 있었고, 그 뜻을 뒤집어 그대로 남긴
+	 * 것이 이 시험이다</b> — 지우면 어느 날 조용히 되돌아간다.
 	 *
-	 * <p>돌려주는 쪽도 함께 본다. 안 돌려주면 아무것도 없는 자리를 다른 카드가 영영 못 쓴다 —
-	 * 이 실행기가 {@code releaseSpots} 를 부르는 첫 번째 호출자다.
+	 * <p><b>잡기와 놓기를 함께 본다.</b> 한쪽만 되살아나면 더 나쁘다 — 잡기만 되살리면
+	 * 「낙뢰」가 다시 반토막 나고, 놓기만 남으면 남이 잡은 자리를 우리가 지운다.
+	 *
+	 * <p>대신 <b>지점을 굴리는 다른 규칙은 그대로 지나는지</b>도 본다. 겹침 검사만 뺀 것이지
+	 * 허공 거르기와 지표 재기까지 뺀 것이 아니다.
 	 */
 	@Test
-	void 지점을_겹침_금지_목록으로만_잡고_돌려준다() {
+	void 겹침_금지_목록을_쓰지_않는다() {
 		byte[] compiled = classBytes(TrialEndRain.class);
-		assertTrue(references(compiled, "reserveSpots"),
-				"지점을 스스로 굴리고 있다. 남의 고리 위에 겹쳐 떨어진다");
-		assertTrue(references(compiled, "releaseSpots"),
-				"잡아 둔 자리를 돌려주지 않는다. 다른 카드가 그 자리를 영영 못 쓴다");
+		assertFalse(references(compiled, "reserveSpots"),
+				"겹침 금지 목록으로 되돌아갔다. 90곳이 84곳이 되고 「낙뢰」가 반토막 난다 —"
+						+ " 사람이 「서로 겹쳐도 되니까 내가 말한 숫자로」라고 정했다");
+		assertFalse(references(compiled, "releaseSpots"),
+				"잡는 자리가 없는데 놓고 있다. 남이 잡아 둔 자리를 지운다");
+
+		// 겹침 검사만 뺀 것이지 나머지까지 뺀 것이 아니다.
+		assertTrue(references(compiled, "arenaOffset"),
+				"아레나 안에서 고르게 뽑는 길을 제 손으로 다시 적었다 — 아레나가 바뀔 때"
+						+ " 이 카드만 안 따라간다");
+		assertTrue(references(compiled, "getHeightmapPos"),
+				"지표를 안 재고 있다. 허공에서 터지고 구체가 땅에 안 닿는다");
+	}
+
+	/**
+	 * ⚠⚠ <b>겹치면 죽는다는 사실이 값에 적혀 있다.</b>
+	 *
+	 * <p>사람이 대가를 알고 고른 값이라 <b>되돌리지 않는다.</b> 다만 이 카드가 이 저장소에서
+	 * 「즉사 메커닉 0개」를 깬 첫 자리이므로, 그 사실을 시험이 숫자로 들고 있어야 다음에 값을
+	 * 만지는 사람이 모르고 지나가지 않는다.
+	 *
+	 * <p>무장 기준(다이아 풀셋 + 보호 IV)으로 한 발 6.77 · 두 발 13.54 · <b>세 발 20.31</b> 이고
+	 * 팀 공유 체력이 20 이다. 반경 40 아레나에 반경 2.5 짜리 90곳을 겹침 검사 없이 뿌리면
+	 * <b>3겹 이상 구역이 생기는 볼리가 99.995%</b> 이고 그 넓이가 아레나의 <b>0.51%</b>(25.8칸²)
+	 * 다 — 20만 판을 굴린 값이고 표는 {@link TrialEndRain} 클래스 설명에 있다.
+	 */
+	@Test
+	void 고리_셋이_겹치면_무장하고도_전멸이다() {
+		TrialCatalog.Risk.EndRain rain = card();
+		float perHit = GearedDamage.afterGear(rain.damage(), GearedDamage.Source.EXPLOSION);
+		assertEquals(6.77F, perHit, 0.01F, "한 발이 6.77 이 아니다 — 피해나 피해원이 바뀌었다");
+		assertTrue(perHit * 2 < GearedDamage.TEAM_HEALTH, "두 발로는 산다: " + perHit * 2);
+		assertTrue(perHit * 3 >= GearedDamage.TEAM_HEALTH,
+				"세 발이 " + perHit * 3 + " 이라 살아남는다. 살아남으면 이 시험이 지킬 것이"
+						+ " 없어진 것이니 겹침 허용의 근거부터 다시 볼 것");
+
+		assertTrue(TrialEndRain.WORST_CASE_OVERLAP > 1,
+				"겹칠 수 있는 개수가 1 로 돌아갔다. 1 은 겹침 금지 규칙이 있을 때만 참이다");
+		assertTrue(TrialEndRain.WORST_CASE_OVERLAP >= 3,
+				"실측 최악이 3겹 아래면 20만 판 시뮬레이션과 어긋난다 — 3겹 이상이 99.995% 의"
+						+ " 볼리에 있다");
 	}
 
 	/**
 	 * 열쇠를 스스로 만들지 않는다 — 분배기에게 받는다.
 	 *
-	 * <p>{@code TrialRisks} 는 매 틱 <b>살아 있는 카드의 열쇠 집합으로 {@code LIVE_SPOTS} 를
-	 * 걸러 낸다.</b> 다른 모양의 열쇠로 자리를 잡으면 그 자리가 다음 틱에 목록에서 지워지고,
-	 * 그러면 <b>우리는 남을 피하는데 남은 우리를 못 보는</b> 한쪽만 새는 상태가 된다 —
-	 * 겹쳐 떨어지는데 로그도 시험도 조용하다.
+	 * <p>⚠ <b>열쇠가 하는 일이 줄었다.</b> 겹침 금지 목록에서 빠지면서 이제 이 열쇠는
+	 * {@code RAINS} 의 칸을 가르는 데만 쓴다. 그래도 스스로 만들지 않는 이유는 그대로다 —
+	 * 값이 완전히 같은 위험을 카드 둘에 걸면 <b>둘이 같은 칸을 써서</b> 한쪽의 볼리가 다른 쪽을
+	 * 덮어쓴다.
 	 *
 	 * <p>한때 이 파일이 {@code TrialCatalog.all()} 에서 값으로 열쇠를 되찾아 쓰는 우회로를
-	 * 들고 있었다. 값이 완전히 같은 위험을 카드 둘에 걸면 앞 카드의 열쇠가 나와 뒤 카드가 겹침
-	 * 검사에서 통째로 빠지는 길이라 걷어냈다. <b>되돌아가면 이 시험이 막는다</b> — 카드 목록을
-	 * 뒤지는 것 자체가 열쇠를 두 번째로 만드는 일이다.
+	 * 들고 있었다. <b>되돌아가면 이 시험이 막는다</b> — 카드 목록을 뒤지는 것 자체가 열쇠를 두
+	 * 번째로 만드는 일이다.
 	 */
 	@Test
 	void 열쇠를_다시_만들지_않는다() {
@@ -463,55 +502,86 @@ class TrialEndRainTest {
 		assertFalse(references(compiled, "END_ROD"), "수명 60~71틱이다");
 		assertFalse(references(compiled, "PORTAL"),
 				"PORTAL 은 40~49틱을 살고 나이에 따라 커진다 — 터진 뒤에 가장 크다");
-		assertTrue(references(compiled, "WITCH"),
-				"구체와 착탄이 쓰는 입자가 바뀌었다. 보라는 여기서 나온다");
+		assertTrue(references(compiled, "ENTITY_EFFECT"),
+				"구체와 착탄이 쓰는 입자가 바뀌었다. 빨강은 여기서 나온다");
+		assertFalse(references(compiled, "WITCH"),
+				"WITCH 는 26.3 의 WitchProvider 가 제 색을 자홍으로 직접 칠한다 —"
+						+ " 서버가 무엇을 보내든 빨강이 안 된다");
 	}
 
 	/**
-	 * 고리 색이 <b>「표적」의 보라가 아니다.</b>
+	 * ⚠ <b>구체가 고리와 같은 색이고, 알파가 살아 있다.</b>
 	 *
-	 * <p>{@link TrialWarning.Colors#MARKED} 는 규약에서 「너 하나를 노린다」이고 「표적」이 그
-	 * 뜻으로 쓴다. 이 카드는 아무도 노리지 않고 자리를 노리므로 같은 색을 쓰면 두 카드가 같은
-	 * 틱에 돌 때 뜻이 섞인다.
+	 * <p>사람이 말한 것은 「원」뿐이지만 구체가 다른 색이면 「저 구체가 이 고리로 온다」가 안
+	 * 읽힌다. 그래서 색이 {@link TrialEndRain#MARK_COLOR} <b>하나</b>에서 나온다.
 	 *
-	 * <p>규약에 다섯째 색을 더하지 않은 것도 함께 본다 — 색은 이 실행기 안에 있어야 새 카드를
-	 * 만드는 사람이 물려받지 않는다.
+	 * <p>알파를 따로 보는 것은 {@code ColorParticleOption} 이 받는 것이 RGB 가 아니라
+	 * <b>ARGB</b> 이기 때문이다. 최상위 바이트가 0 이면 구체가 통째로 안 보이는데, 파티클은
+	 * 시험에서 그려 볼 수 없어 <b>여기가 그것을 잡는 유일한 자리</b>다.
 	 */
 	@Test
-	void 규약의_보라를_그대로_쓰지_않는다() {
+	void 구체가_고리와_같은_색이고_투명하지_않다() {
+		assertEquals(TrialEndRain.MARK_COLOR, TrialEndRain.ORB_ARGB & 0x00FFFFFF,
+				"구체 색이 고리 색과 다르다 — 예고 두 겹이 서로 다른 것을 가리킨다");
+		assertEquals(0xFF, (TrialEndRain.ORB_ARGB >>> 24) & 0xFF,
+				"알파가 " + ((TrialEndRain.ORB_ARGB >>> 24) & 0xFF)
+						+ " 다. 0 이면 하늘에서 아무것도 안 내려온다");
+	}
+
+	/**
+	 * ⚠ <b>고리가 규약의 빨강으로 되돌아왔다.</b>
+	 *
+	 * <p>사람이 「이펙트도 보라색으로」라고 해서 자홍({@code 0xC800C8})으로 갔다가, 플레이해 보고
+	 * <b>「보라색이아닌 빨간색원으로다시 복귀하자 이번건 너무 가시성이안좋아」</b>라고 해서
+	 * 되돌렸다. 되돌린 이유는 <b>가시성</b>이고, 돌아간 자리가 마침 규약의
+	 * {@link TrialWarning.Colors#DEADLY}(「서 있으면 죽는다」)라 뜻도 맞는다.
+	 *
+	 * <p>「표적」의 보라와 같아지지 않는 것은 그대로 본다 — 그쪽은 「너 하나를 노린다」이고 이
+	 * 카드는 자리를 노린다.
+	 *
+	 * <p>규약에 다섯째 색을 더하지 않은 것도 함께 본다. 자홍이던 때는 색이 이 실행기 안에 있는
+	 * 것이 근거였고, 지금은 규약의 색을 그대로 쓰므로 더할 이유 자체가 없다.
+	 */
+	@Test
+	void 고리가_규약의_빨강으로_되돌아왔다() {
+		assertEquals(TrialWarning.Colors.DEADLY, TrialEndRain.MARK_COLOR,
+				"사람이 「빨간색원으로다시 복귀하자」라고 했다 — 자홍(0xC800C8)은 가시성이"
+						+ " 너무 안 좋았다");
+		assertNotEquals(0xC800C8, TrialEndRain.MARK_COLOR, "자홍으로 되돌아갔다");
 		assertNotEquals(TrialWarning.Colors.MARKED, TrialEndRain.MARK_COLOR,
 				"「표적」과 같은 보라다. 두 카드가 같은 틱에 돌면 뜻이 섞인다");
-		// 규약의 어느 뜻도 빌려 쓰지 않는다. 하나라도 같으면 그 뜻이 이 카드에 옮겨붙는다.
-		assertNotEquals(TrialWarning.Colors.DEADLY, TrialEndRain.MARK_COLOR);
-		assertNotEquals(TrialWarning.Colors.LIGHTNING, TrialEndRain.MARK_COLOR);
-		assertNotEquals(TrialWarning.Colors.SHOVE, TrialEndRain.MARK_COLOR);
-		// 그렇다고 규약에 다섯째를 더하지도 않았다 — 색이 이 실행기 안에 있어야 새 카드를
-		// 만드는 사람이 물려받지 않는다. 규약이 들고 있는 이름은 넷(+옛 이름 하나)뿐이다.
+		// 규약이 들고 있는 이름은 넷(+옛 이름 하나)뿐이다. 이 카드 때문에 색을 더하지 않았다.
 		assertEquals(5, TrialWarning.Colors.class.getFields().length,
-				"색 규약에 색이 늘었거나 줄었다 — 이 카드의 보라는 TrialEndRain 안에 있어야 한다");
+				"색 규약에 색이 늘었거나 줄었다");
 	}
 
 	/**
-	 * ⚠ <b>착탄음이 엔더 소리다.</b>
+	 * ⚠ <b>착탄음이 그냥 폭발음이고, 이름도 솔직한 쪽이다.</b>
 	 *
-	 * <p>사람이 「엔더쪽 폭발음을 원해」라고 했을 때 이 카드는 이미
-	 * {@code SoundEvents.DRAGON_FIREBALL_EXPLODE} 를 쓰고 있었다. 이름은 드래곤인데 바닐라
-	 * {@code sounds.json} 에서 그 이름이 가리키는 파일이 {@code random/explode1~4} 로
-	 * <b>{@code entity.generic.explode} 와 같다</b>(자막 키도
-	 * {@code subtitles.entity.generic.explode} 다). 사람이 「일반적인 폭발음」이라고 한 것이
-	 * 정확했다.
+	 * <p>경위가 셋이다.
 	 *
-	 * <p>그래서 이름이 아니라 <b>파일</b>이 엔더인 소리로 바꿨다. 되돌아가는 길을 막는다 —
-	 * 이름만 보고 고르면 같은 함정에 다시 걸린다.
+	 * <ol>
+	 *   <li>이 카드는 {@code DRAGON_FIREBALL_EXPLODE} 로 시작했다. 그런데 바닐라
+	 *       {@code sounds.json} 에서 그 이름이 가리키는 파일이 {@code random/explode1~4} 로
+	 *       <b>{@code entity.generic.explode} 와 같다</b>(자막 키도 같다). <b>이름만 드래곤
+	 *       이었다</b></li>
+	 *   <li>사람이 「엔더쪽 폭발음을 원해」라고 해서 {@code ENDER_EYE_DEATH} 로 갔다</li>
+	 *   <li>플레이해 보고 <b>「그냥 폭발음으로해줘」</b>라고 해서 되돌렸다</li>
+	 * </ol>
+	 *
+	 * <p><b>되돌아간 자리가 {@code DRAGON_FIREBALL_EXPLODE} 가 아닌 것이 이 시험의 요점이다.</b>
+	 * 둘은 같은 소리지만 한쪽은 이름이 거짓말을 한다 — 거기로 돌아가면 다음 사람이 「드래곤
+	 * 소리인데 왜 폭발음이 나지」로 같은 자리를 다시 판다.
 	 */
 	@Test
-	void 착탄음이_이름만_엔더인_소리가_아니다() {
+	void 착탄음이_그냥_폭발음이고_이름도_솔직하다() {
 		byte[] compiled = classBytes(TrialEndRain.class);
-		assertTrue(references(compiled, "ENDER_EYE_DEATH"),
-				"엔더 계열 착탄음이 없다");
+		assertTrue(references(compiled, "GENERIC_EXPLODE"),
+				"사람이 「그냥 폭발음으로해줘」라고 했다");
 		assertFalse(references(compiled, "DRAGON_FIREBALL_EXPLODE"),
-				"이름만 드래곤이고 파일은 entity.generic.explode 와 같다");
-		assertFalse(references(compiled, "GENERIC_EXPLODE"), "일반 폭발음이다");
+				"같은 소리인데 이름만 드래곤이다. 값은 되돌리되 이름은 솔직한 쪽을 쓴다");
+		assertFalse(references(compiled, "ENDER_EYE_DEATH"),
+				"엔더 소리로 되돌아갔다 — 사람이 그것을 물렸다");
 	}
 
 	// ------------------------------------------------------------------ 도우미

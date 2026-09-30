@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -624,9 +625,9 @@ class TrialRisksTest {
 			// TrialDragonFocus — magic(). #bypasses_armor 라 방어도가 안 듣는다.
 			case TrialCatalog.Risk.DragonFocus focus -> new TickShape(focus.damage(), 1,
 					GearedDamage.Source.MAGIC);
-			// TrialEndRain — explosion(null, null)
-			case TrialCatalog.Risk.EndRain rain -> new TickShape(rain.damage(), 1,
-					GearedDamage.Source.EXPLOSION);
+			// TrialEndRain — explosion(null, null). ⚠ 겹침 금지 목록 밖이라 겹침이 1 이 아니다.
+			case TrialCatalog.Risk.EndRain rain -> new TickShape(rain.damage(),
+					TrialEndRain.WORST_CASE_OVERLAP, GearedDamage.Source.EXPLOSION);
 			// TrialLandingShock — explosion(null, null)
 			case TrialCatalog.Risk.LandingShock shock -> new TickShape(shock.damage(), 1,
 					GearedDamage.Source.EXPLOSION);
@@ -692,23 +693,40 @@ class TrialRisksTest {
 	 *
 	 * <p>{@code RANDOM_SPOT} 이 1 로 세어지는 근거는 최소 간격 규칙이다. 그 규칙을 지우면 이
 	 * 시험은 계속 통과하면서 게임만 즉사가 된다 — 그래서 위의 겹침 시험과 한 쌍이다.
+	 *
+	 * <h2>⚠⚠ 예외가 하나 있다 — <b>「종말의 비」</b></h2>
+	 *
+	 * <p>사람이 지점을 90곳으로 올리라고 했는데 겹침 금지 목록을 지나면 84곳밖에 안 서고 같이
+	 * 걸린 「낙뢰」가 반토막 나서, <b>「서로 겹쳐도 되니까 내가 말한 숫자로 해 줘」</b>라고
+	 * 정했다. 고리 셋이 겹친 자리는 무장하고도 20.31 이라 <b>이 판의 「즉사 메커닉 0개」를 깬
+	 * 첫 카드</b>다.
+	 *
+	 * <p>그래서 이 시험은 「전부 통과」가 아니라 <b>「넘는 것이 정확히 그 하나인가」</b>를 묻는다.
+	 * {@code assertTrue} 를 카드마다 거는 모양으로 되돌리면 <b>예외가 하나 있다는 사실이
+	 * 사라지고</b>, 다음 카드가 슬쩍 따라 나가도 아무도 모른다.
 	 */
 	@Test
-	void 무장_기준으로_한_사람이_한_틱에_죽는_조합이_없다() {
+	void 무장_기준으로_죽는_조합은_종말의_비_하나뿐이다() {
 		float teamHealth = PerkHealthRules.effectiveMaxHealth(null);
 		assertEquals(GearedDamage.TEAM_HEALTH, teamHealth,
 				"팀 공유 체력이 바뀌었다면 GearedDamage 와 아래 판단을 전부 다시 볼 것");
+		Set<String> over = new TreeSet<>();
 		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
 			for (TrialCatalog.Risk risk : trial.risks()) {
 				TickShape shape = shapeOf(risk);
 				float worst = GearedDamage.afterGear(shape.perHit(), shape.source())
 						* shape.overlapping();
-				assertTrue(worst < teamHealth,
-						trial.name() + " — 다이아 풀셋 + 보호 IV 를 지나고도 한 틱에 " + worst
-								+ " 다. 팀 체력이 " + teamHealth + " 라 가득 찬 상태에서 죽는다."
-								+ " 이 판의 원칙은 「즉사 메커닉 0개」이고 전멸은 곧 월드 삭제다");
+				if (worst >= teamHealth) {
+					over.add(trial.id() + "(" + worst + ")");
+				}
 			}
 		}
+		assertEquals(1, over.size(),
+				"한 틱에 팀 체력 " + teamHealth + " 을 넘기는 카드가 " + over + " 다."
+						+ " 「즉사 메커닉 0개」의 예외는 「종말의 비」 하나뿐이고, 그것은 사람이"
+						+ " 대가를 알고 고른 자리다 — 새 카드가 슬쩍 따라 나오면 여기서 멈춘다");
+		assertTrue(over.iterator().next().startsWith("sharedfate:end_rain"),
+				"넘긴 것이 「종말의 비」가 아니다: " + over);
 	}
 
 	/**
@@ -1052,22 +1070,34 @@ class TrialRisksTest {
 	/**
 	 * 서로 다른 카드의 지점끼리도 겹치지 않는다.
 	 *
-	 * <p>⚠ <b>이 시험이 지키는 것이 「즉사 메커닉 0개」의 마지막 구멍이다.</b> 「낙뢰」(피해 18)는
-	 * 크리스탈 전멸에서, 「종말의 비」(피해 10)는 체력 50% 에서 온다. 자리가 다르지만 시련은 전투가
-	 * 끝날 때까지 쌓이므로 <b>둘 다 받고 나면 같은 틱에 함께 돈다.</b> 겹친 자리에 선 사람은
-	 * <b>28</b> 을 한 틱에 받고 팀 공유 체력은 20 이다.
+	 * <p>⚠ <b>이 시험이 지키는 것이 「즉사 메커닉 0개」의 마지막 구멍이다.</b> 시련은 전투가
+	 * 끝날 때까지 쌓이므로 자리가 다른 두 카드도 <b>둘 다 받고 나면 같은 틱에 함께 돈다.</b>
+	 * 겹친 자리에 선 사람은 두 발을 한 틱에 받는다. 한 카드 안에서만 떼어 놓던 옛 규칙으로는
+	 * 이것을 막지 못한다.
 	 *
-	 * <p>한 카드 안에서만 떼어 놓던 옛 규칙으로는 이것을 막지 못한다.
+	 * <h2>⚠ 둘째 카드가 「종말의 비」였는데 그 카드가 빠졌다</h2>
+	 *
+	 * <p>사람이 <b>「서로 겹쳐도 되니까 내가 말한 숫자로 해 줘」</b>라고 정해 그 카드만
+	 * {@code reserveSpots} 를 지나지 않는다({@link TrialEndRain} 의 「겹침 금지 목록 밖이다」).
+	 * <b>규칙 자체는 그대로 살아 있으므로 시험도 지우지 않았다</b> — 지금은 실제 카드 둘이 아니라
+	 * 「낙뢰」 + <b>같은 크기의 둘째 카드</b>로 규칙을 돌려 본다. 앞으로 지점을 잡는 카드가
+	 * 하나라도 더 생기면 그 카드가 이 자리로 들어온다.
+	 *
+	 * <p>예외가 <b>하나뿐</b>이라는 것은 {@link #겹침_금지_예외는_종말의_비_하나뿐이다} 가 본다.
 	 */
 	@Test
 	void 카드가_달라도_지점끼리_겹치지_않는다() {
 		TrialCatalog.Risk.DelayedStrike lightning = onlyStrike("sharedfate:lightning_storm");
-		TrialCatalog.Risk.EndRain rain = endRainCard();
-		float together = lightning.damage() + rain.damage();
+		// 둘째 카드의 값은 「종말의 비」에서 가져온다 — 그 카드가 목록에서 빠졌어도 규칙이
+		// 지켜야 할 크기와 개수는 여전히 그 근처다.
+		TrialCatalog.Risk.EndRain shaped = endRainCard();
+		double otherRadius = shaped.radius();
+		int otherCount = shaped.maxSpots();
+		float together = lightning.damage() + shaped.damage();
 		assertTrue(together > PerkHealthRules.effectiveMaxHealth(null),
 				"둘이 겹쳐도 안 죽는다면 이 시험을 지울 이유가 생긴다. 실제 합: " + together);
 
-		double gap = TrialRisks.spotMinGap(lightning.radius(), rain.radius());
+		double gap = TrialRisks.spotMinGap(lightning.radius(), otherRadius);
 		RandomSource random = RandomSource.create(20260930L);
 		for (int round = 0; round < 1000; round++) {
 			List<Vec3> storm = roll(random, lightning.count(), lightning.radius());
@@ -1075,16 +1105,49 @@ class TrialRisksTest {
 			for (Vec3 spot : storm) {
 				alive.add(new TrialRisks.LiveSpot(spot, lightning.radius()));
 			}
-			for (Vec3 drop : roll(random, rain.maxSpots(), rain.radius(), alive)) {
+			for (Vec3 drop : roll(random, otherCount, otherRadius, alive)) {
 				for (Vec3 spot : storm) {
 					assertTrue(flatDistance(spot, drop) > gap,
-							"낙뢰 고리와 종말의 비 고리가 " + flatDistance(spot, drop)
+							"낙뢰 고리와 둘째 카드의 고리가 " + flatDistance(spot, drop)
 									+ " 칸이다. 겹친 자리는 한 틱에 " + together + " 라"
 									+ " 팀 체력 " + PerkHealthRules.effectiveMaxHealth(null)
 									+ " 을 넘긴다");
 				}
 			}
 		}
+	}
+
+	/**
+	 * ⚠⚠ <b>겹침 금지를 지나지 않는 실행기는 「종말의 비」 하나뿐이다.</b>
+	 *
+	 * <p>그 카드가 빠진 것은 사람이 대가를 알고 정한 자리다. 그런데 <b>예외가 하나 생기면
+	 * 둘째가 쉬워진다</b> — 다음에 지점을 뿌리는 카드를 만드는 사람이 「저 카드도 그냥
+	 * 굴리던데」로 따라 나올 수 있고, 그때는 고리가 서로 겹치는데 아무 시험도 안 깨진다.
+	 *
+	 * <p>그래서 <b>자리를 스스로 굴리는 실행기가 늘었는지</b>를 컴파일된 클래스에서 직접 본다.
+	 * {@link TrialRisks#arenaOffset} 을 부르는 것은 분배기 자신과 이 예외뿐이어야 한다.
+	 */
+	@Test
+	void 겹침_금지_예외는_종말의_비_하나뿐이다() {
+		assertFalse(references(classBytes(TrialEndRain.class), "reserveSpots"),
+				"「종말의 비」가 겹침 금지 목록으로 되돌아갔다 — 그쪽 시험도 함께 볼 것");
+		assertTrue(references(classBytes(TrialRisks.class), "reserveSpots"),
+				"분배기가 겹침 금지 목록을 안 쓴다. 「낙뢰」가 남의 고리 위에 떨어진다");
+
+		Set<String> rollingOwn = new TreeSet<>();
+		for (String executor : new TreeSet<>(EXECUTORS.values())) {
+			if (executor.equals(TrialRisks.class.getSimpleName())) {
+				// 분배기가 굴리는 쪽이다. 그것이 겹침 금지의 본체다.
+				continue;
+			}
+			if (references(classBytes(executorClass(executor)), "arenaOffset")) {
+				rollingOwn.add(executor);
+			}
+		}
+		assertEquals(Set.of("TrialEndRain"), rollingOwn,
+				"아레나 자리를 스스로 굴리는 실행기가 " + rollingOwn + " 다. 예외는 사람이 정한"
+						+ " 「종말의 비」 하나뿐이고, 새로 따라 나오면 그 카드의 고리가 남의"
+						+ " 고리 위에 겹쳐 떨어진다 — 컴파일도 다른 시험도 조용하다");
 	}
 
 	// ------------------------------------------------------------------ 도우미

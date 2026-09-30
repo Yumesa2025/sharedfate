@@ -114,6 +114,13 @@ public final class TrialRisks {
 	 * <p>⚠ <b>앞으로 추가되는 카드도 이 목록에 들어가야 한다.</b> 바닥에 표시를 띄우고 그 자리를
 	 * 때리는 위험을 새로 만들면서 {@link #reserveSpots} 를 지나지 않으면, 그 카드만 남의 고리
 	 * 위에 겹쳐 떨어진다 — 컴파일도 시험도 조용하고, 실제 전투에서 어느 판에 한 번 전멸한다.
+	 *
+	 * <p>⚠⚠ <b>예외가 하나 있다 — 「종말의 비」({@link TrialEndRain}).</b> 사람이 지점 수를
+	 * 90곳으로 올리라고 했는데 이 목록을 지나면 84곳밖에 안 서고 같이 걸린 「낙뢰」가 반토막
+	 * 나서, <b>「서로 겹쳐도 되니까 내가 말한 숫자로」</b>라고 정했다. 그래서 그 카드만 자리를
+	 * 스스로 굴리고 여기에 한 줄도 올리지 않는다. <b>따라 하지 말 것</b> — 그 카드는 고리 셋이
+	 * 겹친 자리가 무장하고도 전멸이고, 그것을 알고 고른 값이다. 까닭과 실측은 그 파일에 있고
+	 * {@code TrialRisksTest} 가 <b>예외가 그 하나뿐인지</b>를 지킨다.
 	 */
 	private static final Map<String, List<LiveSpot>> LIVE_SPOTS = new LinkedHashMap<>();
 	/** 띄워진 사람과 낙하 피해 면제가 끝나는 시각. */
@@ -931,10 +938,12 @@ public final class TrialRisks {
 			// 발사 간격을 넘지 않아 두 발이 같은 틱에 닿지 않고, 착탄도 반경 안 모두가 아니라
 			// 표적에게만 묻는다(공유 체력에서 범위 피해는 팀원별로 합산된다).
 			case TrialCatalog.Risk.DragonFocus focus -> hits(focus.damage(), 1);
-			// 종말의 비는 낙뢰와 같은 방식으로 자리를 잡는다 — reserveSpots 가 살아 있는 지점
-			// 전체에서 떼어 놓으므로 한 사람은 한 발만 맞는다. 그 규칙을 지우면 이 숫자가 거짓이
-			// 되고, 낙뢰(18)와 겹친 자리는 28 이라 팀 체력 20 을 한 틱에 넘긴다.
-			case TrialCatalog.Risk.EndRain rain -> hits(rain.damage(), 1);
+			// ⚠ 종말의 비만 이 목록 밖이다. 전에는 reserveSpots 를 지나 「한 사람은 한 발」이라
+			// 1 이었는데, 사람이 「서로 겹쳐도 되니까 내가 말한 숫자로」라고 정해 고리끼리 겹친다.
+			// 그래서 이 숫자는 증명이 아니라 실측이고, 값도 근거도 TrialEndRain 이 들고 있다 —
+			// 겹침을 되살리려면 그 파일부터 볼 것. 이 카드가 「즉사 메커닉 0개」의 유일한 예외다.
+			case TrialCatalog.Risk.EndRain rain ->
+					hits(rain.damage(), TrialEndRain.WORST_CASE_OVERLAP);
 			// 고리 하나가 중앙에서 한 번 지나간다. 같은 틱에 두 번 닿는 자리가 없다.
 			case TrialCatalog.Risk.LandingShock shock -> hits(shock.damage(), 1);
 			// 소용돌이 둘이 서로 가까워지는 순간이 있으므로 둘 다 닿는 자리를 셈에 넣는다.
