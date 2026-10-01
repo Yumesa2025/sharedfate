@@ -61,5 +61,31 @@ class DragonPassivesTest {
 		}
 		assertTrue(bytes.contains("com/sharedfate/sync/DragonFireBarrage"),
 				"「연쇄 포격」이 배선에서 빠졌다 — 언제나 있어야 할 판이 한 번도 안 돈다");
+		assertTrue(bytes.contains("com/sharedfate/sync/DragonPerch"),
+				"「착지」가 배선에서 빠졌다 — 믹스인이 읽는 깃발이 한 번도 안 세워지고, "
+						+ "드래곤은 5초만 앉아 있고 활도 그대로 박힌다");
+	}
+
+	/**
+	 * 「착지」는 <b>이른 반환보다 먼저</b> 불린다.
+	 *
+	 * <p>그 패시브가 세우는 것은 믹스인이 읽는 깃발이다. 사람이 아무도 없거나 드래곤이 사라진
+	 * 틱에 깃발이 켜진 채 멈추면 <b>아무도 그것을 내리지 않는다</b> — 원거리 면역이 켜진 채 남으면
+	 * 「최후의 저항」에서 활이 한 대도 안 들어간다.
+	 *
+	 * <p>순서를 바이트코드로 볼 수는 없으므로, <b>그쪽이 null 을 스스로 받는다</b>는 사실을 대신
+	 * 붙든다 — 받지 못하게 되면 이른 반환 뒤로 옮길 수밖에 없고, 그때 이 시험이 터진다.
+	 */
+	@Test
+	void 착지_패시브는_월드가_없어도_불릴_수_있다() throws NoSuchMethodException {
+		java.lang.reflect.Method tick = DragonPerch.class.getDeclaredMethod("tick",
+				net.minecraft.server.level.ServerLevel.class,
+				net.minecraft.world.entity.boss.enderdragon.EnderDragon.class,
+				java.util.List.class, long.class, long.class);
+		assertNotNull(tick);
+		// null 을 받아도 터지지 않고 깃발을 내린다. 월드 없이 확인할 수 있는 유일한 갈래다.
+		DragonPerch.tick(null, null, null, 0L, 0L);
+		assertTrue(!DragonPerch.holdsTakeoff() && !DragonPerch.rangedImmune(),
+				"드래곤이 없는 틱에 깃발이 켜진 채 남는다 — 그러면 아무도 내리지 않는다");
 	}
 }

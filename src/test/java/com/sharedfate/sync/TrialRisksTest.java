@@ -634,7 +634,9 @@ class TrialRisksTest {
 			// TrialEnderStorm — explosion(null, null)
 			case TrialCatalog.Risk.EnderStorm storm -> new TickShape(storm.damage(), storm.count(),
 					GearedDamage.Source.EXPLOSION);
-			// TrialCrystalOvercharge — explosion(null, null). 초에 한 번 들어간다.
+			// TrialCrystalOvercharge — explosion(null, null). 구체가 초에 한 발 날고, 한 틱에 닿는
+			// 것은 그중 한 발뿐이다(비행 시간이 발 간격보다 짧다). 적힌 damagePerSecond 가 곧
+			// 발당 피해라 빔이던 때와 같은 곱이다.
 			case TrialCatalog.Risk.CrystalOvercharge overcharge ->
 					new TickShape(overcharge.damagePerSecond(), 1, GearedDamage.Source.EXPLOSION);
 			// 아래는 우리가 적은 피해가 없다. 피해원도 없으므로 한 방이 0 이다.

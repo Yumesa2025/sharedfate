@@ -201,7 +201,18 @@ public final class TrialEntrance {
 
 	/** 화면 가운데 큰 글자. 입장 연출이 시작하기 전에 뜬다. */
 	private static final Component TITLE = Component.literal("엔더 드래곤 시련 전투");
-	private static final Component SUBTITLE = Component.literal("크리스탈이 사라졌습니다");
+	/**
+	 * 부제 자리는 <b>비워 둔다.</b>
+	 *
+	 * <p>전에는 「크리스탈이 사라졌습니다」가 여기 들어갔다. 사람이 <b>「입장할떄 크리스탈을 전부
+	 * 부숩니다. 이거 문구 필요없어 뺴」</b>라고 해서 걷어냈다 — <b>글만 걷어낸 것이고 크리스탈을
+	 * 거두는 동작은 그대로다</b>({@link #open}).
+	 *
+	 * <p>빈 것으로 두고 아예 안 보내지는 않는다. {@code TitleMessenger.showTitle} 이 부제 패킷을
+	 * 반드시 한 장 보내는데, 그것이 <b>전에 떠 있던 부제를 지우는 유일한 길</b>이다 — 바닐라
+	 * 클라이언트는 부제를 타이틀과 따로 들고 있어서 안 보내면 남의 글이 이 타이틀 밑에 붙는다.
+	 */
+	private static final Component SUBTITLE = Component.empty();
 
 	/** 1단계에서 고리를 다시 그리는 간격(틱). 매 틱 그릴 필요가 없다. */
 	private static final int VANISH_PULSE_TICKS = 5;
@@ -357,6 +368,11 @@ public final class TrialEntrance {
 	 * <p>타이틀은 <b>이 자리에만</b> 쓴다. 시련의 다른 알림은 소리와 바닥 표식뿐이고
 	 * ({@link TrialWarning} 클래스 설명), 화면 가운데 큰 글자는 「전투가 시작됐다」 하나에만
 	 * 값어치가 있다.
+	 *
+	 * <p>⚠ <b>크리스탈이 사라지는 것을 글로 알리지 않는다</b>({@link #SUBTITLE}). 사람이 그 한 줄을
+	 * 빼라고 했다. 거두는 동작은 아래 그대로이고, 거둔 것을 말하는 것은 <b>자리마다 터지는 소멸
+	 * 빛</b>이다 — 열 자리에서 동시에 보라색이 올라가므로 글이 없어도 「크리스탈이 어떻게 됐다」는
+	 * 읽힌다.
 	 */
 	private static void open(ServerLevel end, @Nullable List<ServerPlayer> members) {
 		if (members != null && !members.isEmpty()) {

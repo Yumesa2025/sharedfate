@@ -325,9 +325,12 @@ public final class DragonTrialCommand {
 					+ ticks(pulse.rootTicks());
 			case TrialCatalog.Risk.CrystalLink link -> "연결된 수정 · 보호막 "
 					+ ticks(link.shieldTicks());
+			// ⚠ 벌이 빔에서 구체 열 발로 바뀌었다(TrialCrystalOvercharge 클래스 설명). 값은 그대로라
+			// 카드 칸 이름이 아직 beamTicks·damagePerSecond 지만, 사람이 읽는 글은 보이는 것을
+			// 말해야 한다 — 「빔 10초 · 초당 피해 3」을 읽고 빔을 찾으면 아무것도 안 보인다.
 			case TrialCatalog.Risk.CrystalOvercharge overcharge -> "수정 과충전 · 도화선 "
-					+ ticks(overcharge.fuseTicks()) + " · 빔 " + ticks(overcharge.beamTicks())
-					+ " · 쉼 " + ticks(overcharge.restTicks()) + " · 초당 피해 "
+					+ ticks(overcharge.fuseTicks()) + " · 볼리 " + ticks(overcharge.beamTicks())
+					+ " · 쉼 " + ticks(overcharge.restTicks()) + " · 발당 피해 "
 					+ overcharge.damagePerSecond();
 			case TrialCatalog.Risk.EnderStorm storm -> "엔더폭풍 · " + storm.count() + "개 · 초당 "
 					+ storm.speedPerSecond() + "블록 · 피해 " + storm.damage() + " · 넉백 "

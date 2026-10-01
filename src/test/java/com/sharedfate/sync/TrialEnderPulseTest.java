@@ -22,6 +22,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>피해가 없는 카드라 이것들은 <b>돌려 봐도 잘 안 보인다.</b> 갑자기 발이 묶이면 사람은 그것을
  * 「랙」이나 「다른 카드」로 읽지 버그로 읽지 않는다.
+ *
+ * <p>⚠ <b>「보이는가」도 값으로 묻는다.</b> 사람이 이 카드를 「어디 갔지」라고 물었고 답이
+ * 「없어진 게 아니라 안 보였다」였다. 그래서 42칸에서의 <b>점 사이 간격</b>과 앞머리가 <b>세로로
+ * 서는 높이</b>를 숫자로 붙들어 둔다({@link TrialEnderPulse#edgeGap},
+ * {@link TrialEnderPulse#riseHeight}) — 연출은 눈으로만 확인되는 종류라 시험이 안 보면 다음에 또
+ * 조용히 바닥에 눕는다.
  */
 class TrialEnderPulseTest {
 
@@ -298,6 +304,96 @@ class TrialEnderPulseTest {
 			assertTrue(TrialEnderPulse.edgeGap(radius) <= worst + 1.0E-9,
 					"반경 " + radius + " 가 가장 큰 고리보다 성기다");
 		}
+	}
+
+	// ------------------------------------------------------------------ 42칸에서 보이는가
+
+	/**
+	 * ⚠ 앞머리가 <b>세로로 선다</b> — 사람이 「어디 갔는지」 물은 뒤에 고친 자리다.
+	 *
+	 * <p>없어진 카드가 아니라 <b>안 보이던 카드</b>였다. 바닥에만 찍으면 서서 보는 눈높이에서
+	 * 고리가 시선과 거의 나란해 42칸 밖에서는 한 줄로 뭉개진다 — 「착지 충격」이 반경 75 에서 먼저
+	 * 들은 말과 같은 까닭이다.
+	 *
+	 * <p>높이를 시험이 보는 까닭은 <b>눈으로만 확인되는 값</b>이기 때문이다. 다음 사람이 2.0 을
+	 * 20 으로 바꿔도 컴파일도 로그도 조용한데, 그때 서는 것은 <b>다른 카드의 바닥 표식을 가리는
+	 * 벽</b>이다.
+	 */
+	@Test
+	void 앞머리가_사람_키만큼_선다() {
+		double rise = TrialEnderPulse.riseHeight(TrialEnderPulse.EDGE_RISE_SPEED);
+		assertEquals(1.878, rise, 1.0E-3,
+				"26.3 CritParticle(속도×0.4 · 마찰 0.7 · 중력 0.5)을 수명 하한 4틱으로 굴린 값이다."
+						+ " 달라졌다면 판이 올라 물리가 바뀐 것이니 상수 설명부터 다시 읽을 것");
+
+		double human = 1.8;
+		assertTrue(rise >= human,
+				"올라가는 높이가 " + rise + "칸이다 — 사람 키(" + human + ")보다 낮으면 벽이 아니라"
+						+ " 조금 두꺼운 바닥 선이고, 그러면 「안 보인다」가 그대로 돌아온다");
+		assertTrue(rise < TrialEnderStorm.COLUMN_HEIGHT,
+				"「엔더폭풍」이 기둥을 " + TrialEnderStorm.COLUMN_HEIGHT + "칸에서 멈춘 것은 세로로"
+						+ " 선 것이 다른 카드의 바닥 표식을 가리기 때문이다");
+		assertEquals(0.0, TrialEnderPulse.riseHeight(0.0),
+				"0 이면 제자리에 찍는다 — 몸통이 그 갈래로 간다");
+		assertEquals(0.0, TrialEnderPulse.riseHeight(-2.0), "음수는 땅으로 쏘는 것이다");
+	}
+
+	/**
+	 * ⚠⚠ <b>가장 큰 고리에서 벽이 점 사이보다 길다</b> — 「42칸에서 보인다」를 값으로 묻는 자리다.
+	 *
+	 * <p>점 수가 상한({@link TrialEnderPulse#EDGE_MAX_POINTS})에 걸려 있으므로 반경 42 에서 점
+	 * 사이가 1.1칸까지 벌어진다. 그 점들이 바닥에 누워 있으면 <b>간격만 보이고 줄은 안 보인다.</b>
+	 * 세로로 선 길이가 간격보다 길어야 띄엄띄엄한 점이 아니라 <b>이어진 울타리</b>로 읽힌다.
+	 *
+	 * <p>이 부등식이 깨지는 길이 둘이다 — 쏘는 속도를 줄이거나, 카드의 최대 반경을 키워 간격을
+	 * 벌리는 것. 둘 다 코드에서는 아무 소리도 안 난다.
+	 */
+	@Test
+	void 가장_먼_고리에서도_벽이_점_사이보다_길다() {
+		TrialCatalog.Risk.EnderPulse pulse = card();
+		double gap = TrialEnderPulse.edgeGap(pulse.maxRadius());
+		double rise = TrialEnderPulse.riseHeight(TrialEnderPulse.EDGE_RISE_SPEED);
+		assertTrue(rise > gap,
+				"반경 " + pulse.maxRadius() + " 에서 점 사이가 " + gap + "칸인데 세로로 선 길이가 "
+						+ rise + "칸이다 — 간격보다 짧으면 벽이 아니라 점선이다");
+	}
+
+	/**
+	 * 벽이 <b>점을 한 개도 더 쓰지 않는다.</b>
+	 *
+	 * <p>이 카드는 예산(400)을 통째로 쓰고 있어 <b>늘릴 자리가 없었다.</b> 그래서 개수 0 으로
+	 * 보내 뒤 값을 속도로 읽게 했다 — 그 갈래도 파티클을 정확히 하나 만들므로 점 수도 패킷 수도
+	 * 제자리에 찍는 것과 같다.
+	 *
+	 * <p>「잘 안 보인다」의 답을 <b>점에서</b> 찾으려는 사람은 여기서 멈춰야 한다. 상한을 올리면
+	 * 이 카드 하나가 예산을 넘고, 시련은 전투가 끝날 때까지 <b>쌓인다.</b>
+	 */
+	@Test
+	void 벽은_점을_한_개도_더_쓰지_않는다() {
+		assertEquals(TrialEnderPulse.EDGE_MAX_POINTS + TrialEnderPulse.WAKE_MAX_POINTS,
+				TrialEnderPulse.MAX_POINTS_PER_TICK,
+				"한쪽만 고치면 예산이 조용히 깨진다");
+		assertEquals(400, TrialEnderPulse.MAX_POINTS_PER_TICK,
+				"세로로 세우는 것은 공짜다 — 여기가 400 에서 움직였다면 점으로 답을 찾은 것이다");
+	}
+
+	/**
+	 * ⚠ 두 고리가 <b>같은 높이로</b> 선다.
+	 *
+	 * <p>「착지 충격」과 이 카드는 판정·그리기를 이 파일의 같은 함수로 나눠 쓴다. 벽 높이가 갈리면
+	 * 사람이 <b>두 고리를 다른 것으로 배운다</b> — 「고리는 뛰면 피한다」를 한 번만 배우게 하려고
+	 * 속도까지 맞춰 둔 판이다.
+	 *
+	 * <p>값이 두 곳에 적혀 있는 것은 <b>지금 그 파일을 다른 사람이 쓰고 있어</b> 한쪽으로 모으지
+	 * 못했기 때문이다. 옮길 방향은 그쪽이 이 파일을 가리키는 것이고, 그때 이 시험은 지워도 된다.
+	 */
+	@Test
+	void 착지_충격과_같은_높이로_선다() {
+		assertEquals(TrialLandingShock.EDGE_RISE_SPEED, TrialEnderPulse.EDGE_RISE_SPEED, 1.0E-9,
+				"두 고리의 벽 높이가 갈렸다 — 한쪽만 고친 것이다");
+		assertEquals(TrialLandingShock.riseHeight(TrialLandingShock.EDGE_RISE_SPEED),
+				TrialEnderPulse.riseHeight(TrialEnderPulse.EDGE_RISE_SPEED), 1.0E-9,
+				"물리 계산이 두 곳에서 갈라졌다");
 	}
 
 	@Test

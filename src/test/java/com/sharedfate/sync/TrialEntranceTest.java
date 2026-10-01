@@ -2,6 +2,9 @@ package com.sharedfate.sync;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 입장 연출이 <b>월드 없이 확인할 수 있는 만큼</b>을 붙든다.
  *
- * <p>여기서 지키는 것은 둘이고, 둘 다 <b>눈으로 보고 잡을 수 없는</b> 종류다.
+ * <p>앞의 둘은 <b>눈으로 보고 잡을 수 없는</b> 종류다. 마지막 하나는 반대로 <b>눈에만 보이는</b>
+ * 것인데, 그래서 되살리기도 쉬워 값으로 붙들어 둔다.
  *
  * <ol>
  *   <li><b>크리스탈을 거둔 사이에 자리가 터지지 않는다</b> — {@link TrialEntrance#managesCrystals}
@@ -19,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       <b>전투가 시작된 지 10초 안에</b> 터지므로 룰렛이 두 번 겹쳐 뜬다.</li>
  *   <li><b>한 틱 점 예산을 넘지 않는다</b> — 점 하나가 파티클 꾸러미 한 장이고 거리 제한을 끄고
  *       보내므로 차원 안 전원에게 나간다. 예산을 넘으면 파티클만으로 틱이 밀린다.</li>
+ *   <li><b>걷어낸 부제가 돌아오지 않는다</b> — 사람이 「크리스탈을 전부 부숩니다」를 빼라고 했다.
+ *       글 한 줄은 다음 사람이 「설명이 없네」 하고 되넣기 가장 쉬운 것이라 상수 풀을 직접 본다.</li>
  * </ol>
  */
 class TrialEntranceTest {
@@ -106,5 +112,46 @@ class TrialEntranceTest {
 				"입장 연출이 한 틱에 " + TrialEntrance.WORST_TICK_POINTS + "점을 쓴다 — 예산 밖이다");
 		assertTrue(TrialEmpower.WORST_TICK_POINTS <= 400,
 				"80% 연출이 한 틱에 " + TrialEmpower.WORST_TICK_POINTS + "점을 쓴다 — 예산 밖이다");
+	}
+
+	/**
+	 * ⚠ 크리스탈이 사라지는 것을 <b>글로 알리지 않는다.</b>
+	 *
+	 * <p>사람이 <b>「입장할떄 크리스탈을 전부 부숩니다. 이거 문구 필요없어 뺴」</b>라고 해서 부제를
+	 * 걷어냈다. 글은 <b>되살리기 쉽다</b> — 한 줄이고, 지운 까닭이 코드에 남지 않으면 다음 사람이
+	 * 「아무 설명도 없네」 하고 다시 넣는다. 그래서 상수 풀에 그 글자가 없는지를 직접 본다.
+	 *
+	 * <p><b>타이틀은 함께 지키고 있다.</b> 부제를 빼면서 타이틀까지 지우면 연출이 열리는 신호가
+	 * 소리와 흔들림뿐이 되는데, 사람이 뺀 것은 부제 하나다.
+	 */
+	@Test
+	void 크리스탈이_사라졌다는_글이_없다() throws IOException {
+		String bytes = classBytes();
+		assertFalse(bytes.contains(pool("크리스탈이 사라졌습니다")),
+				"걷어낸 부제가 돌아왔다 — 사람이 「이거 문구 필요없어 뺴」라고 한 줄이다");
+		assertTrue(bytes.contains(pool("엔더 드래곤 시련 전투")),
+				"타이틀까지 지웠다 — 연출이 열리는 신호가 글에서 완전히 사라진다");
+	}
+
+	/**
+	 * 클래스 상수 풀에서 찾을 꼴로 바꾼다.
+	 *
+	 * <p>클래스 파일의 문자열은 UTF-8(수정 UTF-8)로 적혀 있고 {@link #classBytes} 는 바이트를
+	 * 한 글자씩 그대로 든다. 그래서 한글은 <b>UTF-8 로 쪼갠 뒤 같은 방식으로 들어야</b> 맞는다 —
+	 * 한글을 그냥 넣고 찾으면 늘 「없다」가 나와 시험이 아무것도 안 지킨다.
+	 */
+	private static String pool(String text) {
+		return new String(text.getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1);
+	}
+
+	/** 컴파일된 클래스의 바이트. 상수 풀에 무엇이 들어 있는지를 문자열로 뒤진다. */
+	private static String classBytes() throws IOException {
+		String resource = "/com/sharedfate/sync/TrialEntrance.class";
+		try (InputStream in = TrialEntrance.class.getResourceAsStream(resource)) {
+			if (in == null) {
+				throw new IOException(resource + " 를 찾지 못했다");
+			}
+			return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+		}
 	}
 }

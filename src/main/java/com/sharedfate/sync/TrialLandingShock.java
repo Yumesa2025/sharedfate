@@ -385,7 +385,7 @@ public final class TrialLandingShock {
 	 * <p>몸통은 <b>남아서 쌓인다.</b> 화면에 살아 있는 수가 {@code 한 틱 몸통 점수 × 수명}인데,
 	 * 이 카드의 몸통 몫은 한 틱에 최대 176점({@code 440 - edgeShare(440)})이라 지금이
 	 * {@code 176 × 40 = 7,040} 이고 1.25 에서 <b>8,800</b> 이다.
-	 * {@link TrialEnderPulse#WAKE_MAX_POINTS} 가 「{@code 240 × 40} 이면 만 점을 넘긴다」며
+	 * {@link TrialEnderPulse#EDGE_MAX_POINTS} 가 「{@code 240 × 40} 이면 만 점을 넘긴다」며
 	 * 긋고 간 선(9,600)보다 아래다. <b>1.4 로 올리면 {@code 176 × 56 = 9,856} 이라 그 선을
 	 * 넘는다</b> — 더 키우려면 몸통 몫부터 줄여야 하고, 그 몫은 「엔더 파동」과 같은 비율이라
 	 * 그쪽부터 봐야 한다.

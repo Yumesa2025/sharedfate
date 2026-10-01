@@ -537,6 +537,13 @@ public final class DragonTrialManager {
 			DragonLastStand.Standing standing = DragonLastStand.tick(server, end, dragon, team,
 					session, members, lastStandBegins, now);
 			if (standing != DragonLastStand.Standing.OFF) {
+				// ⚠⚠ 「착지」 패시브의 깃발을 내린다. 최후의 저항은 드래곤을
+				// EnderDragonPhase.HOVERING 으로 영구히 앉혀 두고 사람이 활로 1200 을 깎는
+				// 설계인데, 아래 continue 때문에 DragonPassives.tick 이 한 번도 안 불린다 —
+				// 진입 직전 틱에 드래곤이 앉아 있었다면 원거리 면역이 켜진 채 남아 115초 내내
+				// 활이 한 대도 안 들어간다. DragonPerch.perched 가 HOVERING 을 구조로도 거르지만
+				// (그쪽 설명), 「한쪽만 막으면 반드시 샌다」라 이 줄을 함께 둔다.
+				DragonPerch.standDown();
 				if (standing == DragonLastStand.Standing.ENTERED) {
 					// 진입하며 줄에 남아 있던 자리를 비웠다. 저장해 두지 않으면 재시작 뒤에
 					// 「선택 대기 중」인 채로 되살아나 룰렛이 영영 안 열리는 팀이 된다.
@@ -599,6 +606,10 @@ public final class DragonTrialManager {
 			return;
 		}
 		TrialRisks.clearState();
+		// 「착지」 패시브의 깃발도 여기서 내린다. 드래곤이 죽은 틱에는 위의 continue 때문에
+		// DragonPassives.tick 이 안 불리므로, 앉아 있던 채로 죽으면 깃발이 켜진 채 남는다 —
+		// 다음 전투의 첫 틱까지 이어지면 아무도 안 앉았는데 화살이 안 박힌다.
+		DragonPerch.standDown();
 	}
 
 	/**

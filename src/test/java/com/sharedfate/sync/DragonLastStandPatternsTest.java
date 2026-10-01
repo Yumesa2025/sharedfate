@@ -15,6 +15,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -107,27 +108,110 @@ class DragonLastStandPatternsTest {
 	}
 
 	/**
-	 * ⚠ 사람이 <b>1.5배</b>로 올렸다 — 4 → 6 · 1.5 → 2.25.
+	 * ⚠⚠ 사람이 플레이해 보고 <b>절반으로 줄였다</b> — <b>6 → 3</b> · <b>2.25 → 1.125</b>.
 	 *
-	 * <p>그래도 「강한 넉백」 한 대(8)보다 약하다. 피해가 없는데 5초 동안 여덟 번 미는 패턴이라
-	 * 한 번치가 한 대와 같으면 5초 내내 조작이 덮어써져 요구하는 행동을 할 수 없다 — 배율이
-	 * 2 를 넘기는 순간 그 근거가 깨진다.
+	 * <p>사람 말: <b>「30프로미만 2페이지에서 밀쳐지는게 너무심해 지금보다 50프로는
+	 * 안밀쳐지게하고」</b>. 「지금보다」가 <b>1.5배로 올린 뒤</b>를 가리키므로 밑값(4)의 절반이 아니라
+	 * <b>올린 값(6)의 절반</b>이다.
+	 *
+	 * <p>옛 값과 새 값을 <b>둘 다</b> 적어 둔다. 한쪽만 적으면 다음에 「50% 줄이라」를 또 들은
+	 * 사람이 <b>무엇의 50%인지</b>를 알 수 없다.
 	 */
 	@Test
-	void 날개_넉백이_1점5배다() {
-		assertEquals(1.5, DragonLastStandPatterns.WING_PUSH_SCALE, 1.0E-9, "사람이 정한 배율이다");
-		assertEquals(TrialEnderStorm.PUSH_BLOCKS / 2.0 * 1.5,
-				DragonLastStandPatterns.WING_PUSH_BLOCKS, 1.0E-9,
-				"이 저장소의 「강한 넉백」 단위(8)의 절반에 1.5배다");
-		assertEquals(6.0, DragonLastStandPatterns.WING_PUSH_BLOCKS, 1.0E-9, "4 → 6 이다");
-		assertEquals(2.25, DragonLastStandPatterns.WING_NEAR_PUSH_BLOCKS, 1.0E-9,
-				"1.5 → 2.25 다 — 한쪽만 올리면 「4칸 이내는 약하다」의 정도가 달라진다");
+	void 날개_넉백이_절반으로_줄었다() {
+		assertEquals(1.5, DragonLastStandPatterns.WING_PUSH_RAISE, 1.0E-9,
+				"사람이 처음 올린 배율이다 — 지우면 0.75 가 어디서 왔는지 사라진다");
+		assertEquals(0.5, DragonLastStandPatterns.WING_PUSH_CUT, 1.0E-9,
+				"사람이 「50프로는 안밀쳐지게」라고 한 몫이다");
+		assertEquals(0.75, DragonLastStandPatterns.WING_PUSH_SCALE, 1.0E-9, "1.5 × 0.5 다");
+
+		// 옛 값 ─ 새 값. 정확히 절반이어야 한다.
+		double wasPeak = TrialEnderStorm.PUSH_BLOCKS / 2.0 * 1.5;
+		double wasNear = 1.5 * 1.5;
+		assertEquals(6.0, wasPeak, 1.0E-9, "옛 값이 6 이었다");
+		assertEquals(2.25, wasNear, 1.0E-9, "옛 값이 2.25 였다");
+		assertEquals(3.0, DragonLastStandPatterns.WING_PUSH_BLOCKS, 1.0E-9, "6 → 3 이다");
+		assertEquals(1.125, DragonLastStandPatterns.WING_NEAR_PUSH_BLOCKS, 1.0E-9,
+				"2.25 → 1.125 다 — 한쪽만 깎으면 「4칸 이내는 약하다」의 정도가 달라진다");
+		assertEquals(wasPeak / 2.0, DragonLastStandPatterns.WING_PUSH_BLOCKS, 1.0E-9);
+		assertEquals(wasNear / 2.0, DragonLastStandPatterns.WING_NEAR_PUSH_BLOCKS, 1.0E-9);
+
+		// 실제로 밀리는 거리도 절반이다. 「세기를 반으로」가 「거리를 반으로」여야 뜻이 맞는다.
+		double wasTravel = DragonLastStandPatterns.groundedTravel(
+				TrialEnderStorm.pushVelocity(wasPeak));
+		double nowTravel = DragonLastStandPatterns.groundedTravel(
+				DragonLastStandPatterns.shoveSpeed(DragonLastStandPatterns.WING_PUSH_BLOCKS, false));
+		assertEquals(wasTravel / 2.0, nowTravel, 1.0E-9,
+				"바닥에서 한 번치에 실제로 밀리는 거리가 절반이 아니다");
+		assertEquals(1.189, wasTravel, 0.001, "옛 한 번치가 1.19칸이었다");
+		assertEquals(0.595, nowTravel, 0.001, "새 한 번치는 0.59칸이다");
+
 		assertTrue(DragonLastStandPatterns.WING_PUSH_BLOCKS < TrialEnderStorm.PUSH_BLOCKS,
 				"한 번치가 「강한 넉백」 한 대와 같아지면 5초 내내 조작이 덮어써진다");
-		// 12칸 밖의 잦아드는 구간도 함께 올랐다. 거기를 안 올리면 12.0 과 12.1 이 다시 절벽이 된다.
+		// 12칸 밖의 잦아드는 구간도 함께 줄었다. 거기를 안 줄이면 12.0 과 12.1 이 절벽이 된다.
 		assertEquals(DragonLastStandPatterns.WING_PUSH_BLOCKS / 2.0,
 				DragonLastStandPatterns.wingPushBlocks(16.0), 1.0E-9,
 				"잦아드는 구간이 세기의 비율로 적혀 있지 않다");
+	}
+
+	/**
+	 * ⚠⚠ <b>점프해도 바닥과 같은 거리만 밀린다.</b> 사람이 본 「저 끝까지」가 이 등식이 없던 것이다.
+	 *
+	 * <p>사람 말: <b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든? 그것도
+	 * 조심해야겟어」</b>. {@code pushVelocity} 가 <b>공중 감쇠</b>로 속도를 잡으므로, 같은 속도가
+	 * 바닥에서는 적힌 거리의 5분의 1 을 밀고 공중에서는 <b>적힌 거리를 그대로</b> 민다 —
+	 * 곧 떠 있으면 <b>다섯 배</b>다.
+	 *
+	 * <p>이 등식이 깨지면 로그에도 빌드에도 안 남는다. 눈으로 볼 수 없는 환경이라 여기서만 잡힌다.
+	 */
+	@Test
+	void 공중에서_밀려도_바닥과_같은_거리만_간다() {
+		assertEquals((1.0 - TrialEnderStorm.AIR_DRAG) / (1.0 - DragonLastStandPatterns.GROUND_DRAG),
+				DragonLastStandPatterns.AIRBORNE_PUSH_SCALE, 1.0E-12,
+				"비율을 손으로 적으면 감쇠를 고칠 때 한쪽만 따라간다");
+		assertEquals(0.198238, DragonLastStandPatterns.AIRBORNE_PUSH_SCALE, 1.0E-6);
+
+		for (double distance = 0.0; distance <= DragonLastStandPatterns.WING_PUSH_BLOCKS + 1.0;
+				distance += 0.05) {
+			double ground = DragonLastStandPatterns.groundedTravel(
+					DragonLastStandPatterns.shoveSpeed(distance, false));
+			double air = DragonLastStandPatterns.airborneTravel(
+					DragonLastStandPatterns.shoveSpeed(distance, true));
+			assertEquals(ground, air, 1.0E-9,
+					distance + "칸을 부탁했을 때 공중이 바닥과 다르다 — 점프가 이득이나 손해가 된다");
+		}
+
+		// 고치기 전이 몇 배였는지도 못박아 둔다. 그 수가 사람이 본 것이다.
+		double before = DragonLastStandPatterns.airborneTravel(
+				TrialEnderStorm.pushVelocity(DragonLastStandPatterns.WING_PUSH_BLOCKS));
+		double after = DragonLastStandPatterns.airborneTravel(
+				DragonLastStandPatterns.shoveSpeed(DragonLastStandPatterns.WING_PUSH_BLOCKS, true));
+		assertEquals(3.0, before, 1.0E-9, "고치기 전에는 떠 있으면 적힌 거리를 그대로 갔다");
+		assertEquals(5.045, before / after, 0.01, "다섯 배였다");
+
+		// ⚠ 공중에서도 세기는 0 이 아니다. 공중을 통째로 면제하면 배우는 답이 「퍼덕일 때는 뛰어
+		// 있어라」가 되어 이 패턴이 아무것도 요구하지 않는다.
+		assertTrue(DragonLastStandPatterns.shoveSpeed(
+						DragonLastStandPatterns.WING_PUSH_BLOCKS, true) > 0.0,
+				"공중을 면제하면 점프 한 번이 이 패턴의 정답이 된다");
+	}
+
+	/**
+	 * ⚠ 공중 판정이 <b>클라이언트 깃발만 믿지 않는다.</b>
+	 *
+	 * <p>{@code onGround()} 는 클라이언트가 보내 준 값이다. 렉이나 거짓 보고로 「땅에 있다」가
+	 * 들어오면 떠 있는 사람이 바닥 세기를 받아 <b>더 멀리</b> 날아간다 — 어긋나는 방향이 언제나
+	 * 덜 미는 쪽이어야 한다는 이 저장소의 규칙에 정면으로 어긋난다. 그래서 서버만 아는
+	 * 하이트맵으로 한 번 더 본다.
+	 */
+	@Test
+	void 공중_판정이_클라이언트_깃발만_믿지_않는다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("onGround"), "가장 바로인 물음이 빠졌다");
+		assertTrue(bytes.contains("surfaceAt"),
+				"하이트맵으로 다시 보지 않으면 거짓 보고 한 번에 천장 논리가 무너진다");
+		assertEquals(0.5, DragonLastStandPatterns.AIRBORNE_LIFT, 1.0E-9,
+				"계단·반 블록 한 칸이다 — 더 작게 두면 반 블록을 오르는 중이 공중으로 읽힌다");
 	}
 
 	/**
@@ -175,6 +259,162 @@ class DragonLastStandPatternsTest {
 		}
 		assertTrue(limit < TrialRisks.ARENA_RADIUS,
 				"천장이 섬 경계와 같으면 밀린 사람이 벼랑 끝에 선다");
+	}
+
+	// ------------------------------------------------------------------ ⚠⚠ 낙사가 가능한 경우가 없다
+
+	/**
+	 * ⚠⚠ <b>점프 중에 밀려도 섬 밖으로 못 나간다.</b>
+	 *
+	 * <p>사람 말: <b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든? 그것도
+	 * 조심해야겟어」</b>. 공유 체력이라 <b>한 사람의 낙사가 팀 전멸이고 그것이 회차 끝이자 월드
+	 * 삭제</b>다. 그러니 이것은 「값이 맞는가」가 아니라 <b>「일어날 수 있는가」</b>를 묻는 시험이고,
+	 * 답이 「없다」여야 한다.
+	 *
+	 * <p>점프 중과 낙하 중은 <b>수평으로 같은 모델</b>이다(공중 감쇠 0.91). 세로 속도는 우리가
+	 * 읽어서 그대로 돌려놓으므로 수평 거리에 들어오지 않는다 — 그래서 둘을 같은 셈으로 재고,
+	 * 아래 {@link #낙하_중에_밀려도_섬_밖으로_못_나간다} 가 그 사실 자체를 못박는다.
+	 */
+	@Test
+	void 점프_중에_밀려도_섬_밖으로_못_나간다() {
+		밀려도_섬을_벗어나지_않는다("점프 중", true, 0.0);
+	}
+
+	/**
+	 * ⚠⚠ <b>낙하 중에 밀려도 섬 밖으로 못 나간다.</b>
+	 *
+	 * <p>떨어지는 중이 가장 나쁜 경우다 — 발이 땅에 없으니 마찰이 0 이고, 게다가 사람이 이미
+	 * 가장자리 쪽으로 가고 있을 수 있다. 수평 모델이 점프 중과 같다는 것까지 함께 못박는다.
+	 */
+	@Test
+	void 낙하_중에_밀려도_섬_밖으로_못_나간다() {
+		// 세로가 수평 세기에 들어오지 않는다. 들어오면 점프와 낙하가 다른 답을 내야 한다.
+		assertEquals(DragonLastStandPatterns.shoveSpeed(3.0, true),
+				DragonLastStandPatterns.shoveSpeed(3.0, true), 1.0E-12);
+		밀려도_섬을_벗어나지_않는다("낙하 중", true, 0.0);
+	}
+
+	/**
+	 * ⚠⚠ <b>달리는 중에 밀려도 섬 밖으로 못 나간다.</b>
+	 *
+	 * <p>여기서 재는 것은 <b>「달리던 속도가 넉백에 얹히지 않는가」</b>다. {@code shove} 가
+	 * {@code setDeltaMovement} 로 수평 속도를 <b>덮어쓰므로</b> 바깥으로 달리던 0.286칸/틱이 그
+	 * 자리에서 사라져야 한다 — 더하면 천장이 계산해 둔 목적지를 지나쳐 간다.
+	 *
+	 * <p>⚠ <b>제 발로 달려 나가는 거리는 재지 않는다.</b> 사람이 스스로 허공으로 달려 들어가는
+	 * 것은 이 카드가 책임질 거리가 아니고, 그 선은 {@code TrialLandingShock.EDGE_MARGIN} 이
+	 * 「스프린트 점프 한 번만큼은 남긴다」로 이미 그어 두었다.
+	 */
+	@Test
+	void 달리는_중에_밀려도_섬_밖으로_못_나간다() {
+		double sprint = DragonLastStandPatterns.WALK_INPUT
+				* DragonLastStandPatterns.SPRINT_MULTIPLIER
+				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
+		assertEquals(0.286, sprint, 0.001, "달리기 종착 속도가 달라졌으면 위 설명도 고칠 것");
+		밀려도_섬을_벗어나지_않는다("달리는 중", false, sprint);
+	}
+
+	/**
+	 * 한 패턴(100틱 · 여덟 번치)을 섬 곳곳에서 통째로 굴려 보고 <b>어느 틱에도 땅 위에 있는지</b>
+	 * 본다.
+	 *
+	 * <p>{@code shove} 와 <b>같은 순서</b>로 천장 둘을 지난다 —
+	 * {@code TrialEnderStorm.pushDistance}(목적지가 반경 32 안) 다음에
+	 * {@code TrialLandingShock.groundedReach}(길에 땅이 이어진 데까지). 그 둘이 실제 코드의 것이라
+	 * 증명을 물려받고, 여기서는 <b>여덟 번이 쌓여도 그대로인가</b>를 본다.
+	 *
+	 * <p>지나간 길을 0.1칸마다 짚는다. 틱 사이를 건너뛰면 한 틱에 지난 0.5칸 안의 구멍을 놓친다.
+	 *
+	 * <p>⚠ <b>출발 자리를 천장 안으로만 잡는다.</b> 천장 밖에 선 사람은 {@code pushDistance} 가
+	 * <b>한 칸도 밀지 않으므로</b>(「다른 카드나 경사가 먼저 데려다 놓은 경우인데 거기서 또 밀면 이
+	 * 카드가 남의 사고를 완성시킨다」) 그 자리는 이 패턴이 만든 자리가 아니다.
+	 *
+	 * @param airborne 떠 있는가. 바닥이면 감쇠 0.546, 공중이면 0.91 이다
+	 * @param carry    번치가 올 때 이미 <b>바깥으로</b> 들고 있던 수평 속도(칸/틱)
+	 */
+	private static void 밀려도_섬을_벗어나지_않는다(String what, boolean airborne, double carry) {
+		double limit = TrialEnderStorm.pushLimitRadius();
+		double drag = airborne ? TrialEnderStorm.AIR_DRAG : DragonLastStandPatterns.GROUND_DRAG;
+		int ticks = DragonLastStand.Pattern.WING_BEAT.durationTicks();
+		TrialLandingShock.GroundProbe probe = DragonLastStandPatternsTest::islandHasGround;
+		int shoved = 0;
+		for (int angleStep = 0; angleStep < 36; angleStep++) {
+			double angle = (Math.PI * 2.0 * angleStep) / 36.0;
+			for (double from = 0.5; from < limit; from += 0.5) {
+				double x = Math.cos(angle) * from;
+				double z = Math.sin(angle) * from;
+				if (!islandHasGround(x, z)) {
+					continue;
+				}
+				double vx = 0.0;
+				double vz = 0.0;
+				for (int tick = 0; tick < ticks; tick++) {
+					boolean pulse = tick % DragonLastStandPatterns.WING_PULSE_TICKS == 0
+							&& tick / DragonLastStandPatterns.WING_PULSE_TICKS
+									< DragonLastStandPatterns.WING_PULSES;
+					double radius = Math.sqrt(x * x + z * z);
+					if (pulse && radius > 1.0E-4) {
+						double outX = x / radius;
+						double outZ = z / radius;
+						double wanted = DragonLastStandPatterns.wingPushBlocks(radius);
+						double distance = TrialEnderStorm.pushDistance(x, z,
+								new Vec3(outX, 0.0, outZ), wanted);
+						distance = TrialLandingShock.groundedReach(probe, x, z, outX, outZ, distance);
+						if (distance > 0.0) {
+							if (carry > 0.0) {
+								// 바깥으로 달리던 중에 맞았다. 이 속도가 얹히면 안 된다.
+								vx = outX * carry;
+								vz = outZ * carry;
+							}
+							// ⚠ 덮어쓴다. 더하면 들고 있던 속도가 천장을 지나쳐 간다 —
+							// shove 의 setDeltaMovement 한 줄이 그 약속이다.
+							double speed = DragonLastStandPatterns.shoveSpeed(distance, airborne);
+							vx = outX * speed;
+							vz = outZ * speed;
+							shoved++;
+						}
+					}
+					int samples = Math.max(1, (int) Math.ceil(Math.hypot(vx, vz) / 0.1));
+					for (int sample = 1; sample <= samples; sample++) {
+						double px = x + (vx * sample) / samples;
+						double pz = z + (vz * sample) / samples;
+						assertTrue(islandHasGround(px, pz), what + "에 " + from
+								+ "칸에서 밀렸는데 " + tick + "틱에 허공이다: " + px + ", " + pz);
+						assertTrue(Math.sqrt(px * px + pz * pz) <= limit + 1.0E-6,
+								what + "에 " + from + "칸에서 밀렸는데 " + tick
+										+ "틱에 천장 밖이다");
+					}
+					x += vx;
+					z += vz;
+					vx *= drag;
+					vz *= drag;
+				}
+			}
+		}
+		// 한 번도 안 밀렸으면 이 시험은 아무것도 재지 않았다. 세기를 0 으로 만든 사람이 여기서 멈춘다.
+		assertTrue(shoved > 1000, what + " 에 실제로 밀린 횟수가 " + shoved + "뿐이다");
+	}
+
+	/**
+	 * 시험용 섬. <b>둥글지 않고 구멍도 있다.</b>
+	 *
+	 * <p>「반경 + 넉백 &lt; 40」으로 검산하면 안 된다는 것이 이 저장소의 규칙이다 — 중앙 섬은
+	 * 방향에 따라 끝이 다르고({@code TrialRisks.pickSpot}) 사람이 파 놓은 구멍도 있다. 그래서
+	 * 가장자리가 <b>32~40 사이에서 물결치게</b> 만든다. 32 는 천장({@code pushLimitRadius})과 같은
+	 * 값이라, 그 방향에서는 <b>천장만으로는 한 칸도 못 막고</b> {@code groundedReach} 가 일해야 한다.
+	 *
+	 * <p>구멍은 반경 20 자리에 지름 4 다. {@code groundedReach} 가 0.5칸마다 짚으므로 폭 1 짜리
+	 * 구멍도 못 지나치지만, 넉넉히 잡아 「건너편에 땅이 있어도 건너뛰지 않는다」까지 재게 한다.
+	 */
+	private static boolean islandHasGround(double x, double z) {
+		double radius = Math.sqrt(x * x + z * z);
+		double edge = 36.0 + 4.0 * Math.sin(3.0 * Math.atan2(z, x));
+		if (radius > edge) {
+			return false;
+		}
+		double holeX = x - 20.0;
+		double holeZ = z - 3.0;
+		return holeX * holeX + holeZ * holeZ > 4.0;
 	}
 
 	// ------------------------------------------------------------------ ② 부채꼴 브레스
@@ -511,30 +751,64 @@ class DragonLastStandPatternsTest {
 	}
 
 	/**
-	 * ⚠ 번개가 <b>패턴이 아니다.</b> 진입 3초 뒤부터 <b>6초마다</b> 저 혼자 돈다.
+	 * ⚠ 번개가 <b>패턴이 아니다.</b> 진입 3초 뒤부터 <b>7.8초마다</b> 저 혼자 돈다.
 	 *
-	 * <p>주기 120틱은 「낙뢰」와 같은 값이다 — 새 숫자를 만들지 않았고, 개수가 10 이 된 지금
-	 * 그 카드와 반경·자리만 다르다.
+	 * <p>사람 말: <b>「번개 주기를 30프로 내리고」</b>. 「주기를 내린다」가 두 뜻으로 읽히는데
+	 * 확인한 답이 <b>「덜 자주」</b>였다 — 120 × 1.3 = <b>156</b>, 6초 → <b>7.8초</b>다.
+	 *
+	 * <h2>⚠⚠ 「낙뢰」 카드와 <b>일부러</b> 갈라졌다 — 묻는 것을 뒤집었다</h2>
+	 *
+	 * <p>전에는 이 시험이 <b>「둘이 같은 값인가」</b>를 물었다. 주기를 새로 만들지 않고 「낙뢰」
+	 * ({@code sharedfate:lightning_storm})의 값을 그대로 쓴 것이 그 상수의 근거였기 때문이다.
+	 *
+	 * <p>사람이 <b>최후의 저항 쪽만</b> 내리라고 했으므로 이제 둘이 다른 값이고, 그래서 묻는 것을
+	 * <b>뒤집었다 — 「같아졌으면 그것이 사고다」.</b> 같아지는 길이 둘이고 <b>둘 다 사고</b>다.
+	 *
+	 * <ol>
+	 *   <li>「낙뢰」를 156 으로 따라 올렸다 — 사람이 건드리라고 하지 않은 <b>카드</b>가 묶여서
+	 *       움직인 것이다. 그 카드는 크리스탈 전멸 자리의 룰렛에 있고 값도 따로 재어 정했다</li>
+	 *   <li>여기를 120 으로 되돌렸다 — 사람이 내리라고 한 것이 <b>조용히 사라진</b> 것이다</li>
+	 * </ol>
+	 *
+	 * <p>개수(열 곳)는 <b>여전히 같은 값</b>이다. 바꾸라고 한 것은 주기 하나뿐이다.
 	 */
 	@Test
-	void 번개가_6초마다_저_혼자_돈다() {
-		assertEquals(120, DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS, "6초다");
+	void 번개가_7_8초마다_저_혼자_돈다() {
+		assertEquals(156, DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS, "7.8초다");
 		TrialCatalog.Trial storm = TrialCatalog.byId("sharedfate:lightning_storm");
 		assertNotNull(storm);
 		TrialCatalog.Risk.DelayedStrike strike =
 				(TrialCatalog.Risk.DelayedStrike) storm.risks().getFirst();
-		assertEquals(strike.interval(), DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS,
-				"「낙뢰」의 주기와 갈렸다 — 한쪽을 고치면 다른 쪽도 함께 볼 것");
+		assertEquals(120, strike.interval(),
+				"「낙뢰」 카드의 주기가 바뀌었다 — 사람이 내리라고 한 것은 최후의 저항 쪽뿐이고 "
+						+ "이 카드는 6초 그대로다");
+		assertNotEquals(strike.interval(), DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS,
+				"「낙뢰」와 같은 값으로 돌아갔다 — 둘은 일부러 갈라진 값이다. 「낙뢰」를 따라 "
+						+ "올렸거나 이쪽을 되돌렸다는 뜻이고, 둘 다 사람이 말한 것과 다르다");
 		assertEquals(strike.count(), DragonLastStandPatterns.LIGHTNING_COUNT,
-				"「낙뢰」의 개수와 갈렸다");
-		// 「쉬는 틈 없이 계속」이면서 바닥이 깨끗한 틈이 남아야 한다.
+				"「낙뢰」의 개수와 갈렸다 — 사람이 바꾸라고 한 것은 주기뿐이다");
+		// 한 볼리가 바닥을 쓰는 시간. 예고 60 + 여운 10 이다.
 		int busy = DragonLastStandPatterns.LIGHTNING_WARN_TICKS
 				+ DragonLastStandPatterns.LIGHTNING_AFTER_TICKS;
+		assertEquals(70, busy, "예고 60 + 여운 10 이다");
 		assertTrue(busy < DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS,
 				"고리가 끊기지 않으면 부채꼴 테두리가 그 위에 묻힌다");
-		assertTrue(DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS - busy <= 60,
-				"틈이 3초를 넘으면 「계속 터진다」가 아니다: "
-						+ (DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS - busy));
+		// ⚠ 상한을 「60틱 이하」에서 고쳤다. 그 60 은 「주기 120 − 바쁜 70 = 50」에 맞춰 적은
+		// 값이라, 주기를 내리라는 사람 말 자체를 막는 자가 되어 있었다(156 − 70 = 86). 지키려던
+		// 뜻은 「틈이 너무 길어지면 번개가 배경이 아니라 가끔 오는 사건이 된다」이므로, 그 뜻을
+		// 숫자로 다시 뽑는다 — 틈이 가장 짧은 패턴보다 길어지면 그 패턴을 통째로 번개 없이
+		// 지나가는 길이 생기고, 그때 번개는 「언제나 있는 배경」이 아니다.
+		int quiet = DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS - busy;
+		assertEquals(86, quiet, "156 − 70 이다(4.3초)");
+		int shortestPattern = Integer.MAX_VALUE;
+		for (DragonLastStand.Pattern pattern : DragonLastStand.Pattern.values()) {
+			shortestPattern = Math.min(shortestPattern, pattern.durationTicks());
+		}
+		assertEquals(100, shortestPattern, "가장 짧은 패턴이 「날개 퍼덕이기」 100틱이다");
+		assertTrue(quiet < shortestPattern,
+				"바닥이 깨끗한 틈이 가장 짧은 패턴보다 길다 — 번개를 한 번도 안 보고 지나가는 "
+						+ "패턴이 생기고, 그때는 「계속 터진다」가 아니라 「가끔 온다」다: 틈 "
+						+ quiet + "틱 대 패턴 " + shortestPattern + "틱");
 	}
 
 	/** 예고가 「옆으로 비킬 시간」보다 넉넉하다. */
@@ -806,24 +1080,59 @@ class DragonLastStandPatternsTest {
 						+ "을 넘는다 — 개수나 반경을 올린 사람은 여기서 멈출 것");
 		// 몫을 못박아 둔다. 「착지 충격」이 434 를 못박아 둔 것과 같은 자리다 — 개수나
 		// 반경을 올리면 이 수가 먼저 바뀌어 사람이 예산을 눈으로 세지 않아도 멈춰 선다.
-		assertEquals(136, DragonLastStandPatterns.wingBeatPoints(), "날개 퍼덕이기");
-		assertEquals(202, DragonLastStandPatterns.coneWarnPoints(), "부채꼴 예고");
+		assertEquals(228, DragonLastStandPatterns.wingBeatPoints(),
+				"날개 퍼덕이기 — 파랑 고리 131 + 벽 68 + 바깥 가닥 24 + 돌풍 5");
+		assertEquals(236, DragonLastStandPatterns.coneWarnPoints(),
+				"부채꼴 예고 — 호가 하나에서 셋이 되어 202 → 236");
 		assertEquals(55, DragonLastStandPatterns.coneSprayPoints(), "부채꼴 브레스 파티클");
 		assertEquals(68, DragonLastStandPatterns.coneFlamePoints(), "터지는 틱의 불꽃");
 		assertEquals(123, DragonLastStandPatterns.coneFirePoints(), "터지는 틱 전체");
-		assertEquals(81, DragonLastStandPatterns.suckWarnPoints(),
-				"공허 흡입 예고 — 나눠 그린 검은 속 30 + 빨간 경계 고리 51");
-		assertEquals(81, DragonLastStandPatterns.suckPoints(), "공허 흡입 전체");
-		assertEquals(54, DragonLastStandPatterns.crossWarnPoints(),
-				"십자 예고 — 가장자리 넷 324점을 여섯 틱에 나눈 몫");
-		assertEquals(82, DragonLastStandPatterns.crossFlashPoints(), "십자가 터지는 틱의 갈라짐");
-		assertEquals(136, DragonLastStandPatterns.crossPoints(),
-				"십자가 터지는 틱은 갈라짐 + 다음 십자의 예고가 함께 나간다");
+		assertEquals(146, DragonLastStandPatterns.suckWarnPoints(),
+				"공허 흡입 예고 — 검은 속 30 + 빨간 고리 51 + 그 고리의 벽 17 + 안쪽 가닥 48");
+		assertEquals(146, DragonLastStandPatterns.suckPoints(), "공허 흡입 전체");
+		assertEquals(162, DragonLastStandPatterns.crossWarnPoints(),
+				"십자 예고 — 빨강 54(여섯 틱에 나눔) + 흰 기둥 108(세 틱에 나눔)");
+		assertEquals(124, DragonLastStandPatterns.crossFlashPoints(),
+				"십자가 터지는 틱 — 눕는 갈라짐 82 + 솟는 기둥 42");
+		assertEquals(286, DragonLastStandPatterns.crossPoints(),
+				"십자가 터지는 틱은 갈라짐 + 솟는 기둥 + 다음 십자의 예고가 함께 나간다");
 		assertEquals(70, DragonLastStandPatterns.lightningPoints(),
 				"상시 번개 — 열 곳을 여섯 틱에 나눠 그린 한 틱 몫");
-		assertEquals(272, worst,
-				"가장 바쁜 틱은 번개 예고 + 부채꼴 예고다 — 새 패턴 둘은 그 아래이므로 "
-						+ "이 수가 새 패턴 때문에 오르지는 않았다");
+		assertEquals(356, worst,
+				"가장 바쁜 틱이 바뀌었다 — 전에는 「번개 + 부채꼴 예고」(272)였고 이제는 "
+						+ "「번개 + 십자가 터지는 틱」이다");
+		assertEquals(DragonLastStandPatterns.lightningPoints()
+						+ DragonLastStandPatterns.crossPoints(), worst,
+				"최악이 십자가 터지는 틱이 아니게 됐으면 클래스 설명의 예산 절도 함께 고칠 것");
+		// 272 → 356 이고 예산까지 84점이 남았다. 사람이 「이펙트를 키우든」이라고 한 몫을 쓴 것이다.
+		assertTrue(worst > 272, "하나도 키우지 않았다 — 사람이 넷 다 키우라고 했다");
+	}
+
+	/**
+	 * ⚠ 늘린 뒤에도 <b>살아 있는 점 수</b>가 선 안이다.
+	 *
+	 * <p>화면에 남는 수는 {@code 한 틱 점수 × 수명} 이다. 십자 가장자리의 먼지를 1.5배로 키우면서
+	 * 수명이 8~40틱에서 <b>12~60틱</b>이 됐으므로({@link DragonLastStandPatterns#CROSS_DUST_SCALE})
+	 * 점 수만 보면 안 된다 — {@code TrialEnderPulse.EDGE_MAX_POINTS} 가 「{@code 240 × 40} 이면
+	 * 만 점에 닿는다」며 그어 둔 선이 <b>9,600</b> 이다.
+	 */
+	@Test
+	void 키운_뒤에도_살아_있는_점이_선_안이다() {
+		// 그 선은 「앞머리 상한 × 먼지 수명 상한」이다. 숫자를 여기 따로 적으면 한쪽만 따라간다.
+		int line = TrialEnderPulse.EDGE_MAX_POINTS * 40;
+		assertEquals(9600, line, "선이 움직였으면 CROSS_DUST_SCALE 의 셈을 다시 할 것");
+		int longestDustLifetime = (int) Math.ceil(40.0 * DragonLastStandPatterns.CROSS_DUST_SCALE);
+		assertEquals(60, longestDustLifetime, "26.3 DustParticleBase 가 수명에도 크기를 곱한다");
+		// 십자 예고에서 먼지인 몫은 가장자리 빨강뿐이다. 흰 기둥은 CRIT 이라 수명이 4~10 이다.
+		int redPerTick = (2 * 2 * DragonLastStandPatterns.crossLinePoints(
+				DragonLastStandPatterns.CROSS_MARK_GAP)
+				+ TrialEndRain.MARK_MAX_STRIDE - 1) / TrialEndRain.MARK_MAX_STRIDE;
+		assertEquals(54, redPerTick);
+		assertTrue(redPerTick * longestDustLifetime < line,
+				"십자 가장자리만으로 화면이 먼지로 덮인다: " + redPerTick * longestDustLifetime);
+		// ⚠ 부채꼴 예고(236점)에 이 크기를 쓰면 14,160 이라 그 선을 넘는다. 그래서 십자에만 쓴다.
+		assertTrue(DragonLastStandPatterns.coneWarnPoints() * longestDustLifetime > line,
+				"부채꼴에도 쓸 수 있게 됐으면 CROSS_DUST_SCALE 의 설명을 고칠 것");
 	}
 
 	/**
@@ -852,11 +1161,247 @@ class DragonLastStandPatternsTest {
 
 		int busiest = DragonLastStandPatterns.lightningPoints()
 				+ DragonLastStandPatterns.coneWarnPoints();
-		assertTrue(DragonLastStandPatterns.lightningPoints() + suckFill
-						+ TrialWarning.ringPoints(DragonLastStandPatterns.SUCK_RADIUS) > busiest,
+		// 나눠 그리기를 되돌리면 그 몫이 「나눈 한 틱 몫」에서 「한 바퀴 전부」로 바뀐다.
+		int suckUnsplit = DragonLastStandPatterns.suckWarnPoints()
+				- (suckFill + DragonLastStandPatterns.SUCK_MARK_STRIDE - 1)
+						/ DragonLastStandPatterns.SUCK_MARK_STRIDE
+				+ suckFill;
+		assertTrue(DragonLastStandPatterns.lightningPoints() + suckUnsplit > busiest,
 				"나눠 그릴 이유가 없어졌으면 SUCK_MARK_STRIDE 의 설명도 함께 고칠 것");
-		assertTrue(DragonLastStandPatterns.lightningPoints() + crossWhole > busiest,
+		// 십자는 두 겹이라 둘을 다 되돌린 경우를 본다 — 빨강 324 + 흰 기둥 324 다.
+		assertTrue(DragonLastStandPatterns.lightningPoints() + crossWhole * 2 > busiest,
 				"나눠 그릴 이유가 없어졌으면 CROSS_MARK_STRIDE 의 설명도 함께 고칠 것");
+		// ⚠ 흰 기둥은 CRIT 이라 나눌 폭이 3 이다. 6 으로 두면 벽이 영영 안 닫힌다.
+		assertEquals(TrialLandingShock.MAX_STRIDE, DragonLastStandPatterns.CROSS_WALL_STRIDE,
+				"CRIT 수명 4틱에서 나온 상한은 「착지 충격」 한 곳에만 적혀 있어야 한다");
+		assertTrue(DragonLastStandPatterns.CROSS_WALL_STRIDE
+						< DragonLastStandPatterns.CROSS_MARK_STRIDE,
+				"기둥을 먼지와 같은 폭으로 나누면 마지막 몫을 찍는 틱에 첫 몫이 죽어 있다");
+		assertEquals(0, DragonLastStandPatterns.CROSS_MARK_STRIDE
+						% DragonLastStandPatterns.CROSS_WALL_STRIDE,
+				"배수가 아니면 빨간 점만 뜨는 틱이 생겨 바닥 선이 벽 없이 혼자 선다");
+	}
+
+	// ------------------------------------------------------------------ ④ 패턴마다 다른 소리
+
+	/**
+	 * ⚠⚠ <b>네 패턴의 소리가 서로 다른 「실제 파일」이다.</b>
+	 *
+	 * <p>사람 말: <b>「각각 패턴마다 소리가 구분되엇으면해」</b>. 그런데 <b>이름이 다른 것으로는
+	 * 아무것도 보장되지 않는다</b> — 이 저장소가 세 번 걸렸다.
+	 *
+	 * <table border="1">
+	 *   <caption>걸린 이력</caption>
+	 *   <tr><th>이름</th><th>실제 파일</th><th>같은 파일을 쓰던 것</th></tr>
+	 *   <tr><td>{@code DRAGON_FIREBALL_EXPLODE}</td><td>{@code random/explode1~4}</td>
+	 *       <td>일반 폭발음</td></tr>
+	 *   <tr><td>{@code END_GATEWAY_SPAWN}</td><td>{@code random/explode1~4}</td>
+	 *       <td>{@code GENERIC_EXPLODE}</td></tr>
+	 *   <tr><td>{@code FIRECHARGE_USE}</td><td>{@code mob/ghast/fireball4}</td>
+	 *       <td>{@code ENDER_DRAGON_SHOOT}·{@code GHAST_SHOOT}</td></tr>
+	 * </table>
+	 *
+	 * <p>⚠ 아래 표의 오른쪽은 <b>26.3 바닐라 {@code assets/minecraft/sounds.json} 을 직접 열어
+	 * 베낀 것</b>이다(판 자산은 시험의 클래스패스에 없어 여기서 다시 읽을 수 없다). <b>소리를
+	 * 바꾸는 사람은 이 표를 고치기 전에 그 파일을 먼저 열 것.</b>
+	 */
+	@Test
+	void 네_패턴의_소리가_서로_다른_실제_파일이다() {
+		// 패턴 → {상수 이름, 그 상수가 가리키는 실제 파일 묶음}
+		String[][] cues = {
+			{"ENDER_DRAGON_FLAP", "mob/enderdragon/wings1~6", "날개 퍼덕이기 · 발동"},
+			{"GHAST_WARN", "mob/ghast/charge", "부채꼴 브레스 · 예고"},
+			{"ENDER_DRAGON_SHOOT", "mob/ghast/fireball4", "부채꼴 브레스 · 발동"},
+			{"BREEZE_INHALE", "mob/breeze/inhale1~2", "공허 흡입 · 예고와 흡입"},
+			{"WARDEN_SONIC_BOOM", "mob/warden/sonic_boom1~4", "공허 흡입 · 발동"},
+			{"DEEPSLATE_BREAK", "block/deepslate/break1~4", "십자 균열 · 예고"},
+			{"WARDEN_DIG", "mob/warden/dig", "십자 균열 · 발동"},
+		};
+		String bytes = classBytes();
+		Set<String> files = new java.util.HashSet<>();
+		for (String[] cue : cues) {
+			assertTrue(bytes.contains(cue[0]), cue[2] + " 의 소리(" + cue[0] + ")가 빠졌다");
+			assertTrue(files.add(cue[1]),
+					cue[2] + " 가 다른 패턴과 같은 파일을 가리킨다: " + cue[1]
+							+ " — 이름이 달라도 같은 소리로 들린다");
+		}
+		assertEquals(cues.length, files.size());
+
+		// ⚠ 걸린 이력 셋이 되돌아오지 않았는지. 전부 이 판의 다른 소리와 파일이 겹치는 것들이다.
+		assertFalse(bytes.contains("FIRECHARGE_USE"),
+				"mob/ghast/fireball4 라 ENDER_DRAGON_SHOOT 과 글자 하나까지 같다");
+		assertFalse(bytes.contains("GHAST_SHOOT"),
+				"「기둥 화염구」가 쓰는 소리다 — 같은 판에서 두 카드가 같은 소리를 쓰면 구별되지 않는다");
+		assertFalse(bytes.contains("DRAGON_FIREBALL_EXPLODE"),
+				"random/explode1~4 라 일반 폭발음과 같다 — 「종말의 비」가 이미 걸렸다");
+		assertFalse(bytes.contains("END_GATEWAY_SPAWN"), "GENERIC_EXPLODE 와 같은 파일이다");
+		assertFalse(bytes.contains("GENERIC_EXPLODE"),
+				"random/explode1~4 를 이미 다섯 자리가 쓰고 있어 「또 폭발이 터졌다」로 묻힌다");
+		// 공용 층 소리는 그대로 둔다. 그쪽 파일은 TrialWarning 이 들고 있으므로 여기 없어야 맞다.
+		assertFalse(bytes.contains("ENDER_DRAGON_GROWL"),
+				"층 소리를 패턴이 직접 내면 공용 경고와 제 소리가 같아진다");
+	}
+
+	/**
+	 * ⚠ 예고 소리와 발동 소리가 <b>갈려 있다.</b> 「온다」와 「터졌다」가 같은 소리면 예고가 아니다.
+	 *
+	 * <p>날개 퍼덕이기만 예고가 없다 — <b>예고가 없는 패턴</b>이기 때문이다(시작하는 그 틱에 첫
+	 * 충격파가 나가고 피해가 0 이다). 그 대신 여덟 번의 음높이가 오른다({@link #날개_음높이가_여덟_번에_걸쳐_오른다}).
+	 */
+	@Test
+	void 예고_소리와_발동_소리가_갈려_있다() {
+		String bytes = classBytes();
+		// 부채꼴 · 흡입 · 십자는 예고와 발동이 다른 상수다.
+		assertTrue(bytes.contains("GHAST_WARN") && bytes.contains("ENDER_DRAGON_SHOOT"));
+		assertTrue(bytes.contains("BREEZE_INHALE") && bytes.contains("WARDEN_SONIC_BOOM"));
+		assertTrue(bytes.contains("DEEPSLATE_BREAK") && bytes.contains("WARDEN_DIG"));
+		// 되풀이되는 예고 셋. 한 번 울리는 소리로는 「차오르고 있다」를 말할 수 없다.
+		assertEquals(20, DragonLastStandPatterns.CONE_CHARGE_TICKS, "부채꼴은 1초마다다");
+		assertEquals(10, DragonLastStandPatterns.SUCK_BREATH_TICKS, "흡입은 0.5초마다다");
+		assertEquals(10, DragonLastStandPatterns.CROSS_CRACK_TICKS, "십자는 0.5초마다다");
+	}
+
+	/**
+	 * 십자 예고에 <b>균열음</b>이 되풀이되고 음높이가 세 번 모두 <b>끝까지 오른다.</b>
+	 *
+	 * <p>예고가 3초·1.5초·1.5초로 다르다. 고정된 길이로 나누면 둘째·셋째가 중간 음높이에서 끝나
+	 * 「지금 터진다」가 그 두 번은 안 들린다 — 그래서 {@code crackPitch} 가 <b>예고 길이를 받는다.</b>
+	 */
+	@Test
+	void 십자_예고에_균열음이_울리고_음높이가_오른다() {
+		for (int round = 0; round < DragonLastStandPatterns.CROSS_ROUNDS; round++) {
+			int warn = DragonLastStandPatterns.crossWarnTicks(round);
+			int plays = 0;
+			float previous = -1.0F;
+			for (int into = 0; into < warn; into++) {
+				if (into % DragonLastStandPatterns.CROSS_CRACK_TICKS != 0) {
+					continue;
+				}
+				float pitch = DragonLastStandPatterns.crackPitch(into, warn);
+				assertTrue(pitch > previous,
+						round + "번째 " + into + "틱에서 음높이가 오르지 않았다");
+				previous = pitch;
+				plays++;
+			}
+			assertEquals(round == 0 ? 6 : 3, plays, round + "번째 예고의 울림 수가 다르다");
+			assertEquals(0.7F, DragonLastStandPatterns.crackPitch(0, warn), 1.0E-6F, "첫 음이 낮다");
+			assertEquals(1.5F, previous, 1.0E-6F,
+					round + "번째 마지막 울림이 끝까지 안 올라갔다 — 예고 길이로 나누지 말 것");
+		}
+	}
+
+	/** 여덟 번치의 음높이가 올라 <b>몇 번째인가</b>가 들린다. 전에는 여덟 번이 모두 같았다. */
+	@Test
+	void 날개_음높이가_여덟_번에_걸쳐_오른다() {
+		float previous = -1.0F;
+		for (int pulse = 0; pulse < DragonLastStandPatterns.WING_PULSES; pulse++) {
+			float pitch = DragonLastStandPatterns.flapPitch(pulse);
+			assertTrue(pitch > previous, pulse + "번째에서 음높이가 오르지 않았다");
+			previous = pitch;
+		}
+		assertEquals(0.7F, DragonLastStandPatterns.flapPitch(0), 1.0E-6F);
+		assertEquals(1.3F, previous, 1.0E-6F,
+				"마지막 번치가 가장 높아야 한다 — 개수로 나누면 끝까지 안 올라간다");
+	}
+
+	// ------------------------------------------------------------------ ③ 빨아들임과 밀어냄의 방향
+
+	/**
+	 * ⚠⚠ <b>빨아들이는 가닥과 밀어내는 가닥이 정확히 반대로 흐른다.</b>
+	 *
+	 * <p>사람 말: <b>「빨아드리는거랑 밀치는거랑 이펙트가 너무 구분이안됨 … 예를들어 빨아드리는
+	 * 패턴이면 입자들이 드래곤에게 빨려들어가는 입자가 잘보이면 이해하잖아」</b>
+	 *
+	 * <p>재는 것은 <b>생기는 자리가 어디로 움직이는가</b>다. 흡입은 20칸에서 4칸으로 들어오고
+	 * 날개는 0 에서 20칸으로 나간다 — 이 둘이 같은 방향이 되는 순간 사람이 지적한 그 상태로
+	 * 돌아간다.
+	 */
+	@Test
+	void 빨아들이는_가닥과_밀어내는_가닥이_반대로_흐른다() {
+		// 흡입 — 들어온다.
+		double previous = Double.MAX_VALUE;
+		int wraps = 0;
+		for (int step = 0; step < 32; step++) {
+			double radius = DragonLastStandPatterns.suckStreamRadius(step, 0);
+			if (radius > previous) {
+				wraps++;
+			} else {
+				assertTrue(radius < previous, step + "틱에 흡입 가닥이 안으로 안 들어왔다");
+			}
+			previous = radius;
+		}
+		assertTrue(wraps >= 2, "되풀이되지 않으면 한 벌이 지나가고 끝이다: " + wraps);
+
+		// 날개 — 나간다.
+		previous = -1.0;
+		for (int step = 0; step < DragonLastStandPatterns.WING_PULSE_TICKS; step++) {
+			double radius = DragonLastStandPatterns.wingWaveRadius(step);
+			assertTrue(radius > previous, step + "틱에 날개 가닥이 바깥으로 안 나갔다");
+			previous = radius;
+		}
+		assertEquals(DragonLastStandPatterns.WING_FADE_RADIUS, previous, 1.0E-9,
+				"한 번치가 날개바람이 닿는 끝까지 가지 않는다");
+		// 번치마다 처음부터 다시 번진다. 안 그러면 「퍼졌다」가 아니라 「거기 늘 있었다」가 된다.
+		assertEquals(DragonLastStandPatterns.wingWaveRadius(0),
+				DragonLastStandPatterns.wingWaveRadius(DragonLastStandPatterns.WING_PULSE_TICKS),
+				1.0E-9);
+
+		// 같은 세기 · 같은 갈래 수여야 「반대」로 읽힌다. 한쪽이 성기면 「한쪽이 세다」로 읽힌다.
+		assertEquals(DragonLastStandPatterns.WING_GUST_SPOKES,
+				DragonLastStandPatterns.SUCK_STREAM_SPOKES,
+				"갈래 수가 갈리면 두 패턴이 서로의 반대로 읽히지 않는다");
+		assertEquals(DragonLastStandPatterns.WING_GUST_DRIFT,
+				DragonLastStandPatterns.SUCK_STREAM_DRIFT, 1.0E-9,
+				"세기가 갈리면 방향 대비가 흐려진다");
+	}
+
+	/**
+	 * 흡입 가닥이 <b>검은 원 안으로 들어가지 않고</b> 손이 닿는 거리 밖으로도 안 나간다.
+	 *
+	 * <p>원 안은 검은 속이 이미 채워져 있어 흰 가닥을 겹치면 검정이 묻히고, 20칸 밖은 손이 닿지
+	 * 않는 자리라 거기서 흐르면 <b>표식이 거짓말을 한다.</b>
+	 */
+	@Test
+	void 흡입_가닥이_4에서_20칸_사이에만_있다() {
+		for (int step = 0; step < DragonLastStandPatterns.SUCK_WARN_TICKS
+				+ DragonLastStandPatterns.SUCK_PULL_TICKS; step++) {
+			for (int phase = 0; phase < DragonLastStandPatterns.SUCK_STREAM_PHASES; phase++) {
+				double radius = DragonLastStandPatterns.suckStreamRadius(step, phase);
+				assertTrue(radius >= DragonLastStandPatterns.SUCK_RADIUS - 1.0E-9,
+						step + "틱 " + phase + "벌이 검은 원 안으로 들어갔다: " + radius);
+				assertTrue(radius <= DragonLastStandPatterns.SUCK_REACH + 1.0E-9,
+						step + "틱 " + phase + "벌이 손이 닿는 거리 밖이다: " + radius);
+			}
+		}
+		// 벌 둘이 같은 반경에 겹치면 48점을 쓰고 24점만큼만 보인다.
+		for (int step = 0; step < 32; step++) {
+			assertTrue(Math.abs(DragonLastStandPatterns.suckStreamRadius(step, 0)
+							- DragonLastStandPatterns.suckStreamRadius(step, 1)) > 1.0,
+					step + "틱에 두 벌이 같은 자리에 겹쳤다");
+		}
+	}
+
+	/**
+	 * ⚠ 가닥이 <b>먼지가 아니라 {@code CRIT}</b> 이다. 먼지로는 방향을 말할 수 없다.
+	 *
+	 * <p>26.3 {@code DustParticleBase} 는 상위 생성자가 받은 속도를 <b>정규화해 무작위 크기로
+	 * 다시 싣고</b> 거기에 0.1 을 곱한다 — 흐르는 거리가 0.15칸이라 눈에는 제자리다.
+	 * {@code CritParticle} 은 상위에 {@code 0,0,0} 을 넘긴 뒤 <b>받은 속도의 0.4배를 그대로
+	 * 더하므로</b> 방향이 보존된다(둘 다 클래스 파일로 확인했다).
+	 */
+	@Test
+	void 가닥이_방향을_싣는_입자다() {
+		assertTrue(classBytes().contains("CRIT"),
+				"먼지로 가닥을 그리면 0.15칸만 흘러 방향이 안 보인다");
+		// 가닥 길이가 갈래 사이와 비슷해야 「방사선」으로 읽힌다. 반경 12 에서 갈래 사이가 3.1칸이다.
+		double drift = DragonLastStandPatterns.critDrift(DragonLastStandPatterns.WING_GUST_DRIFT);
+		assertEquals(3.04, drift, 0.01, "가닥 길이가 달라졌으면 갈래 수도 함께 볼 것");
+		double gap = (Math.PI * 2.0 * DragonLastStandPatterns.WING_STRONG_RADIUS)
+				/ DragonLastStandPatterns.WING_GUST_SPOKES;
+		assertEquals(3.14, gap, 0.01);
+		assertTrue(drift < gap * 1.5,
+				"가닥이 서로 이어 붙으면 「퍼져 나간다」가 「원이 커진다」로 읽힌다");
+		assertTrue(drift > gap * 0.5, "가닥이 짧으면 점으로 흩어진다");
 	}
 
 	/**

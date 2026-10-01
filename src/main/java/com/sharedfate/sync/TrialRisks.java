@@ -948,7 +948,9 @@ public final class TrialRisks {
 			case TrialCatalog.Risk.LandingShock shock -> hits(shock.damage(), 1);
 			// 소용돌이 둘이 서로 가까워지는 순간이 있으므로 둘 다 닿는 자리를 셈에 넣는다.
 			case TrialCatalog.Risk.EnderStorm storm -> hits(storm.damage(), storm.count());
-			// 빔은 한 사람만 물고 초에 한 번 들어간다. 한 틱에 올 수 있는 가장 큰 값이 그 몫이다.
+			// 구체가 초에 한 발 날고, 한 틱에 닿는 것은 그중 한 발뿐이다 — 비행 시간이 발 간격보다
+			// 짧아 두 발이 같은 틱에 닿지 않고(TrialCrystalOvercharge.ORB_FLIGHT_TICKS), 착탄도
+			// 반경 안 모두가 아니라 노린 한 사람에게만 묻는다. 그래서 빔이던 때의 셈이 그대로 맞다.
 			case TrialCatalog.Risk.CrystalOvercharge overcharge ->
 					hits(overcharge.damagePerSecond(), 1);
 			// 아래는 전부 우리가 주는 피해가 없다. 시간을 빼앗거나 발을 묶거나 판을 바꾼다.

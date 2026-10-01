@@ -86,6 +86,25 @@ import java.util.UUID;
  * <b>파랑은 「밀려난다」로 이미 배워져 있고 이 카드에는 넉백이 없다.</b> 먼지가 아니니 규약 위반은
  * 아니어도, 색이 거짓말을 하면 규약을 지킨 보람이 없다.
  *
+ * <h2>⚠ 앞머리는 바닥에 눕지 않고 세로로 선다 — 안 보인다는 말을 들은 자리다</h2>
+ *
+ * <p>사람이 <b>「바닥을 따라 움직이는 입자 링으로 명확하게 표현하는 게 중요」</b>라고 다시 말했고,
+ * 그 전에 「엔더 파동이 어디 갔는지」를 물었다. <b>없어진 것이 아니라 안 보였던 것이다.</b>
+ *
+ * <p>까닭은 「착지 충격」이 먼저 겪은 것과 같다. 점을 전부 지표 바로 위({@link #GROUND_OFFSET})에
+ * 찍으면 <b>서서 보는 눈높이에서 바닥 선은 시선과 거의 나란하다</b> — 42칸 밖에서는 1.1칸 간격의
+ * 점들이 한 줄로 뭉개지고, 피해가 없는 이 카드는 그대로 「이유 없이 발이 묶이는 카드」가 된다.
+ * 그쪽은 반경 75 에서 같은 말을 들었고({@code 「너무 이펙트가 잘안보여」}) 답이 이것이었다.
+ *
+ * <p>그래서 앞머리를 <b>위로 쏜다</b>({@link #EDGE_RISE_SPEED}). 같은 점들이 세로로 퍼져 고리가
+ * <b>사람 키만 한 벽</b>이 되는데, <b>점 수도 패킷 수도 한 개도 안 는다</b> — 까닭은 그 상수와
+ * {@link #ring} 에 적어 두었다. 이 카드는 이미 한 틱 예산을 통째로 쓰고 있어
+ * ({@link #MAX_POINTS_PER_TICK}) 점에서 답을 찾을 자리가 없었다.
+ *
+ * <p><b>몸통은 그대로 바닥에 눕는다.</b> 사람이 말한 「바닥을 따라」가 그쪽이고, 앞머리만 서야
+ * 「지금 위험한 줄」과 「이미 지나간 땅」이 갈린다 — 둘을 다 세우면 벽 두 겹이 되어 어느 것이
+ * 앞머리인지 안 읽힌다.
+ *
  * <h2>넉백을 주지 않는다</h2>
  *
  * <p>엔드 중앙 섬은 사방이 허공이고 체력이 팀 공유라 <b>한 사람의 낙사가 팀 전체를 끝낸다.</b>
@@ -183,6 +202,45 @@ public final class TrialEnderPulse {
 
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다({@code TrialWarning} 과 같은 이유). */
 	private static final double GROUND_OFFSET = 0.15;
+
+	/**
+	 * ⚠ 앞머리 {@code CRIT} 을 위로 쏘는 속도. <b>점을 안 늘리고 고리를 세우는 장치다.</b>
+	 *
+	 * <p>왜 세우는지는 클래스 설명의 「앞머리는 바닥에 눕지 않고 세로로 선다」에 있다. 여기에는
+	 * <b>왜 2.0 인가</b>만 적는다.
+	 *
+	 * <p>26.3 클래스 파일을 뜯어 확인한 값으로 계산했다({@link #riseHeight} 가 그 계산이다).
+	 * {@code CritParticle} 은 받은 속도를 <b>0.4배</b> 해서 싣고(무작위 밑바닥은 0.02 남짓이라
+	 * 묻힌다), 마찰 0.7 · 중력 0.5 로 매 틱 줄어든다. 2.0 이면 처음 0.8칸/틱으로 올라
+	 * <b>수명이 가장 짧은 점(4틱)도 1.88칸</b>까지 간다 — 사람 키(1.8)만 하다.
+	 *
+	 * <p><b>더 높이지 않는 까닭</b>은 시야다. 아레나에는 카드가 겹쳐 뜨고 그 대부분이 바닥
+	 * 표식이라, 세로로 선 것이 높으면 <b>다른 카드의 고리를 가린다</b> — 「엔더폭풍」이 기둥을
+	 * 5칸에서 멈춘 것과 같은 판단이다.
+	 *
+	 * <p>⚠ <b>수명은 이 값과 무관하다.</b> {@code CritParticle} 의 수명 식에 속도가 들어가지
+	 * 않으므로 4~10틱 그대로고, 따라서 「앞머리가 선으로 남는다」는 근거도 그대로다.
+	 *
+	 * <p>⚠⚠ <b>같은 값이 {@code TrialLandingShock.EDGE_RISE_SPEED} 에도 있다.</b> 그 카드가
+	 * 먼저 세웠고, 지금 그 파일을 다른 사람이 쓰고 있어 한쪽으로 모으지 못했다. 옮길 방향은
+	 * <b>그쪽이 여기를 가리키는 것</b>이다 — 그 파일은 이미 {@link #edgePoints}·{@link #wakePoints}·
+	 * {@link #judgeRadius}·{@link #JUMP_WINDOW_TICKS} 를 여기서 빌려 쓰므로 고리의 문법이 이쪽에
+	 * 모여 있다. {@code TrialEnderPulseTest} 가 <b>두 값이 같은지</b>를 지킨다.
+	 */
+	static final double EDGE_RISE_SPEED = 2.0;
+	/** {@code CritParticle} 이 받은 속도에 곱하는 값. 26.3 클래스 파일에서 확인했다. */
+	private static final double CRIT_SPEED_FACTOR = 0.4;
+	/** {@code CritParticle} 의 마찰. {@code Particle.tick} 이 매 틱 속도에 곱한다. */
+	private static final double CRIT_FRICTION = 0.7;
+	/** {@code Particle.tick} 이 매 틱 세로 속도에서 먼저 빼는 값. {@code 0.04 × 중력 0.5} 다. */
+	private static final double CRIT_GRAVITY_PULL = 0.02;
+	/**
+	 * {@code CritParticle} 수명의 <b>하한</b>(틱).
+	 *
+	 * <p>{@code max(1, 6.0 / (굴림×0.8 + 0.6))} 이 4~10틱을 잡는다. 벽 높이는 <b>가장 짧게 사는
+	 * 점</b>으로 센다 — 가장 낮게 서는 벽이 그것이다.
+	 */
+	private static final int CRIT_MIN_LIFETIME = 4;
 
 	/**
 	 * 「그 자리에는 설 땅이 없다」. {@link Ground#surfaceAt} 이 돌려주는 값이다.
@@ -498,13 +556,16 @@ public final class TrialEnderPulse {
 	 * 수명이 갈리는 것이므로 둘의 위치를 따로 계산할 이유가 없다 — 까닭은 클래스 설명에 있다.
 	 *
 	 * <p>반경이 0 인 출발 틱에는 그릴 것이 없다. 중앙 한 점에 400 발을 쏘아 봐야 덩어리 하나다.
+	 *
+	 * <p><b>앞머리만 위로 쏜다</b>({@link #EDGE_RISE_SPEED}). 몸통은 0 을 받아 제자리에 눕는다 —
+	 * 사람이 말한 「바닥을 따라」가 몸통이고, 둘을 다 세우면 어느 것이 앞머리인지 안 읽힌다.
 	 */
 	private static void draw(ServerLevel end, Ground ground, double radius) {
 		if (!(radius > 0.0)) {
 			return;
 		}
-		ring(end, ground, ParticleTypes.CRIT, radius, edgePoints(radius));
-		ring(end, ground, ParticleTypes.PORTAL, radius, wakePoints(radius));
+		ring(end, ground, ParticleTypes.CRIT, EDGE_RISE_SPEED, radius, edgePoints(radius));
+		ring(end, ground, ParticleTypes.PORTAL, 0.0, radius, wakePoints(radius));
 	}
 
 	/**
@@ -520,9 +581,22 @@ public final class TrialEnderPulse {
 	 *
 	 * <p>각을 도는 순서를 뒤섞지 말 것. 이어 도니까 이웃한 두 점이 거의 같은 청크이고, 그래서
 	 * {@link Ground} 의 기억이 거의 언제나 맞는다 — 순서를 흩으면 점마다 청크를 새로 찾는다.
+	 *
+	 * <h2>⚠ 위로 쏘는 점은 <b>개수 0</b> 으로 보낸다 — 실수가 아니다</h2>
+	 *
+	 * <p>바닐라는 파티클 꾸러미의 <b>개수가 0 일 때만</b> 뒤의 세 값을 <b>속도</b>로 읽는다
+	 * (26.3 {@code ClientPacketListener.handleParticleEvent} 가 {@code count() != 0} 이면 그
+	 * 값들을 「퍼뜨릴 범위」로 쓴다). <b>개수를 1 로 두고 속도를 적으면 제자리에 흩뿌리기만</b>
+	 * 하고 한 점도 안 올라간다 — 빌드도 로그도 조용한 채로 연출만 사라지는 종류의 실수다.
+	 *
+	 * <p>개수 0 이라고 아무것도 안 나가는 것이 아니다. 그 갈래도 파티클을 <b>정확히 하나</b>
+	 * 만들므로 점 수도 패킷 수도 제자리에 찍을 때와 같다. 그래서 이 카드가 <b>이미 가득 찬
+	 * 예산({@link #MAX_POINTS_PER_TICK})을 한 점도 더 안 쓰고</b> 고리를 세울 수 있다.
+	 *
+	 * @param rise 점을 위로 쏘는 속도. 0 이면 제자리에 찍는다
 	 */
-	private static void ring(ServerLevel end, Ground ground, ParticleOptions type, double radius,
-			int points) {
+	private static void ring(ServerLevel end, Ground ground, ParticleOptions type, double rise,
+			double radius, int points) {
 		for (int index = 0; index < points; index++) {
 			double angle = (Math.PI * 2.0 * index) / points;
 			double x = Math.cos(angle) * radius;
@@ -531,6 +605,13 @@ public final class TrialEnderPulse {
 			if (surface == NO_GROUND) {
 				// 허공이거나 아직 안 올라온 청크다. 여기에 찍으면 고리가 까마득한 아래에 떠
 				// 「저기가 바닥이다」라고 거짓말을 한다.
+				continue;
+			}
+			if (rise > 0.0) {
+				// 개수 0 · 방향 (0, 1, 0) · 속도 rise. 위 설명을 읽지 않고 개수를 1 로 고치면
+				// 벽이 그 자리에서 사라진다.
+				end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
+						0, 0.0, 1.0, 0.0, rise);
 				continue;
 			}
 			end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
@@ -722,5 +803,39 @@ public final class TrialEnderPulse {
 			return 0.0;
 		}
 		return (Math.PI * 2.0 * radius) / points;
+	}
+
+	/**
+	 * 앞머리를 {@code speed} 로 쏘면 <b>몇 칸까지 올라가는가</b>(칸).
+	 *
+	 * <p>{@link #EDGE_RISE_SPEED} 를 고른 근거를 <b>시험이 물을 수 있게</b> 함수로 둔다. 「위로
+	 * 쏜다」는 눈으로만 확인되는 종류의 값이라, 다음 사람이 2.0 을 20 으로 바꿔도 컴파일도 시험도
+	 * 조용하면 <b>다른 카드의 바닥 표식을 가리는 벽</b>이 서 있는 것을 아무도 못 잡는다.
+	 *
+	 * <p>26.3 클래스 파일을 뜯어 확인한 그대로 굴린다.
+	 *
+	 * <ul>
+	 *   <li>{@code CritParticle} 이 받은 속도에 <b>0.4</b> 를 곱해 싣는다. 여기에 무작위 밑바닥이
+	 *       0.02 남짓 섞이는데 지금 값에서 2% 라 세지 않는다</li>
+	 *   <li>{@code Particle.tick} 이 매 틱 <b>{@code yd -= 0.04 × 중력}</b> 을 먼저 하고,
+	 *       옮긴 다음 <b>마찰</b>을 곱한다. {@code CritParticle} 의 중력이 0.5, 마찰이 0.7 이다</li>
+	 *   <li>수명은 4~10틱인데 <b>짧은 쪽</b>으로 센다({@link #CRIT_MIN_LIFETIME})</li>
+	 * </ul>
+	 *
+	 * <p>바닥에 부딪히는 것은 안 센다 — {@code CritParticle} 은 {@code hasPhysics} 가 거짓이라
+	 * 블록을 통과하고, 어차피 위로만 간다.
+	 */
+	static double riseHeight(double speed) {
+		double velocity = Math.max(0.0, speed) * CRIT_SPEED_FACTOR;
+		double height = 0.0;
+		for (int tick = 0; tick < CRIT_MIN_LIFETIME; tick++) {
+			velocity -= CRIT_GRAVITY_PULL;
+			if (velocity <= 0.0) {
+				break;
+			}
+			height += velocity;
+			velocity *= CRIT_FRICTION;
+		}
+		return height;
 	}
 }

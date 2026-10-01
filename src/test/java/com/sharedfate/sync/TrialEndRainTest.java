@@ -1,6 +1,9 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.TestBootstrap;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.item.DyeColor;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -23,8 +26,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>입자와 소리는 <b>컴파일된 클래스 파일의 상수 풀</b>에서 이름으로 본다. 「무엇을 쓰고
  * 있는가」는 주석이 아니라 거기에 남는다.
+ *
+ * <p>⚠ <b>바닥 표식이 고리에서 디스플레이 개체로 옮겨 가면서 지켜야 할 것이 셋 늘었다.</b>
+ *
+ * <ul>
+ *   <li><b>지우는 길이 전부 배선됐는가</b> — 개체는 그리지 않는 것으로 사라지지 않는다
+ *       ({@link #바닥_면을_지우는_길이_전부_배선됐다}). 면의 기하학과 저장 금지·심지는
+ *       {@code TrialEndRainPanelTest} 가 본다</li>
+ *   <li><b>한 볼리의 개체 수가 상한 안인가</b> — 지점 수를 올리는 사람에게 이제 늘어나는 것은
+ *       점이 아니라 개체다({@link #지점이_두_배가_되어도_한_틱_예산_안이다})</li>
+ *   <li><b>구체가 그만큼 짙어졌는가</b> — 고리가 쓰던 270점이 비어 구체로 갔다. 그것이 사람이
+ *       같은 문장에서 말한 「떨어지는걸 좀더 보이게」다({@link #구체가_네_배로_짙어졌다})</li>
+ * </ul>
  */
 class TrialEndRainTest {
+
+	/**
+	 * ⚠ <b>바닥 표식이 개체가 되면서 필요해졌다.</b> {@link TrialEndRainPanel} 을 건드리는 순간
+	 * 색유리와 염료 색이 함께 올라오므로 레지스트리가 서 있어야 한다.
+	 */
+	@BeforeAll
+	static void setUp() {
+		TestBootstrap.ensureInitialized();
+	}
 
 	/** 이 카드의 열쇠. {@code TrialRisks} 가 {@code 카드 id + '#' + 위험 순번} 으로 만드는 것과 같다. */
 	private static final String KEY = "sharedfate:end_rain#0";
@@ -281,42 +305,70 @@ class TrialEndRainTest {
 	// ------------------------------------------------------------------ 점 예산
 
 	/**
-	 * 예고 한 틱에 나가는 점 수가 예산 안이다. <b>고리와 구체를 합쳐서</b>다.
+	 * 예고 한 틱에 나가는 점 수가 예산 안이다. <b>이제 전부 구체 몫이다.</b>
 	 *
-	 * <p>점 하나가 패킷 한 장이고 고리와 구체는 예고 30틱 내내 매 틱 나간다. 값에서 직접 뽑아
-	 * 두면 지점 수나 반경을 고치는 사람이 패킷을 함께 보게 된다.
+	 * <p>점 하나가 패킷 한 장이고 구체는 예고 30틱 내내 매 틱 나간다. 값에서 직접 뽑아 두면
+	 * 지점 수나 반경을 고치는 사람이 패킷을 함께 보게 된다.
 	 *
-	 * <p>⚠ <b>구체가 생기면서 세는 법이 바뀌었다.</b> 구체는 매 틱 자리가 바뀌어 나눠 그릴 수
-	 * 없으므로 <b>고정 비용</b>이고, 고리는 남은 예산으로 나눠 그린다. 둘을 따로 세면 합이
-	 * 예산을 넘는 것을 아무도 못 본다.
+	 * <p>⚠ <b>바닥 표식이 점을 한 개도 안 쓰게 되면서 세는 법이 또 바뀌었다.</b> 전에는 고리 몫
+	 * ({@code markPoints})과 구체 몫을 합쳐 셌고, 고리가 270점을 쓰고 있어 구체는 지점당 한 점이
+	 * 전부였다. 면이 디스플레이 개체로 옮겨 가면서({@link TrialEndRainPanel}) 그 270점이 비고
+	 * 구체가 네 점이 됐다 — <b>합계는 360점으로 전과 같고 예산도 같다.</b>
 	 */
 	@Test
 	void 예고_한_틱_점_수가_예산_안이다() {
 		TrialCatalog.Risk.EndRain rain = card();
-		assertEquals(TrialEndRain.markPoints(rain) + TrialEndRain.orbPoints(rain),
-				TrialEndRain.tickPoints(rain),
-				"세는 법이 실제로 그리는 법과 갈라지면 이 시험이 아무것도 안 지킨다");
-		assertEquals(rain.maxSpots() * TrialEndRain.strokePoints(rain.radius(),
-						TrialEndRain.markStride(rain)),
-				TrialEndRain.markPoints(rain), "고리 몫을 세는 법이 실제와 다르다");
+		assertEquals(TrialEndRain.orbPoints(rain), TrialEndRain.tickPoints(rain),
+				"바닥이 점을 쓰고 있다 — 면은 개체라 점이 0 이어야 한다");
 		assertEquals(rain.maxSpots() * TrialEndRain.ORB_POINTS_PER_SPOT,
-				TrialEndRain.orbPoints(rain), "구체는 지점마다 매 틱 한 번씩이다");
-		assertTrue(TrialEndRain.tickPoints(rain) <= TrialEndRain.MARK_BUDGET,
+				TrialEndRain.orbPoints(rain), "구체는 지점마다 매 틱 네 점이다");
+		assertTrue(TrialEndRain.tickPoints(rain) <= TrialEndRain.POINT_BUDGET,
 				"한 틱에 " + TrialEndRain.tickPoints(rain) + "점이 나간다 — 예산 "
-						+ TrialEndRain.MARK_BUDGET + " 을 넘는다");
-		assertTrue(TrialEndRain.markPoints(rain) > 0, "한 점도 안 그리면 고리가 통째로 없다");
+						+ TrialEndRain.POINT_BUDGET + " 을 넘는다");
+		assertEquals(360, TrialEndRain.tickPoints(rain),
+				"최악 틱이 360점이 아니다. 늘린 사람은 이 숫자를 보고 늘릴 것 —"
+						+ " 고리 시절의 최악도 360점(고리 270 + 구체 90)이었다");
 		assertTrue(TrialEndRain.orbPoints(rain) > 0, "구체가 한 점도 안 나가면 하늘이 비어 있다");
+	}
+
+	/**
+	 * ⚠ <b>구체가 네 배로 짙어졌다.</b> 사람이 「떨어지는걸 좀더 보이게」라고 했다.
+	 *
+	 * <p>고리가 예산의 270점을 쓰고 있던 동안에는 <b>지점당 한 점이 유일한 값</b>이었다 — 2 로만
+	 * 올려도 고리에 남는 몫이 220점으로 줄어 나눔이 상한에 걸려 한 틱 450점이 됐다. 바닥 표식을
+	 * 개체로 옮긴 것이 이 숫자를 바꾼 유일한 이유이므로, 여기가 1 로 되돌아갔다면 <b>고리가
+	 * 돌아온 것</b>이거나 사람 말이 지워진 것이다.
+	 *
+	 * <p>5 로는 못 올린다(90곳 × 5 = 450점)는 것도 함께 못 박는다.
+	 */
+	@Test
+	void 구체가_네_배로_짙어졌다() {
+		TrialCatalog.Risk.EndRain rain = card();
+		assertEquals(TrialEndRain.ORB_CORE_POINTS + TrialEndRain.ORB_HALO_POINTS,
+				TrialEndRain.ORB_POINTS_PER_SPOT, "알맹이와 겉을 합친 값이어야 한다");
+		assertEquals(4, TrialEndRain.ORB_POINTS_PER_SPOT,
+				"구체가 " + TrialEndRain.ORB_POINTS_PER_SPOT + "점이다. 1 이면 고리 시절로"
+						+ " 되돌아간 것이고, 사람이 「떨어지는걸 좀더 보이게」라고 한 것이 지워진다");
+		assertTrue(TrialEndRain.ORB_CORE_POINTS > 0,
+				"알맹이(먼지)가 없으면 하늘에서 바닥까지의 점선 기둥이 사라진다");
+		assertTrue(TrialEndRain.ORB_HALO_POINTS > 0, "겉(별)이 없으면 꼬리가 사라진다");
+		assertTrue(rain.maxSpots() * (TrialEndRain.ORB_POINTS_PER_SPOT + 1)
+						> TrialEndRain.POINT_BUDGET,
+				"한 점 더 넣을 자리가 남아 있다면 예산을 다 쓰지 않고 있는 것이다 — 올리기 전에"
+						+ " 예산부터 다시 셀 것");
 	}
 
 	/**
 	 * ⚠ <b>지점이 두 배가 되어도 예산 안이다.</b>
 	 *
-	 * <p>사람이 「투사체 떨어지는거 지금의 2배로」라고 해서 30~45 가 60~90 으로 간다. 그
-	 * 값으로 직접 세어 본다 — <b>카드 목록이 아직 안 바뀌었어도 실행기는 미리 견뎌야 한다.</b>
+	 * <p>사람이 「투사체 떨어지는거 지금의 2배로」라고 해서 30~45 가 60~90 으로 갔다. 그 값으로
+	 * 직접 세어 본다 — <b>카드 목록이 아직 안 바뀌었어도 실행기는 미리 견뎌야 한다.</b>
 	 *
-	 * <p>여기가 깨지면 고칠 곳은 {@link TrialEndRain#MARK_POINT_GAP} 이다. 고리를 나눌 수 있는
-	 * 틱 수({@link TrialEndRain#MARK_MAX_STRIDE})는 파티클 수명이 정한 값이라 협상할 수 없고,
-	 * 구체 몫은 지점당 한 점이라 더 줄일 수 없다.
+	 * <p>여기가 깨지면 고칠 곳은 {@link TrialEndRain#ORB_POINTS_PER_SPOT} 다. 점을 줄이는 것 말고는
+	 * 길이 없다 — 바닥은 이미 점을 한 개도 안 쓴다.
+	 *
+	 * <p><b>개체 수도 함께 본다.</b> 지점 수를 올리는 사람에게 이제 늘어나는 것은 점이 아니라
+	 * <b>디스플레이 개체</b>다.
 	 */
 	@Test
 	void 지점이_두_배가_되어도_한_틱_예산_안이다() {
@@ -325,15 +377,45 @@ class TrialEndRainTest {
 				rain.durationTicks(), rain.minInterval(), rain.maxInterval(),
 				60, 90, rain.warnTicks(), rain.damage(), rain.radius());
 		assertTrue(TrialEndRain.usable(doubled), "두 배 값이 굴릴 수 없는 모양이면 안 된다");
-		assertEquals(90, TrialEndRain.orbPoints(doubled), "구체가 지점마다 한 점이 아니다");
-		assertTrue(TrialEndRain.markStride(doubled) <= TrialEndRain.MARK_MAX_STRIDE,
-				"90곳에서 나눔이 상한을 넘는다 — 상한은 파티클 수명이 정한 값이라 못 올린다");
-		assertTrue(TrialEndRain.tickPoints(doubled) <= TrialEndRain.MARK_BUDGET,
+		assertEquals(360, TrialEndRain.orbPoints(doubled), "90곳 × 네 점이 아니다");
+		assertTrue(TrialEndRain.tickPoints(doubled) <= TrialEndRain.POINT_BUDGET,
 				"90곳이면 한 틱에 " + TrialEndRain.tickPoints(doubled) + "점이다 — 예산 "
-						+ TrialEndRain.MARK_BUDGET + " 을 넘는다");
+						+ TrialEndRain.POINT_BUDGET + " 을 넘는다");
 		assertTrue(TrialEndRain.impactTickPoints(doubled) <= TrialEndRain.IMPACT_BUDGET,
 				"착탄 틱에 " + TrialEndRain.impactTickPoints(doubled) + "점이다 — 한 틱 예산 "
 						+ TrialEndRain.IMPACT_BUDGET + " 을 넘는다");
+		assertEquals(450, TrialEndRain.panelCount(doubled),
+				"90곳 × 판 다섯 장이 아니다 — 판 수를 바꿨다면 개체 수를 알고 바꿀 것");
+		assertTrue(TrialEndRain.panelCount(doubled) <= TrialEndRainPanel.PANEL_BUDGET,
+				"한 볼리에 개체 " + TrialEndRain.panelCount(doubled) + "개를 세운다 — 상한 "
+						+ TrialEndRainPanel.PANEL_BUDGET + " 을 넘는다");
+	}
+
+	/**
+	 * ⚠⚠ <b>바닥 면을 지우는 길이 전부 배선됐다.</b> 개체는 파티클과 달리 <b>남는다.</b>
+	 *
+	 * <p>지우는 자리가 셋이고 그 아래에 심지가 있다. 하나라도 빠지면 다음 판까지 보라 판이 깔려
+	 * 있거나, 터진 자리가 계속 위험해 보인다 — <b>컴파일도 로그도 조용한</b> 종류의 사고다.
+	 *
+	 * <p>{@code drop} 을 그냥 찾으면 이 파일의 {@code dropOrb} 가 먼저 걸리므로, <b>상수 풀의 길이
+	 * 접두사까지</b> 맞춰 본다({@link #referencesExactly}).
+	 */
+	@Test
+	void 바닥_면을_지우는_길이_전부_배선됐다() {
+		byte[] compiled = classBytes(TrialEndRain.class);
+		assertTrue(references(compiled, "TrialEndRainPanel"),
+				"바닥 면을 아예 안 쓴다 — 사람이 「보라색 바닥으로 투명바닥으로 표시하고」라고 했다");
+		assertTrue(referencesExactly(compiled, "raise"), "면을 세우는 줄이 없다");
+		assertTrue(referencesExactly(compiled, "drop"),
+				"면을 지우는 줄이 없다. 볼리가 터지는 틱(land)과 비가 끝나는 틱(finish)에"
+						+ " 지워야 한다 — 개체는 그리지 않는 것으로 사라지지 않는다");
+		assertTrue(referencesExactly(compiled, "dropAll"),
+				"clearState 가 면을 거두지 않는다. 월드가 바뀌거나 서버가 내려갈 때 남는다");
+
+		// 분배기가 이 카드의 clearState 를 부르는 그 배선도 함께 본다. 끊기면 dropAll 이 있어도
+		// 아무도 안 부른다.
+		assertTrue(references(classBytes(TrialRisks.class), "TrialEndRain"),
+				"TrialRisks.clearState 가 이 카드를 지나지 않는다");
 	}
 
 	/** 착탄하는 그 한 틱도 예산이 있다. 지점이 늘면 자리마다의 몫이 저절로 줄어야 한다. */
@@ -352,70 +434,40 @@ class TrialEndRainTest {
 	}
 
 	/**
-	 * ⚠ <b>고리는 반드시 닫힌다.</b>
+	 * ⚠ <b>먼지 수명 상한은 남의 카드를 위해 남는다.</b>
 	 *
-	 * <p>나눠 그리는 것이 성립하는 유일한 근거는 <b>먼저 찍은 점이 아직 살아 있다</b>는 것이다.
-	 * 26.3 {@code DustParticleBase} 의 수명이
-	 * {@code max(1, (int)(8.0 / (nextDouble() * 0.8 + 0.2)) * scale)} 이고 {@code scale} 이
-	 * 1.0 이라 <b>최소 8틱</b>이다. 한 바퀴를 8틱 이상에 걸쳐 그리면 마지막 점을 찍기 전에 첫
-	 * 점이 죽어 고리가 영영 안 닫힌다 — 그러면 이 카드의 유일한 대응 수단이 사라진다.
+	 * <p>{@link TrialEndRain#MARK_MAX_STRIDE} 는 이 카드가 고리를 나눠 그리던 때의 값이고
+	 * <b>이제 이 카드는 쓰지 않는다.</b> 그래도 지울 수 없는 까닭이 있다 — 「최후의 저항」의 세
+	 * 패턴이 「{@code TrialEndRain} 의 상한을 그대로 쓴다」고 적고 가져갔다. 지우면 그쪽이
+	 * 컴파일되지 않는다.
 	 *
-	 * <p>고리가 완성되는 데 걸리는 시간이 예고보다 짧아야 하는 것도 함께 본다. 완성 전에
-	 * 착탄하면 사람이 본 것은 고리가 아니라 흩뿌려진 점이다.
+	 * <p>근거(26.3 {@code DustParticleBase} 의 수명
+	 * {@code max(1, (int)(8.0 / (nextDouble() * 0.8 + 0.2)) * scale)} → <b>최소 8틱</b>)는 그
+	 * 세 곳에서도 그대로 참이라 값이 거짓이 된 것은 아니다. 숫자와 부등식을 여기서 지킨다.
 	 */
 	@Test
-	void 고리가_파티클이_죽기_전에_닫힌다() {
-		TrialCatalog.Risk.EndRain rain = card();
-		int stride = TrialEndRain.markStride(rain);
-		assertTrue(stride >= 1, "0 이하로 나누면 아무것도 안 그린다");
+	void 먼지_수명_상한은_남의_카드가_쓴다() {
 		assertEquals(6, TrialEndRain.MARK_MAX_STRIDE, "먼지 파티클의 최소 수명 8틱에서 둘을 뺀 값이다");
-		assertTrue(stride <= TrialEndRain.MARK_MAX_STRIDE, "나눈 틱: " + stride);
 		assertTrue(TrialEndRain.MARK_MAX_STRIDE < 8,
 				"먼지 파티클은 8틱이면 죽는다. 8 이상으로 나누면 고리가 영영 안 닫힌다");
-		assertTrue(stride < rain.warnTicks(),
-				"고리가 완성되기 전에 착탄한다 — 예고 " + rain.warnTicks() + "틱, 완성 " + stride + "틱");
+		assertEquals(TrialEndRain.MARK_MAX_STRIDE, DragonLastStandPatterns.SUCK_MARK_STRIDE,
+				"가져간 쪽과 값이 갈라졌다 — 이 상수가 여기 남아 있는 유일한 이유가 그쪽이다");
+		assertEquals(TrialEndRain.MARK_MAX_STRIDE, DragonLastStandPatterns.LIGHTNING_MARK_STRIDE,
+				"가져간 쪽과 값이 갈라졌다");
 	}
 
 	/**
-	 * {@code stride} 틱이 지나면 <b>한 점도 빠짐없이</b> 찍혀 있다.
-	 *
-	 * <p>{@code markRing} 의 번호 고르기를 여기서 다시 적어 본다. 위상이 한 바퀴 도는 동안
-	 * 어떤 번호가 한 번도 안 나오면 고리에 영영 구멍이 남고, 그 구멍이 하필 사람이 빠져나가려던
-	 * 쪽일 수 있다.
-	 */
-	@Test
-	void 위상이_한_바퀴_돌면_고리가_다_찍힌다() {
-		TrialCatalog.Risk.EndRain rain = card();
-		int stride = TrialEndRain.markStride(rain);
-		int points = TrialEndRain.ringPoints(rain.radius());
-		// 되감긴 판의 음수 시각까지 포함해 여러 출발점에서 확인한다.
-		for (long start : new long[] {0L, 1L, 12_345L, -7L}) {
-			int[] drawn = new int[points];
-			for (long now = start; now < start + stride; now++) {
-				int phase = TrialEndRain.markPhase(now, stride);
-				assertTrue(phase >= 0 && phase < stride, "위상이 범위 밖이다: " + phase);
-				for (int index = phase; index < points; index += stride) {
-					drawn[index]++;
-				}
-			}
-			for (int index = 0; index < points; index++) {
-				assertEquals(1, drawn[index],
-						"출발 " + start + " 에서 " + index + "번 점이 " + drawn[index]
-								+ "번 찍힌다 — 0 이면 고리에 구멍이고 2 면 예산을 두 번 쓴 것이다");
-			}
-		}
-	}
-
-	/**
-	 * 고리를 이 카드가 <b>직접</b> 그리게 되면서도 남의 고리는 하나도 안 바뀌었다.
+	 * 이 카드가 고리를 버렸는데도 남의 고리는 하나도 안 바뀌었다.
 	 *
 	 * <p>{@code TrialWarning.ringPoints} 의 하한(40)은 반경 2.5 에서 간격 0.39칸이라 지나치게
-	 * 촘촘하고, 지점이 수십 곳이면 그 하한만으로 예산이 무너진다. 그렇다고 하한을 내리면
-	 * <b>바닥 고리를 쓰는 카드 전부</b>의 모습이 바뀐다 — 낙뢰(반경 3) · 연쇄 포격(3.5) · 기둥
-	 * 화염구(4.35)가 전부 거기서 점 수를 받는다. 그래서 하한을 건드리는 대신 이 카드만
-	 * {@link TrialEndRain#ringPoints} 로 제 밀도를 쓴다.
+	 * 촘촘했고, 그래서 이 카드는 한동안 <b>제 고리를 직접</b> 그렸다(간격 0.9 → 18점). 그 고리가
+	 * 이제 보라 면이 됐지만, <b>남의 고리를 건드리지 않는다는 경계는 그대로</b>다 — 낙뢰(반경 3) ·
+	 * 연쇄 포격(3.5) · 기둥 화염구(4.35)가 전부 {@code TrialWarning} 에서 점 수를 받는다.
 	 *
-	 * <p>이 시험이 그 경계를 지킨다 — 남의 고리를 고치려는 사람이 여기서 먼저 걸린다.
+	 * <p>⚠ <b>경계를 말하는 정확도가 올라갔다는 것도 함께 본다.</b> 고리는 점 사이가
+	 * {@link TrialEndRain#RETIRED_RING_GAP}(0.87칸)이었고 면은 경계가
+	 * {@link TrialEndRainPanel#edgeGap}(0.19칸) 안쪽에서 끝난다. 이 부등식이 「선을 버리고 면으로
+	 * 간 것이 가시성뿐 아니라 정직성에서도 이득」이라는 주장의 근거다.
 	 */
 	@Test
 	void 남의_카드_고리는_그대로다() {
@@ -426,10 +478,10 @@ class TrialEndRainTest {
 				"stride 1 은 예전과 같아야 한다 — 인자를 안 넘긴 호출자가 그 길로 간다");
 
 		TrialCatalog.Risk.EndRain rain = card();
-		assertTrue(TrialEndRain.ringPoints(rain.radius()) < TrialWarning.ringPoints(rain.radius()),
-				"이 카드가 제 밀도를 안 쓰고 있다면 고리를 직접 그릴 이유가 없다");
-		assertTrue(TrialEndRain.ringGap(rain.radius()) <= 1.0,
-				"점 사이가 " + TrialEndRain.ringGap(rain.radius()) + "칸이면 고리가 아니라 점선이다");
+		assertTrue(TrialEndRainPanel.edgeGap(rain.radius()) < TrialEndRain.RETIRED_RING_GAP,
+				"면이 가리키는 경계(" + TrialEndRainPanel.edgeGap(rain.radius())
+						+ "칸 안쪽)가 걷어낸 고리의 점 간격(" + TrialEndRain.RETIRED_RING_GAP
+						+ "칸)보다 흐리다 — 그러면 면으로 바꾼 것이 경계를 흐린 것이 된다");
 	}
 
 	// ------------------------------------------------------------------ 하늘에서 떨어지는 구체
@@ -503,53 +555,70 @@ class TrialEndRainTest {
 		assertFalse(references(compiled, "PORTAL"),
 				"PORTAL 은 40~49틱을 살고 나이에 따라 커진다 — 터진 뒤에 가장 크다");
 		assertTrue(references(compiled, "ENTITY_EFFECT"),
-				"구체와 착탄이 쓰는 입자가 바뀌었다. 빨강은 여기서 나온다");
+				"구체의 겉과 착탄이 쓰는 입자가 바뀌었다. 빨강은 여기서 나온다");
 		assertFalse(references(compiled, "WITCH"),
 				"WITCH 는 26.3 의 WitchProvider 가 제 색을 자홍으로 직접 칠한다 —"
 						+ " 서버가 무엇을 보내든 빨강이 안 된다");
+		// 알맹이는 걷어낸 고리가 쓰던 그 먼지다. 중력이 없어 제자리에 서는 것이 기둥의 근거이고,
+		// 수명도 같은 8~40틱이라 위의 계산이 한 줄도 안 바뀐다.
+		assertTrue(references(compiled, "dust"),
+				"구체의 알맹이가 먼지가 아니다 — 중력 없는 입자여야 하늘에서 바닥까지 기둥이 남는다");
 	}
 
 	/**
-	 * ⚠ <b>구체가 고리와 같은 색이고, 알파가 살아 있다.</b>
+	 * ⚠ <b>구체의 알맹이와 겉이 같은 색이고, 알파가 살아 있다.</b>
 	 *
-	 * <p>사람이 말한 것은 「원」뿐이지만 구체가 다른 색이면 「저 구체가 이 고리로 온다」가 안
-	 * 읽힌다. 그래서 색이 {@link TrialEndRain#MARK_COLOR} <b>하나</b>에서 나온다.
+	 * <p>알맹이(먼지)와 겉(별)이 다른 색이면 <b>한 덩어리로 안 보인다.</b> 그래서 둘 다
+	 * {@link TrialEndRain#MARK_COLOR} 에서 나온다.
 	 *
 	 * <p>알파를 따로 보는 것은 {@code ColorParticleOption} 이 받는 것이 RGB 가 아니라
 	 * <b>ARGB</b> 이기 때문이다. 최상위 바이트가 0 이면 구체가 통째로 안 보이는데, 파티클은
 	 * 시험에서 그려 볼 수 없어 <b>여기가 그것을 잡는 유일한 자리</b>다.
 	 */
 	@Test
-	void 구체가_고리와_같은_색이고_투명하지_않다() {
+	void 구체의_알맹이와_겉이_같은_색이고_투명하지_않다() {
 		assertEquals(TrialEndRain.MARK_COLOR, TrialEndRain.ORB_ARGB & 0x00FFFFFF,
-				"구체 색이 고리 색과 다르다 — 예고 두 겹이 서로 다른 것을 가리킨다");
+				"겉의 색이 알맹이와 다르다 — 한 구체가 두 색으로 보인다");
 		assertEquals(0xFF, (TrialEndRain.ORB_ARGB >>> 24) & 0xFF,
 				"알파가 " + ((TrialEndRain.ORB_ARGB >>> 24) & 0xFF)
 						+ " 다. 0 이면 하늘에서 아무것도 안 내려온다");
 	}
 
 	/**
-	 * ⚠ <b>고리가 규약의 빨강으로 되돌아왔다.</b>
+	 * ⚠⚠ <b>구체는 규약의 빨강, 바닥은 보라다.</b> 네 번의 결정이 여기 다 들어 있다.
 	 *
-	 * <p>사람이 「이펙트도 보라색으로」라고 해서 자홍({@code 0xC800C8})으로 갔다가, 플레이해 보고
-	 * <b>「보라색이아닌 빨간색원으로다시 복귀하자 이번건 너무 가시성이안좋아」</b>라고 해서
-	 * 되돌렸다. 되돌린 이유는 <b>가시성</b>이고, 돌아간 자리가 마침 규약의
-	 * {@link TrialWarning.Colors#DEADLY}(「서 있으면 죽는다」)라 뜻도 맞는다.
+	 * <ol>
+	 *   <li>규약의 빨강으로 시작했다</li>
+	 *   <li>「이펙트도 보라색으로」 → 자홍({@code 0xC800C8})</li>
+	 *   <li><b>「보라색이아닌 빨간색원으로다시 복귀하자 이번건 너무 가시성이안좋아」</b> → 빨강</li>
+	 *   <li><b>「보라색 테두리로는 가시성 진짜 안좋으니까 차라리 보라색 바닥으로 투명바닥으로
+	 *       표시하고」</b> → <b>바닥만</b> 보라. ⚠ 사람은 테두리가 보라인 줄 알았지만 ③에서 이미
+	 *       빨강이었다 — 고친 것은 색이 아니라 선 → 면이다</li>
+	 * </ol>
 	 *
-	 * <p>「표적」의 보라와 같아지지 않는 것은 그대로 본다 — 그쪽은 「너 하나를 노린다」이고 이
-	 * 카드는 자리를 노린다.
+	 * <p>그래서 색이 둘인 것이 <b>의도</b>다. 바닥은 흰 엔드스톤을 배경으로, 구체는 어두운 보랏빛
+	 * 하늘을 배경으로 본다 — 둘을 같은 색으로 묶으면 한쪽이 반드시 배경에 묻는다. <b>구체를
+	 * 보라로 바꾸는 것이 ③을 지우는 길</b>이라 여기서 막는다.
 	 *
-	 * <p>규약에 다섯째 색을 더하지 않은 것도 함께 본다. 자홍이던 때는 색이 이 실행기 안에 있는
-	 * 것이 근거였고, 지금은 규약의 색을 그대로 쓰므로 더할 이유 자체가 없다.
+	 * <p>규약에 다섯째 색을 더하지 않은 것도 함께 본다. 면의 보라는 우리가 고른 16진수가 아니라
+	 * 색유리 블록이 들고 있는 것이다.
 	 */
 	@Test
-	void 고리가_규약의_빨강으로_되돌아왔다() {
+	void 구체는_규약의_빨강이고_바닥은_보라다() {
 		assertEquals(TrialWarning.Colors.DEADLY, TrialEndRain.MARK_COLOR,
 				"사람이 「빨간색원으로다시 복귀하자」라고 했다 — 자홍(0xC800C8)은 가시성이"
 						+ " 너무 안 좋았다");
 		assertNotEquals(0xC800C8, TrialEndRain.MARK_COLOR, "자홍으로 되돌아갔다");
 		assertNotEquals(TrialWarning.Colors.MARKED, TrialEndRain.MARK_COLOR,
 				"「표적」과 같은 보라다. 두 카드가 같은 틱에 돌면 뜻이 섞인다");
+
+		// 바닥은 사람이 이번에 지정한 보라다. 자홍(MAGENTA)이 아닌 것도 함께 본다 — 사람이
+		// 자홍을 「가시성이 너무 안 좋다」고 직접 물렸다.
+		assertEquals(DyeColor.PURPLE, TrialEndRainPanel.GLASS_COLOR,
+				"바닥 면이 보라가 아니다 — 사람이 「보라색 바닥으로」라고 했다");
+		assertNotEquals(DyeColor.MAGENTA, TrialEndRainPanel.GLASS_COLOR,
+				"사람이 물린 자홍 쪽으로 돌아갔다");
+
 		// 규약이 들고 있는 이름은 넷(+옛 이름 하나)뿐이다. 이 카드 때문에 색을 더하지 않았다.
 		assertEquals(5, TrialWarning.Colors.class.getFields().length,
 				"색 규약에 색이 늘었거나 줄었다");
@@ -616,6 +685,31 @@ class TrialEndRainTest {
 	 */
 	private static boolean references(byte[] compiled, String name) {
 		byte[] needle = name.getBytes(StandardCharsets.US_ASCII);
+		outer:
+		for (int start = 0; start + needle.length <= compiled.length; start++) {
+			for (int index = 0; index < needle.length; index++) {
+				if (compiled[start + index] != needle[index]) {
+					continue outer;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 클래스 파일이 <b>정확히 이 이름</b>을 상수 풀에 들고 있는가.
+	 *
+	 * <p>{@link #references} 는 긴 이름의 앞머리에도 걸린다 — {@code "drop"} 을 찾으면 이 파일의
+	 * {@code dropOrb} 가 먼저 잡혀 <b>아무것도 안 지키면서 통과한다.</b> 상수 풀의 UTF8 항목은
+	 * <b>2바이트 길이 접두사</b>를 달고 있으므로 그것까지 맞춰 보면 이름이 정확히 같을 때만 걸린다.
+	 */
+	private static boolean referencesExactly(byte[] compiled, String name) {
+		byte[] ascii = name.getBytes(StandardCharsets.US_ASCII);
+		byte[] needle = new byte[ascii.length + 2];
+		needle[0] = (byte) (ascii.length >>> 8);
+		needle[1] = (byte) ascii.length;
+		System.arraycopy(ascii, 0, needle, 2, ascii.length);
 		outer:
 		for (int start = 0; start + needle.length <= compiled.length; start++) {
 			for (int index = 0; index < needle.length; index++) {

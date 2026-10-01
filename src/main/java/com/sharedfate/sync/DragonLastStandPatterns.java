@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.PowerParticleOption;
@@ -40,7 +41,7 @@ import java.util.List;
  *   <tr><td>부채꼴 브레스</td><td>그렇다</td><td>골랐을 때 120틱</td></tr>
  *   <tr><td><b>공허 흡입</b></td><td>그렇다</td><td>골랐을 때 180틱</td></tr>
  *   <tr><td><b>십자 균열</b></td><td>그렇다</td><td>골랐을 때 130틱</td></tr>
- *   <tr><td><b>상시 번개</b></td><td><b>아니다</b></td><td>3초 뒤부터 <b>6초마다 계속</b></td></tr>
+ *   <tr><td><b>상시 번개</b></td><td><b>아니다</b></td><td>3초 뒤부터 <b>7.8초마다 계속</b></td></tr>
  *   <tr><td><b>반구 블록 파괴</b></td><td><b>아니다</b></td><td>1초마다 계속 —
  *       {@link DragonLastStandDome} 에 있다</td></tr>
  * </table>
@@ -89,6 +90,60 @@ import java.util.List;
  *       그 밀기는 우리 천장을 통째로 지나쳐 간다</li>
  * </ul>
  *
+ * <h2>⚠ 패턴마다 소리가 다르다 — <b>이름이 아니라 파일</b>로 다르다</h2>
+ *
+ * <p>사람이 플레이해 보고 <b>「각각 패턴마다 소리가 구분되엇으면해」</b>라고 했다. 그래서 넷이
+ * 저마다의 소리를 갖고, <b>예고 소리와 발동 소리를 갈라</b> 「온다」와 「터졌다」가 따로 들린다.
+ *
+ * <p>⚠⚠ <b>이름이 다른 것으로는 아무것도 보장되지 않는다.</b> 이 저장소가 <b>세 번</b> 걸렸다 —
+ * {@code DRAGON_FIREBALL_EXPLODE} 와 {@code END_GATEWAY_SPAWN} 이 둘 다 {@code random/explode1~4}
+ * (일반 폭발음)이었고, {@code FIRECHARGE_USE} 가 {@code mob/ghast/fireball4} 로
+ * {@code ENDER_DRAGON_SHOOT}·{@code GHAST_SHOOT} 과 같은 파일이었다. 그래서 아래 표의
+ * <b>오른쪽 칸을 26.3 바닐라 {@code sounds.json} 에서 직접 열어 확인했고</b>, 일곱이 전부 다른
+ * 파일이다. 소리를 바꾸는 사람은 <b>반드시 그 파일을 다시 열 것.</b>
+ *
+ * <table border="1">
+ *   <caption>26.3 {@code assets/minecraft/sounds.json} 에서 확인한 실제 파일</caption>
+ *   <tr><th>패턴</th><th>예고</th><th>실제 파일</th><th>발동</th><th>실제 파일</th></tr>
+ *   <tr><td>날개 퍼덕이기</td><td>— (예고가 없는 패턴이다)</td><td></td>
+ *       <td>{@code ENDER_DRAGON_FLAP}</td><td>{@code mob/enderdragon/wings1~6}</td></tr>
+ *   <tr><td>부채꼴 브레스</td><td>{@code GHAST_WARN}</td><td>{@code mob/ghast/charge}</td>
+ *       <td>{@code ENDER_DRAGON_SHOOT}</td><td>{@code mob/ghast/fireball4}</td></tr>
+ *   <tr><td>공허 흡입</td><td>{@code BREEZE_INHALE}</td><td>{@code mob/breeze/inhale1~2}</td>
+ *       <td>{@code WARDEN_SONIC_BOOM}</td><td>{@code mob/warden/sonic_boom1~4}</td></tr>
+ *   <tr><td>십자 균열</td><td><b>{@code DEEPSLATE_BREAK}</b></td>
+ *       <td><b>{@code block/deepslate/break1~4}</b></td>
+ *       <td>{@code WARDEN_DIG}</td><td>{@code mob/warden/dig}</td></tr>
+ * </table>
+ *
+ * <p>공용 층 소리({@link TrialWarning#soundFor})는 <b>그대로 둔다.</b> 그것이 이 판의 규약이라
+ * 사람이 카드마다 새 신호를 배우지 않는 근거이고, 쓰는 파일도 위의 일곱과 겹치지 않는다 —
+ * {@code mob/enderdragon/growl1~4}({@code ENDER_DRAGON_GROWL}) · {@code block/beacon/activate} ·
+ * {@code random/orb}({@code EXPERIENCE_ORB_PICKUP})다.
+ *
+ * <h2>⚠ 입자가 가리키는 방향이 <b>빨아들임</b>과 <b>밀어냄</b>을 가른다</h2>
+ *
+ * <p>사람 말이 <b>「빨아드리는거랑 밀치는거랑 이펙트가 너무 구분이안됨 … 빨아드리는 패턴이면
+ * 입자들이 드래곤에게 빨려들어가는 입자가 잘보이면 이해하잖아」</b>다. 그래서 둘을
+ * <b>같은 점으로 반대 방향</b>으로 그린다 — 종류를 달리하면 「다른 패턴이다」만 말하고
+ * 「반대되는 패턴이다」는 말하지 못한다.
+ *
+ * <table border="1">
+ *   <caption>같은 {@code CRIT} 가닥이 서로 반대로 흐른다</caption>
+ *   <tr><th></th><th>자리가 어디로 움직이는가</th><th>가닥이 어디로 흐르는가</th></tr>
+ *   <tr><td>공허 흡입</td><td>{@link #SUCK_REACH}(20) → {@link #SUCK_RADIUS}(4) <b>안으로</b></td>
+ *       <td><b>드래곤 쪽</b> ({@link #streamSuck})</td></tr>
+ *   <tr><td>날개 퍼덕이기</td><td>0 → {@link #WING_FADE_RADIUS}(20) <b>바깥으로</b></td>
+ *       <td><b>드래곤 반대쪽</b> ({@link #wingWave})</td></tr>
+ * </table>
+ *
+ * <p>가닥 하나가 흐르는 거리도 <b>같은 값</b>이다({@link #critDrift} 로 재는 3칸 남짓). 세기가
+ * 다르면 「한쪽이 더 세다」로 읽혀 방향 대비가 흐려진다.
+ *
+ * <p>⚠ <b>가닥은 세로를 한 톨도 쓰지 않는다.</b> 흡입이 사람을 위로 당기지 않는 것과 같은 자리다
+ * ({@link #SUCK_MAX_INWARD}) — 입자가 위로 빨려 올라가면 사람이 「들린다」로 읽고, 실제로는
+ * 들리지 않으므로 그것이 거짓 신호다.
+ *
  * <h2>한 틱 점 예산</h2>
  *
  * <p>{@code TrialLandingShock.MAX_POINTS_PER_TICK} 이 440 이고 그것이 이 판의 예산이다. 패턴 넷은
@@ -98,13 +153,111 @@ import java.util.List;
  * 수를 예산과 견준다.
  *
  * <p>번개가 <b>고리 한 바퀴를 여섯 틱에 나눠</b> 그리는 것이 그래서다. 열 곳을 매 틱 다 그리면
- * 400점이라 그것만으로 예산이 차고, 부채꼴 예고(202)와 겹치는 순간 602점이 된다 —
+ * 400점이라 그것만으로 예산이 차고, 부채꼴 예고(236)와 겹치는 순간 636점이 된다 —
  * {@link #LIGHTNING_MARK_STRIDE} 에 그 셈이 있다.
+ *
+ * <p>⚠ <b>가장 바쁜 틱이 바뀌었다.</b> 사람이 <b>「각각 패턴을 쓴다느 느낌이 들게 이펙트를 키우든
+ * 좀더 가시성이 좋앗으면좋겟어」</b>·<b>「특히 십자가 공격이 너무 잘 안보엿어」</b>라고 해서 넷을
+ * 함께 키웠고, 그러면서 최악이 <b>272 → 356</b> 으로 올랐다. 전에는 「번개 + 부채꼴 예고」였는데
+ * 이제는 <b>「번개 + 십자가 터지는 틱」</b>이다 — 그 틱에 갈라짐 연출과 솟는 기둥과 <b>다음 십자의
+ * 예고</b>가 함께 나간다({@link #crossPoints}). 예산까지 84점이 남았고, 그 몫을 쓰려는 사람은
+ * {@code DragonLastStandPatternsTest.한_틱_점_예산을_넘지_않는다} 가 못박아 둔 수부터 고쳐야 한다.
  *
  * <p>그리고 부채꼴의 <b>빨간 투명 면은 점을 한 개도 쓰지 않는다.</b> 파티클이 아니라 디스플레이
  * 개체라 예산과 무관하다 — {@link DragonLastStandConePanel} 을 볼 것.
  */
 public final class DragonLastStandPatterns {
+
+	// ------------------------------------------------------------------ ⓪ 사람의 움직임 (패턴 둘이 함께 쓴다)
+
+	/**
+	 * 사람의 이동속도 특성 기본값. 26.3 {@code Player.createAttributes} 에서 읽었다.
+	 *
+	 * <p>바닥에서는 이 값이 <b>매 틱 속도에 더해지는 입력 가속</b>과 같다. 26.3
+	 * {@code LivingEntity.getFrictionInfluencedSpeed(f)} 가 {@code f > 0.6} 일 때만 보정하고 기본
+	 * 블록 마찰이 <b>정확히 0.6</b> 이라 보정이 걸리지 않고 {@code getSpeed()} 가 그대로 나온다
+	 * (바이트코드로 확인했다).
+	 *
+	 * <p>⚠ <b>이 셋이 공용 자리에 있는 까닭.</b> 처음에는 공허 흡입만 쓰는 값이라 그 절에 있었는데,
+	 * 사람이 <b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든?」</b>이라고 해서 날개
+	 * 퍼덕이기도 {@link #GROUND_DRAG} 를 쓰게 됐다({@link #AIRBORNE_PUSH_SCALE}). 두 패턴이 같은
+	 * 숫자를 쓰는데 한쪽 절에 있으면 <b>다른 쪽을 고치는 사람이 그 절을 읽지 않는다.</b>
+	 */
+	static final double WALK_INPUT = 0.1;
+	/**
+	 * 달릴 때 붙는 곱. 26.3 {@code LivingEntity.SPEED_MODIFIER_SPRINTING} 이
+	 * {@code 0.3 · ADD_MULTIPLIED_TOTAL} 이라 <b>1.3배</b>다(바이트코드로 확인했다).
+	 */
+	static final double SPRINT_MULTIPLIER = 1.3;
+	/**
+	 * 바닥 감쇠. <b>블록 마찰 0.6 × 0.91</b> 이다.
+	 *
+	 * <p>26.3 {@code LivingEntity.travelInAir} 가 매 틱 끝에 수평 속도에 {@code f × 0.91} 을
+	 * 곱하고 {@code f} 가 바닥 블록의 마찰(기본 0.6)이다. 공중에서는 {@code f = 1} 이라
+	 * {@code TrialEnderStorm.AIR_DRAG}(0.91)가 되고 <b>그 차이가 이 파일의 함정 둘</b>이다 —
+	 * 당기는 쪽은 {@link #SUCK_MAX_INWARD}, 미는 쪽은 {@link #AIRBORNE_PUSH_SCALE} 를 볼 것.
+	 */
+	static final double GROUND_DRAG = 0.546;
+
+	/**
+	 * ⚠⚠ <b>공중에 떠 있는 사람을 밀 때 세기에 곱하는 값. 이 한 줄이 「점프하면 저 끝까지」를
+	 * 막는다.</b>
+	 *
+	 * <h2>사람이 본 것</h2>
+	 *
+	 * <p><b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든? 그것도 조심해야겟어」</b>
+	 *
+	 * <h2>왜 그렇게 되는가 — 다섯 배다</h2>
+	 *
+	 * <p>{@code TrialEnderStorm.pushVelocity} 는 <b>공중 감쇠로</b> 속도를 잡는다. 곧 적힌 거리
+	 * {@code d} 를 밀려면 {@code d × 0.09} 를 싣는데, 그 속도로
+	 *
+	 * <ul>
+	 *   <li><b>바닥에 붙어 있으면</b> 감쇠가 {@value #GROUND_DRAG} 라 총 이동이
+	 *       {@code d × 0.09 ÷ 0.454 = d × 0.198} — <b>적힌 거리의 5분의 1</b>이다. 그 사실이
+	 *       {@link #WING_PUSH_BLOCKS} 에 「적힌 값은 천장이다」로 적혀 있었다</li>
+	 *   <li><b>떠 있으면</b> 감쇠가 0.91 이라 총 이동이 {@code d × 0.09 ÷ 0.09 = d} — <b>적힌 거리
+	 *       그대로</b>다</li>
+	 * </ul>
+	 *
+	 * <p>곧 <b>점프한 순간 같은 한 번치가 다섯 배를 민다.</b> 5초에 여덟 번이라 그 다섯 배가 여덟
+	 * 번 쌓이고, 사람이 본 「저 끝까지」가 정확히 그것이다.
+	 *
+	 * <h2>고친 방법 — <b>공중이면 바닥과 같은 거리만 가게 깎는다</b></h2>
+	 *
+	 * <p>값이 {@code (1 − 공중 감쇠) ÷ (1 − 바닥 감쇠) = 0.09 ÷ 0.454 = 0.198} 이다. 이 비율을
+	 * 곱하면 공중의 총 이동이 <b>바닥의 총 이동과 정확히 같아진다</b>
+	 * ({@link #shoveSpeed} · {@code DragonLastStandPatternsTest} 가 그 등식을 붙든다).
+	 *
+	 * <ul>
+	 *   <li><b>점프해도 이득도 손해도 없다.</b> 흡입이 {@link #SUCK_MAX_INWARD} 로 「바닥·공중·얼음이
+	 *       같은 세기」를 만든 것과 <b>같은 수법이고 같은 어휘</b>다 — 이 파일에 두 벌의 다른
+	 *       대처가 있으면 다음 사람이 한쪽만 고친다</li>
+	 *   <li><b>「점프하면 안 밀린다」로 만들지 않았다.</b> 공중을 통째로 면제하면 사람이 배우는 답이
+	 *       <b>「퍼덕일 때는 뛰어 있어라」</b>가 되어 이 패턴이 아무것도 요구하지 않는다</li>
+	 *   <li>⚠ <b>세로는 그대로 한 톨도 건드리지 않는다.</b> 띄우면 마찰이 안 먹어 더 멀리 가고
+	 *       낙하 피해까지 붙는다 — 그 규칙이 이 전투 전체의 것이다</li>
+	 * </ul>
+	 *
+	 * <p>⚠ <b>이것은 세기 문제의 답이고 낙사의 답이 아니다.</b> 낙사를 막는 것은 여전히 천장
+	 * 둘({@code TrialEnderStorm.pushDistance} · {@code TrialLandingShock.groundedReach})이다. 둘 중
+	 * 하나라도 빼고 이 비율만 남기면 <b>그날로 낙사 장치</b>다 — {@link #wingBeat} 를 볼 것.
+	 */
+	static final double AIRBORNE_PUSH_SCALE =
+			(1.0 - TrialEnderStorm.AIR_DRAG) / (1.0 - GROUND_DRAG);
+
+	/**
+	 * 발이 그 자리 지표보다 이만큼 높으면 <b>떠 있는 것으로 본다</b>(칸).
+	 *
+	 * <p>0.5 인 것은 <b>계단·반 블록 한 칸</b>이다. 그보다 작게 두면 반 블록을 올라서는 중인
+	 * 사람이 떠 있는 것으로 읽혀 세기가 들쭉날쭉해지고, 크게 두면 짧은 점프가 공중으로 안 잡힌다.
+	 *
+	 * <p>⚠ <b>{@code onGround()} 만 믿지 않는 까닭</b>은 그것이 <b>클라이언트가 보내 준 깃발</b>
+	 * 이라는 것이다. 렉이나 거짓 보고로 「땅에 있다」가 들어오면 떠 있는 사람이 바닥 세기를
+	 * 받는다 — 그 어긋남이 <b>더 미는 쪽</b>이라 가장 나쁘다. 그래서 서버만 아는 하이트맵으로 한 번
+	 * 더 본다({@link #isAirborne}).
+	 */
+	static final double AIRBORNE_LIFT = 0.5;
 
 	// ------------------------------------------------------------------ ① 날개 퍼덕이기
 
@@ -133,18 +286,36 @@ public final class DragonLastStandPatterns {
 	static final double WING_FADE_RADIUS = 20.0;
 
 	/**
-	 * 넉백 세기를 한 번에 올린 배율. <b>사람이 정한 값이다</b> —
-	 * <b>「날개퍼덕이기 때 넉백을 1.5배 늘려봐」</b>.
+	 * 사람이 <b>처음에 올린</b> 배율. <b>「날개퍼덕이기 때 넉백을 1.5배 늘려봐」</b>.
 	 *
-	 * <p>구간마다 따로 곱하지 않고 <b>한 곳</b>에서 곱한다. 「4~12칸 구간만 1.5배」로 읽으면
-	 * 12칸 밖의 잦아드는 구간이 그대로 남아 <b>12.0 과 12.1 의 결과가 다시 절벽처럼 갈린다</b> —
-	 * 사람이 「나머지 거리의 비율도 함께 올리라」고 한 것이 그 뜻이다. 잦아드는 구간은
-	 * {@link #WING_PUSH_BLOCKS} 의 비율로 적혀 있어 저절로 따라 올라간다.
+	 * <p>지우지 말 것. 이 값이 남아 있어야 {@link #WING_PUSH_SCALE} 이 <b>「올렸다가 절반으로
+	 * 되돌렸다」</b>를 스스로 말하고, 다음에 「왜 0.75 라는 어정쩡한 수인가」를 묻는 사람이 여기서
+	 * 답을 본다.
 	 */
-	static final double WING_PUSH_SCALE = 1.5;
+	static final double WING_PUSH_RAISE = 1.5;
+	/**
+	 * ⚠ 사람이 <b>플레이해 보고 다시 깎은</b> 몫. <b>「30프로미만 2페이지에서 밀쳐지는게 너무심해
+	 * 지금보다 50프로는 안밀쳐지게하고」</b>.
+	 *
+	 * <p>「지금보다」가 <b>1.5배로 올린 뒤</b>를 가리킨다. 그러니 밑값(4)의 절반이 아니라
+	 * <b>올린 값(6)의 절반</b>이다.
+	 */
+	static final double WING_PUSH_CUT = 0.5;
+	/**
+	 * 넉백 세기를 한 번에 곱하는 배율. <b>{@code 1.5 × 0.5 = 0.75}</b> 다.
+	 *
+	 * <p>구간마다 따로 곱하지 않고 <b>한 곳</b>에서 곱한다. 「4~12칸 구간만」으로 읽으면 12칸 밖의
+	 * 잦아드는 구간이 그대로 남아 <b>12.0 과 12.1 의 결과가 절벽처럼 갈린다</b> — 잦아드는 구간은
+	 * {@link #WING_PUSH_BLOCKS} 의 비율로 적혀 있어 저절로 따라 움직인다.
+	 *
+	 * <p>⚠ <b>이것은 「세기」의 답이고 「공중」의 답이 아니다.</b> 반으로 줄여도 떠 있는 사람은 바닥의
+	 * 다섯 배를 가므로, 줄인 뒤의 6 은 공중에서 옛 세기의 2.5배와 같다. 그쪽은
+	 * {@link #AIRBORNE_PUSH_SCALE} 가 따로 막는다 — <b>둘은 다른 문제이고 둘 다 사람이 말했다.</b>
+	 */
+	static final double WING_PUSH_SCALE = WING_PUSH_RAISE * WING_PUSH_CUT;
 
 	/**
-	 * 가장 강한 구간에서 <b>부탁하는</b> 미는 거리(칸). <b>4 → 6 이다.</b>
+	 * 가장 강한 구간에서 <b>부탁하는</b> 미는 거리(칸). <b>4 → 6 → 3 이다.</b>
 	 *
 	 * <h2>밑값 4 는 왜 4 였는가</h2>
 	 *
@@ -153,30 +324,74 @@ public final class DragonLastStandPatterns {
 	 * 번</b> 민다. 한 번치가 「강한 넉백」 한 대와 같으면 5초 내내 조작이 덮어써져 <b>요구하는
 	 * 행동(비켜서 붙기)을 할 수 없는 패턴</b>이 된다. 그래서 그 단위의 <b>절반</b>으로 잡았다.
 	 *
-	 * <h2>사람이 1.5배로 올렸다 — 그래도 「강한 넉백」 한 대보다 약하다</h2>
+	 * <h2>6 으로 올렸다가 사람이 플레이해 보고 <b>3</b> 으로 되돌렸다</h2>
 	 *
-	 * <p>{@code 8 ÷ 2 × 1.5 = 6} 이라 단위의 <b>4분의 3</b> 이다. 위의 근거(한 번치가 한 대와
-	 * 같으면 안 된다)가 아직 성립한다 — 8 을 넘기려면 배율이 2 를 넘어야 한다.
+	 * <p>사람 말이 <b>「30프로미만 2페이지에서 밀쳐지는게 너무심해 지금보다 50프로는
+	 * 안밀쳐지게하고」</b>다. {@code 8 ÷ 2 × 1.5 × 0.5 = 3} 이라 이제 단위의 <b>8분의 3</b> 이고,
+	 * 위의 근거(한 번치가 한 대와 같으면 안 된다)는 더 넉넉하게 성립한다.
 	 *
-	 * <p>⚠ <b>천장은 그대로다.</b> 세기를 올려도 목적지는 {@code TrialEnderStorm.pushDistance}
+	 * <p>⚠ <b>밑값 4 보다도 작아진 것이 이상한 것이 아니다.</b> 밑값 4 는 「한 대와 같으면 안
+	 * 된다」만 지킨 추정이고, 3 은 <b>사람이 실제로 맞아 보고 정한 값</b>이다. 이 판의 규칙대로
+	 * 플레이로 정해진 쪽이 이긴다.
+	 *
+	 * <p>⚠ <b>천장은 그대로다.</b> 세기를 어떻게 바꿔도 목적지는 {@code TrialEnderStorm.pushDistance}
 	 * (반경 32 안)와 {@code TrialLandingShock.groundedReach}(땅이 이어진 데까지)가 자른다 —
-	 * {@code DragonLastStandPatternsTest} 가 <b>올린 값으로 섬 곳곳에서 다시 굴려 본다.</b>
+	 * {@code DragonLastStandPatternsTest} 가 <b>새 값으로 섬 곳곳에서 다시 굴려 본다.</b>
 	 *
 	 * <p>실제로 밀리는 거리는 이보다 훨씬 짧다 — {@code TrialEnderStorm.pushVelocity} 가 공중
-	 * 감쇠로 속도를 잡으므로 발이 땅에 붙어 있으면 바닥 마찰(0.546)이 먼저 먹어 <b>5분의 1
-	 * 남짓</b>이다. 적힌 값은 <b>천장</b>이다.
+	 * 감쇠로 속도를 잡으므로 발이 땅에 붙어 있으면 바닥 마찰({@value #GROUND_DRAG})이 먼저 먹어
+	 * <b>5분의 1 남짓</b>이다. 적힌 값은 <b>천장</b>이고, 떠 있으면 그 천장까지 가던 것을
+	 * {@link #AIRBORNE_PUSH_SCALE} 가 바닥과 같은 거리로 되돌린다.
 	 */
 	static final double WING_PUSH_BLOCKS = TrialEnderStorm.PUSH_BLOCKS / 2.0 * WING_PUSH_SCALE;
 	/**
-	 * 드래곤 바로 아래에서 부탁하는 미는 거리(칸). <b>1.5 → 2.25 다.</b>
+	 * 드래곤 바로 아래에서 부탁하는 미는 거리(칸). <b>1.5 → 2.25 → 1.125 다.</b>
 	 *
 	 * <p>0 이 아닌 것은 「약하다」이지 「없다」가 아니기 때문이다. 0 으로 두면 머리 밑이
 	 * <b>완전한 안전지대</b>가 되어 이 패턴이 아무것도 요구하지 않는다.
 	 *
-	 * <p>같은 배율을 여기에도 곱한다. 한쪽만 올리면 <b>「4칸 이내는 약하다」의 정도가 달라진다</b> —
-	 * 밑값에서 4 : 1.5 였던 것이 6 : 1.5 가 되면 머리 밑이 상대적으로 더 안전해진다.
+	 * <p>같은 배율을 여기에도 곱한다. 한쪽만 깎으면 <b>「4칸 이내는 약하다」의 정도가 달라진다</b> —
+	 * 6 : 2.25 였던 비가 3 : 2.25 가 되면 머리 밑이 상대적으로 덜 안전해진다.
 	 */
 	static final double WING_NEAR_PUSH_BLOCKS = 1.5 * WING_PUSH_SCALE;
+
+	/**
+	 * <b>바깥으로</b> 흐르는 가닥의 갈래 수.
+	 *
+	 * <p>사람 말이 <b>「각각 패턴을 쓴다느 느낌이 들게」</b>이고, 밀어내는 패턴이 밀어내는 것처럼
+	 * 보이려면 <b>무엇인가가 바깥으로 움직여야</b> 한다. 전에는 파랑 고리 둘뿐이어서 <b>세기
+	 * 지도만 있고 바람이 없었다</b> — 고리는 가만히 있으므로 「여기가 세다」만 말하고 「밀린다」는
+	 * 말하지 못한다.
+	 *
+	 * <p>24 인 까닭은 <b>15도마다 하나</b>라는 것이다. 가닥 하나가 3칸 남짓 흐르므로
+	 * ({@link #critDrift}) 반경 12 에서 가닥 사이가 3.1칸이고, 그쯤이면 눈에는 <b>방사선</b>으로
+	 * 읽힌다. 고리로 읽히기를 바라는 것이 아니라 <b>방향</b>이 읽히기를 바라는 것이라 고리의
+	 * 간격 규칙({@code TrialWarning.POINT_GAP})을 따르지 않는다.
+	 *
+	 * <p>⚠ 공허 흡입의 {@link #SUCK_STREAM_SPOKES} 와 <b>같은 값이어야 한다.</b> 한쪽이 성기면
+	 * 「한쪽이 더 세다」로 읽혀 방향 대비가 흐려진다 — 시험이 그 등식을 붙든다.
+	 */
+	static final int WING_GUST_SPOKES = 24;
+	/**
+	 * 가닥을 쏘는 세기. {@link #SUCK_STREAM_DRIFT} 와 <b>같은 값이다.</b>
+	 *
+	 * <p>{@link #critDrift} 로 재면 3.04칸이다 — 반경 12 짜리 고리에서 가닥 사이가 3.1칸이므로
+	 * <b>가닥 길이와 가닥 사이가 거의 같다.</b> 더 길게 쏘면 서로 이어 붙어 「퍼져 나간다」가
+	 * 「원이 커진다」로 읽히고, 짧으면 점으로 흩어진다.
+	 */
+	static final double WING_GUST_DRIFT = 3.0;
+
+	/** 충격파의 첫 음높이. 「아직 멀었다」. */
+	private static final float WING_FLAP_PITCH_LOW = 0.7F;
+	/**
+	 * 충격파의 마지막 음높이.
+	 *
+	 * <p>여덟 번이 <b>모두 같은 음높이</b>였다. 그러면 「몇 번째인가」를 소리로 알 수 없어 다섯
+	 * 번째와 여덟 번째가 구별되지 않고, <b>언제 끝나는지 모르는 채 5초를 버틴다.</b> 부채꼴
+	 * 예고가 같은 근거로 음높이를 올린다({@link #chargePitch}) — 새 소리를 만들지 않고
+	 * <b>이미 있는 소리로 한 가지를 더 말하는</b> 쪽이 규약에 맞다.
+	 */
+	private static final float WING_FLAP_PITCH_HIGH = 1.3F;
 
 	// ------------------------------------------------------------------ ② 부채꼴 브레스
 
@@ -248,30 +463,6 @@ public final class DragonLastStandPatterns {
 	static final double SUCK_REACH = CONE_RANGE;
 
 	/**
-	 * 사람의 이동속도 특성 기본값. 26.3 {@code Player.createAttributes} 에서 읽었다.
-	 *
-	 * <p>바닥에서는 이 값이 <b>매 틱 속도에 더해지는 입력 가속</b>과 같다. 26.3
-	 * {@code LivingEntity.getFrictionInfluencedSpeed(f)} 가 {@code f > 0.6} 일 때만 보정하고 기본
-	 * 블록 마찰이 <b>정확히 0.6</b> 이라 보정이 걸리지 않고 {@code getSpeed()} 가 그대로 나온다
-	 * (바이트코드로 확인했다).
-	 */
-	static final double WALK_INPUT = 0.1;
-	/**
-	 * 달릴 때 붙는 곱. 26.3 {@code LivingEntity.SPEED_MODIFIER_SPRINTING} 이
-	 * {@code 0.3 · ADD_MULTIPLIED_TOTAL} 이라 <b>1.3배</b>다(바이트코드로 확인했다).
-	 */
-	static final double SPRINT_MULTIPLIER = 1.3;
-	/**
-	 * 바닥 감쇠. <b>블록 마찰 0.6 × 0.91</b> 이다.
-	 *
-	 * <p>26.3 {@code LivingEntity.travelInAir} 가 매 틱 끝에 수평 속도에 {@code f × 0.91} 을
-	 * 곱하고 {@code f} 가 바닥 블록의 마찰(기본 0.6)이다. 공중에서는 {@code f = 1} 이라
-	 * {@code TrialEnderStorm.AIR_DRAG}(0.91)가 되고 <b>그 차이가 이 패턴의 함정</b>이다 —
-	 * 아래 {@link #SUCK_MAX_INWARD} 를 볼 것.
-	 */
-	static final double GROUND_DRAG = 0.546;
-
-	/**
 	 * ⚠ <b>「달리기보다 약간 약하게」의 「약간」.</b> <b>사람이 정하지 않았다.</b>
 	 *
 	 * <p>사람이 정한 것은 <b>「반대쪽으로 달려서 도망가야지」</b>, 곧 <b>달리면 벗어나는 것이
@@ -321,7 +512,7 @@ public final class DragonLastStandPatterns {
 	 *       내리누르는 동안은 점프가 죽어 <b>구덩이에 빠진 사람이 나올 수 없다</b> — 5초 동안
 	 *       조작을 빼앗는 것이라 「달리면 벗어난다」와 정면으로 어긋난다</li>
 	 *   <li>⚠⚠ <b>위로 당기면 그 자리에서 사고가 된다.</b> 원의 중심(= 드래곤 발밑)은 섬 표면보다
-	 *       <b>네 칸 높다</b>({@link DragonLastStandDome#baselineY} 의 셈). 그러니 중심을 향해
+	 *       <b>네 칸 높다</b>({@link DragonLastStandDome#domeOriginY} 의 셈). 그러니 중심을 향해
 	 *       <b>세로까지</b> 당기면 섬에 선 사람이 <b>들린다.</b> 들리는 순간 감쇠가 바닥
 	 *       ({@value #GROUND_DRAG})에서 공중(0.91)으로 바뀌어 같은 {@link #SUCK_STEP} 이 만드는
 	 *       종착 속도가 <b>8.4배</b>가 되고, 그때는 달려도 못 벗어난다. 넉백의 천장 논리
@@ -379,6 +570,52 @@ public final class DragonLastStandPatterns {
 
 	/** 흡입음을 되풀이하는 간격(틱). 0.5초. 빨아들이는 동안만 울린다. */
 	static final int SUCK_BREATH_TICKS = 10;
+
+	/**
+	 * ⚠ <b>안으로</b> 흐르는 가닥의 갈래 수. <b>사람이 이것을 말했다.</b>
+	 *
+	 * <p><b>「빨아드리는거랑 밀치는거랑 이펙트가 너무 구분이안됨 … 예를들어 빨아드리는 패턴이면
+	 * 입자들이 드래곤에게 빨려들어가는 입자가 잘보이면 이해하잖아」</b>
+	 *
+	 * <p>전에는 <b>검은 원 + 빨간 경계 고리 + 끌려가는 사람 발밑의 재</b>뿐이었다. 셋 다
+	 * <b>가만히 있는 표식</b>이라 「여기가 위험하다」만 말하고 <b>「안으로 당긴다」는 한 점도 말하지
+	 * 않았다</b> — 그래서 날개 퍼덕이기의 파랑 고리 둘과 모양만 다른 원으로 보였다.
+	 *
+	 * <p>{@link #WING_GUST_SPOKES} 와 <b>같은 값이다.</b> 같은 점 · 같은 개수 · 같은 길이로
+	 * <b>방향만 반대</b>여야 두 패턴이 서로의 반대로 읽힌다. 시험이 그 등식을 붙든다.
+	 */
+	static final int SUCK_STREAM_SPOKES = WING_GUST_SPOKES;
+	/**
+	 * 가닥을 쏘는 세기. {@link #WING_GUST_DRIFT} 와 <b>같은 값이다.</b>
+	 *
+	 * <p>⚠ <b>이 값은 입자에만 쓴다.</b> 사람을 당기는 세기는 {@link #SUCK_STEP} 이고
+	 * <b>달리기 입력의 85%</b> 라는 사람의 약속 위에 서 있다 — 둘을 같은 수로 묶지 말 것.
+	 */
+	static final double SUCK_STREAM_DRIFT = WING_GUST_DRIFT;
+	/**
+	 * 가닥이 생기는 자리가 <b>한 틱에 안으로 들어오는 거리</b>(칸).
+	 *
+	 * <p>가닥 하나는 3칸만 흐르고 죽는다({@link #critDrift}). 그러니 <b>생기는 자리 자체가 안으로
+	 * 들어와야</b> 20칸을 가로지르는 흐름이 보인다 — 「엔더 파동」·「착지 충격」의 고리가 퍼지는 것과
+	 * 같은 수법인데 방향이 반대다.
+	 *
+	 * <p>1.5 면 {@link #SUCK_REACH}(20)에서 {@link #SUCK_RADIUS}(4)까지 <b>16칸을 10.67틱</b>에
+	 * 지난다. 사람이 달려서 버는 것이 초당 0.86칸이므로 흐름이 사람보다 <b>35배</b> 빠르고, 그래서
+	 * 「흐름은 빠른데 나는 버틸 수 있다」가 보인다. 느리게 하면 흐름이 사람과 같은 속도로 보여
+	 * 「도망칠 수 없다」로 읽힌다.
+	 */
+	static final double SUCK_STREAM_SPEED = 1.5;
+	/**
+	 * 같은 갈래에 가닥을 <b>몇 벌</b> 겹쳐 흘릴지.
+	 *
+	 * <p>한 벌이면 갈래마다 점 하나가 들어오고, {@code CRIT} 수명이 4~10틱이라 눈에는 4~10개가
+	 * 한 줄로 보인다. 그 줄이 16칸을 10.67틱에 지나므로 <b>줄과 줄 사이에 빈 구간</b>이 생긴다 —
+	 * 둘로 겹쳐 반 바퀴 어긋나게 쏘면 그 구간이 메워져 <b>끊기지 않는 흐름</b>이 된다.
+	 *
+	 * <p>셋으로 늘리지 않은 것은 점 때문이다. 갈래 24 × 벌 2 = 48점이고, 셋이면 72점이라 이
+	 * 패턴이 부채꼴 예고를 넘어선다({@link #suckWarnPoints}).
+	 */
+	static final int SUCK_STREAM_PHASES = 2;
 
 	// ------------------------------------------------------------------ ④ 십자 균열
 
@@ -451,6 +688,79 @@ public final class DragonLastStandPatterns {
 	/** 터지는 틱에 갈라짐을 그리는 간격(칸). 표식이 아니라 연출이라 성기다. */
 	private static final double CROSS_FLASH_GAP = 2.0;
 
+	/**
+	 * ⚠⚠ 십자 가장자리 먼지의 크기. <b>사람이 가장 세게 지적한 것이 이 패턴이다.</b>
+	 *
+	 * <p><b>「특히 십자가 공격이 너무 잘 안보엿어」</b>
+	 *
+	 * <p>왜 안 보였는지가 값에 그대로 있었다. 가장자리 넷을 <b>여섯 틱에 나눠</b> 그리는데
+	 * ({@link #CROSS_MARK_STRIDE}) 둘째·셋째 예고가 <b>30틱</b>뿐이라 성긴 구간이 예고의 <b>5분의
+	 * 1</b>이고, 그 점들이 <b>80칸짜리 직선 넷</b>에 1칸 간격으로 흩어져 있었다. 20칸 밖에서 보면
+	 * 1칸 간격의 작은 점은 바닥 무늬와 구별되지 않는다.
+	 *
+	 * <p>26.3 {@code DustParticleBase} 는 이 값을 <b>크기와 수명 둘 다에</b> 곱한다 —
+	 * {@code quadSize × 0.75 × 크기} 와 {@code 수명 = max(1, (int)(8.0 / (굴림×0.8 + 0.2)) × 크기)}
+	 * 다(26.3 클래스 파일을 뜯어 확인했다). 1.5 면 수명이 8~40틱에서 <b>12~60틱</b>이 되어
+	 * <b>나눠 그린 여섯 몫이 한 번도 안 끊기고 한 선으로 선다</b>. 「착지 충격」이 같은 이유로
+	 * 1.25 를 쓴다({@code TrialLandingShock.WAKE_SCALE}).
+	 *
+	 * <p>⚠ <b>살아 있는 점 수를 함께 봐야 한다.</b> 화면에 남는 수가 {@code 한 틱 점수 × 수명} 인데
+	 * 이 패턴의 가장자리 몫이 54점이라 {@code 54 × 60 = 3,240} 이고,
+	 * {@link TrialEnderPulse#EDGE_MAX_POINTS} 가 {@code 240 × 40} 으로 그어 둔 선(9,600)보다 한참
+	 * 아래다. 부채꼴 예고(236점)에 이 크기를 쓰면 {@code 236 × 60 = 14,160} 이라 <b>그 선을
+	 * 넘는다</b> — 그래서 여기에만 쓴다.
+	 */
+	static final float CROSS_DUST_SCALE = 1.5F;
+	/**
+	 * 십자 가장자리에 <b>흰 벽</b>을 세울 때의 점 간격(칸). <b>{@link #CROSS_MARK_GAP} 과 같다.</b>
+	 *
+	 * <p>같은 값인 것이 일부러다. 빨간 점과 흰 기둥이 <b>정확히 같은 자리</b>에 서므로 바닥 선이
+	 * 그대로 벽이 되고, {@link #markCross} 가 한 바퀴를 돌면서 지표를 <b>한 번만</b> 묻는다 —
+	 * 간격을 달리하면 하이트맵을 두 벌 묻는다.
+	 *
+	 * <p>벽이 필요한 까닭은 부채꼴과 같다. 선 안에 선 사람은 바닥 선을 <b>시선과 나란하게</b> 보므로
+	 * 거의 못 본다. 「여기서부터 안전」을 말하는 갈래는 세로로 선 것뿐이다.
+	 */
+	static final double CROSS_WALL_GAP = CROSS_MARK_GAP;
+	/**
+	 * 그 벽을 <b>몇 틱에 나눠</b> 세울지. <b>3 이고 6 이 아니다.</b>
+	 *
+	 * <p>⚠ 벽은 {@code CRIT} 이고 그 수명이 <b>최소 4틱</b>이다(26.3 {@code CritParticle} 이
+	 * {@code max(1, 6.0 / (굴림×0.8 + 0.6))} 으로 4~10틱을 잡는다). 먼지 기준인 6 을 쓰면 마지막
+	 * 몫을 찍는 틱에 첫 몫이 이미 죽어 <b>벽이 영영 안 닫힌다</b> — 「착지 충격」이 같은 근거로
+	 * 들고 있는 상한을 <b>그쪽에서 가져온다</b>({@code TrialLandingShock.MAX_STRIDE}).
+	 */
+	static final int CROSS_WALL_STRIDE = TrialLandingShock.MAX_STRIDE;
+	/** 터지는 틱에 갈라짐에서 <b>솟는</b> 기둥의 간격(칸). 연출이라 바닥 선보다 한참 성기다. */
+	private static final double CROSS_BURST_GAP = 4.0;
+	/**
+	 * 그 기둥을 쏘는 세기. 「착지 충격」의 벽({@code EDGE_RISE_SPEED} = 2.0)보다 <b>두 배</b>다.
+	 *
+	 * <p>{@code TrialLandingShock.riseHeight} 와 같은 식으로 재면 수명이 가장 짧은 점도 <b>3.9칸</b>
+	 * 올라간다 — 사람 키의 두 배가 넘는다. 「착지 충격」이 벽을 사람 키에서 멈춘 까닭은 <b>높으면
+	 * 다른 카드의 고리를 가린다</b>는 것인데, 이것은 <b>터지는 그 한 틱</b>뿐이고 그 틱에 가릴 만한
+	 * 것은 자기 자신밖에 없다.
+	 */
+	private static final double CROSS_BURST_RISE = 4.0;
+
+	/**
+	 * 균열이 번지는 소리를 되풀이하는 간격(틱). 0.5초.
+	 *
+	 * <h2>이 패턴에만 제 소리가 없었다</h2>
+	 *
+	 * <p>사람 말이 <b>「각각 패턴마다 소리가 구분되엇으면해」</b>인데, 예고 중에 나는 것이 공용 층
+	 * 소리뿐이었다 — 곧 <b>「무엇인가 온다」는 들렸지만 「십자가 온다」는 안 들렸다.</b> 부채꼴은
+	 * {@code GHAST_WARN} 을, 흡입은 {@code BREEZE_INHALE} 을 이미 얹고 있었고 여기만 비어 있었다.
+	 *
+	 * <p>0.5초인 것은 예고가 <b>3초 · 1.5초 · 1.5초</b>라는 것이다. 1초로 하면 둘째·셋째 예고에
+	 * <b>두 번</b>밖에 울리지 않아 「되풀이된다」가 안 들린다. 0.5초면 6 · 3 · 3 번이다.
+	 */
+	static final int CROSS_CRACK_TICKS = 10;
+	/** 균열음의 첫 음높이. */
+	private static final float CROSS_CRACK_PITCH_LOW = 0.7F;
+	/** 균열음의 마지막 음높이. 「지금 터진다」. */
+	private static final float CROSS_CRACK_PITCH_HIGH = 1.5F;
+
 	// ------------------------------------------------------------------ ⑤ 상시 번개 (패턴이 아니다)
 
 	/**
@@ -495,31 +805,49 @@ public final class DragonLastStandPatterns {
 	 */
 	static final int LIGHTNING_AFTER_TICKS = 10;
 	/**
-	 * 볼리 사이 주기(틱). <b>6초 — 「낙뢰」와 같은 값이다.</b>
+	 * 볼리 사이 주기(틱). <b>7.8초 — 「낙뢰」의 6초와 일부러 갈라졌다.</b>
 	 *
-	 * <h2>사람이 정하지 않은 숫자다 — 왜 120 인가</h2>
+	 * <h2>왜 156 인가 — 사람이 6초를 30% 내리라고 했다</h2>
 	 *
-	 * <p>사람이 정한 것은 「패턴이 아니라 배경」과 「열 곳」뿐이다. 주기는 <b>새로 만들지 않았다</b> —
-	 * 「낙뢰」가 이미 <b>주기 120틱 · 한 번에 열 곳 · 피해 35</b> 이고, 개수가 10 이 된 지금 이
-	 * 배경은 반경(2.55 대 3)과 놓는 자리(드래곤 주변 대 아레나 전체)만 다른 <b>같은 카드</b>다.
-	 * 실제로 시험 서버에서 맞아 보고 정해진 값이 그쪽에 있으므로 그것을 그대로 쓴다.
+	 * <p>사람 말: <b>「번개 주기를 30프로 내리고」</b>. 「주기를 내린다」가 두 뜻으로 읽히는데
+	 * 확인한 답이 <b>「덜 자주」</b>였다 — 곧 주기를 1.3배로 늘린다. 120 × 1.3 = <b>156</b> 이고
+	 * 6초 → <b>7.8초</b>다.
+	 *
+	 * <h2>⚠⚠ 왜 전에는 120 이었나 — 그 근거가 이제 깨졌다</h2>
+	 *
+	 * <p>사람이 정한 것은 「패턴이 아니라 배경」과 「열 곳」뿐이었고, 주기는 <b>새로 만들지
+	 * 않았다</b> — 「낙뢰」가 이미 <b>주기 120틱 · 한 번에 열 곳 · 피해 35</b> 이고, 개수가 10 이
+	 * 된 그때 이 배경은 반경(2.55 대 3)과 놓는 자리(드래곤 주변 대 아레나 전체)만 다른 <b>같은
+	 * 카드</b>였다. 실제로 시험 서버에서 맞아 보고 정해진 값이 그쪽에 있었으므로 그것을 그대로
+	 * 썼다.
+	 *
+	 * <p><b>이제 둘은 다른 값이다.</b> 사람이 내리라고 한 것은 <b>최후의 저항 쪽뿐</b>이고
+	 * 「낙뢰」 카드({@code sharedfate:lightning_storm})는 <b>6초 그대로</b> 둔다. 한쪽을 고칠 때
+	 * 다른 쪽을 따라 고치지 말 것 — 「낙뢰」를 156 으로 올리면 사람이 건드리라고 하지 않은 카드가
+	 * 묶여서 움직이고, 여기를 120 으로 되돌리면 사람이 내리라고 한 것이 조용히 사라진다.
+	 * {@code DragonLastStandPatternsTest} 가 <b>둘이 같아지면 터지게</b> 뒤집어 두었다.
+	 * <b>개수(열 곳)는 여전히 같은 값</b>이다 — 바꾸라고 한 것은 주기 하나뿐이다.
 	 *
 	 * <p>값으로도 맞는다.
 	 *
 	 * <ul>
-	 *   <li><b>「쉬는 틈 없이 계속 돈다」</b> — 한 볼리가 예고 60 + 여운 10 = <b>70틱</b>을 쓰므로
-	 *       120틱 주기에서 <b>바닥이 깨끗한 시간이 50틱(2.5초)뿐</b>이다. 번개는 사실상 언제나 떠 있다</li>
-	 *   <li><b>「너무 잦으면 다른 패턴을 볼 여유가 없다」</b> — 그 50틱이 <b>날개 고리와 부채꼴
-	 *       테두리만 떠 있는 시간</b>이다. 70틱으로 붙여 돌리면 노란 고리가 끊기지 않아 빨간
-	 *       테두리가 그 위에 묻힌다</li>
+	 *   <li><b>「쉬는 틈 없이 계속 돈다」는 아직 참이다</b> — 한 볼리가 예고 60 + 여운 10 =
+	 *       <b>70틱</b>을 쓰므로 156틱 주기에서 <b>바닥이 깨끗한 시간이 86틱(4.3초)</b>이다. 번개가
+	 *       보이는 시간이 주기의 45% 라 여전히 배경으로 읽힌다</li>
+	 *   <li><b>부채꼴 테두리를 볼 틈이 그만큼 넓어진다</b> — 그 86틱이 <b>날개 고리와 부채꼴
+	 *       테두리만 떠 있는 시간</b>이고, 사람이 내리라고 한 것이 이 틈이다. 70틱으로 붙여 돌리면
+	 *       노란 고리가 끊기지 않아 빨간 테두리가 그 위에 묻힌다</li>
+	 *   <li><b>그래도 「가끔 오는 사건」은 아니다</b> — 그 86틱이 <b>가장 짧은 패턴(날개 퍼덕이기
+	 *       100틱)보다 짧다.</b> 곧 번개를 한 번도 안 보고 지나가는 패턴이 없다. 주기를 더 늘릴
+	 *       사람은 그 100틱이 천장임을 알고 늘릴 것 — 시험이 그 선을 패턴 길이에서 직접 뽑는다</li>
 	 *   <li><b>연달아 맞아도 세 발까지 시간이 있다</b> — 무장 기준 한 발 6.93 이라 세 발이 20.79 로
-	 *       전멸인데, 세 발 사이가 <b>240틱(12초)</b> 이다. 그 사이에 자연 회복도 돌고 무엇보다
+	 *       전멸인데, 세 발 사이가 <b>312틱(15.6초)</b> 이다. 그 사이에 자연 회복도 돌고 무엇보다
 	 *       세 번 다 3초 예고를 무시해야 한다</li>
 	 * </ul>
 	 *
-	 * <p>115초 페이즈에 <b>19 볼리</b>가 돈다({@code (2300 − 60) ÷ 120}).
+	 * <p>115초 페이즈에 <b>14 볼리</b>가 돈다({@code (2300 − 60) ÷ 156}).
 	 */
-	static final int LIGHTNING_PERIOD_TICKS = 120;
+	static final int LIGHTNING_PERIOD_TICKS = 156;
 	/**
 	 * 노란 고리 한 바퀴를 <b>몇 틱에 나눠</b> 그릴지. {@code TrialEndRain} 의 상한을 그대로 쓴다.
 	 *
@@ -547,8 +875,47 @@ public final class DragonLastStandPatterns {
 	private static final double EDGE_WALL_GAP = 1.0;
 	/** 지면에서 띄우는 높이. 0 이면 블록 면에 파묻혀 안 보인다. */
 	private static final double GROUND_OFFSET = 0.15;
-	/** 부채꼴 안에 하나 더 그리는 호의 반경 비율. 「어디까지가 20칸인가」를 눈이 가늠하게 한다. */
-	private static final double CONE_MID_ARC = 0.5;
+	/**
+	 * 부채꼴 안에 더 그리는 호의 반경 비율. 「어디까지가 20칸인가」를 눈이 가늠하게 한다.
+	 *
+	 * <p>전에는 <b>0.5 하나</b>였다. 사람이 <b>「각각 패턴을 쓴다느 느낌이 들게 이펙트를 키우든 좀더
+	 * 가시성이 좋앗으면좋겟어」</b>라고 해서 셋으로 늘렸다 — 안쪽 호가 하나뿐이면 20칸짜리 부채꼴
+	 * 안이 <b>거의 비어 있어</b> 테두리만 보이고, 부채꼴 안에 선 사람은 그 테두리를 시선과 나란하게
+	 * 본다(그래서 흰 벽이 있다).
+	 *
+	 * <p>⚠ 1.0 을 넣지 말 것. 그것이 {@link #CONE_RANGE} 의 호이고 이미 따로 그린다 — 두 번 찍으면
+	 * 점만 두 배다.
+	 */
+	private static final double[] CONE_ARC_FRACTIONS = {0.25, 0.5, 0.75};
+	/**
+	 * 고리를 <b>벽으로</b> 세울 때의 점 간격(칸).
+	 *
+	 * <p>바닥 고리의 간격({@code TrialWarning.POINT_GAP} = 0.5)보다 성기다. 벽은 「경계가 정확히
+	 * 어디인가」를 말하는 갈래가 아니라 <b>「저기 무엇인가 서 있다」</b>를 말하는 갈래라, 눈높이에서
+	 * 세로로 선 것은 1.5칸 간격이어도 한 겹으로 읽힌다 — 「착지 충격」이 같은 수법을 쓰면서 적어 둔
+	 * 근거가 그것이다({@code TrialLandingShock.EDGE_RISE_SPEED}).
+	 */
+	private static final double RING_WALL_GAP = 1.5;
+
+	/**
+	 * {@code CritParticle} 이 받은 속도에 곱하는 값. 26.3 클래스 파일에서 확인했다.
+	 *
+	 * <p>⚠ 이 셋이 {@code TrialLandingShock} 에도 있다. 그쪽이 {@code private} 이고 <b>그 파일을
+	 * 읽기만 하기로 정해져 있어서</b> 열어 달라고 고치지 않았다 — 같은 것이 두 벌인 사실은 인계에
+	 * 적어 두었다. ⚠ <b>판을 올려 한쪽을 고치면 반드시 다른 쪽도 볼 것.</b>
+	 *
+	 * <p>{@code CritParticle} 의 생성자가 상위에 {@code 0,0,0} 을 넘기고 나서
+	 * {@code xd = xd × 0.1 + 받은 속도 × 0.4} 를 한다. 앞 항이 0 이므로 <b>방향이 정확히 보존되고
+	 * 크기만 0.4배</b>다 — 그래서 이 점으로 <b>방향</b>을 말할 수 있다. ⚠ 먼지
+	 * ({@code DustParticleBase})는 그렇지 않다: 상위 생성자가 받은 속도를 <b>정규화해 무작위
+	 * 크기로 다시 싣고</b> 거기에 0.1 을 곱하므로 흐르는 거리가 0.15칸이다. <b>방향을 말해야 하는
+	 * 자리에 먼지를 쓰지 말 것.</b>
+	 */
+	private static final double CRIT_SPEED_FACTOR = 0.4;
+	/** {@code CritParticle} 의 마찰. {@code Particle.tick} 이 매 틱 속도에 곱한다. */
+	private static final double CRIT_FRICTION = 0.7;
+	/** {@code CritParticle} 수명의 <b>하한</b>(틱). {@code max(1, 6.0 / (굴림×0.8 + 0.6))} 이 4~10 이다. */
+	private static final int CRIT_MIN_LIFETIME = 4;
 
 	// ------------------------------------------------------------------ 한 판 동안 붙잡아 두는 것
 
@@ -655,6 +1022,27 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>띄우면 바닥 마찰이 안 먹어 적힌 거리를 끝까지 날아가고 낙하 피해도 붙는다. 「착지 충격」·
 	 * 「엔더폭풍」이 같은 이유로 세로 속도를 읽어서 그대로 돌려놓는다.
+	 *
+	 * <h2>⚠ 그런데 <b>사람이 스스로 뛰면</b> 천장 둘로는 모자랐다</h2>
+	 *
+	 * <p>사람 말: <b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든? 그것도
+	 * 조심해야겟어」</b>. 천장 둘은 <b>섬 밖으로 나가는 것</b>을 막는 장치이고, 떠 있는 사람이
+	 * <b>천장 안에서 다섯 배 멀리 가는 것</b>은 막지 않는다 — 바닥 마찰이 빠지기 때문이다.
+	 * {@link #AIRBORNE_PUSH_SCALE} 가 그쪽을 따로 막는다. <b>셋 다 있어야 하고 셋이 다른 일을
+	 * 한다</b>: 천장 둘은 「허공으로 못 나간다」, 비율은 「점프가 이득도 손해도 아니다」다.
+	 *
+	 * <h2>세기를 절반으로 줄였다</h2>
+	 *
+	 * <p><b>「30프로미만 2페이지에서 밀쳐지는게 너무심해 지금보다 50프로는 안밀쳐지게하고」</b> —
+	 * {@link #WING_PUSH_CUT} 이 그 몫이다. 피해가 0 인 패턴이라 세기를 줄여도 잃는 것이 없고,
+	 * 요구하는 행동(비켜서 다시 붙기)은 그대로 남는다.
+	 *
+	 * <h2>⚠ 연출이 「밀어낸다」를 말해야 한다</h2>
+	 *
+	 * <p>파랑 고리 둘은 <b>가만히 있는 세기 지도</b>라 「여기가 세다」만 말한다. 사람이
+	 * <b>「빨아드리는거랑 밀치는거랑 이펙트가 너무 구분이안됨」</b>이라고 한 까닭이 그것이고,
+	 * 그래서 {@link #wingWave} 가 <b>바깥으로</b> 번지는 가닥을 더한다 — 공허 흡입의
+	 * {@link #streamSuck} 과 글자 그대로 반대다.
 	 */
 	private static void wingBeat(ServerLevel end, EnderDragon dragon, List<ServerPlayer> members,
 			long at, long now, int step) {
@@ -664,15 +1052,22 @@ public final class DragonLastStandPatterns {
 		ParticleOptions shove = TrialWarning.dust(TrialWarning.Colors.SHOVE);
 		TrialWarning.markGround(end, center, WING_NEAR_RADIUS, shove);
 		TrialWarning.markGround(end, center, WING_STRONG_RADIUS, shove);
+		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
+		// 그 두 고리를 벽으로도 세운다. 바닥 선은 서서 보는 눈높이에서 시선과 나란해 거의 안 보인다.
+		ringWall(end, ground, center, WING_NEAR_RADIUS);
+		ringWall(end, ground, center, WING_STRONG_RADIUS);
+		// 바깥으로 흐르는 가닥. 공허 흡입의 안쪽 흐름과 정확히 반대다 — 사람이 「빨아드리는거랑
+		// 밀치는거랑 이펙트가 너무 구분이안됨」이라고 한 자리가 여기와 그쪽 둘이다.
+		wingWave(end, ground, center, step);
 		if (step % WING_PULSE_TICKS != 0 || step / WING_PULSE_TICKS >= WING_PULSES) {
 			return;
 		}
+		int pulse = step / WING_PULSE_TICKS;
 		// 사람마다 그 자리에서 정확히 한 번 울린다. 팀원 루프에서 level.playSound 를 부르면
-		// 모여 있는 넷이 각자 네 겹으로 듣는다.
-		TrialWarning.playEach(end, members, SoundEvents.ENDER_DRAGON_FLAP, 1.0F, 0.9F);
+		// 모여 있는 넷이 각자 네 겹으로 듣는다. 음높이가 여덟 번에 걸쳐 올라 「몇 번째인가」가 들린다.
+		TrialWarning.playEach(end, members, SoundEvents.ENDER_DRAGON_FLAP, 1.0F, flapPitch(pulse));
 		end.sendParticles(ParticleTypes.GUST_EMITTER_LARGE, true, false,
 				center.x, center.y + 1.0, center.z, 1, 0.0, 0.0, 0.0, 0.0);
-		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
 		for (ServerPlayer member : members) {
 			if (member.isSpectator()) {
 				continue;
@@ -681,7 +1076,30 @@ public final class DragonLastStandPatterns {
 		}
 	}
 
-	/** 한 사람을 바깥으로 민다. 천장 둘을 지난 뒤에만 실제로 민다. */
+	/**
+	 * 그 번치의 날갯짓 음높이. 낮은 데서 시작해 <b>마지막 한 번이 가장 높다.</b>
+	 *
+	 * <p>나누는 것이 {@link #WING_PULSES} 가 아니라 <b>{@code WING_PULSES − 1}</b> 이다. 개수로
+	 * 나누면 마지막 번치가 {@code 7/8} 진행에 머물러 {@link #WING_FLAP_PITCH_HIGH} 가 <b>한 번도
+	 * 나지 않는다</b> — 부채꼴의 {@link #chargePitch} 가 같은 함정을 같은 방법으로 피한다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 여덟 번을 직접 굴려 본다.
+	 */
+	static float flapPitch(int pulse) {
+		int last = WING_PULSES - 1;
+		if (last <= 0) {
+			return WING_FLAP_PITCH_HIGH;
+		}
+		float progress = Math.max(0.0F, Math.min(1.0F, (float) pulse / last));
+		return WING_FLAP_PITCH_LOW + (WING_FLAP_PITCH_HIGH - WING_FLAP_PITCH_LOW) * progress;
+	}
+
+	/**
+	 * 한 사람을 바깥으로 민다. 천장 둘을 지난 뒤에만 실제로 민다.
+	 *
+	 * <p>⚠ <b>속도를 덮어쓴다.</b> 더하면 달리던 사람이 들고 있던 수평 속도가 얹혀 천장이 계산한
+	 * 목적지를 지나쳐 간다 — 그 한 줄이 「달리는 중에 밀려도 안전하다」의 근거다.
+	 */
 	private static void shove(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
 			Vec3 center, long at, long now) {
 		double dx = member.getX() - center.x;
@@ -702,7 +1120,7 @@ public final class DragonLastStandPatterns {
 		if (!(distance > 0.0)) {
 			return;
 		}
-		double speed = TrialEnderStorm.pushVelocity(distance);
+		double speed = shoveSpeed(distance, isAirborne(end, ground, member));
 		Vec3 motion = member.getDeltaMovement();
 		// 세로 속도는 읽어서 그대로 돌려놓는다. 더하지 않고 덮어쓰는 것은 들고 있던 수평
 		// 속도가 얹혀 천장이 계산한 목적지를 넘지 않게 하기 위해서다.
@@ -713,6 +1131,117 @@ public final class DragonLastStandPatterns {
 		DragonLastStandZone.noteShoved(member.getUUID(), at, now);
 		end.sendParticles(ParticleTypes.GUST, true, false,
 				member.getX(), member.getY() + 0.1, member.getZ(), 1, 0.0, 0.0, 0.0, 0.0);
+	}
+
+	/**
+	 * ⚠⚠ 이 번치에 실을 <b>처음 속도</b>(칸/틱). <b>공중이면 바닥과 같은 거리만 가게 깎는다.</b>
+	 *
+	 * <p>사람 말: <b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든? 그것도
+	 * 조심해야겟어」</b>. 왜 떠 있으면 다섯 배가 되는지와 왜 비율이 0.198 인지는
+	 * {@link #AIRBORNE_PUSH_SCALE} 에 적어 두었다.
+	 *
+	 * <p>천장에 걸러진 {@code distance} 를 받는다 — 그러니 <b>이 함수가 하는 일은 세기뿐이고
+	 * 안전은 그 앞의 둘이 지킨다.</b> 거꾸로도 참이다: 이 함수가 1 을 돌려주든 0.1 을 돌려주든
+	 * 사람이 섬 밖으로 나가지 않는다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이
+	 * <b>{@code 공중 이동(공중 속도) == 바닥 이동(바닥 속도)}</b> 를 거리마다 직접 굴려 본다.
+	 */
+	static double shoveSpeed(double distance, boolean airborne) {
+		double speed = TrialEnderStorm.pushVelocity(distance);
+		return airborne ? speed * AIRBORNE_PUSH_SCALE : speed;
+	}
+
+	/**
+	 * 그 속도로 <b>떠 있는</b> 몸이 끝까지 나아가는 수평 거리(칸).
+	 *
+	 * <p>{@code v + 0.91v + 0.91²v + … = v ÷ (1 − 0.91)} 이다. {@code TrialEnderStorm.pushVelocity}
+	 * 가 거꾸로 쓰는 바로 그 식이라, 둘을 이어 붙이면 「공중에서는 적힌 거리를 그대로 간다」가 나온다.
+	 */
+	static double airborneTravel(double speed) {
+		return Math.max(0.0, speed) / (1.0 - TrialEnderStorm.AIR_DRAG);
+	}
+
+	/**
+	 * 그 속도로 <b>바닥에 붙은</b> 몸이 끝까지 나아가는 수평 거리(칸).
+	 *
+	 * <p>감쇠가 {@value #GROUND_DRAG} 라 {@code v ÷ 0.454} 이고, 적힌 거리의 <b>5분의 1 남짓</b>
+	 * 이라는 그 말의 출처다.
+	 */
+	static double groundedTravel(double speed) {
+		return Math.max(0.0, speed) / (1.0 - GROUND_DRAG);
+	}
+
+	/**
+	 * 이 사람이 <b>떠 있는가.</b>
+	 *
+	 * <h2>⚠ 둘 중 하나만 참이어도 떠 있는 것으로 본다</h2>
+	 *
+	 * <ul>
+	 *   <li>{@code onGround()} 가 거짓 — 가장 바로인데 <b>클라이언트가 보내 준 깃발</b>이다</li>
+	 *   <li>발이 그 자리 지표보다 {@value #AIRBORNE_LIFT} 칸 넘게 높다 — <b>서버만 아는 하이트맵</b>
+	 *       이라 거짓 보고로 뒤집을 수 없다</li>
+	 * </ul>
+	 *
+	 * <p>「또는」인 것이 요점이다. 어긋나는 방향이 언제나 <b>덜 미는 쪽</b>이어야 한다는 것이 이
+	 * 저장소의 태도이고({@code TrialEnderStorm.pushVelocity} 가 그 문장을 적어 두었다), 땅에 선
+	 * 사람을 공중으로 잘못 보면 <b>조금 덜 밀리고</b> 그 반대는 <b>저 끝까지 날아간다.</b>
+	 *
+	 * <p>땅이 아예 없으면({@code NO_GROUND}) 허공 위다 — 그때도 떠 있는 것으로 본다. 그 자리에서
+	 * 미는 것은 애초에 {@code groundedReach} 가 막지만, 이 물음이 먼저 틀릴 이유는 없다.
+	 */
+	private static boolean isAirborne(ServerLevel end, TrialEnderPulse.Ground ground,
+			ServerPlayer member) {
+		if (!member.onGround()) {
+			return true;
+		}
+		int surface = ground.surfaceAt(end, member.getX(), member.getZ());
+		if (surface == TrialEnderPulse.NO_GROUND) {
+			return true;
+		}
+		return member.getY() - surface > AIRBORNE_LIFT;
+	}
+
+	/**
+	 * 바깥으로 번져 나가는 가닥. <b>번치마다 한 벌</b>이고 12틱에 20칸을 간다.
+	 *
+	 * <p>앞머리가 {@link #wingWaveRadius} 로 나아가고, 그 자리마다 가닥 하나가 <b>바깥쪽</b>으로
+	 * 흐른다. 공허 흡입의 {@link #streamSuck} 과 <b>같은 점 · 같은 개수 · 같은 길이</b>이고
+	 * <b>방향만 반대</b>다.
+	 *
+	 * <p>번치마다 갈래를 반 칸 돌린다. 안 돌리면 여덟 번이 모두 같은 스물네 줄을 지나 바닥에
+	 * <b>같은 자국</b>이 쌓이고, 그러면 「번졌다」가 아니라 「거기 늘 있었다」로 보인다.
+	 */
+	private static void wingWave(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center,
+			int step) {
+		int pulse = step / WING_PULSE_TICKS;
+		if (pulse >= WING_PULSES) {
+			return;
+		}
+		double front = wingWaveRadius(step);
+		double turn = Math.PI * pulse / WING_GUST_SPOKES;
+		for (int spoke = 0; spoke < WING_GUST_SPOKES; spoke++) {
+			double angle = (Math.PI * 2.0 * spoke) / WING_GUST_SPOKES + turn;
+			double outX = Math.cos(angle);
+			double outZ = Math.sin(angle);
+			streak(end, ground, ParticleTypes.CRIT, center.x + outX * front,
+					center.z + outZ * front, outX, outZ, WING_GUST_DRIFT);
+		}
+	}
+
+	/**
+	 * 그 틱에 앞머리가 서 있는 반경(칸). <b>번치마다 0 에서 {@link #WING_FADE_RADIUS} 까지다.</b>
+	 *
+	 * <p>12틱에 20칸이라 틱당 1.67칸이다. 가닥 하나가 3칸을 흐르므로({@link #critDrift}) 앞머리
+	 * 뒤로 두 틱쯤의 꼬리가 남아 <b>번져 나가는 띠</b>로 보인다.
+	 *
+	 * <p>{@code +1} 을 하는 것은 첫 틱에 반경 0 에 스물네 점이 겹쳐 찍히지 않게 하는 것이다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 100틱을 통째로 훑는다.
+	 */
+	static double wingWaveRadius(int step) {
+		int into = Math.floorMod(step, WING_PULSE_TICKS);
+		return (WING_FADE_RADIUS * (into + 1)) / WING_PULSE_TICKS;
 	}
 
 	/**
@@ -1045,7 +1574,10 @@ public final class DragonLastStandPatterns {
 			}
 		}
 		arc(end, ground, deadly, apex, CONE_RANGE, MARK_GAP);
-		arc(end, ground, deadly, apex, CONE_RANGE * CONE_MID_ARC, EDGE_WALL_GAP);
+		// 안쪽 호 셋. 하나뿐이던 때는 20칸짜리 부채꼴 안이 거의 비어 있었다.
+		for (double fraction : CONE_ARC_FRACTIONS) {
+			arc(end, ground, deadly, apex, CONE_RANGE * fraction, EDGE_WALL_GAP);
+		}
 	}
 
 	/** 부채꼴의 호 하나. {@code gap} 이 점 사이 거리다. */
@@ -1095,6 +1627,87 @@ public final class DragonLastStandPatterns {
 		}
 		end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
 				1, 0.0, 0.0, 0.0, 0.0);
+	}
+
+	/**
+	 * 점 하나를 그 자리 지표에서 <b>한 방향으로 흘려보낸다.</b> 이것이 「빨아들임」과 「밀어냄」을
+	 * 가르는 유일한 갈래다.
+	 *
+	 * <p>{@link #dot} 의 {@code rise} 와 <b>같은 수법</b>이다 — 개수를 0 으로 보내면 뒤의 세 값이
+	 * 방향이고 마지막이 속도로 읽혀 점 하나가 그쪽으로 쏘아진다. 그쪽은 위로 쏘아 벽을 세우고
+	 * 여기는 <b>수평으로</b> 쏘아 흐름을 만든다.
+	 *
+	 * <p>⚠ <b>세로를 0 으로 둔다.</b> 흡입이 사람을 위로 당기지 않는데 입자가 위로 빨려 올라가면
+	 * 그것이 거짓 신호다({@link #SUCK_MAX_INWARD}).
+	 *
+	 * <p>⚠ <b>{@code type} 은 {@code CRIT} 이어야 한다.</b> 먼지는 방향만 남기고 크기를 제멋대로
+	 * 다시 굴려 0.15칸밖에 못 간다 — 근거는 {@link #CRIT_SPEED_FACTOR} 에 있다.
+	 *
+	 * <p>땅이 없으면 찍지 않는다. {@link #dot} 과 같은 까닭이다.
+	 *
+	 * @param dirX  흐를 방향의 x 성분. <b>단위 벡터여야 한다</b> — 크기는 {@code speed} 가 정한다
+	 * @param dirZ  흐를 방향의 z 성분
+	 * @param speed 쏘는 세기. 실제로 흐르는 거리는 {@link #critDrift} 가 센다
+	 */
+	private static void streak(ServerLevel end, TrialEnderPulse.Ground ground, ParticleOptions type,
+			double x, double z, double dirX, double dirZ, double speed) {
+		int surface = ground.surfaceAt(end, x, z);
+		if (surface == TrialEnderPulse.NO_GROUND) {
+			return;
+		}
+		end.sendParticles(type, true, false, x, surface + GROUND_OFFSET, z,
+				0, dirX, 0.0, dirZ, speed);
+	}
+
+	/**
+	 * 수평으로 쏜 {@code CRIT} 이 <b>수명이 가장 짧을 때도</b> 흐르는 거리(칸).
+	 *
+	 * <p>{@code TrialLandingShock.riseHeight} 와 같은 식인데 <b>중력이 없다</b> — 26.3
+	 * {@code Particle.tick} 이 중력을 세로 속도에서만 빼기 때문이다(클래스 파일로 확인했다).
+	 * 그래서 수평은 받은 속도의 0.4배에서 마찰 0.7 로만 줄어든다.
+	 *
+	 * <p><b>하한을 재는 것</b>이 요점이다. 수명이 4~10틱으로 굴려지므로 어떤 점은 일찍 죽는다 —
+	 * 「가닥이 보인다」는 <b>가장 짧게 사는 점</b>으로도 참이어야 한다. 긴 쪽(10틱)은 1.3배다.
+	 *
+	 * <p>⚠ 바닥에 닿은 뒤에는 {@code Particle.tick} 이 수평 속도에 0.7 을 한 번 더 곱한다. 그래도
+	 * {@value #CRIT_MIN_LIFETIME} 틱 안에는 닿지 않는다 — 중력이 {@code 0.04 × 0.5} 라 네 틱에
+	 * 0.15칸을 겨우 내려오고 그것이 {@link #GROUND_OFFSET} 이다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.
+	 */
+	static double critDrift(double speed) {
+		double velocity = Math.max(0.0, speed) * CRIT_SPEED_FACTOR;
+		double drift = 0.0;
+		for (int tick = 0; tick < CRIT_MIN_LIFETIME; tick++) {
+			drift += velocity;
+			velocity *= CRIT_FRICTION;
+		}
+		return drift;
+	}
+
+	/**
+	 * 고리 하나를 <b>벽으로</b> 세운다. 점은 {@link #ringWallPoints} 개이고 전부 위로 쏘아진다.
+	 *
+	 * <p>나눠 그리지 않는다. {@code CRIT} 수명이 4~10틱이라 나눌 폭이 3 뿐인데
+	 * ({@link #CROSS_WALL_STRIDE}) 반경 4·12 짜리 고리 둘이 {@value #RING_WALL_GAP} 간격이면
+	 * 통틀어 68점뿐이라 나눠서 얻을 것이 없다.
+	 */
+	private static void ringWall(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center,
+			double radius) {
+		int points = ringWallPoints(radius);
+		for (int index = 0; index < points; index++) {
+			double angle = (Math.PI * 2.0 * index) / points;
+			dot(end, ground, ParticleTypes.CRIT, center.x + Math.cos(angle) * radius,
+					center.z + Math.sin(angle) * radius, TrialLandingShock.EDGE_RISE_SPEED);
+		}
+	}
+
+	/** 그 반경의 벽에 세울 점 수. 둘레를 {@value #RING_WALL_GAP} 으로 나눈다. */
+	static int ringWallPoints(double radius) {
+		if (!(radius > 0.0)) {
+			return 1;
+		}
+		return Math.max(1, (int) Math.ceil((Math.PI * 2.0 * radius) / RING_WALL_GAP));
 	}
 
 	/**
@@ -1187,6 +1800,19 @@ public final class DragonLastStandPatterns {
 	 * <p>⚠ <b>예고 중에 당기지 않는 것이 「달리면 벗어난다」의 절반이다.</b> 3초는 검은 원을 보고
 	 * 방향을 정하는 시간이고, 그 3초에 달리면 17칸을 간다 — {@link #SUCK_SPRINT_RATIO} 의 표를 볼 것.
 	 *
+	 * <h2>⚠ 입자가 <b>드래곤 쪽으로</b> 흐른다 — 사람이 그것을 말했다</h2>
+	 *
+	 * <p><b>「빨아드리는거랑 밀치는거랑 이펙트가 너무 구분이안됨 … 예를들어 빨아드리는 패턴이면
+	 * 입자들이 드래곤에게 빨려들어가는 입자가 잘보이면 이해하잖아」</b>
+	 *
+	 * <p>전에 있던 것(검은 원 · 빨간 고리 · 끌려가는 사람 발밑의 재) 셋이 모두 <b>가만히 있는
+	 * 표식</b>이라 날개 퍼덕이기의 파랑 고리 둘과 「모양만 다른 원」으로 보였다. {@link #streamSuck}
+	 * 이 그 답이고, <b>예고 3초 동안에도 흐른다</b> — 어느 쪽으로 달릴지 정하는 그 3초에 가장
+	 * 보여야 한다.
+	 *
+	 * <p>⚠ <b>입자도 세로를 한 톨도 쓰지 않는다.</b> 아래 세로 규칙과 같은 자리다 — 사람이 들리지
+	 * 않는데 입자가 위로 빨려 올라가면 그것이 거짓 신호다.
+	 *
 	 * <h2>피해원은 {@code lightningBolt()} 다</h2>
 	 *
 	 * <p>사람이 적어 둔 것이 <b>「피해 35(무장 기준 6.9)」</b>이므로 피해원이 그 셈을 만들어야
@@ -1256,8 +1882,65 @@ public final class DragonLastStandPatterns {
 			}
 		}
 		// 경계는 규약의 빨강이다. 「서 있으면 죽는다」를 말하는 갈래는 여기 하나다.
-		TrialWarning.markGround(end, groundedCenter(end, ground, center), SUCK_RADIUS,
+		Vec3 floor = groundedCenter(end, ground, center);
+		TrialWarning.markGround(end, floor, SUCK_RADIUS,
 				TrialWarning.dust(TrialWarning.Colors.DEADLY));
+		// 그 경계를 벽으로도 세운다. 원 안에 서 있는 사람은 바닥 고리를 시선과 나란하게 본다.
+		ringWall(end, ground, floor, SUCK_RADIUS);
+		// 바깥에서 드래곤 쪽으로 흐르는 가닥. 사람이 말한 그대로다 — 「입자들이 드래곤에게
+		// 빨려들어가는 입자가 잘보이면 이해하잖아」.
+		streamSuck(end, ground, center, step);
+	}
+
+	/**
+	 * ⚠ <b>바깥에서 드래곤 쪽으로 흐르는 가닥.</b> 이 메서드가 사람의 지적에 대한 답이다.
+	 *
+	 * <p>생기는 자리가 {@link #suckStreamRadius} 로 <b>안쪽으로 들어오고</b>, 그 자리마다 가닥
+	 * 하나가 다시 <b>안쪽으로</b> 흐른다. 곧 <b>자리도 흐름도 둘 다 드래곤 쪽</b>이다 — 하나만
+	 * 안쪽이면 「원이 작아진다」나 「점이 떨린다」로 읽힌다.
+	 *
+	 * <p>날개 퍼덕이기의 {@link #wingWave} 와 <b>글자 그대로 반대</b>다. 같은 {@code CRIT} ·
+	 * 같은 갈래 수({@link #SUCK_STREAM_SPOKES}) · 같은 세기({@link #SUCK_STREAM_DRIFT})이고
+	 * 부호만 뒤집혀 있다. 종류나 세기를 달리하면 「다른 패턴이다」만 말하고 「반대되는
+	 * 패턴이다」는 말하지 못한다.
+	 *
+	 * <p>⚠ <b>예고 3초 동안에도 흐른다.</b> 손은 아직 닿지 않지만({@link #voidSuction}) 그 3초가
+	 * 「어느 쪽으로 달릴지 정하는」 시간이라 <b>그때 가장 보여야 한다.</b> 흐름이 당김과 함께
+	 * 시작하면 이미 늦다.
+	 */
+	private static void streamSuck(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center,
+			int step) {
+		for (int phase = 0; phase < SUCK_STREAM_PHASES; phase++) {
+			double radius = suckStreamRadius(step, phase);
+			for (int spoke = 0; spoke < SUCK_STREAM_SPOKES; spoke++) {
+				// 벌마다 갈래를 반 칸 어긋나게 둔다. 겹쳐 두면 같은 줄에 두 점이 포개진다.
+				double angle = (Math.PI * 2.0 * spoke) / SUCK_STREAM_SPOKES
+						+ (Math.PI * phase) / SUCK_STREAM_SPOKES;
+				double outX = Math.cos(angle);
+				double outZ = Math.sin(angle);
+				streak(end, ground, ParticleTypes.CRIT, center.x + outX * radius,
+						center.z + outZ * radius, -outX, -outZ, SUCK_STREAM_DRIFT);
+			}
+		}
+	}
+
+	/**
+	 * 그 틱에 그 벌의 가닥이 생기는 반경(칸). <b>{@link #SUCK_REACH}(20)에서
+	 * {@link #SUCK_RADIUS}(4)까지 되풀이해 들어온다.</b>
+	 *
+	 * <p>{@link #SUCK_RADIUS} 아래로 내려가지 않는 것은 그 안이 <b>터질 때 아픈 자리</b>라 검은
+	 * 속이 이미 채워져 있기 때문이다 — 그 위에 흰 가닥을 겹치면 검정이 묻힌다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 160틱을 통째로 훑어 <b>언제나 4~20 사이</b>인지,
+	 * 그리고 벌 둘이 <b>서로 다른 반경</b>에 있는지 본다.
+	 *
+	 * @param phase 몇 번째 벌인가. 벌마다 한 바퀴를 고르게 나눠 어긋난다
+	 */
+	static double suckStreamRadius(int step, int phase) {
+		double span = SUCK_REACH - SUCK_RADIUS;
+		double offset = (span * Math.floorMod(phase, SUCK_STREAM_PHASES)) / SUCK_STREAM_PHASES;
+		double travelled = (Math.max(0, step) * SUCK_STREAM_SPEED + offset) % span;
+		return SUCK_REACH - travelled;
 	}
 
 	/** 속을 채우는 고리 한 겹의 점 수. 값에서 세는 자리와 그리는 자리가 같은 식이어야 한다. */
@@ -1273,7 +1956,7 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>{@code TrialWarning.markGround} 는 중심의 {@code y} 를 그대로 쓰므로 드래곤 발밑을 그냥
 	 * 넘기면 고리가 <b>포디움 높이에 떠서</b> 섬 표면에 선 사람 눈에는 허공에 뜬 고리가 된다
-	 * ({@link DragonLastStandDome#baselineY} 의 「섬 표면보다 네 칸 높다」). 표식이 거짓말하지 않게
+	 * ({@link DragonLastStandDome#domeOriginY} 의 「섬 표면보다 네 칸 높다」). 표식이 거짓말하지 않게
 	 * 그 자리의 지표로 내린다 — 땅이 없으면 원래 값을 쓴다(그 경우 그릴 자리가 애초에 없다).
 	 */
 	private static Vec3 groundedCenter(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center) {
@@ -1446,6 +2129,26 @@ public final class DragonLastStandPatterns {
 	 * <p>⚠ <b>터지는 틱과 다음 예고가 시작하는 틱이 같다.</b> 1.5초 사이에 「아무 표식도 없는 틈」을
 	 * 두면 사람이 그 1.5초를 쉬는 시간으로 읽고, 그러면 셋을 잇달아 낸 뜻이 없어진다.
 	 *
+	 * <h2>⚠⚠ 사람이 <b>가장 세게 지적한 것이 이 패턴의 가시성</b>이다</h2>
+	 *
+	 * <p><b>「특히 십자가 공격이 너무 잘 안보엿어」</b>
+	 *
+	 * <p>왜 안 보였는지가 값에 그대로 있었다 — <b>80칸짜리 직선 넷에 1칸 간격의 작은 점</b>을
+	 * <b>여섯 틱에 나눠</b> 뿌리는데, 둘째·셋째 예고가 30틱뿐이라 성긴 구간이 예고의 5분의 1이었다.
+	 * 20칸 밖에서 보면 그것은 바닥 무늬와 구별되지 않고, 선 안에 선 사람은 바닥 선을 시선과
+	 * 나란하게 보므로 아예 못 본다.
+	 *
+	 * <p>답이 넷이다. <b>어디가 위험한가</b>를 앞의 셋이, <b>언제 터지는가</b>를 넷째가 말한다.
+	 *
+	 * <ol>
+	 *   <li><b>먼지를 1.5배로</b> — 크기와 수명이 함께 오른다({@link #CROSS_DUST_SCALE})</li>
+	 *   <li><b>같은 자리에 흰 기둥</b> — 바닥 선이 그대로 벽이 된다({@link #markCross})</li>
+	 *   <li><b>터질 때 솟는 기둥</b> — 눕는 {@code SWEEP_ATTACK} 만으로는 터진 것이 안 보인다
+	 *       ({@link #flashCross})</li>
+	 *   <li><b>균열음이 0.5초마다, 음높이가 오른다</b> — 넷 가운데 이 패턴만 제 소리가 없었다
+	 *       ({@link #CROSS_CRACK_TICKS})</li>
+	 * </ol>
+	 *
 	 * <h2>낙사도 밀기도 없다</h2>
 	 *
 	 * <p>사람이 <b>「단순 피하기」</b>라고 못박았다. 넉백이 없으므로 이 패턴에는 천장을 걸 것이
@@ -1535,16 +2238,33 @@ public final class DragonLastStandPatterns {
 	/**
 	 * 예고. 가장자리 선 넷을 {@link #CROSS_MARK_STRIDE} 로 나눠 그리고 층 소리를 낸다.
 	 *
-	 * <h2>충전음을 얹지 않았다 — 부채꼴과 사정이 다르다</h2>
+	 * <h2>⚠ 균열음을 얹었다 — <b>전에는 이 패턴만 제 소리가 없었다</b></h2>
 	 *
-	 * <p>부채꼴에 충전음을 얹은 까닭은 층 소리가 <b>5초에 세 번</b>뿐이라 안 들렸다는 것이었다
-	 * ({@link #CONE_CHARGE_TICKS}). 여기는 예고가 3초·1.5초·1.5초라 층이 촘촘하게 바뀐다 —
-	 * 3초 예고에서 세 번(APPROACH·MARK·IMMINENT), 1.5초 예고에서 두 번(MARK·IMMINENT)이다.
-	 * <b>새 신호를 만들지 않는 것이 규약이 있는 이유</b>이므로 필요하지 않으면 만들지 않는다.
+	 * <p>층 소리가 촘촘하다는 것(3초 예고에서 APPROACH·MARK·IMMINENT 세 번, 1.5초 예고에서
+	 * MARK·IMMINENT 두 번)을 근거로 <b>제 소리를 얹지 않았었다.</b> 그 판단이 틀렸다 — 층 소리는
+	 * <b>공용</b>이라 「무엇인가 온다」만 말하고, 사람이 바란 것은 <b>「각각 패턴마다 소리가
+	 * 구분되엇으면해」</b>였다. 부채꼴은 {@code GHAST_WARN} 을, 흡입은 {@code BREEZE_INHALE} 을
+	 * 이미 얹고 있었고 넷 가운데 여기만 비어 있었다.
+	 *
+	 * <p>층 소리는 <b>그대로 둔다.</b> 그 위에 {@code DEEPSLATE_BREAK} 를 0.5초마다 얹고 음높이가
+	 * 오른다({@link #crackPitch}) — 「바닥이 갈라지고 있다」는 <b>되풀이</b>로만 말할 수 있다.
+	 *
+	 * <p>⚠ <b>{@code sounds.json} 을 열어 고른 소리다.</b> {@code block.deepslate.break} 가
+	 * 가리키는 파일은 {@code block/deepslate/break1~4} 이고 <b>이 저장소의 어느 카드도 그 파일을
+	 * 쓰지 않는다</b>(쓰는 소리를 통째로 훑어 확인했다). 뜻도 맞는다 — 돌이 갈라지는 소리이고
+	 * 이 패턴의 이름이 균열이다. 터지는 소리 {@code WARDEN_DIG}({@code mob/warden/dig})와도
+	 * 파일이 달라 <b>「금이 간다 → 갈라졌다」가 한 쌍</b>으로 들린다.
 	 */
 	private static void warnCross(ServerLevel end, List<ServerPlayer> members, Vec3 center,
 			int round, int step) {
 		markCross(end, center, CROSS_ANGLES[round], step);
+		int warn = crossWarnTicks(round);
+		int into = step - (crossFireStep(round) - warn);
+		if (into >= 0 && into % CROSS_CRACK_TICKS == 0) {
+			// playEach 다. 팀원 루프에서 level.playSound 를 부르면 모여 있는 넷이 네 겹으로 듣는다.
+			TrialWarning.playEach(end, members, SoundEvents.DEEPSLATE_BREAK, 1.0F,
+					crackPitch(into, warn));
+		}
 		int remaining = crossFireStep(round) - step;
 		TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
 		if (stage == null || !TrialRisks.stageJustChanged(remaining, crossWarnTicks(round))) {
@@ -1556,18 +2276,63 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
+	 * 그 틱의 균열음 음높이. 낮은 데서 시작해 <b>마지막 한 번이 가장 높다.</b>
+	 *
+	 * <p>나누는 것이 예고 길이가 아니라 <b>마지막으로 울리는 틱</b>({@code 예고 − 0.5초})이다.
+	 * 예고 길이로 나누면 마지막 울림이 {@link #CROSS_CRACK_PITCH_HIGH} 에 못 닿아 「지금 터진다」가
+	 * 안 들린다 — 부채꼴의 {@link #chargePitch} 가 같은 함정을 같은 방법으로 피한다.
+	 *
+	 * <p>⚠ <b>예고 길이를 받는다.</b> 첫 십자는 3초이고 둘째·셋째는 1.5초라
+	 * ({@link #crossWarnTicks}) 고정된 길이로 나누면 둘째·셋째가 <b>0.7~1.1 에서 끝난다.</b>
+	 * 세 번이 모두 같은 음높이로 끝나야 「셋째가 마지막」이 아니라 「매번 그렇다」가 된다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 세 번을 통째로 굴려 본다.
+	 *
+	 * @param into      그 십자의 예고가 시작한 뒤 지난 틱
+	 * @param warnTicks 그 십자의 예고 길이(틱)
+	 */
+	static float crackPitch(int into, int warnTicks) {
+		int last = warnTicks - CROSS_CRACK_TICKS;
+		if (last <= 0) {
+			return CROSS_CRACK_PITCH_HIGH;
+		}
+		float progress = Math.max(0.0F, Math.min(1.0F, (float) into / last));
+		return CROSS_CRACK_PITCH_LOW
+				+ (CROSS_CRACK_PITCH_HIGH - CROSS_CRACK_PITCH_LOW) * progress;
+	}
+
+	/**
 	 * 십자의 가장자리를 바닥에 그린다. <b>선 둘의 양쪽 가장자리, 곧 줄 넷이다.</b>
 	 *
 	 * <p>폭 3칸이므로 가장자리가 중심선에서 {@link #CROSS_HALF_WIDTH}(1.5)씩 떨어져 있다. 중심선을
 	 * 그리지 않는 것은 <b>그것이 위험의 한가운데</b>라 경계를 말하지 않기 때문이고, 가장자리 둘이
 	 * 3칸 간격이라 밴드 안에 선 사람도 가까운 쪽을 본다.
 	 *
+	 * <h2>⚠ 두 겹이고 <b>지표는 한 번만</b> 묻는다</h2>
+	 *
+	 * <p>사람이 <b>「특히 십자가 공격이 너무 잘 안보엿어」</b>라고 한 자리다. 답이 셋이다.
+	 *
+	 * <ol>
+	 *   <li><b>먼지를 키웠다</b>({@link #CROSS_DUST_SCALE}). 크기와 수명이 함께 올라 나눠 그린
+	 *       여섯 몫이 끊기지 않는다</li>
+	 *   <li><b>같은 자리에 흰 기둥을 세웠다.</b> 선 안에 선 사람은 바닥 선을 시선과 나란하게 보므로
+	 *       거의 못 본다 — 부채꼴이 가장자리에 벽을 세운 그 까닭이고 같은 수법이다
+	 *       ({@code TrialLandingShock.EDGE_RISE_SPEED})</li>
+	 *   <li><b>나누는 폭이 둘로 갈린다.</b> 빨강은 먼지라 6, 흰 기둥은 {@code CRIT} 이라 3 이다
+	 *       ({@link #CROSS_WALL_STRIDE}). 6 이 3 의 배수이므로 <b>빨간 점이 서는 자리에는 늘 기둥도
+	 *       선다</b> — 빨강만 뜨는 틱이 없다</li>
+	 * </ol>
+	 *
+	 * <p>한 바퀴로 도는 것이 중요하다. 두 바퀴로 짜면 <b>같은 자리의 하이트맵을 두 번</b> 묻고,
+	 * 선 넷이 324자리라 그 차이가 매 틱 324번이다({@code Ground} 의 청크 기억은 한 칸뿐이다).
+	 *
 	 * @param baseDeg 이 십자의 기준 각도(도)
 	 * @param step    나눠 그리기의 위상. 매 틱 1씩 늘어야 빈자리가 순서대로 메워진다
 	 */
 	private static void markCross(ServerLevel end, Vec3 center, double baseDeg, int step) {
 		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
-		ParticleOptions deadly = TrialWarning.dust(TrialWarning.Colors.DEADLY);
+		ParticleOptions deadly =
+				new DustParticleOptions(TrialWarning.Colors.DEADLY, CROSS_DUST_SCALE);
 		int index = 0;
 		for (int line = 0; line < 2; line++) {
 			double radians = Math.toRadians(baseDeg + line * 90.0);
@@ -1581,11 +2346,29 @@ public final class DragonLastStandPatterns {
 				double offZ = sideZ * CROSS_HALF_WIDTH * edge;
 				// 선은 중심을 지나 양쪽으로 뻗는다. 「아레나를 가로지르는」이 그 뜻이다.
 				for (double along = -CROSS_REACH; along <= CROSS_REACH; along += CROSS_MARK_GAP) {
-					if (Math.floorMod(index++ - step, CROSS_MARK_STRIDE) != 0) {
+					int at = index++;
+					boolean floorDue = Math.floorMod(at - step, CROSS_MARK_STRIDE) == 0;
+					boolean wallDue = Math.floorMod(at - step, CROSS_WALL_STRIDE) == 0;
+					if (!floorDue && !wallDue) {
 						continue;
 					}
-					dot(end, ground, deadly, center.x + alongX * along + offX,
-							center.z + alongZ * along + offZ, 0.0);
+					double x = center.x + alongX * along + offX;
+					double z = center.z + alongZ * along + offZ;
+					int surface = ground.surfaceAt(end, x, z);
+					if (surface == TrialEnderPulse.NO_GROUND) {
+						// 허공에 찍으면 「저기가 바닥이다」라고 거짓말한다.
+						continue;
+					}
+					if (floorDue) {
+						end.sendParticles(deadly, true, false, x, surface + GROUND_OFFSET, z,
+								1, 0.0, 0.0, 0.0, 0.0);
+					}
+					if (wallDue) {
+						// 개수를 0 으로 보내면 뒤 값이 속도로 읽혀 점을 안 늘리고 기둥이 선다.
+						end.sendParticles(ParticleTypes.CRIT, true, false,
+								x, surface + GROUND_OFFSET, z,
+								0, 0.0, 1.0, 0.0, TrialLandingShock.EDGE_RISE_SPEED);
+					}
 				}
 			}
 		}
@@ -1628,6 +2411,16 @@ public final class DragonLastStandPatterns {
 	 * <p>⚠ <b>블록을 한 칸도 건드리지 않는다.</b> 이름이 「균열」이지만 사람이 <b>「그냥 이름만
 	 * 균열이지」</b>라고 못박았다 — 실제로 바닥을 파면 공허 낙사이고 그것이 이 전투가 유일하게
 	 * 금지한 것이다.
+	 *
+	 * <h2>⚠ 솟는 기둥을 더했다 — <b>터진 것이 터진 것처럼 보여야 한다</b></h2>
+	 *
+	 * <p>{@code SWEEP_ATTACK} 은 <b>바닥에 눕는 납작한 한 장</b>이라 서서 보는 눈높이에서 거의
+	 * 두께가 없다. 사람이 <b>「특히 십자가 공격이 너무 잘 안보엿어」</b>라고 한 까닭의 나머지
+	 * 절반이 그것이다 — 예고가 안 보이는 것과 <b>터진 것이 안 보이는 것</b>은 다른 문제다.
+	 *
+	 * <p>그래서 같은 중심선 위에 {@value #CROSS_BURST_GAP} 칸마다 {@code CRIT} 을 <b>위로</b>
+	 * 쏜다({@link #CROSS_BURST_RISE} 로 3.9칸). 「연쇄 포격」이 터진 고리를 그 틱에 지우는 규칙은
+	 * 그대로다 — 이 기둥도 <b>그 한 틱</b>에만 나가고 피해는 이미 끝났다.
 	 */
 	private static void flashCross(ServerLevel end, Vec3 center, double baseDeg) {
 		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
@@ -1644,6 +2437,11 @@ public final class DragonLastStandPatterns {
 				}
 				end.sendParticles(ParticleTypes.SWEEP_ATTACK, true, false,
 						x, surface + GROUND_OFFSET, z, 1, 0.0, 0.0, 0.0, 0.0);
+			}
+			// 그 선에서 솟는 기둥. 납작한 한 장만으로는 터진 것이 터진 것처럼 안 보인다.
+			for (double along = -CROSS_REACH; along <= CROSS_REACH; along += CROSS_BURST_GAP) {
+				dot(end, ground, ParticleTypes.CRIT, center.x + alongX * along,
+						center.z + alongZ * along, CROSS_BURST_RISE);
 			}
 		}
 	}
@@ -1684,7 +2482,8 @@ public final class DragonLastStandPatterns {
 
 	/**
 	 * 상시 번개 — 열 곳 · 반경 2.55칸 · 피해 {@code DragonLastStand.LIGHTNING_DAMAGE}(35) ·
-	 * 드래곤 주변에 몰아서. <b>6초마다 저 혼자 돈다.</b>
+	 * 드래곤 주변에 몰아서. <b>7.8초마다 저 혼자 돈다</b>({@link #LIGHTNING_PERIOD_TICKS} — 사람이
+	 * 6초를 30% 내리라고 했고, 「낙뢰」 카드의 6초와는 일부러 갈라졌다).
 	 *
 	 * <p>사람이 <b>「번개는 패턴에 추가하지말고 기본이펙트로 계속 터졋으면좋겟어 드래곤 패턴이
 	 * 아니라」</b>라고 해서 패턴 풀에서 빼고 여기로 옮겼다. {@link DragonLastStandZone} 과 같은
@@ -1972,15 +2771,17 @@ public final class DragonLastStandPatterns {
 	private static final int BUDGET_MEMBERS = 4;
 
 	/**
-	 * 날개 퍼덕이기 — 파랑 고리 둘(반경 4 · 12) + 충격파 틱의 돌풍.
+	 * 날개 퍼덕이기 — 파랑 고리 둘(반경 4 · 12) + <b>그 둘의 벽</b> + <b>바깥으로 흐르는 가닥</b>
+	 * + 충격파 틱의 돌풍.
 	 *
 	 * <p>가장 바쁜 틱은 충격파가 나가는 틱이다.
 	 */
 	static int wingBeatPoints() {
 		int rings = TrialWarning.ringPoints(WING_NEAR_RADIUS)
 				+ TrialWarning.ringPoints(WING_STRONG_RADIUS);
+		int walls = ringWallPoints(WING_NEAR_RADIUS) + ringWallPoints(WING_STRONG_RADIUS);
 		// 큰 돌풍 하나 + 밀린 사람마다 작은 돌풍 하나.
-		return rings + 1 + BUDGET_MEMBERS;
+		return rings + walls + WING_GUST_SPOKES + 1 + BUDGET_MEMBERS;
 	}
 
 	/** 부채꼴 브레스 — 예고 틱과 터지는 틱 가운데 바쁜 쪽. */
@@ -1989,7 +2790,7 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 예고 틱 — 가장자리 두 줄(바닥 + 흰 벽) · 사거리 호 · 가운데 호 · 입의 불씨.
+	 * 예고 틱 — 가장자리 두 줄(바닥 + 흰 벽) · 사거리 호 · <b>안쪽 호 셋</b> · 입의 불씨.
 	 *
 	 * <p>{@code +1} 이 붙는 것은 호가 양 끝을 모두 찍기 때문이다({@code index <= points}).
 	 */
@@ -1997,8 +2798,11 @@ public final class DragonLastStandPatterns {
 		int edgeGround = (int) (CONE_RANGE / MARK_GAP);
 		int edgeWall = (int) (CONE_RANGE / EDGE_WALL_GAP);
 		int outerArc = arcPoints(CONE_RANGE, MARK_GAP) + 1;
-		int midArc = arcPoints(CONE_RANGE * CONE_MID_ARC, EDGE_WALL_GAP) + 1;
-		return (edgeGround + edgeWall) * 2 + outerArc + midArc + 1;
+		int innerArcs = 0;
+		for (double fraction : CONE_ARC_FRACTIONS) {
+			innerArcs += arcPoints(CONE_RANGE * fraction, EDGE_WALL_GAP) + 1;
+		}
+		return (edgeGround + edgeWall) * 2 + outerArc + innerArcs + 1;
 	}
 
 	/** 터지는 틱과 그 뒤 불꽃 — 부채꼴을 채우는 브레스 파티클. 예고 표식은 그 틱에 안 나간다. */
@@ -2034,9 +2838,10 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 예고 틱 — 검은 속(나눠 그린 한 틱 몫) + 빨간 경계 고리(매 틱 전부).
+	 * 예고 틱 — 검은 속(나눠 그린 한 틱 몫) + 빨간 경계 고리(매 틱 전부) + <b>그 고리의 벽</b>
+	 * + <b>안으로 흐르는 가닥</b>.
 	 *
-	 * <p>속을 나눠 그리지 않으면 여기가 231점이 되어 <b>부채꼴 예고(202)를 넘어</b>
+	 * <p>속을 나눠 그리지 않으면 여기가 231점 더 올라 <b>부채꼴 예고를 넘어</b>
 	 * {@link #worstCasePointsPerTick} 의 답이 바뀐다 — {@link #SUCK_MARK_STRIDE} 를 볼 것.
 	 */
 	static int suckWarnPoints() {
@@ -2046,7 +2851,8 @@ public final class DragonLastStandPatterns {
 		}
 		// 나눠 그리기는 위상에 따라 하나 더 나갈 수 있다. 예산은 늘 나쁜 쪽을 봐야 한다.
 		int stroke = (fill + SUCK_MARK_STRIDE - 1) / SUCK_MARK_STRIDE;
-		return stroke + TrialWarning.ringPoints(SUCK_RADIUS);
+		return stroke + TrialWarning.ringPoints(SUCK_RADIUS) + ringWallPoints(SUCK_RADIUS)
+				+ SUCK_STREAM_SPOKES * SUCK_STREAM_PHASES;
 	}
 
 	/**
@@ -2059,15 +2865,29 @@ public final class DragonLastStandPatterns {
 		return Math.max(crossWarnPoints(), crossFlashPoints() + crossWarnPoints());
 	}
 
-	/** 예고 틱 — 가장자리 줄 넷을 여섯 틱에 나눠 그린 한 틱 몫. */
+	/**
+	 * 예고 틱 — 가장자리 줄 넷을 <b>두 겹</b>으로 그린 한 틱 몫.
+	 *
+	 * <p>빨강은 먼지라 여섯 틱에, 흰 기둥은 {@code CRIT} 이라 <b>세 틱에</b> 나눈다
+	 * ({@link #CROSS_WALL_STRIDE}). 둘을 더하는 것이 맞는 셈이다 — 6 이 3 의 배수라 빨강이 서는
+	 * 틱에는 기둥도 서므로 <b>두 몫이 같은 틱에 함께 나간다.</b>
+	 */
 	static int crossWarnPoints() {
 		int whole = 2 * 2 * crossLinePoints(CROSS_MARK_GAP);
-		return (whole + CROSS_MARK_STRIDE - 1) / CROSS_MARK_STRIDE;
+		int floor = (whole + CROSS_MARK_STRIDE - 1) / CROSS_MARK_STRIDE;
+		int wall = (2 * 2 * crossLinePoints(CROSS_WALL_GAP) + CROSS_WALL_STRIDE - 1)
+				/ CROSS_WALL_STRIDE;
+		return floor + wall;
 	}
 
-	/** 터지는 틱에만 나가는 갈라짐 연출. 중심선 둘뿐이라 가장자리보다 성기다. */
+	/**
+	 * 터지는 틱에만 나가는 갈라짐 연출. 중심선 둘뿐이라 가장자리보다 성기다.
+	 *
+	 * <p>납작한 {@code SWEEP_ATTACK} 과 <b>솟는 기둥</b>이 함께 나간다 — 눕는 것만으로는 터진 것이
+	 * 눈높이에서 안 보인다({@link #flashCross}).
+	 */
 	static int crossFlashPoints() {
-		return 2 * crossLinePoints(CROSS_FLASH_GAP);
+		return 2 * crossLinePoints(CROSS_FLASH_GAP) + 2 * crossLinePoints(CROSS_BURST_GAP);
 	}
 
 	/** 중심을 지나 양쪽으로 뻗는 선 하나에 찍는 점 수. */

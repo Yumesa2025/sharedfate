@@ -48,7 +48,16 @@ import java.util.List;
  *   <li>{@code docs/드래곤-시련-카드.md} 의 「드래곤 기본 패시브」 절에 정한 값을 적는다</li>
  * </ol>
  *
- * <p><b>인터페이스나 목록으로 묶지 말 것.</b> 지금 패시브가 하나이고 넷이 다 들어와도 넷이다.
+ * <h2>지금 들어 있는 둘</h2>
+ *
+ * <ul>
+ *   <li>{@link DragonFireBarrage} — <b>연쇄 포격.</b> 40초마다 아레나를 가로지르는 선이 선다</li>
+ *   <li>{@link DragonPerch} — <b>착지.</b> 포디움에 내려앉으면 일정 시간 못 일어나고, 그 동안
+ *       근접 피해만 받는다. ⚠ 이쪽은 <b>깃발을 세우는</b> 패시브라 {@link #tick} 의 이른 반환
+ *       <b>앞</b>에서 불린다 — 까닭은 그 줄에 적어 두었다</li>
+ * </ul>
+ *
+ * <p><b>인터페이스나 목록으로 묶지 말 것.</b> 지금 패시브가 둘이고 넷이 다 들어와도 넷이다.
  * 등록기를 만들면 「어디에 붙는지」를 읽는 데 파일 두 개를 더 열어야 하고, 얻는 것은 줄 하나를
  * 덜 적는 것뿐이다.
  */
@@ -68,6 +77,10 @@ public final class DragonPassives {
 	 */
 	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
 			@Nullable List<ServerPlayer> members, long granted, long now) {
+		// ⚠ 이른 반환보다 먼저다. 「착지」는 믹스인이 읽는 깃발을 세우는 패시브라, 안 불린 틱에는
+		// 직전 값이 그대로 남는다 — 사람이 아무도 없거나 드래곤이 사라진 틱에 깃발이 켜진 채
+		// 멈추면 아무도 그것을 내리지 않는다. 그래서 그쪽은 null 을 스스로 받아 깃발을 내린다.
+		DragonPerch.tick(end, dragon, members, granted, now);
 		if (end == null || dragon == null || !dragon.isAlive()
 				|| members == null || members.isEmpty()) {
 			return;
@@ -83,5 +96,6 @@ public final class DragonPassives {
 	 */
 	public static void clearState() {
 		DragonFireBarrage.clearState();
+		DragonPerch.clearState();
 	}
 }
