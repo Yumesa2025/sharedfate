@@ -80,11 +80,43 @@ class DefaultPerkPoolValuesTest {
 	}
 
 	@Test
-	void 유리_세계는_받는_피해_2점5배다(@TempDir Path dir) throws IOException {
+	void 유리_세계는_받는_피해_2배다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:glass_world");
 		DamageTakenEffect damageTaken = assertInstanceOf(DamageTakenEffect.class, perk.effects().get(1));
 
-		assertEquals(2.5, damageTaken.multiplier(), 1.0e-9);
+		assertEquals(2.0, damageTaken.multiplier(), 1.0e-9);
+	}
+
+	/**
+	 * 「벼랑 끝」의 대가는 나약함 I 이 아니라 <b>공격력 −15%</b>(최종값에 곱하는 수정자)다.
+	 *
+	 * <p>수정자는 플레이어 몸에 붙으므로 같은 것이 두 번 붙지 않고 반드시 걷히려면 식별자가
+	 * 고정이어야 한다. {@code conditional} 의 거짓 쪽 0번 하위라 순번은
+	 * {@code childIndex(0, 50)} = 150 으로 정해지고, 조건이 뒤집힐 때·증강을 잃을 때·팀을 떠날 때
+	 * ({@code PerkManager.detach}) 모두 {@code ConditionalEffect.remove} 가 이 식별자로 걷어낸다.
+	 *
+	 * <p>공격력 감소라 세트 「무기 3단계 — 깎이지 않는다」에도 걸린다. 나약함일 때는 상태이상이라
+	 * 걸리지 않던 것이 바뀐 자리다.
+	 */
+	@Test
+	void 벼랑_끝의_대가는_공격력_15퍼센트_감소다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:brink");
+		ConditionalEffect conditional = assertInstanceOf(ConditionalEffect.class, perk.effects().get(0));
+
+		assertEquals(ConditionalEffect.Condition.HEALTH_BELOW, conditional.condition());
+		assertEquals(0.75, conditional.threshold(), 1.0e-9);
+		assertEquals(3, conditional.whenTrue().size(), "힘 II·신속 I·저항 I 은 그대로다");
+
+		assertEquals(1, conditional.whenFalse().size(), "대가는 공격력 감소 하나뿐이다");
+		AttributeEffect penalty = assertInstanceOf(AttributeEffect.class,
+				conditional.whenFalse().get(0), "나약함(상태이상)이 아니라 속성 수정자여야 한다");
+		assertEquals("minecraft:attack_damage", penalty.attributeId().toString());
+		assertEquals(AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, penalty.operation());
+		assertEquals(-0.15, penalty.amount(), 1.0e-9);
+		assertEquals(AttributeEffect.modifierId("sharedfate:brink", ConditionalEffect.childIndex(0, 50)),
+				penalty.modifierId(), "식별자가 고정이어야 두 번 붙지 않고 걷어낼 수 있다");
+		assertTrue(com.sharedfate.perk.effect.NoAttackDamageLossEffect.reduces(penalty),
+				"공격력 감소라 세트 「무기 3단계」가 걷어낸다");
 	}
 
 	/**

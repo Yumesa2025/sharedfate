@@ -690,7 +690,7 @@ public final class TrialRisks {
 	 *       {@code DragonLastStandPatterns.shove}·{@code TrialEnderStorm.push}·
 	 *       {@code TrialLandingShock.push} 가 수평을 덮어써서 같은 오염을 겪지 않은 것과 같은 꼴
 	 *       이다. 세로를 자른 것({@code syncedVertical})은 <b>우리가 일부러 싣는 세로가
-	 *       있었기 때문</b>(십자 띄움 6칸)이지 자름이 더 나은 모양이라서가 아니다</li>
+	 *       있었기 때문</b>(십자 띄움 12칸)이지 자름이 더 나은 모양이라서가 아니다</li>
 	 *   <li><b>0 이라야 「섬 밖으로 못 나간다」가 증명이 된다.</b> 자르려면 천장을
 	 *       {@code getKnownMovement()} 에서 받아야 하는데 그것은 <b>클라이언트가 보낸 수</b>라
 	 *       상한이 우리 손에 없다 — 26.3 {@code handleMovePlayer} 의 「moved too quickly」는

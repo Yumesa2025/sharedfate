@@ -174,7 +174,7 @@ class DragonLastStandZoneTest {
 	 * ⚠⚠ <b>「축소와 브레스 동시 실행 금지」가 실제로 지켜진다.</b>
 	 *
 	 * <p>{@code DragonLastStand.allowed} 는 <b>고르는 그 틱</b>만 보므로, 축소 1틱 전에 고른
-	 * 120틱짜리 브레스는 그대로 축소와 겹쳐 돈다. {@code shrinkLockoutLead} 가 그 길이만큼
+	 * 100틱짜리 브레스(5초 예고이던 때 120틱)는 그대로 축소와 겹쳐 돈다. {@code shrinkLockoutLead} 가 그 길이만큼
 	 * 미리 잠그는 것이 이 시험이 지키는 것이다 — 그 상수를 지우면 여기가 먼저 깨진다.
 	 */
 	@Test

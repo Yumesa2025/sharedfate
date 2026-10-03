@@ -507,12 +507,13 @@ class WeaponDrawbackSetRewardTest {
 						"sharedfate:vital_strike",
 						"sharedfate:predator",
 						"sharedfate:flawless",
+						"sharedfate:brink",
 						"sharedfate:king_and_subjects",
 						"sharedfate:practiced_wrist",
 						"sharedfate:sweeping_edge",
 						"sharedfate:excavator",
 						"sharedfate:cudgel"),
-				reduced, "공격력을 깎는 증강은 이 아홉뿐이다");
+				reduced, "공격력을 깎는 증강은 이 열뿐이다");
 	}
 
 	/** 기본 풀의 몹 관련 효과는 하나도 대상이 아니다. */

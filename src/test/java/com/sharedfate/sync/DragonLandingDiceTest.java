@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonHoldingPatternPhase;
@@ -176,6 +177,131 @@ class DragonLandingDiceTest {
 				"시련 판별을 부르지 않는다 — 시련을 끈 판에서도 천장이 걸린다");
 	}
 
+	// ------------------------------------------------------------------ ④ 체력 80% 이후 ×1.3
+
+	/**
+	 * <b>체력 80% 이후 한 굴림의 착지 확률이 지금의 1.3 배다.</b>
+	 *
+	 * <p>사람 말(2026-10-04): 「80프로 터지고 착지 확률을 좀 더 올렸으면 좋겠어. 지금보다
+	 * 30프로는 더」. 크리스탈 셋 이상 1/6 → 0.2167, 0 개 1/3 → 0.4333.
+	 */
+	@Test
+	void 체력_80_이후_착지_확률이_한_점_삼_배다() {
+		assertEquals(1.3F, DragonLandingDice.HEALTH_80_BOOST, 1.0E-6F, "사람이 정한 것은 「30프로 더」다");
+		for (int alive = 0; alive <= 10; alive++) {
+			int bound = DragonLandingDice.ceiling(alive + 3);
+			float base = 1.0F / bound;
+			float extra = DragonLandingDice.extraChance(bound);
+			assertTrue(extra > 0.0F && extra < 1.0F, "두 번째 굴림 확률이 범위 밖: " + extra);
+			float total = base + (1.0F - base) * extra;
+			assertEquals(1.3F / bound, total, 1.0E-6F,
+					"크리스탈 " + alive + "개에서 착지 확률이 " + total + " — 1.3/" + bound + " 이 아니다");
+			assertEquals(0.3F / (bound - 1), extra, 1.0E-6F, "q = 0.3/(n-1) 로 정리되어야 한다");
+		}
+		assertEquals(0.21667F, DragonLandingDice.boostedChance(6), 1.0E-4F, "1/6 × 1.3");
+		assertEquals(0.43333F, DragonLandingDice.boostedChance(3), 1.0E-4F, "1/3 × 1.3");
+	}
+
+	/**
+	 * <b>실제로 굴려 봐도 1.3 배다.</b> 바닐라가 굴리는 그대로(첫 굴림 → 0 이 아니면 두 번째
+	 * 굴림) 20만 번 흉내 낸다.
+	 */
+	@Test
+	void 굴려_보면_착지_빈도가_한_점_삼_배다() {
+		RandomSource random = RandomSource.create(20261004L);
+		int rounds = 200_000;
+		for (int bound = 3; bound <= DragonLandingDice.CEILING; bound++) {
+			int landed = 0;
+			for (int round = 0; round < rounds; round++) {
+				int rolled = random.nextInt(bound);
+				if (rolled != 0) {
+					rolled = DragonLandingDice.reroll(random, bound, rolled);
+				}
+				if (rolled == 0) {
+					landed++;
+				}
+			}
+			double seen = (double) landed / rounds;
+			// 20만 번이면 표준오차가 0.0011 이하다. 0.005 는 4.5 시그마 넘게 떨어진 자리다.
+			assertEquals(1.3 / bound, seen, 0.005,
+					"상한 " + bound + " 에서 착지 빈도 " + seen + " — 1.3/" + bound + " 이 아니다");
+		}
+	}
+
+	/**
+	 * <b>⚠⚠ 80% 이전과 시련이 꺼진 판에서는 두 번째 굴림이 아예 없다.</b>
+	 *
+	 * <p>확률이 같은 것으로 부족하다 — 난수를 한 번이라도 더 꺼내면 그 뒤 바닐라 굴림(돌진,
+	 * 도는 방향)이 모두 다른 값을 받는다. 판을 증명하지 못하는 자리(여기, {@code null})는 언제나
+	 * 바닐라여야 하므로, 같은 씨앗의 주사위 둘을 나란히 굴려 <b>흐름이 한 칸도 안 밀렸는지</b> 본다.
+	 */
+	@Test
+	void 체력_80_전이나_시련이_꺼진_판에서는_난수를_더_꺼내지_않는다() {
+		RandomSource touched = RandomSource.create(7L);
+		RandomSource fresh = RandomSource.create(7L);
+		for (int round = 0; round < 1_000; round++) {
+			int bound = 3 + round % 4;
+			int rolled = touched.nextInt(bound);
+			assertEquals(fresh.nextInt(bound), rolled);
+			assertEquals(rolled, DragonLandingDice.boost(null, touched, bound, rolled),
+					"80% 를 증명하지 못했는데 값이 바뀌었다 — 시련을 끈 판의 착지가 달라진다");
+		}
+		assertEquals(fresh.nextLong(), touched.nextLong(),
+				"boost 가 난수를 꺼냈다 — 시련을 끈 판에서 바닐라 난수 흐름이 밀린다");
+	}
+
+	/**
+	 * 「80% 가 터졌는가」를 <b>세션에 이미 있는 것으로</b> 묻는다.
+	 *
+	 * <p>{@code DragonTrialManager} 가 체력 비율 ≤ 0.80 인 틱에 {@code fire(HEALTH_80)} 을 부르고
+	 * 그것이 {@code fired()} 에 남는다. 시련을 끈 세션은 {@code fire} 가 아무것도 쌓지 않는다.
+	 */
+	@Test
+	void 체력_80_판별을_세션에서_가져온다() {
+		UUID team = UUID.randomUUID();
+		assertFalse(DragonLandingDice.health80Passed(null), "세션이 없으면 전투가 안 열린 것이다");
+
+		DragonTrialSession on = new DragonTrialSession(team, 0L, true);
+		assertFalse(DragonLandingDice.health80Passed(on), "80% 가 안 터졌는데 착지가 늘었다");
+		on.fire(TrialCatalog.Trigger.HEALTH_50);
+		assertFalse(DragonLandingDice.health80Passed(on), "다른 자리가 80% 로 읽힌다");
+		assertTrue(on.fire(TrialCatalog.Trigger.HEALTH_80));
+		assertTrue(DragonLandingDice.health80Passed(on), "80% 가 터졌는데 ×1.3 이 안 걸린다");
+
+		DragonTrialSession off = new DragonTrialSession(team, 0L, false);
+		off.fire(TrialCatalog.Trigger.HEALTH_80);
+		assertFalse(DragonLandingDice.health80Passed(off),
+				"시련을 끈 세션이 80% 로 읽힌다 — 「끄면 완전한 바닐라」가 거짓이 된다");
+
+		String bytes = classBytes();
+		assertTrue(bytes.contains("HEALTH_80"), "80% 자리를 안 본다 — 판별을 새로 짠 것이다");
+		assertTrue(bytes.contains("fired"), "세션이 들고 있는 「터진 자리」를 안 본다");
+	}
+
+	/**
+	 * <b>바닐라가 이미 0(착지)을 냈으면 팀 목록을 열지도 않는다.</b>
+	 *
+	 * <p>순서가 비용이다 — 착지로 이미 정해진 굴림까지 팀을 뒤질 까닭이 없다.
+	 */
+	@Test
+	void 이미_착지로_나온_굴림은_판을_보기_전에_빠져나간다() {
+		List<String> events = eventsIn(DragonLandingDice.class, "boost");
+		int firstCall = -1;
+		for (int at = 0; at < events.size(); at++) {
+			if (events.get(at).startsWith("call:")) {
+				firstCall = at;
+				break;
+			}
+		}
+		assertTrue(firstCall >= 0, "boost 가 아무것도 묻지 않는다 — 80% 판별이 사라졌다");
+		assertTrue(events.subList(0, firstCall).contains("return"),
+				"착지로 이미 나온 굴림에서도 팀 목록을 뒤진다. 읽은 차례: " + events);
+		assertTrue(events.contains("call:DragonLandingDice.anyHealth80Passed"),
+				"80% 판별을 부르지 않는다 — 시련을 끈 판에서도 ×1.3 이 걸린다");
+		assertEquals(0, DragonLandingDice.boost(null, RandomSource.create(1L), 6, 0),
+				"착지로 나온 굴림을 뒤집었다");
+	}
+
 	// ------------------------------------------------------------------ ③ 믹스인이 무는 자리
 
 	/**
@@ -297,6 +423,11 @@ class DragonLandingDiceTest {
 	 * 이었다. 소스에 {@code at = @At(...)} 한 벌만 적어도 클래스 파일에는 <b>길이 1 의 배열</b>로
 	 * 적힌다.
 	 *
+	 * <p>2026-10-04 에 {@code @ModifyArg} 가 {@code @WrapOperation} 으로 바뀌었다(체력 80% 이후
+	 * ×1.3 은 상한 하나로 적을 수 없다 — {@code DragonLandingDice} 설명). MixinExtras 0.5.5 의
+	 * {@code WrapOperation} 도 {@code String[] method()} · <b>{@code At[] at()}</b> 이라
+	 * ({@code javap -p} 로 확인했다) 아래 단정이 그대로 선다. {@code index} 는 없다.
+	 *
 	 * <p>그래서 길이를 함께 못박는다. 배열이라는 것은 <b>{@code @At} 을 둘 이상 달 수 있다</b>는
 	 * 뜻이고, 하나만 더 붙으면 「ordinal 0 하나만 문다」가 <b>그 자리에서 거짓</b>이 된다 —
 	 * 둘째 {@code @At} 이 ordinal 2 를 물면 <b>돌진 빈도까지 바뀌는데</b>, 이 시험이 첫 번째만
@@ -304,18 +435,19 @@ class DragonLandingDiceTest {
 	 */
 	@Test
 	void 믹스인이_첫_주사위만_문다() {
-		Map<String, Object> modify = modifyArgOf("sharedfate$capLandingDice");
+		Map<String, Object> modify = wrapOperationOf("sharedfate$rollLandingDice");
 
 		assertEquals(Boolean.TRUE, modify.get("present"),
-				"@ModifyArg 이 사라졌다 — 아무 일도 하지 않는 메서드가 됐다");
-		assertEquals("(I)I", modify.get("descriptor"),
-				"@ModifyArg 은 고치는 인자와 같은 것을 받고 돌려줘야 한다");
+				"@WrapOperation 이 사라졌다 — 아무 일도 하지 않는 메서드가 됐다");
+		assertEquals("(Lnet/minecraft/util/RandomSource;I"
+						+ "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)I",
+				modify.get("descriptor"),
+				"@WrapOperation 은 감싸는 호출의 받는 쪽·인자·Operation 을 받고 같은 것을 돌려줘야 한다");
 		assertEquals(Integer.valueOf(1), modify.get("method.count"),
 				"무는 메서드가 하나가 아니다 — 서술자가 둘이면 어느 쪽에 천장이 걸리는지 알 수 없다");
 		assertEquals("findNewTarget(Lnet/minecraft/server/level/ServerLevel;)V",
 				modify.get("method[0]"),
 				"서술자가 바뀌었다 — refmap 이 없어 이 시험 말고는 아무도 못 잡는다");
-		assertEquals(Integer.valueOf(0), modify.get("index"), "nextInt 의 인자는 하나뿐이다");
 
 		// ⚠ at 은 At 하나가 아니라 At[] 다. 길이를 먼저 못박는다 — 둘째 @At 이 붙으면 「첫 주사위만
 		// 문다」가 거짓이 되고, 첫 번째만 보는 시험은 그것을 못 본다.
@@ -340,6 +472,10 @@ class DragonLandingDiceTest {
 		assertTrue(bytes.contains("com/sharedfate/sync/DragonLandingDice"),
 				"믹스인이 우리 판별을 안 본다 — 무엇을 보고 천장을 씌우는지 알 수 없다");
 		assertTrue(bytes.contains("cap"), "부르는 이름이 바뀌었다");
+		assertTrue(bytes.contains("boost"),
+				"체력 80% 이후 ×1.3 을 부르지 않는다 — 사람이 2026-10-04 에 정한 값이 안 걸린다");
+		// 바닐라 주사위는 언제나 그대로 한 번 굴러야 한다. 안 부르면 착지 판정 자체가 사라진다.
+		assertTrue(bytes.contains("call"), "Operation.call 이 없다 — 바닐라 주사위를 굴리지 않는다");
 		// ⚠ 판은 접근자로 꺼낸다. @Shadow 로 돌아가면 상위 클래스 칸이라 적용 단계에서 죽는다.
 		assertTrue(bytes.contains("AbstractDragonPhaseInstanceAccessor"),
 				"접근자를 안 쓴다 — dragon 은 상위 클래스 칸이라 @Shadow 로는 안 붙고, 그때 "
@@ -393,21 +529,24 @@ class DragonLandingDiceTest {
 	 * {@code IllegalClassLoadError} 로 거절한다(위 {@link #믹스인이_첫_주사위만_문다} 의 절).
 	 */
 	private static final String MIXIN = "/com/sharedfate/mixin/DragonHoldingPatternLandingMixin.class";
-	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+	private static final String WRAP_OPERATION =
+			"Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 
 	private static String mixinBytes() {
 		return read(MIXIN);
 	}
 
 	/**
-	 * 믹스인 메서드에 달린 {@code @ModifyArg} 를 <b>클래스 파일에서</b> 읽어 평평한 이름으로 돌려준다.
+	 * 믹스인 메서드에 달린 {@code @WrapOperation} 을 <b>클래스 파일에서</b> 읽어 평평한 이름으로
+	 * 돌려준다.
 	 *
 	 * <p>이름 꼴 — {@code descriptor} · {@code present} · {@code method.count} ·
-	 * {@code method[0]} · {@code index} · {@code at.count} · {@code at[0].ordinal}.
+	 * {@code method[0]} · {@code at.count} · {@code at[0].ordinal}. MixinExtras 0.5.5 의
+	 * {@code at()} 도 {@code At[]} 이다({@code javap -p} 로 확인했다).
 	 *
 	 * <p>자원으로 읽으므로 믹스인 클래스를 <b>불러오지 않는다.</b> 등록된 믹스인은 반사로 못 읽는다.
 	 */
-	private static Map<String, Object> modifyArgOf(String methodName) {
+	private static Map<String, Object> wrapOperationOf(String methodName) {
 		Map<String, Object> found = new LinkedHashMap<>();
 		new ClassReader(bytesOf(MIXIN)).accept(new ClassVisitor(Opcodes.ASM9) {
 			@Override
@@ -420,7 +559,7 @@ class DragonLandingDiceTest {
 				return new MethodVisitor(Opcodes.ASM9) {
 					@Override
 					public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
-						if (!MODIFY_ARG.equals(annotation)) {
+						if (!WRAP_OPERATION.equals(annotation)) {
 							return null;
 						}
 						found.put("present", Boolean.TRUE);

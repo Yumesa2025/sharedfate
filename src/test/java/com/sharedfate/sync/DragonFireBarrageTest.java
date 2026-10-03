@@ -5,6 +5,10 @@ import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,6 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 「연쇄 포격」에서 월드 없이 답이 정해지는 계산만 본다.
+ *
+ * <p>2026-10-04 에 사람이 「터지는 속도 50프로 빨리 · 한 줄 더 그어 한번에 2줄씩 · 간격 0.4초 ·
+ * 원표식이 생기고 50프로 더 빨리 떨어지게」로 고쳤다. 예고 6 → 4초, 간격 0.6 → 0.4초, 줄 1 → 2.
  *
  * <p>파티클·소리·피해는 {@code ServerLevel} 이 있어야 해서 여기서 볼 수 없다. 그런데 이 패시브가
  * 망가지는 길은 대부분 기하와 타이밍 쪽이다 — <b>원이 겹친다</b>, <b>한 틱에 여럿이 터진다</b>,
@@ -132,6 +139,173 @@ class DragonFireBarrageTest {
 		assertEquals(head.from().z, tail.to().z, 1.0E-9);
 	}
 
+	// ------------------------------------------------------------------ 두 줄
+
+	/** 한 번에 두 줄을 긋고, 두 줄은 같은 주기·같은 박자다. */
+	@Test
+	void 한_번에_두_줄을_긋는다() {
+		DragonFireBarrage.Volley volley = DragonFireBarrage.planVolley(5L, 0.2, 0.7);
+		assertEquals(DragonFireBarrage.LINE_COUNT, volley.lines().size(),
+				"사람이 정한 것은 「한번에 2줄씩」이다");
+		for (DragonFireBarrage.Barrage line : volley.lines()) {
+			assertEquals(5L, line.cycle(), "줄마다 주기가 다르면 같은 박자가 아니다");
+			assertFalse(line.started());
+			assertEquals(0.0, line.from().add(line.to()).length(), 1.0E-9, "두 줄 모두 중앙을 지난다");
+			assertEquals(DragonFireBarrage.SHELL_COUNT, line.shells().size());
+		}
+		DragonFireBarrage.Volley started = volley.startedAt(900L);
+		for (DragonFireBarrage.Barrage line : started.lines()) {
+			assertEquals(900L, line.startedAt(), "한 줄만 시작하면 같은 박자가 깨진다");
+		}
+	}
+
+	/**
+	 * <b>두 줄 사이 각은 언제나 45°~90° 다.</b>
+	 *
+	 * <p>45° 의 근거는 {@code MIN_LINE_ANGLE_DEGREES} 설명에 있다 — 같은 박자의 바깥 원들이
+	 * 서로 안 닿는 경계가 33.9° 이고, 거기 바로 붙이면 「두 줄」이 아니라 「굵은 한 줄」로 읽힌다.
+	 */
+	@Test
+	void 두_줄_사이_각이_45도에서_90도다() {
+		assertEquals(45.0, DragonFireBarrage.MIN_LINE_ANGLE_DEGREES, 1.0E-9);
+		double smallest = 180.0;
+		double largest = 0.0;
+		for (double first = 0.0; first <= 1.0; first += 0.05) {
+			for (double gap = 0.0; gap <= 1.0; gap += 0.05) {
+				DragonFireBarrage.Volley volley = DragonFireBarrage.planVolley(0L, first, gap);
+				double angle = DragonFireBarrage.lineSeparationDegrees(volley.lines().get(0),
+						volley.lines().get(1));
+				assertTrue(angle >= DragonFireBarrage.MIN_LINE_ANGLE_DEGREES - 1.0E-6,
+						"두 줄이 " + angle + "° 로 붙었다: 굴림 " + first + ", " + gap);
+				assertTrue(angle <= 90.0 + 1.0E-6, "선은 양방향이라 90° 를 넘을 수 없다: " + angle);
+				smallest = Math.min(smallest, angle);
+				largest = Math.max(largest, angle);
+			}
+		}
+		assertEquals(45.0, smallest, 0.5, "하한까지 실제로 나와야 굴림이 범위를 다 쓴 것이다");
+		assertEquals(90.0, largest, 0.5, "직각까지 실제로 나와야 굴림이 범위를 다 쓴 것이다");
+	}
+
+	/**
+	 * <b>같은 박자의 두 원은 중앙 둘 말고는 겹치지 않는다.</b>
+	 *
+	 * <p>두 줄은 언제나 중앙에서 만난다. 중앙에서 4칸 떨어진 4·5 번째 원은 줄 사이 각이 몇이든
+	 * 겹치고, 그 자리는 「한 박자에 한 사람 한 번」({@code victims})이 맡는다. 그 바깥은 45° 에서도
+	 * 틈이 남아야 한다 — 그래야 각 하한이 뜻이 있다. 방향이 뒤집힌 경우(드래곤 쪽 끝이 서로 반대로
+	 * 잡힌 경우)도 함께 본다.
+	 */
+	@Test
+	void 같은_박자_원은_중앙_둘_말고는_두_줄_사이에서_겹치지_않는다() {
+		double required = TrialRisks.spotMinGap(DragonFireBarrage.SHELL_RADIUS);
+		DragonFireBarrage.Barrage one = DragonFireBarrage.plan(0L, 0.0);
+		// 굴림 0.25 가 45° 다 — 각 하한에 정확히 붙은, 가장 나쁜 판이다.
+		DragonFireBarrage.Barrage other = DragonFireBarrage.plan(0L, 0.25);
+		assertEquals(45.0, DragonFireBarrage.lineSeparationDegrees(one, other), 1.0E-6);
+		for (DragonFireBarrage.Barrage second : new DragonFireBarrage.Barrage[] {
+				other, DragonFireBarrage.startingNear(other, other.to())}) {
+			for (int index = 0; index < DragonFireBarrage.SHELL_COUNT; index++) {
+				double gap = one.shells().get(index).distanceTo(second.shells().get(index));
+				boolean centre = index == DragonFireBarrage.SHELL_COUNT / 2 - 1
+						|| index == DragonFireBarrage.SHELL_COUNT / 2;
+				if (centre) {
+					continue;
+				}
+				assertTrue(gap > required, "같은 박자의 원 " + index + " 이 두 줄 사이에서 겹친다 ("
+						+ gap + "칸) — 각 하한이나 개수·반경을 고쳤다면 MIN_LINE_ANGLE_DEGREES 를 다시 셀 것");
+			}
+		}
+		// 중앙 둘은 정말 겹친다. 겹치지 않는다면 victims 의 「한 박자에 한 번」이 필요 없어진 것이다.
+		assertTrue(one.shells().get(4).distanceTo(other.shells().get(4)) < required,
+				"45° 에서 중앙 원이 안 겹친다 — 설명의 셈이 틀렸다");
+	}
+
+	/** 두 줄 모두 드래곤이 있는 쪽 끝부터 터진다. */
+	@Test
+	void 두_줄_모두_드래곤_쪽부터_터진다() {
+		Vec3 dragon = new Vec3(30.0, 120.0, 55.0);
+		for (double gap = 0.0; gap <= 1.0; gap += 0.1) {
+			DragonFireBarrage.Volley aimed = DragonFireBarrage.startingNear(
+					DragonFireBarrage.planVolley(0L, 0.13, gap), dragon);
+			for (DragonFireBarrage.Barrage line : aimed.lines()) {
+				assertTrue(DragonFireBarrage.flatDistanceSqr(dragon, line.from())
+								<= DragonFireBarrage.flatDistanceSqr(dragon, line.to()),
+						"한 줄이 드래곤 반대편에서 시작한다: 굴림 " + gap);
+				assertTrue(line.shells().getFirst().distanceTo(dragon)
+								< line.shells().getLast().distanceTo(dragon),
+						"첫 번째로 터지는 원이 드래곤 쪽이 아니다: 굴림 " + gap);
+			}
+		}
+		DragonFireBarrage.Volley untouched = DragonFireBarrage.planVolley(0L, 0.13, 0.4);
+		assertEquals(untouched, DragonFireBarrage.startingNear(untouched, null),
+				"드래곤이 없으면 굴림이 정한 방향 그대로다");
+	}
+
+	/**
+	 * <b>교차점에 선 사람은 한 박자에 한 번만 맞는다.</b>
+	 *
+	 * <p>두 줄이 만나는 중앙에서 같은 박자의 두 원이 겹친다. 거기 선 사람이 두 번 맞으면 한 틱에
+	 * 46(무장 13.5)이 한 사람에게 간다. 사람이 정한 것은 「한 박자에 한 번」이다.
+	 */
+	@Test
+	void 교차점에_선_사람은_한_박자에_한_번만_맞는다() {
+		List<Vec3> shells = crossingShells();
+		Vec3 both = shells.get(0).add(shells.get(1)).scale(0.5);
+		assertTrue(TrialRisks.insideMark(both, shells.get(0), DragonFireBarrage.SHELL_RADIUS));
+		assertTrue(TrialRisks.insideMark(both, shells.get(1), DragonFireBarrage.SHELL_RADIUS),
+				"시험 자리가 두 원 모두의 안이 아니다");
+
+		int[] hit = DragonFireBarrage.victims(List.of(both), shells);
+		assertEquals(0, hit[0], "첫 원이 겹친 자리의 사람을 때려야 한다");
+		assertEquals(-1, hit[1], "같은 박자의 둘째 원이 같은 사람을 또 때렸다 — 한 틱에 두 번이다");
+	}
+
+	/**
+	 * <b>둘째 원은 그 원 안의 다른 사람을 때린다.</b>
+	 *
+	 * <p>두 줄이니 두 사람이 각자 다른 줄의 원에서 실패할 수 있다. 그 둘을 한 번으로 묶으면 둘째
+	 * 줄이 아무 뜻이 없어진다. 팀이 한 틱에 받는 것은 그래서 많아야 {@code MAX_CONCURRENT_BLASTS} 발.
+	 */
+	@Test
+	void 둘째_원은_그_원_안의_다른_사람을_때린다() {
+		List<Vec3> shells = crossingShells();
+		Vec3 both = shells.get(0).add(shells.get(1)).scale(0.5);
+		// 둘째 원 안이면서 첫 원 밖인 자리.
+		Vec3 away = shells.get(1).subtract(shells.get(0)).normalize();
+		Vec3 onlySecond = shells.get(1).add(away.scale(2.5));
+		assertFalse(TrialRisks.insideMark(onlySecond, shells.get(0), DragonFireBarrage.SHELL_RADIUS));
+		assertTrue(TrialRisks.insideMark(onlySecond, shells.get(1), DragonFireBarrage.SHELL_RADIUS));
+
+		int[] hit = DragonFireBarrage.victims(List.of(both, onlySecond), shells);
+		assertEquals(0, hit[0]);
+		assertEquals(1, hit[1], "둘째 원 안에 다른 사람이 있는데 아무도 안 맞았다");
+
+		int[] reversed = DragonFireBarrage.victims(List.of(onlySecond, both), shells);
+		assertEquals(1, reversed[0]);
+		assertEquals(0, reversed[1], "팀원 순서가 바뀌어도 두 사람 모두 맞아야 한다");
+	}
+
+	/** 원 하나는 한 사람만 때린다 — 같은 원에 넷이 모여 있어도 한 번이다. */
+	@Test
+	void 원_하나는_한_사람만_때린다() {
+		List<Vec3> shells = crossingShells();
+		Vec3 first = shells.get(0);
+		Vec3 away = first.subtract(shells.get(1)).normalize();
+		Vec3 deep = first.add(away.scale(1.0));
+		List<Vec3> huddle = List.of(deep, deep, deep, deep);
+		int[] hit = DragonFireBarrage.victims(huddle, List.of(first));
+		assertEquals(1, hit.length);
+		assertEquals(0, hit[0], "넷이 함께 서 있으면 한 사람만 맞는다 — 함께 움직이는 것이 정답이다");
+		assertEquals(-1, DragonFireBarrage.victims(List.of(new Vec3(100.0, 0.0, 100.0)), shells)[0],
+				"원 밖의 사람을 때렸다");
+	}
+
+	/** 45° 로 만난 두 줄의 4 번째 원 — 같은 박자에 터지고 서로 겹친다. */
+	private static List<Vec3> crossingShells() {
+		DragonFireBarrage.Barrage one = DragonFireBarrage.plan(0L, 0.0);
+		DragonFireBarrage.Barrage other = DragonFireBarrage.plan(0L, 0.25);
+		return List.of(one.shells().get(4), other.shells().get(4));
+	}
+
 	// ------------------------------------------------------------------ 겹치면 안 된다
 
 	/**
@@ -178,13 +352,14 @@ class DragonFireBarrageTest {
 	// ------------------------------------------------------------------ 순차가 안전장치다
 
 	/**
-	 * <b>한 틱에 하나만 터진다.</b>
+	 * <b>한 틱에 줄마다 하나만 터진다.</b>
 	 *
 	 * <p>순차라는 것이 이 컨셉의 안전장치다. 열 개가 겹쳐 터지면
-	 * {@code 6 × 10 = 60} 으로 팀 체력 20 의 세 배다.
+	 * {@code 6 × 10 = 60} 으로 팀 체력 20 의 세 배다. 두 줄은 {@code blastingIndex} 하나를 함께
+	 * 쓰므로 한 틱에 터지는 원은 줄 수와 같다.
 	 */
 	@Test
-	void 한_틱에_하나만_터진다() {
+	void 한_틱에_줄마다_하나만_터진다() {
 		long started = 10_000L;
 		Set<Integer> seen = new HashSet<>();
 		int blasts = 0;
@@ -198,8 +373,9 @@ class DragonFireBarrageTest {
 		}
 		assertEquals(DragonFireBarrage.SHELL_COUNT, blasts,
 				"열 개가 다 터지지 않으면 예고한 자리 중 어딘가는 거짓말이 된다");
-		assertEquals(1, DragonFireBarrage.MAX_CONCURRENT_BLASTS,
-				"둘이 한 틱에 터지게 고쳤으면 worstCaseTickDamage 를 함께 고쳐야 한다");
+		assertEquals(2, DragonFireBarrage.LINE_COUNT, "사람이 정한 것은 「한번에 2줄씩」이다");
+		assertEquals(DragonFireBarrage.LINE_COUNT, DragonFireBarrage.MAX_CONCURRENT_BLASTS,
+				"한 틱에 터지는 원 수가 줄 수와 다르면 worstCaseTickDamage 가 거짓이다");
 	}
 
 	@Test
@@ -412,45 +588,54 @@ class DragonFireBarrageTest {
 
 	// ------------------------------------------------------------------ 예고
 
+	/**
+	 * 예고가 「흩어지기」 하한 이상이다.
+	 *
+	 * <p>⚠ 2026-10-04 에 사람이 「원표식이 생기고 50프로 더 빨리 떨어지게」로 6초 → 4초를 정했고,
+	 * 그것이 하한 80 과 <b>정확히 같다.</b> 그래서 「하한보다 길다」가 「하한 이상이다」로 바뀌었다 —
+	 * 이 아래로 내리는 것은 더 이상 사람이 정한 값도 아니고 하한도 깬다.
+	 */
 	@Test
-	void 예고가_요구하는_행동의_최소_예고보다_길다() {
+	void 예고가_요구하는_행동의_최소_예고_이상이다() {
 		// 이 패턴이 요구하는 것은 「선이 지나갈 자리에서 비키기」다. 옆으로 반경만큼 나가면
 		// 되지만 어느 쪽으로 나갈지는 골라야 하므로, 기준은 흩어지기(80)다.
-		assertTrue(DragonFireBarrage.LEAD_TICKS > TrialWarning.TICKS_SCATTER,
+		assertEquals(80, DragonFireBarrage.LEAD_TICKS, "사람이 정한 것은 4초다(6초 ÷ 1.5)");
+		assertTrue(DragonFireBarrage.LEAD_TICKS >= TrialWarning.TICKS_SCATTER,
 				"필요 " + TrialWarning.TICKS_SCATTER + ", 실제 " + DragonFireBarrage.LEAD_TICKS
 						+ " — 짧으면 보여 준 것이 예고가 아니라 사후 통보다");
 		assertTrue(DragonFireBarrage.MIN_LEAD_TICKS >= TrialWarning.TICKS_SCATTER,
 				"늦게 놓는 길에도 같은 하한이 걸려 있어야 한다");
-		assertTrue(DragonFireBarrage.LEAD_TICKS >= DragonFireBarrage.MIN_LEAD_TICKS);
+		assertTrue(DragonFireBarrage.LEAD_TICKS >= DragonFireBarrage.MIN_LEAD_TICKS,
+				"예고가 하한보다 짧으면 모든 주기가 건너뛰어져 포격이 영영 안 나온다");
 
-		// 첫 화염구가 예고의 마지막 구간에서 나므로, 아무것도 오지 않는 순수한 예고는 그만큼
-		// 짧다. 그래도 하한을 넘어야 한다.
+		// 첫 화염구가 예고의 마지막 구간에서 난다. 그 동안에도 원은 그대로 보이므로 예고 길이는
+		// 줄지 않지만, 화염구 없는 조용한 구간이 「지정한 자리로 이동」보다는 길어야 한다.
 		int quiet = DragonFireBarrage.LEAD_TICKS - DragonFireBarrage.FLIGHT_TICKS;
-		assertTrue(quiet > TrialWarning.TICKS_SCATTER,
+		assertTrue(quiet >= TrialWarning.TICKS_REPOSITION,
 				"화염구가 뜨기 전 조용한 예고가 " + quiet + "틱뿐이다");
 	}
 
+	/**
+	 * 경고 세 층이 모두 나간다.
+	 *
+	 * <p>예고가 80 이라 「뭔가 온다」 층(≤100) <b>안에서</b> 시작한다. 그래서 직전 틱과 견주는
+	 * 한 인자짜리 {@code stageJustChanged} 로는 그 층이 통째로 빠지고, 예고의 첫 틱을 층이 바뀐
+	 * 틱으로 세는 두 인자짜리를 쓴다 — {@code DragonFireBarrage.warn} 이 그렇게 부른다.
+	 */
 	@Test
-	void 경고_세_층이_모두_나갈_만큼_예고가_길다() {
-		int firstStageAt = 0;
-		for (int remaining = 0; remaining <= 1000; remaining++) {
-			if (TrialWarning.stageFor(remaining) != null) {
-				firstStageAt = Math.max(firstStageAt, remaining);
-			}
-		}
-		assertTrue(DragonFireBarrage.LEAD_TICKS > firstStageAt,
-				"예고가 " + firstStageAt + " 이하면 「뭔가 온다」 층이 통째로 빠진다. 실제 "
-						+ DragonFireBarrage.LEAD_TICKS);
-
+	void 경고_세_층이_모두_나간다() {
 		Set<TrialWarning.Stage> seen = EnumSet.noneOf(TrialWarning.Stage.class);
 		for (int remaining = DragonFireBarrage.LEAD_TICKS; remaining >= 0; remaining--) {
 			TrialWarning.Stage stage = TrialWarning.stageFor(remaining);
-			if (stage != null && TrialRisks.stageJustChanged(remaining)) {
+			if (stage != null
+					&& TrialRisks.stageJustChanged(remaining, DragonFireBarrage.LEAD_TICKS)) {
 				seen.add(stage);
 			}
 		}
 		assertEquals(EnumSet.allOf(TrialWarning.Stage.class), seen,
 				"층이 빠지면 한 층을 놓친 사람을 다음 층이 못 잡는다");
+		assertTrue(TrialWarning.stageFor(DragonFireBarrage.LEAD_TICKS) != null,
+				"예고 첫 틱이 아무 층에도 안 닿으면 원이 소리 없이 뜬다");
 	}
 
 	@Test
@@ -507,14 +692,14 @@ class DragonFireBarrageTest {
 	}
 
 	/**
-	 * 하늘에 화염구가 언제나 한 발뿐이다.
+	 * 하늘에 화염구가 줄마다 언제나 한 발뿐이다.
 	 *
 	 * <p>{@link DragonFireBarrage#FLIGHT_TICKS} 가
 	 * {@link DragonFireBarrage#BLAST_INTERVAL_TICKS} 와 같아서 앞 발이 터지는 그 틱에 다음 발이
-	 * 떠난다. 길게 고치면 여러 발이 동시에 날아 「어느 것이 다음인가」가 안 읽힌다.
+	 * 떠난다. 길게 고치면 한 줄에서 여러 발이 동시에 날아 「어느 것이 다음인가」가 안 읽힌다.
 	 */
 	@Test
-	void 하늘에_화염구가_한_발뿐이고_터질_때마다_다음_발이_떠난다() {
+	void 하늘에_화염구가_줄마다_한_발뿐이고_터질_때마다_다음_발이_떠난다() {
 		assertEquals(DragonFireBarrage.BLAST_INTERVAL_TICKS, DragonFireBarrage.FLIGHT_TICKS,
 				"비행 시간과 터지는 간격이 다르면 하늘에 여러 발이 있거나 비어 있다");
 		long started = 500L;
@@ -547,10 +732,15 @@ class DragonFireBarrageTest {
 
 	@Test
 	void 점_수에_상한이_있다() {
-		// 바닥 표식. 원 열 개를 예고 6초 내내 매 틱 그린다.
+		// 바닥 표식. 원 스무 개를 예고 내내 MARK_STRIDE 틱에 나눠 그린다.
 		assertTrue(DragonFireBarrage.markPoints() <= DragonFireBarrage.MARK_MAX_POINTS,
 				"한 틱에 " + DragonFireBarrage.markPoints() + "점이 나간다 — 파티클만으로 틱이 밀린다");
 		assertTrue(DragonFireBarrage.markPoints() > 0, "고리를 하나도 안 그리면 예고가 없다");
+		// 이 패시브 하나가 한 틱에 내보내는 전부. 이 저장소의 한 틱 예산은 400~440 이다
+		// (docs/드래곤-트라이얼.md 5장 「점 예산」).
+		assertTrue(DragonFireBarrage.worstTickPoints() <= 440,
+				"고리 + 화염구 두 발 + 착탄 두 곳이 한 틱에 " + DragonFireBarrage.worstTickPoints()
+						+ "점이다 — 예산 440 을 넘는다. 줄이 둘이라 화염구와 착탄도 두 벌이다");
 
 		// 꼬리. 상한은 「약속한 길이 ÷ 허용 간격」이고 숫자를 박아 두면 한쪽만 고쳐진다.
 		int cap = (int) Math.ceil(DragonFireBarrage.TRAIL_KEPT_LENGTH
@@ -562,6 +752,40 @@ class DragonFireBarrageTest {
 				"드래곤이 멀수록 패킷이 늘면, 하필 가장 안 보이는 때가 가장 비싸다");
 		assertEquals(DragonFireBarrage.trailSamples(10_000.0),
 				DragonFireBarrage.trailSamples(500.0), "상한에 닿은 뒤로는 더 늘지 않는다");
+	}
+
+	/**
+	 * <b>고리를 나눠 그려도 고리가 끊기지 않는다.</b>
+	 *
+	 * <p>고리 하나를 {@code MARK_STRIDE} 틱에 한 번 그린다. 먼지 수명이 최소 8틱이라
+	 * ({@code TrialWarning.markGround} 의 「stride 는 8보다 작아야 한다」) 그보다 짧은 간격으로
+	 * 돌아와야 고리가 늘 보인다. 그리고 스무 개가 한 틱에 몰리지 않고 고르게 갈려야 점 예산이 선다.
+	 */
+	@Test
+	void 고리를_나눠_그려도_모든_고리가_먼지_수명_안에_다시_그려진다() {
+		assertTrue(DragonFireBarrage.MARK_STRIDE >= 1 && DragonFireBarrage.MARK_STRIDE < 8,
+				"MARK_STRIDE 가 " + DragonFireBarrage.MARK_STRIDE + " — 8 이상이면 먼지가 먼저 죽어 고리가 끊긴다");
+		int rings = DragonFireBarrage.LINE_COUNT * DragonFireBarrage.SHELL_COUNT;
+		int cap = (rings + DragonFireBarrage.MARK_STRIDE - 1) / DragonFireBarrage.MARK_STRIDE;
+		for (long now = -5L; now < 200L; now++) {
+			int drawn = 0;
+			for (int ring = 0; ring < rings; ring++) {
+				if (DragonFireBarrage.drawsRingAt(ring, now)) {
+					drawn++;
+				}
+			}
+			assertTrue(drawn <= cap, "틱 " + now + " 에 고리 " + drawn + "개 — 한 틱에 몰렸다");
+		}
+		for (int ring = 0; ring < rings; ring++) {
+			for (long start = 0L; start < 50L; start++) {
+				boolean seen = false;
+				for (long now = start; now < start + DragonFireBarrage.MARK_STRIDE; now++) {
+					seen |= DragonFireBarrage.drawsRingAt(ring, now);
+				}
+				assertTrue(seen, "고리 " + ring + " 이 " + DragonFireBarrage.MARK_STRIDE
+						+ "틱 동안 한 번도 안 그려진다: " + start);
+			}
+		}
 	}
 
 	@Test
@@ -593,15 +817,18 @@ class DragonFireBarrageTest {
 	void 한_틱에_받을_수_있는_가장_큰_피해가_무장_기준_팀_체력에_못_미친다() {
 		assertEquals(DragonFireBarrage.DAMAGE_PER_BLAST * DragonFireBarrage.MAX_CONCURRENT_BLASTS,
 				DragonFireBarrage.worstCaseTickDamage(), 1.0E-6);
-		float geared = GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
-				GearedDamage.Source.EXPLOSION) * DragonFireBarrage.MAX_CONCURRENT_BLASTS;
+		float perShell = GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
+				GearedDamage.Source.EXPLOSION);
+		// 감쇠는 한 방마다 따로 건다. 한 틱의 두 발은 서로 다른 두 사람의 몫이다(victims).
+		float geared = perShell * DragonFireBarrage.MAX_CONCURRENT_BLASTS;
 		assertTrue(geared < TEAM_HEALTH,
-				"「즉사 메커닉 0개」가 깨졌다. 완전무장하고도 한 틱에 " + geared);
-		assertTrue(geared < TEAM_HEALTH / 2.0F,
-				"원 하나가 팀 체력의 절반을 깎으면 두 발째가 곧 전멸이다. 무장 기준 " + geared);
-		assertTrue(GearedDamage.wipesInThree(geared),
-				"사람이 정한 것은 「큰자리는 3대맞으면 죽는거로」다. 무장 기준 한 발 " + geared
-						+ " · 두 발 " + geared * 2 + " · 세 발 " + geared * 3);
+				"「즉사 메커닉 0개」가 깨졌다. 완전무장하고도 한 틱에 " + geared
+						+ " — 두 줄이 한 틱에 두 사람을 때리는 판이다");
+		assertTrue(perShell < TEAM_HEALTH / 2.0F,
+				"원 하나가 팀 체력의 절반을 깎으면 두 발째가 곧 전멸이다. 무장 기준 " + perShell);
+		assertTrue(GearedDamage.wipesInThree(perShell),
+				"사람이 정한 것은 「큰자리는 3대맞으면 죽는거로」다. 무장 기준 한 발 " + perShell
+						+ " · 두 발 " + perShell * 2 + " · 세 발 " + perShell * 3);
 		assertTrue(DragonFireBarrage.worstCaseTickDamage() > TEAM_HEALTH,
 				"적힌 값이 팀 체력보다 작아졌다면 무장 기준이 아니라 날값으로 되돌아간 것이다 —"
 						+ " GearedDamage 의 설명을 먼저 읽을 것");
@@ -623,47 +850,59 @@ class DragonFireBarrageTest {
 	}
 
 	/**
-	 * <b>선을 따라 도망쳐도 두 발까지다.</b>
+	 * <b>선을 따라 도망치면 원 두 개에 걸리고, 포격은 쿨타임을 무시하므로 두 발 다 들어간다.</b>
 	 *
 	 * <p>연달아 맞는 것은 막지 않는다 — 그것이 이 패턴의 긴장이다. 다만 <b>몇 발까지인지는 값에서
-	 * 세어 두어야</b> 팀 체력 20 과 견줄 수 있다. 포격은 초당 13.3칸으로 전진하는데 사람이 맨몸으로
-	 * 낼 수 있는 가장 빠른 속도가 7.13칸/초라 따라잡히고, 그때 걸리는 것이 두 발이다.
+	 * 세어 두어야</b> 팀 체력 20 과 견줄 수 있다. 포격은 초당 20칸으로 전진하는데 사람이 맨몸으로
+	 * 낼 수 있는 가장 빠른 속도가 7.13칸/초라 따라잡히고, 그때 걸리는 것이 원 두 개다.
 	 *
-	 * <p>두 발은 <b>무장 기준 13.5</b> 로 팀 체력의 6할 7푼이다 — 아프지만 살아서
-	 * <b>「선을 따라 도망치면 안 된다」</b>를 배운다. 이 「6할」이 처음부터 이 값이 노리던 자리였고,
-	 * 옛 6 은 무장 기준으로 재면 1할 8푼이라 그 자리를 비워 두고 있었다.
+	 * <p>⚠ <b>2026-10-04 에 「6할」이 한 번 사라졌다가 돌아왔다.</b> 사람이 정한 0.4초(8틱)는 바닐라
+	 * 피격 쿨타임 10틱보다 짧아 둘째 원이 통째로 먹히고 한 발(6.77)만 들어갔다. 그 사실을 듣고
+	 * 사람이 같은 날 <b>「포격 무시」</b>를 골라 포격만 쿨타임을 무시하게 했고, 그래서 다시 두 발 —
+	 * 무장 기준 <b>13.5(팀 체력 6할 7푼)</b> 이다.
 	 *
 	 * <p>감쇠는 <b>발마다 따로</b> 건다({@link GearedDamage} 의 「감쇠는 한 방마다 걸린다」).
-	 * {@code chainDamage} 가 돌려주는 것은 적힌 값의 합이라 그대로 감쇠하면 안 된다.
 	 */
 	@Test
-	void 선을_따라_도망쳐도_두_발까지만_맞는다() {
+	void 선을_따라_도망치면_원_둘에_걸리고_포격_무시라_두_발_다_들어간다() {
+		float perShell = GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
+				GearedDamage.Source.EXPLOSION);
 		for (double speed : new double[] {WALK, SPRINT, SPRINT_JUMP}) {
 			assertEquals(2, DragonFireBarrage.chainHits(speed),
-					"속도 " + speed + "칸/초에서 " + DragonFireBarrage.chainHits(speed)
-							+ "발이다 — 간격이나 반경을 고쳤다면 DAMAGE_PER_BLAST 를 함께 내릴 것");
+					"속도 " + speed + "칸/초에서 원 " + DragonFireBarrage.chainHits(speed)
+							+ "개에 걸린다 — 간격이나 반경을 고쳤다면 DAMAGE_PER_BLAST 를 함께 볼 것");
+			assertEquals(2, DragonFireBarrage.landedChainHits(speed),
+					"속도 " + speed + " 에서 들어가는 발이 둘이 아니다 — 포격이 피격 쿨타임을 무시하지"
+							+ " 않게 된 것이다(사람이 2026-10-04 에 「포격 무시」를 골랐다)");
 			assertTrue(gearedChain(speed) < TEAM_HEALTH,
 					"도망치다 전멸하면 도망칠 이유가 없다. 속도 " + speed + " 에서 무장 기준 "
 							+ gearedChain(speed));
 		}
+		// 실제 셈 — 감쇠한 한 발에 발 수를 곱한다. 46 을 통째로 감쇠하면 안 된다.
+		assertEquals(perShell * 2.0F, gearedChain(SPRINT_JUMP), 1.0E-4F);
 		assertEquals(13.5F, gearedChain(SPRINT_JUMP), 0.1F,
-				"카드 문서에 적은 「6할」이 이 값이다");
+				"0.4초 간격 + 포격 무시에서 도망친 사람이 실제로 받는 몫이다 — 팀 체력의 6할 7푼");
+		assertTrue(GearedDamage.wipesInThree(perShell) && gearedChain(SPRINT_JUMP) < TEAM_HEALTH,
+				"두 발로 전멸하면 「3대」가 아니라 「2대」다. 무장 기준 두 발 " + gearedChain(SPRINT_JUMP));
+		assertEquals(DragonFireBarrage.DAMAGE_PER_BLAST * 2.0F,
+				DragonFireBarrage.chainDamage(SPRINT_JUMP), 1.0E-6,
+				"chainDamage 는 들어가는 발의 날값 합이다 — 두 발 46");
 	}
 
 	/**
 	 * 그 속도로 도망친 사람이 <b>완전무장하고</b> 실제로 받는 합계.
 	 *
-	 * <p>{@code chainDamage} 는 적힌 값의 합이라 그대로 감쇠하면 실제보다 아프게 나온다. 발 수를
-	 * 받아 <b>한 발씩</b> 감쇠한 뒤 더한다.
+	 * <p>발 수를 받아 <b>한 발씩</b> 감쇠한 뒤 더한다. 발 수는 실제로 들어가는 것만 센다
+	 * ({@code landedChainHits} — 포격 무시라 지금은 걸린 원 수와 같다).
 	 */
 	private static float gearedChain(double blocksPerSecond) {
 		return GearedDamage.afterGear(DragonFireBarrage.DAMAGE_PER_BLAST,
-				GearedDamage.Source.EXPLOSION) * DragonFireBarrage.chainHits(blocksPerSecond);
+				GearedDamage.Source.EXPLOSION) * DragonFireBarrage.landedChainHits(blocksPerSecond);
 	}
 
 	@Test
 	void 포격만큼_빠르면_전부_맞는다() {
-		// 경계를 적어 둔다. 포격은 초당 간격÷0.6 칸으로 전진하므로, 신속 물약으로 그 속도가
+		// 경계를 적어 둔다. 포격은 초당 간격÷0.4 칸으로 전진하므로, 신속 물약으로 그 속도가
 		// 나오면 원을 끼고 함께 달리는 셈이 된다. 스스로 고른 것이라 「대응 불가」가 아니지만,
 		// 계산이 조용히 1 을 돌려주고 끝나지는 않아야 한다.
 		double wave = DragonFireBarrage.shellGap() * 20.0 / DragonFireBarrage.BLAST_INTERVAL_TICKS;
@@ -686,14 +925,280 @@ class DragonFireBarrageTest {
 						+ " 되돌아간 것이 아닌지 볼 것");
 	}
 
+	/**
+	 * 터지는 간격이 사람이 정한 0.4초다 — <b>바닐라 피격 쿨타임보다 짧다는 것을 알고 둔다.</b>
+	 *
+	 * <p>전에는 이 시험이 「10틱보다 넓다」를 못박았다. 사람이 2026-10-04 에 「간격도 0.4초」라고
+	 * 정해 그 규칙을 내려놓았다. 그러자 둘째 원이 쿨타임에 먹혔고, 사람이 같은 날 「포격 무시」를
+	 * 골라 <b>포격만 쿨타임을 무시하게</b> 했다({@code DragonFireBarrage.strike}). 그래서 걸린
+	 * 원은 전부 들어간다({@code landedHits}).
+	 */
 	@Test
-	void 터지는_간격이_바닐라_무적시간보다_넓다() {
-		assertTrue(DragonFireBarrage.BLAST_INTERVAL_TICKS > 10,
-				"바닐라 피격 무적시간이 10틱이다. 더 촘촘하면 연달아 맞은 두 번째 원의 몫이"
-						+ " 조용히 사라지고 「원 하나에 적힌 값」이 거짓이 된다");
-		assertEquals(12, DragonFireBarrage.BLAST_INTERVAL_TICKS, "카드에 적힌 것은 0.6초다");
-		assertEquals(108, DragonFireBarrage.BARRAGE_TICKS,
-				"열 개가 0.6초 간격이면 5.4초다 — 값이 아니라 개수와 간격에서 나오는 결과다");
+	void 터지는_간격이_사람이_정한_0_4초다() {
+		assertEquals(8, DragonFireBarrage.BLAST_INTERVAL_TICKS, "사람이 정한 것은 0.4초다");
+		assertEquals(72, DragonFireBarrage.BARRAGE_TICKS,
+				"열 개가 0.4초 간격이면 3.6초다 — 값이 아니라 개수와 간격에서 나오는 결과다");
+		assertEquals(10, DragonFireBarrage.VANILLA_DAMAGE_COOLDOWN_TICKS,
+				"26.3 hurtServer 의 damageCooldownTime > 10 이다");
+		assertEquals(20, DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS,
+				"26.3 hurtServer 의 bipush 20; putfield damageCooldownTime 이다");
+		assertTrue(DragonFireBarrage.BLAST_INTERVAL_TICKS < DragonFireBarrage.VANILLA_DAMAGE_COOLDOWN_TICKS,
+				"간격이 쿨타임보다 넓어졌다면 「포격 무시」가 없어도 된다 — strike 와 이 시험을 함께 볼 것");
+		int left = DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS - DragonFireBarrage.BLAST_INTERVAL_TICKS;
+		assertTrue(left > DragonFireBarrage.VANILLA_DAMAGE_COOLDOWN_TICKS,
+				"8틱 뒤의 쿨타임 " + left + " 은 문턱 위다 — 바닐라대로면 둘째 원이 먹힌다");
+
+		// 연달아 걸린 원 n 개 중 들어가는 것 — 포격 무시라 전부.
+		assertEquals(0, DragonFireBarrage.landedHits(0));
+		assertEquals(1, DragonFireBarrage.landedHits(1));
+		assertEquals(2, DragonFireBarrage.landedHits(2),
+				"8틱 뒤의 둘째 원이 쿨타임 12 에 먹혔다 — 포격이 쿨타임을 무시하지 않는다");
+		assertEquals(3, DragonFireBarrage.landedHits(3));
+		assertEquals(DragonFireBarrage.SHELL_COUNT,
+				DragonFireBarrage.landedHits(DragonFireBarrage.SHELL_COUNT));
+	}
+
+	// ------------------------------------------------------------------ 포격 무시 (2026-10-04)
+
+	/**
+	 * <b>포격만 쿨타임을 무시하고, 다른 피해원은 같은 쿨타임에 막힌다.</b>
+	 *
+	 * <p>사람이 2026-10-04 에 「포격 무시」를 골랐다. 다른 피해원의 쿨타임은 풀리면 안 된다.
+	 *
+	 * <p>바닐라의 판정은 {@link com.sharedfate.perk.PerkDamage#effectiveAmount} 가 한 줄씩 옮겨 둔
+	 * 순수 계산으로 본다. 앞 원을 맞은 지 8틱 — 쿨타임 12, {@code lastHurt} 는 하드 곱이 걸린
+	 * 34.5 다. 같은 쿨타임 앞에서 포격은 {@code cooldownForStrike} 를 거쳐 온전히 들어가고, 거치지
+	 * 않는 피해(다른 모든 피해원)는 버려진다.
+	 */
+	@Test
+	void 포격만_쿨타임을_무시하고_다른_피해원은_막힌다() {
+		float hard = DragonFireBarrage.DAMAGE_PER_BLAST * 1.5F;
+		int cooldown = DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS
+				- DragonFireBarrage.BLAST_INTERVAL_TICKS;
+
+		assertEquals(0.0F, com.sharedfate.perk.PerkDamage.effectiveAmount(hard, hard, cooldown, false),
+				1.0E-6, "다른 피해원은 쿨타임 " + cooldown + " 에서 같은 크기가 버려져야 한다 — 바닐라 그대로");
+		assertEquals(0.0F, com.sharedfate.perk.PerkDamage.effectiveAmount(4.5F, hard, cooldown, false),
+				1.0E-6, "포격 직후의 좀비 한 대도 막혀야 한다");
+		assertEquals(hard, com.sharedfate.perk.PerkDamage.effectiveAmount(hard, hard,
+						DragonFireBarrage.cooldownForStrike(cooldown), false),
+				1.0E-6, "포격은 같은 쿨타임 앞에서 온전히 들어가야 한다 — 「포격 무시」");
+
+		// 지우는 것은 문턱 위일 때뿐이다. 문턱 아래는 어차피 「새로 맞음」이라 손대지 않는다.
+		assertEquals(DragonFireBarrage.STRIKE_COOLDOWN_TICKS, DragonFireBarrage.cooldownForStrike(20));
+		assertEquals(DragonFireBarrage.STRIKE_COOLDOWN_TICKS, DragonFireBarrage.cooldownForStrike(11));
+		assertEquals(10, DragonFireBarrage.cooldownForStrike(10));
+		assertEquals(0, DragonFireBarrage.cooldownForStrike(0));
+		assertTrue(DragonFireBarrage.STRIKE_COOLDOWN_TICKS <= DragonFireBarrage.VANILLA_DAMAGE_COOLDOWN_TICKS,
+				"지운 값이 문턱 위면 바닐라가 여전히 「쿨타임 안」 갈래로 간다");
+
+		assertFalse(DragonFireBarrage.ignoresCooldown(),
+				"포격을 넣는 중이 아닌데 「쿨타임 무시」 표시가 켜져 있다 — 다른 피해원까지 풀린다");
+	}
+
+	/**
+	 * <b>포격으로 맞은 뒤에는 바닐라대로 새 쿨타임이 걸린다.</b> 우회는 「들어갈 때 이전 쿨타임을
+	 * 무시」뿐이다.
+	 *
+	 * <p>바닐라 판정을 쿨타임 상태까지 돌려주는 순수 계산({@link SpreadDamageManager#gate})으로
+	 * 한 줄씩 굴린다. 포격이 들어간 뒤의 쿨타임은 20, {@code lastHurt} 는 포격 피해량이고, 그
+	 * 상태에서 10틱 안에 온 다른 피해는 바닐라대로 막힌다.
+	 */
+	@Test
+	void 포격_뒤에는_바닐라대로_새_쿨타임이_걸린다() {
+		float hard = DragonFireBarrage.DAMAGE_PER_BLAST * 1.5F;
+		// 좀비에게 맞은 지 3틱. 바닐라대로면 포격은 34.5 - 4.5 = 30 만 들어간다.
+		int before = DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS - 3;
+		SpreadDamageManager.Gate struck = SpreadDamageManager.gate(hard, 4.5F,
+				DragonFireBarrage.cooldownForStrike(before), false);
+		assertEquals(hard, struck.accepted(), 1.0E-6, "포격이 앞 피해의 쿨타임에 깎였다");
+		assertEquals(DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS, struck.invulnerableTicks(),
+				"포격이 맞았는데 새 쿨타임이 안 걸렸다");
+		assertEquals(hard, struck.lastAmount(), 1.0E-6, "lastHurt 는 포격 피해량이어야 한다");
+
+		// 맞은 뒤 남길 값 — 바닐라가 쓴 20 을 그대로 둔다(되돌리지 않는다).
+		assertEquals(DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS,
+				DragonFireBarrage.cooldownAfterStrike(before, DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS),
+				"포격이 맞은 뒤 쿨타임을 원래 값으로 되돌렸다 — 포격 직후 다른 피해가 쿨타임 없이 얹힌다");
+
+		// 포격 직후 9틱 안의 다른 피해원은 막힌다.
+		for (int after = 0; after < DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS
+				- DragonFireBarrage.VANILLA_DAMAGE_COOLDOWN_TICKS; after++) {
+			int cooldown = struck.invulnerableTicks() - after;
+			assertEquals(0.0F, SpreadDamageManager.gate(4.5F, struck.lastAmount(), cooldown, false)
+					.accepted(), 1.0E-6, "포격 " + after + "틱 뒤의 좀비 한 대가 쿨타임을 뚫었다");
+		}
+	}
+
+	/**
+	 * <b>바닐라가 받아들이지 않은 포격은 지운 쿨타임을 되돌린다.</b>
+	 *
+	 * <p>시련 정지·게임 시작 전의 HEAD 취소, {@code Player.hurtServer} 의 조기 반환 같은 길에서는
+	 * 바닐라가 쿨타임을 쓰지 않아 지운 값(0)이 그대로 남는다. 그대로 두면 다음 다른 피해원이 쿨타임
+	 * 없이 들어간다 — 「포격 무시」가 다른 피해원으로 새는 길이다.
+	 */
+	@Test
+	void 받아들여지지_않은_포격은_지운_쿨타임을_되돌린다() {
+		int strike = DragonFireBarrage.STRIKE_COOLDOWN_TICKS;
+		assertEquals(12, DragonFireBarrage.cooldownAfterStrike(12, strike),
+				"취소된 포격이 지운 쿨타임을 남겼다 — 다음 피해원이 쿨타임 없이 들어간다");
+		assertEquals(20, DragonFireBarrage.cooldownAfterStrike(20, strike));
+		// 지우지 않았으면(문턱 아래) 바닐라가 남긴 값 그대로다.
+		assertEquals(5, DragonFireBarrage.cooldownAfterStrike(5, 5));
+		assertEquals(0, DragonFireBarrage.cooldownAfterStrike(0, 0));
+		assertEquals(20, DragonFireBarrage.cooldownAfterStrike(5, 20));
+		assertNotEquals(DragonFireBarrage.STRIKE_COOLDOWN_TICKS, DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS,
+				"지운 값과 바닐라가 채우는 값이 같으면 「맞았는가」를 가려낼 수 없다");
+	}
+
+	/**
+	 * 「맞았는가」를 쿨타임 값으로 가려내도 되는 근거를 <b>바닐라 클래스 파일째로</b> 붙든다.
+	 *
+	 * <p>{@code DragonFireBarrage.cooldownAfterStrike} 는 호출 뒤에도 쿨타임이 0 이면 「안 맞았다」로
+	 * 본다. 그것이 참이려면 피해 사슬({@code ServerPlayer} → {@code Player} → {@code LivingEntity}
+	 * 의 {@code hurtServer}) 안에서 {@code damageCooldownTime} 에 쓰는 값이 <b>20 하나뿐</b>이어야
+	 * 한다. 문턱 10 도 같은 자리에서 확인한다.
+	 */
+	@Test
+	void 바닐라_피해_사슬이_쿨타임에_쓰는_값은_20_하나뿐이다() {
+		List<String> living = cooldownWritesIn(net.minecraft.world.entity.LivingEntity.class);
+		assertEquals(List.of("write:" + DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS,
+						"gate:" + (float) DragonFireBarrage.VANILLA_DAMAGE_COOLDOWN_TICKS)
+						.stream().sorted().toList(),
+				living.stream().sorted().toList(),
+				"26.3 LivingEntity.hurtServer 의 쿨타임 판정이 바뀌었다 — strike 의 되돌림 판정을 다시 볼 것");
+		assertEquals(List.of(), cooldownWritesIn(net.minecraft.world.entity.player.Player.class),
+				"Player.hurtServer 가 쿨타임을 만진다");
+		assertEquals(List.of(), cooldownWritesIn(net.minecraft.server.level.ServerPlayer.class),
+				"ServerPlayer.hurtServer 가 쿨타임을 만진다");
+	}
+
+	/**
+	 * 우리 쪽에서 피격 쿨타임을 <b>쓰는</b> 곳이 정해진 둘뿐이다 — 포격 무시가 다른 피해원으로 새지
+	 * 않았다.
+	 *
+	 * <p>{@code DragonFireBarrage.strike}(포격 무시)와 {@code SpreadDamageManager.deliver}(「완충」의
+	 * 몫 넣기, 넣은 뒤 원래 값으로 되돌린다). 그 밖에서 쿨타임을 쓰기 시작하면 다른 피해원의
+	 * 쿨타임이 풀리는 길이 생긴다. 그리고 이 패시브가 {@code hurtServer} 를 부르는 곳도
+	 * {@code strike} 하나여야 한다 — 다른 데서 부르면 그 발은 쿨타임을 무시하지 못한다.
+	 */
+	@Test
+	void 피격_쿨타임을_쓰는_곳은_포격과_완충_둘뿐이다() throws Exception {
+		Set<String> writers = new HashSet<>();
+		Set<String> barrageHurts = new HashSet<>();
+		for (java.nio.file.Path file : mainClassFiles()) {
+			byte[] bytes = java.nio.file.Files.readAllBytes(file);
+			ClassReader reader = new ClassReader(bytes);
+			String owner = reader.getClassName();
+			reader.accept(new ClassVisitor(Opcodes.ASM9) {
+				@Override
+				public MethodVisitor visitMethod(int access, String name, String descriptor,
+						String signature, String[] exceptions) {
+					return new MethodVisitor(Opcodes.ASM9) {
+						@Override
+						public void visitFieldInsn(int opcode, String fieldOwner, String field,
+								String fieldDescriptor) {
+							if (opcode == Opcodes.PUTFIELD && field.equals("damageCooldownTime")) {
+								writers.add(simple(owner) + "." + name);
+							}
+						}
+
+						@Override
+						public void visitMethodInsn(int opcode, String callOwner, String callName,
+								String callDescriptor, boolean isInterface) {
+							if (owner.equals("com/sharedfate/sync/DragonFireBarrage")
+									&& callName.equals("hurtServer")) {
+								barrageHurts.add(name);
+							}
+						}
+					};
+				}
+			}, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+		}
+		assertEquals(Set.of("DragonFireBarrage.strike", "SpreadDamageManager.deliver"), writers,
+				"피격 쿨타임을 쓰는 곳이 바뀌었다 — 다른 피해원의 쿨타임이 풀리는 길인지 볼 것");
+		assertEquals(Set.of("strike"), barrageHurts,
+				"연쇄 포격이 strike 밖에서 hurtServer 를 부른다 — 그 발은 「포격 무시」를 타지 않는다");
+	}
+
+	/** 바닐라 클래스의 {@code hurtServer} 가 쿨타임을 쓰는 값({@code write:})과 견주는 문턱({@code gate:}). */
+	private static List<String> cooldownWritesIn(Class<?> type) {
+		List<String> found = new ArrayList<>();
+		String path = "/" + type.getName().replace('.', '/') + ".class";
+		try (InputStream in = type.getResourceAsStream(path)) {
+			assertNotNull(in, path + " 을 찾지 못했다");
+			new ClassReader(in.readAllBytes()).accept(new ClassVisitor(Opcodes.ASM9) {
+				@Override
+				public MethodVisitor visitMethod(int access, String name, String descriptor,
+						String signature, String[] exceptions) {
+					if (!name.equals("hurtServer")) {
+						return null;
+					}
+					return new MethodVisitor(Opcodes.ASM9) {
+						private Integer lastInt;
+						private boolean readCooldown;
+
+						@Override
+						public void visitIntInsn(int opcode, int operand) {
+							lastInt = opcode == Opcodes.NEWARRAY ? null : operand;
+						}
+
+						@Override
+						public void visitInsn(int opcode) {
+							if (opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5) {
+								lastInt = opcode - Opcodes.ICONST_0;
+							} else if (opcode != Opcodes.I2F) {
+								lastInt = null;
+							}
+						}
+
+						@Override
+						public void visitLdcInsn(Object value) {
+							if (readCooldown && value instanceof Float threshold) {
+								found.add("gate:" + threshold);
+							}
+							readCooldown = false;
+							lastInt = value instanceof Integer constant ? constant : null;
+						}
+
+						@Override
+						public void visitFieldInsn(int opcode, String owner, String field,
+								String fieldDescriptor) {
+							if (field.equals("damageCooldownTime")) {
+								if (opcode == Opcodes.PUTFIELD) {
+									found.add("write:" + lastInt);
+								} else if (opcode == Opcodes.GETFIELD) {
+									readCooldown = true;
+								}
+							}
+							lastInt = null;
+						}
+					};
+				}
+			}, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+		} catch (IOException failed) {
+			throw new AssertionError(failed);
+		}
+		return found;
+	}
+
+	/** {@code com/sharedfate/sync/Foo$Bar} → {@code Foo$Bar}. */
+	private static String simple(String internalName) {
+		return internalName.substring(internalName.lastIndexOf('/') + 1);
+	}
+
+	/** 본 소스 산출물의 클래스 파일 전부. {@code TrialWarningTest} 와 같은 방식이다. */
+	private static List<java.nio.file.Path> mainClassFiles() throws Exception {
+		java.net.URL url = DragonFireBarrage.class.getResource("DragonFireBarrage.class");
+		assertNotNull(url, "DragonFireBarrage.class 를 찾지 못했다");
+		// .../com/sharedfate/sync/DragonFireBarrage.class 에서 넷 올라가면 산출물 뿌리다.
+		java.nio.file.Path root = java.nio.file.Path.of(url.toURI())
+				.getParent().getParent().getParent().getParent();
+		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(root)) {
+			return files.filter(path -> path.getFileName().toString().endsWith(".class"))
+					.sorted()
+					.toList();
+		}
 	}
 
 	// ------------------------------------------------------------------ 상태가 새지 않는가
@@ -702,7 +1207,7 @@ class DragonFireBarrageTest {
 	void 포격이_clearState_로_깨끗이_지워진다() {
 		assertNull(DragonFireBarrage.active(), "처음에는 아무 포격도 없어야 한다");
 
-		DragonFireBarrage.remember(DragonFireBarrage.plan(7L, 0.42));
+		DragonFireBarrage.remember(DragonFireBarrage.planVolley(7L, 0.42, 0.5));
 		assertNotNull(DragonFireBarrage.active());
 
 		DragonFireBarrage.clearState();
@@ -732,7 +1237,7 @@ class DragonFireBarrageTest {
 	@Test
 	void 전투가_바뀌면_지난_판의_포격을_스스로_버린다() {
 		DragonFireBarrage.beginFight(1_000L);
-		DragonFireBarrage.remember(DragonFireBarrage.plan(2L, 0.6));
+		DragonFireBarrage.remember(DragonFireBarrage.planVolley(2L, 0.6, 0.3));
 		DragonFireBarrage.notePlanned(2L);
 
 		DragonFireBarrage.beginFight(1_000L);

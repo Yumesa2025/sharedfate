@@ -65,8 +65,8 @@ class TrialVelocityTest {
 	 * ⚠ <b>두 번째 천장을 베껴 적지 않았다.</b>
 	 *
 	 * <p>천장은 {@code DragonLastStandPatterns.CROSS_LIFT_SPEED} 곧 <b>우리가 일부러 싣는 가장 큰
-	 * 세로</b>(십자 띄움 6칸)이고, 그 값이 정의된 자리는 그 파일 하나다. 여기에 숫자로 옮겨 적으면
-	 * 6칸을 고치는 날 이 천장이 뒤에 남는다.
+	 * 세로</b>(십자 띄움 12칸)이고, 그 값이 정의된 자리는 그 파일 하나다. 여기에 숫자로 옮겨 적으면
+	 * 칸 수를 고치는 날 이 천장이 뒤에 남는다(2026-10-04 에 6칸 → 12칸으로 실제로 고쳤다).
 	 *
 	 * <p>칸을 하나도 들지 않는 것으로 그것을 못박는다 — 베껴 적으려면 칸이 필요하다.
 	 */
@@ -89,13 +89,14 @@ class TrialVelocityTest {
 	 * 조용히 깎인다.
 	 *
 	 * <p>세로를 <b>덮어쓰는</b> 자리가 둘이다. {@code TrialRisks.launch} 의 「자리 폭격」 4칸과
-	 * {@code DragonLastStandPatterns.liftCross} 의 십자 6칸. 덮어쓰기라 이 함수를 지나지 않지만,
+	 * {@code DragonLastStandPatterns.liftCross} 의 십자 12칸. 덮어쓰기라 이 함수를 지나지 않지만,
 	 * 그 사람이 <b>다음 틱에 다른 카드에 밀리면</b> 그때 올라가는 속도가 천장에 걸린다.
 	 */
 	@Test
 	void 우리가_일부러_싣는_세로가_모두_천장_아래다() {
 		double ceiling = DragonLastStandPatterns.CROSS_LIFT_SPEED;
-		assertEquals(1.007, ceiling, 0.001, "십자 6칸의 처음 속도다 — 달라졌으면 아래 수도 볼 것");
+		assertEquals(1.491, ceiling, 0.001,
+				"십자 12칸의 처음 속도다(6칸이던 때 1.007) — 달라졌으면 아래 수도 볼 것");
 
 		// 「자리 폭격」의 4칸. 이 값이 천장을 넘으면 띄워진 사람이 밀릴 때 띄움이 깎인다.
 		double launch = TrialRisks.launchVelocity(4.0);

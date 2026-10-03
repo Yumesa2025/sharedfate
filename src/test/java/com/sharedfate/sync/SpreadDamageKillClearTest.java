@@ -7,15 +7,23 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -172,6 +180,68 @@ class SpreadDamageKillClearTest {
 		load(dir, "{ \"perks\": [] }");
 
 		assertFalse(SpreadDamageManager.clearsOnKill(state("sharedfate:사라진것")));
+	}
+
+	// ------------------------------------------------------------------ 포격 무시 (2026-10-04)
+
+	/**
+	 * <b>포격 중에는 「완충」의 흉내 쿨타임(Guard)이 막지 않는다.</b>
+	 *
+	 * <p>사람이 2026-10-04 에 「포격 무시」를 골랐다 — 완충의 흉내 쿨타임도 같은 규칙을 따라야
+	 * 한다. 앞 원을 맞은 지 8틱이면 Guard 는 쿨타임 12, 직전 피해량은 같은 포격 값이다. 무시하지
+	 * 않으면 둘째 원이 통째로 버려지고(피해 0 짜리 피격 연출만 남는다), 무시하면 온전히 미뤄진다.
+	 *
+	 * <p>{@code capture} 자체는 살아 있는 팀·플레이어가 있어야 해서 여기서 부르지 않는다. 대신
+	 * 그 메서드가 {@code gate} 를 부르기 <b>전에</b> {@code DragonFireBarrage.ignoresCooldown} 을
+	 * 묻는다는 것을 바이트코드로 붙든다. 그 물음이 빠지면 이 시험이 깨진다.
+	 */
+	@Test
+	void 포격_중에는_Guard_가_막지_않는다() throws IOException {
+		float hard = DragonFireBarrage.DAMAGE_PER_BLAST * 1.5F;
+		int guardTicks = DragonFireBarrage.VANILLA_FRESH_COOLDOWN_TICKS
+				- DragonFireBarrage.BLAST_INTERVAL_TICKS;
+		assertTrue(guardTicks > SpreadDamageManager.INVULNERABLE_GATE_TICKS,
+				"전제가 틀렸다 — 둘째 원이 Guard 의 쿨타임 안에 오지 않는다");
+
+		assertEquals(0.0F, SpreadDamageManager.gate(hard, hard, guardTicks, false).accepted(), EPSILON,
+				"무시하지 않으면 둘째 원이 버려진다 — 고치기 전의 증상");
+		assertEquals(hard, SpreadDamageManager.gate(hard, hard, guardTicks, true).accepted(), EPSILON,
+				"포격 무시면 둘째 원이 온전히 미뤄져야 한다");
+
+		// capture 가 gate 앞에서 포격 표시를 묻는지 — 호출 순서를 바이트코드에서 뽑는다.
+		List<String> calls = new ArrayList<>();
+		try (InputStream in = SpreadDamageManager.class
+				.getResourceAsStream("/com/sharedfate/sync/SpreadDamageManager.class")) {
+			assertNotNull(in, "SpreadDamageManager.class 를 찾지 못했다");
+			new ClassReader(in.readAllBytes()).accept(new ClassVisitor(Opcodes.ASM9) {
+				@Override
+				public MethodVisitor visitMethod(int access, String name, String descriptor,
+						String signature, String[] exceptions) {
+					if (!name.equals("capture")) {
+						return null;
+					}
+					return new MethodVisitor(Opcodes.ASM9) {
+						@Override
+						public void visitMethodInsn(int opcode, String owner, String callName,
+								String callDescriptor, boolean isInterface) {
+							if (owner.equals("com/sharedfate/sync/DragonFireBarrage")
+									&& callName.equals("ignoresCooldown")) {
+								calls.add("ignoresCooldown");
+							} else if (owner.equals("com/sharedfate/sync/SpreadDamageManager")
+									&& callName.equals("gate")) {
+								calls.add("gate");
+							}
+						}
+					};
+				}
+			}, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+		}
+		assertEquals(List.of("ignoresCooldown", "gate"), calls,
+				"capture 가 gate 앞에서 DragonFireBarrage.ignoresCooldown 을 묻지 않는다 — "
+						+ "「완충」을 가진 팀에서만 둘째 원이 Guard 에 먹힌다");
+
+		assertFalse(DragonFireBarrage.ignoresCooldown(),
+				"포격을 넣는 중이 아닌데 표시가 켜져 있다 — 다른 피해원까지 Guard 를 뚫는다");
 	}
 
 	// ------------------------------------------------------------------ 도우미

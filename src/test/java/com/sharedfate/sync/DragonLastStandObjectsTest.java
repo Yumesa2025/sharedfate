@@ -772,11 +772,11 @@ class DragonLastStandObjectsTest {
 				"먼지 수명 8틱에서 나온 상한은 한 곳에만 적혀 있어야 한다 — 넘기면 선이 안 닫힌다");
 		int worst = DragonLastStandPatterns.worstCasePointsPerTick()
 				+ DragonLastStandObjects.worstCasePointsPerTick();
-		// ⚠ 패턴 쪽은 356 이 아니라 360 이다 — 그쪽이 띄움 기둥 넷을 더했고 그쪽 시험이 360 을
-		// 못박고 있다(DragonLastStandPatternsTest). 둘이 같은 수를 보므로 어느 쪽이 움직여도
-		// 양쪽 시험이 함께 멈춘다.
-		assertEquals(397, worst,
-				"패턴 360 + 파도 37 이다. 연결선을 늘린 사람도, 패턴을 늘린 사람도 여기서 멈춘다");
+		// ⚠ 패턴 쪽은 322 다(2026-10-04 에 360 → 322) — 십자 예고를 바닥 판으로 바꿔 먼지 선과
+		// 흰 기둥 벽을 걷었고 그쪽 시험이 322 를 못박고 있다(DragonLastStandPatternsTest). 둘이
+		// 같은 수를 보므로 어느 쪽이 움직여도 양쪽 시험이 함께 멈춘다.
+		assertEquals(359, worst,
+				"패턴 322 + 파도 37 이다. 연결선을 늘린 사람도, 패턴을 늘린 사람도 여기서 멈춘다");
 		assertTrue(TrialLandingShock.MAX_POINTS_PER_TICK - worst >= 20,
 				"예산까지 " + (TrialLandingShock.MAX_POINTS_PER_TICK - worst)
 						+ "점뿐이다 — 다음 사람이 쓸 몫이 남아 있어야 한다");

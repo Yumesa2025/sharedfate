@@ -1,5 +1,6 @@
 package com.sharedfate.mixin;
 
+import com.sharedfate.sync.DragonLastStandShield;
 import com.sharedfate.sync.DragonPerch;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -11,9 +12,26 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 포디움에 내려앉은 드래곤은 <b>근접 피해만</b> 받는다.
+ * 드래곤이 맞는 단 하나의 문에서 <b>두 가지</b>를 거절한다.
  *
- * <p>사람 말: <b>「착지햇을떄는 원거리 공격 안받고 근접공격만 데미지 들어가게 해야해」</b>
+ * <ol>
+ *   <li><b>최후의 저항 진입 보호막</b> — 진입부터 첫 패턴 직전까지 <b>모든</b> 피해를 거절한다
+ *       ({@code DragonLastStandShield}). 사람이 2026-10-04 에 <b>「최후의 저항 시작하고 첫 패턴
+ *       전까지 모든 공격 막는 쉴드 생기고 피해 안 받게. 지금은 무슨 체력회복하면서 쳐맞는 거
+ *       같아」</b>라고 했다</li>
+ *   <li><b>착지 중 원거리 면역</b> — 포디움에 내려앉은 드래곤은 <b>근접 피해만</b> 받는다.
+ *       사람 말: <b>「착지햇을떄는 원거리 공격 안받고 근접공격만 데미지 들어가게 해야해」</b></li>
+ * </ol>
+ *
+ * <p>⚠ <b>같은 자리에 믹스인을 둘 만들지 않았다.</b> 둘 다 「이 한 방을 피해 처리 전에 거절한다」
+ * 이고 막힘 되먹임도 같은 한 벌이라, 처리기 둘이 같은 {@code HEAD} 를 물면 어느 쪽이 먼저 도는지가
+ * 믹스인 적용 순서에 달린다. 한 처리기 안에서 <b>보호막 → 착지</b> 순서로 적어 그 순서를 코드가
+ * 들게 했다. 보호막이 앞인 까닭은 처리기 안의 주석에 있다.
+ *
+ * <p>아래 설명의 대부분은 ②(착지)를 위해 적은 것이고, 「왜 이 메서드인가」·「{@code HEAD} 에서
+ * 통째로 거절한다」는 ①에도 글자 그대로 참이다 — 부위 피해·본체 피해·크리스탈 폭발이 전부 이
+ * 문을 지나고, {@code HEAD} 에서 거절하면 {@code reallyHurt} 에 닿지 않아 피격 번쩍임·피격음·
+ * 넉백이 나갈 자리가 없다.
  *
  * <h2>⚠⚠ 「최후의 저항」을 거르는 것이 이 믹스인의 목숨이다</h2>
  *
@@ -71,10 +89,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class EnderDragonPerchRangedImmunityMixin {
 
 	/**
-	 * 앉아 있는 동안 근접이 아닌 한 방을 통째로 거절한다.
+	 * 진입 보호막이 서 있으면 모든 한 방을, 앉아 있는 동안이면 근접이 아닌 한 방을 통째로
+	 * 거절한다.
 	 *
-	 * <p>첫 줄이 {@code volatile boolean} 한 번 읽기다. 드래곤은 차원에 하나뿐이고 시련을 켠
-	 * 전투에서만 켜지므로, 거의 모든 피격에서 그 한 줄이 비용의 전부다.
+	 * <p>두 판별 모두 첫 줄이 {@code volatile boolean} 한 번 읽기다. 드래곤은 차원에 하나뿐이고
+	 * 시련을 켠 전투에서만 켜지므로, 거의 모든 피격에서 그 두 줄이 비용의 전부다.
+	 *
+	 * <p>⚠ 처리기 이름은 옛 이름 그대로 둔다. {@code DragonPerchTest} 가 상수 풀을 뒤져 이 클래스를
+	 * 보므로 이름을 바꿔도 시험은 안 깨지지만, 이름이 남아 있는 편이 「이 처리기가 원래 무엇이었나」를
+	 * 잃지 않는다.
 	 */
 	@Inject(
 			method = "hurt(Lnet/minecraft/server/level/ServerLevel;"
@@ -84,6 +107,15 @@ public abstract class EnderDragonPerchRangedImmunityMixin {
 			cancellable = true)
 	private void sharedfate$refuseRangedWhilePerched(ServerLevel level, EnderDragonPart part,
 			DamageSource source, float amount, CallbackInfoReturnable<Boolean> callback) {
+		// ① 최후의 저항 진입 보호막 — 근접이든 원거리든 전부 거절한다(무적을 지나치는 피해만
+		// 통과). 착지 판별보다 앞이다: 보호막이 서 있는 동안 착지 깃발은 이미 내려가 있지만,
+		// 순서가 뒤집히면 근접 한 방이 아래 「melee 면 통과」로 빠져나간다.
+		if (DragonLastStandShield.refuses(level, source)) {
+			DragonLastStandShield.deflect(level, part == null ? null : part.position());
+			callback.setReturnValue(false);
+			return;
+		}
+		// ② 착지 중 원거리 면역.
 		if (!DragonPerch.rangedImmune()) {
 			return;
 		}

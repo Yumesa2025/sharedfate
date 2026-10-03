@@ -161,11 +161,18 @@ public final class DragonLastStandConePanel {
 	 *
 	 * <p>0.05 는 <b>바닥 점을 띄우는 높이</b>({@link #GROUND_OFFSET})의 3분의 1이다. 더 두꺼우면
 	 * 부채꼴 안에 선 사람의 발목에 빨간 판이 걸려 보인다.
+	 *
+	 * <p>⚠ 패키지 안에 열어 둔 것은 {@link DragonLastStandCrossPanel} 이 <b>같은 판</b>을 깔기
+	 * 때문이다(2026-10-04). 두께를 거기 따로 적으면 두 면이 다른 두께로 보인다.
 	 */
-	private static final double THICKNESS = 0.05;
+	static final double THICKNESS = 0.05;
 
-	/** 지면에서 띄우는 높이. 바닥 표식과 <b>같은 값</b>이라 면과 점선이 같은 층에 있다. */
-	private static final double GROUND_OFFSET = 0.15;
+	/**
+	 * 지면에서 띄우는 높이. 바닥 표식과 <b>같은 값</b>이라 면과 점선이 같은 층에 있다.
+	 *
+	 * <p>{@link DragonLastStandCrossPanel} 도 이 값을 읽는다 — {@link #THICKNESS} 와 같은 까닭이다.
+	 */
+	static final double GROUND_OFFSET = 0.15;
 
 	/**
 	 * 보이는 거리(64칸 곱). 1.0 이면 64칸에서 끊긴다.
@@ -181,7 +188,9 @@ public final class DragonLastStandConePanel {
 	/**
 	 * ⚠ <b>스스로 타 없어지는 심지</b>(틱). 예고 길이 + 불꽃 길이다.
 	 *
-	 * <p>실제로 필요한 것은 예고 100틱뿐이고({@code fireCone} 이 그 틱에 지운다) 나머지는 여유다.
+	 * <p>실제로 필요한 것은 예고 80틱뿐이고({@code fireCone} 이 그 틱에 지운다) 나머지는 여유다.
+	 * ⚠ 2026-10-04 에 예고가 100 → 80 으로 줄면서 이 값도 <b>저절로</b> 120 → 100 이 됐다 — 아래
+	 * 문장이 말하는 그대로다.
 	 * 값을 {@code DragonLastStandPatterns} 에서 직접 더하므로 <b>브레스를 길게 고치는 사람이
 	 * 여기를 따로 고칠 일이 없다.</b>
 	 *
@@ -232,7 +241,7 @@ public final class DragonLastStandConePanel {
 			if (surface == TrialEnderPulse.NO_GROUND) {
 				continue;
 			}
-			Panel panel = new Panel(end);
+			Panel panel = new Panel(end, FUSE_TICKS);
 			panel.snapTo(new Vec3(apex.x, surface + GROUND_OFFSET, apex.z));
 			panel.dress(end, transformOf(strip, coneYaw));
 			end.addFreshEntity(panel);
@@ -440,14 +449,27 @@ public final class DragonLastStandConePanel {
 	 *
 	 * <p>리플렉션을 쓰지 않은 까닭은 이 저장소가 이미 아는 것이다 — 필드 이름이 중간 이름으로
 	 * remap 되므로 <b>이름으로 찾는 코드는 배포된 jar 에서만 조용히 실패한다.</b>
+	 *
+	 * <h2>⚠ 십자 균열도 이 판을 쓴다 (2026-10-04)</h2>
+	 *
+	 * <p>사람이 십자 예고를 <b>「이것도 브레스처럼 투명땅으로 표시했으면 해」</b>라고 해서
+	 * {@link DragonLastStandCrossPanel} 이 <b>이 클래스를 그대로</b> 세운다. 그래서 {@code private}
+	 * 에서 패키지 안으로 열었고, 심지 길이를 생성자로 받는다 — 부채꼴과 십자는 예고 길이가 달라
+	 * 심지가 하나일 수 없다. <b>저장 안 함 · 스스로 타 없어짐</b>이라는 두 겹은 클래스 하나에 있어야
+	 * 한 벌로 남는다. 십자 쪽에 같은 하위 클래스를 또 짜면 언젠가 한쪽만 {@code shouldBeSaved} 를
+	 * 잃는다.
 	 */
-	private static final class Panel extends Display.BlockDisplay {
+	static final class Panel extends Display.BlockDisplay {
 
 		/** 남은 틱. 0 이 되면 스스로 사라진다. */
-		private int fuse = FUSE_TICKS;
+		private int fuse;
 
-		private Panel(Level level) {
+		/**
+		 * @param fuse 스스로 사라질 때까지의 틱. 세우는 쪽이 <b>제 예고 길이에서</b> 셈해 넘긴다
+		 */
+		Panel(Level level, int fuse) {
 			super(EntityTypes.BLOCK_DISPLAY, level);
+			this.fuse = fuse;
 		}
 
 		/**
@@ -456,7 +478,7 @@ public final class DragonLastStandConePanel {
 		 * <p>{@code ProblemReporter.DISCARDING} 인 것은 우리가 만든 태그라 <b>잘못된 칸이 있을
 		 * 수 없고</b>, 있다면 그것은 시험이 잡을 일이지 사람의 로그를 어지럽힐 일이 아니다.
 		 */
-		private void dress(ServerLevel end, Transformation transformation) {
+		void dress(ServerLevel end, Transformation transformation) {
 			ValueInput input = TagValueInput.create(ProblemReporter.DISCARDING,
 					end.registryAccess(), shapeTag(transformation));
 			readAdditionalSaveData(input);

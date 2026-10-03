@@ -7,6 +7,7 @@ import com.sharedfate.sync.GameStartManager;
 import com.sharedfate.sync.SharedAreaDamage;
 import com.sharedfate.sync.SharedEffectDamage;
 import com.sharedfate.sync.SpreadDamageManager;
+import com.sharedfate.sync.SpreadSliceAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
@@ -101,7 +102,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 결과만 본다. 즉 배율이 두 번 곱해질 여지가 없다.
  */
 @Mixin(LivingEntity.class)
-public abstract class LivingEntityPerkDamageMixin {
+public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 
 	/**
 	 * 직전에 받은 피해량. 피격 쿨타임 안에 들어온 공격이 <b>실제로 얼마나 아픈지</b>를 재는 데
@@ -144,6 +145,23 @@ public abstract class LivingEntityPerkDamageMixin {
 	 */
 	@Shadow
 	public int damageCooldownTime;
+
+	/**
+	 * 「완충」이 미뤄 둔 몫을 넣을 때 {@link #lastHurt} 를 읽는 통로. {@link SpreadSliceAccess} 참고.
+	 *
+	 * <p>{@code lastHurt} 를 이미 {@code @Shadow} 로 끌어오고 있는 믹스인이 여기라, 접근자 믹스인을
+	 * 새로 만들어 등록하는 대신 이 클래스에 얹었다.
+	 */
+	@Override
+	public float sharedfate$lastHurt() {
+		return this.lastHurt;
+	}
+
+	/** 「완충」이 미뤄 둔 몫을 넣는 동안만 {@link #lastHurt} 를 0 으로 두었다가 되돌린다. */
+	@Override
+	public void sharedfate$setLastHurt(float value) {
+		this.lastHurt = value;
+	}
 
 	/**
 	 * 버려야 할 피해를 여기서 전부 걸러낸다.

@@ -101,6 +101,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *       아주 작은 값을 넘기면 넉백은 살릴 수 있지만, 그 값만큼 공유 체력과 흡수가 미세하게
  *       깎이고 장비 내구도가 한 번 더 닳는다. 미뤄 둔 피해는 <b>아직 도착하지 않은 것</b>이므로
  *       0 이 맞다고 보았다.</li>
+ *   <li>피격 연출(붉은 번쩍임·화면 기울기·피격음·넉백)은 <b>처음 맞은 그 한 번만</b> 난다.
+ *       나뉜 몫은 바닐라의 「쿨타임 안 추가 피해」 갈래로 넣어 체력만 조용히 깎는다.
+ *       자세한 까닭은 {@link #deliver} 에 있다.</li>
  *   <li>몫을 넣을 때마다 방어구 내구도가 한 번씩 닳는다. 나눈 횟수만큼 닳는다는 뜻이다. 몫을
  *       1초 간격으로만 넣는 이유가 여기에도 있다.</li>
  *   <li>몫마다 방어구 계산을 다시 지나므로, 한 번에 맞았을 때보다 방어구가 조금 더 많이
@@ -192,7 +195,12 @@ public final class SpreadDamageManager {
 
 		Spread spread = ACTIVE.get(team.teamId());
 		Guard guard = spread == null ? null : spread.guards.get(player.getUUID());
-		boolean bypassesCooldown = source != null && source.is(DamageTypeTags.BYPASSES_COOLDOWN);
+		// 사람이 2026-10-04 에 「포격 무시」를 골랐다 — 완충의 흉내 쿨타임도 같은 규칙을 따라야 한다.
+		// 연쇄 포격은 바닐라 쿨타임을 지우고 들어가는데(DragonFireBarrage.strike) 여기 Guard 가 그걸
+		// 모르면 완충을 가진 팀에서만 둘째 원이 먹히고 피해 0 짜리 피격 연출만 난다. 표시는 strike 의
+		// hurtServer 호출 동안만 켜지므로 다른 피해원의 쿨타임은 그대로 막힌다.
+		boolean bypassesCooldown = (source != null && source.is(DamageTypeTags.BYPASSES_COOLDOWN))
+				|| DragonFireBarrage.ignoresCooldown();
 		Gate gate = gate(amount, guard == null ? 0.0F : guard.lastAmount,
 				guard == null ? 0 : guard.invulnerableTicks, bypassesCooldown);
 		if (!(gate.accepted() > 0.0F)) {
@@ -366,7 +374,8 @@ public final class SpreadDamageManager {
 	 *
 	 * <p>맞은 사람 본인이 첫 번째다. 체력은 어차피 공유라 누가 받아도 팀 체력은 같이 줄지만,
 	 * 넉백·방어구 내구도·피격 연출은 받는 사람 것이라 원래 맞은 사람에게 몰아 주는 편이 자연스럽다.
-	 * 그 사람이 나가거나 죽었으면 접속해 있는 팀원 아무나로 물러선다.
+	 * 그 사람이 나가거나 죽었으면 접속해 있는 팀원 아무나로 물러선다. (피격 연출은 이제 몫에서
+	 * 나지 않는다 — {@link #deliver} 참고.)
 	 */
 	private static @Nullable ServerPlayer pickVictim(MinecraftServer server, ShareTeam team,
 			Spread spread) {
@@ -392,9 +401,10 @@ public final class SpreadDamageManager {
 	/**
 	 * 미뤄 둔 몫 하나를 실제로 넣는다.
 	 *
-	 * <p>넣기 직전에 피격 쿨타임을 0 으로 만들었다가 <b>원래 값으로 되돌린다</b>. 0 으로 만드는
-	 * 것은 이 몫이 직전 피격의 쿨타임에 삼켜지지 않게 하기 위해서고, 되돌리는 것은 몫을 넣을
-	 * 때마다 쿨타임이 새로 차서 「분산 중에는 몹에게 맞지 않는다」가 되지 않게 하기 위해서다.
+	 * <p>넣기 직전에 피격 쿨타임과 {@code lastHurt} 를 갈아 끼웠다가 <b>원래 값으로 되돌린다</b>.
+	 * 갈아 끼우는 것은 이 몫이 직전 피격의 쿨타임에 삼켜지지 않으면서 피격 연출도 다시 터지지
+	 * 않게 하기 위해서고(아래 「피격 연출은 처음 맞은 한 번만」), 되돌리는 것은 몫을 넣을 때마다
+	 * 쿨타임이 새로 차서 「분산 중에는 몹에게 맞지 않는다」가 되지 않게 하기 위해서다.
 	 *
 	 * <h2>⚠ 만지는 칸이 26.3 에서 바뀌었다</h2>
 	 * <p>26.2 까지는 {@code Entity.invulnerableTime} 하나가 이 일을 맡았다. 26.3 은
@@ -407,6 +417,55 @@ public final class SpreadDamageManager {
 	 * 위 두 줄이 <b>둘 다 아무 일도 하지 않았다</b> — 컴파일은 통과한다. 결과는 의도와 정반대로,
 	 * 몫을 넣을 때마다 쿨타임이 20 으로 차서 <b>분산 중에는 몹 피해가 부당하게 막혔다.</b>
 	 * 같은 뿌리의 회귀가 {@code PerkDamage.effectiveAmount} 에도 있었다.
+	 *
+	 * <h2>피격 연출은 처음 맞은 한 번만 — 몫은 「쿨타임 안 추가 피해」 갈래로 넣는다</h2>
+	 * <p>예전에는 쿨타임을 0 으로 두고 넣었다. 그러면 바닐라는 몫마다 <b>새로 맞은 것</b>으로
+	 * 치고 피격 연출을 전부 돌린다 — {@code broadcastDamageEvent}(클라이언트가 받아 화면을
+	 * 붉히고 기울이고 피격음을 낸다), {@code markHurt}, {@code dealDefaultKnockback}(몫마다
+	 * 원래 때린 쪽에서 밀려난다), {@code playHurtSound}. 서버에서 {@code hurtTime} 을 되돌리고
+	 * 소리를 삼켜도 소용이 없었다. <b>붉은 번쩍임·기울기·피격음은 클라이언트가
+	 * {@code LivingEntity.handleDamageEvent} 에서 스스로 만든다.</b> 그래서 여덟 몫이면 여덟 번
+	 * 맞은 것처럼 보였다.
+	 *
+	 * <p>지금은 쿨타임을 20(&gt;10)으로, {@code lastHurt} 를 0 으로 두고 넣는다. 26.3
+	 * {@code hurtServer} 바이트코드로 보면 이때 바닐라는 「쿨타임 안에 더 센 한 대가 왔다」 갈래
+	 * (206~237)를 탄다.
+	 *
+	 * <pre>
+	 *   actuallyHurt(amount - lastHurt)   // lastHurt = 0 이라 몫 전부가 들어간다
+	 *   lastHurt = amount
+	 *   연출 깃발(지역변수 8) = false      // ← 이것 하나로 아래 연출이 전부 빠진다
+	 * </pre>
+	 *
+	 * <p>깃발이 꺼지면 빠지는 것은 <b>연출뿐</b>이다 — {@code broadcastDamageEvent}·
+	 * {@code markHurt}·넉백·피격음·사망음(서버쪽). 나머지는 깃발과 상관없이 그대로 돈다.
+	 *
+	 * <ul>
+	 *   <li><b>방어구·흡수·체력·사망 메시지</b> — 전부 {@code actuallyHurt} 안이다. 흡수(노란
+	 *       하트)를 먼저 깎고, {@code CombatTracker.recordDamage} 로 원래 피해원을 적어 사망
+	 *       메시지와 처치자가 「좀비에게 당함」 그대로 남는다.</li>
+	 *   <li><b>처치자 판정</b> — {@code resolveMobResponsibleForDamage}·
+	 *       {@code resolvePlayerResponsibleForDamage}(272~282)는 두 갈래가 합쳐진 뒤에 돈다.</li>
+	 *   <li><b>불사의 토템과 죽음</b> — {@code isDeadOrDying → checkTotemDeathProtection → die}
+	 *       (393~431)도 깃발 밖이다. 깃발이 보는 것은 그 사이의 서버쪽 사망음 한 줄뿐이고,
+	 *       사망음은 {@code ServerPlayer.die} 가 보내는 엔티티 이벤트 3 을 받아 클라이언트가
+	 *       따로 낸다. 토템 연출(이벤트 35)도 {@code checkTotemDeathProtection} 안이다.</li>
+	 *   <li><b>받은 피해량 집계</b> — {@code StatMirror}·{@code DamageLedger} 는 다음 틱에
+	 *       체력이 얼마나 줄었는지를 보는 쪽이라 갈래와 상관이 없다.</li>
+	 * </ul>
+	 *
+	 * <p>{@code lastHurt} 와 쿨타임은 넣은 뒤 <b>둘 다 원래 값으로 되돌린다.</b> 쿨타임을
+	 * 되돌리는 까닭은 위와 같고, {@code lastHurt} 까지 되돌리는 것은 몫이 바닐라의 「직전 피해량」
+	 * 기억에 흔적을 남기지 않게 하기 위해서다. 무적시간 흉내는 어차피 {@link Guard} 가 따로 한다.
+	 *
+	 * <p>한 가지 예외가 남는다. 피해 종류가 {@code bypasses_cooldown} 이면 바닐라가 쿨타임을 보지
+	 * 않고 「새로 맞음」 갈래로 간다. 26.3 바닐라의 그 태그는 비어 있어 데이터팩이 채웠을 때만
+	 * 생기는 일이고, 그때를 위해 {@code hurtTime} 되돌리기와 {@code LivingEntityHurtSoundMixin}
+	 * 을 그대로 남겨 둔다(클라이언트 연출까지는 못 막는다).
+	 *
+	 * <p>쿨타임을 20 으로 채워 두므로 {@code LivingEntityPerkDamageMixin} 의 「호위」 낭비 방지
+	 * ({@code effectiveAmount})도 {@code lastHurt} = 0 을 보고 몫 전부를 실제 피해로 센다.
+	 * 쿨타임을 0 으로 두던 예전과 같은 값이다.
 	 */
 	private static void deliver(ServerPlayer victim, @Nullable DamageSource source, float amount) {
 		if (!(amount > 0.0F)) {
@@ -414,19 +473,22 @@ public final class SpreadDamageManager {
 		}
 		ServerLevel level = victim.level();
 		DamageSource actual = source != null ? source : victim.damageSources().generic();
+		SpreadSliceAccess access = (SpreadSliceAccess) (Object) victim;
 		int saved = victim.damageCooldownTime;
-		// 피격 표시도 함께 되돌린다. 한 번 맞은 것이 여러 몫으로 나뉘어 들어오는데 몫마다
-		// 화면이 붉어지고 소리가 나면 여덟 번 맞은 것처럼 보인다. 소리는 값을 되돌리는 것으로
-		// 막을 수 없어 LivingEntityHurtSoundMixin 이 따로 삼킨다.
+		float savedLastHurt = access.sharedfate$lastHurt();
+		// bypasses_cooldown 피해만 「새로 맞음」 갈래로 새므로 그때를 위해 서버쪽 피격 표시도
+		// 되돌린다. 쿨타임 안 갈래는 이 두 값을 건드리지 않는다.
 		int savedHurtTime = victim.hurtTime;
 		int savedHurtDuration = victim.hurtDuration;
 		DELIVERING.set(Boolean.TRUE);
 		try {
-			victim.damageCooldownTime = 0;
+			victim.damageCooldownTime = INVULNERABLE_TICKS;
+			access.sharedfate$setLastHurt(0.0F);
 			victim.hurtServer(level, actual, amount);
 		} finally {
 			DELIVERING.set(Boolean.FALSE);
 			victim.damageCooldownTime = saved;
+			access.sharedfate$setLastHurt(savedLastHurt);
 			victim.hurtTime = savedHurtTime;
 			victim.hurtDuration = savedHurtDuration;
 		}

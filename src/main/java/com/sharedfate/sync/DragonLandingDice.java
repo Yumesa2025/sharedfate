@@ -4,6 +4,7 @@ import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
@@ -112,8 +113,46 @@ import org.jetbrains.annotations.Nullable;
  * 거기서 그대로 빠져나가므로 <b>바닐라와 같은 답이 나오는 구간에서는 팀 목록을 열지도
  * 않는다.</b> 남는 경우도 「경로가 끝난 틱」, 곧 <b>약 2초에 한 번</b>이다.
  *
+ * <p>{@link #boost} 는 바닐라가 0(착지)을 내지 않은 굴림마다 팀 목록을 한 번 연다. 그것도
+ * 같은 「경로가 끝난 틱」에만 오므로 약 2초에 한 번이다.
+ *
  * <p>⚠ {@code getGameTime()} 을 쓰지 않는다 — 이 파일은 시각을 아예 묻지 않는다. 주사위는
  * 바닐라가 굴리는 것이고 우리는 그 상한만 깎는다.
+ *
+ * <h2>체력 80% 가 터진 뒤에는 ×{@value #HEALTH_80_BOOST} (2026-10-04)</h2>
+ *
+ * <p>사람 말: <b>「80프로 터지고 착지 확률을 좀 더 올렸으면 좋겠어. 지금보다 30프로는 더」</b>
+ *
+ * <p>천장을 씌운 확률 {@code 1/n} 에 1.3 을 곱한다. {@code 1.3/n} 은 정수 {@code nextInt} 로
+ * 적을 수 없으므로 상한을 깎는 길({@link #cap})로는 못 한다. 그래서 <b>바닐라 주사위는 그대로
+ * 굴리고</b>, 그 주사위가 「안 앉는다」를 낸 경우에만 {@link #boost} 가 한 번 더 굴린다.
+ *
+ * <pre>
+ *   P(착지) = 1/n + (1 - 1/n) × q,   q = (1.3/n - 1/n) / (1 - 1/n) = 0.3 / (n - 1)
+ * </pre>
+ *
+ * <table border="1">
+ *   <caption>체력 80% 이후 한 굴림의 착지 확률과 평균 착지 간격(굴림 약 2초마다)</caption>
+ *   <tr><th>크리스탈</th><th>지금(n)</th><th>×1.3</th><th>q</th><th>평균 간격 전 → 후</th></tr>
+ *   <tr><td>0</td><td>1/3</td><td>0.4333</td><td>0.15</td><td>6초 → 4.6초</td></tr>
+ *   <tr><td>1</td><td>1/4</td><td>0.325</td><td>0.1</td><td>8초 → 6.2초</td></tr>
+ *   <tr><td>2</td><td>1/5</td><td>0.26</td><td>0.075</td><td>10초 → 7.7초</td></tr>
+ *   <tr><td>3 이상</td><td>1/6</td><td>0.2167</td><td>0.06</td><td>12초 → 9.2초</td></tr>
+ * </table>
+ *
+ * <p><b>「80% 가 터졌는가」를 새로 재지 않는다.</b> {@code DragonTrialManager} 가 체력 비율
+ * {@code ≤ 0.80} 인 틱에 {@code session.fire(Trigger.HEALTH_80)} 을 부르고, 그 자리가 세션의
+ * {@link DragonTrialSession#fired()} 에 남는다. 처음 내려간 한 번만 세므로 크리스탈로 체력이
+ * 80% 위로 되올라가도 이 값은 풀리지 않는다 — 「80프로 터지고」가 정확히 그 사건이다.
+ * {@link DragonTrialSession#fire} 가 시련을 끈 세션에서는 아무것도 쌓지 않으므로 <b>시련이 꺼진
+ * 판은 이 곱에 닿을 길이 구조적으로 없다.</b>
+ *
+ * <p>⚠ <b>80% 이전과 시련이 꺼진 판에서는 두 번째 굴림 자체가 없다.</b> 확률만 같은 것이 아니라
+ * {@code RandomSource} 를 한 번도 더 건드리지 않으므로 바닐라 난수 흐름까지 그대로다.
+ * {@code DragonLandingDiceTest} 가 같은 씨앗의 주사위 둘로 그것을 못박는다.
+ *
+ * <p>최후의 저항(30%)에서는 위의 「아무 일도 하지 않는다」가 그대로 성립한다 — 두 번째
+ * 굴림도 {@code findNewTarget} 안에서만 일어나고 그 메서드는 {@code HOVERING} 동안 돌지 않는다.
  *
  * <h2>왜 패시브인데 {@link DragonPassives} 에 줄이 없는가</h2>
  *
@@ -135,6 +174,16 @@ public final class DragonLandingDice {
 	 * 사라진다.</b> 6 은 그 기울기(0~3 개 구간)를 한 칸도 건드리지 않는 가장 낮은 천장이다.
 	 */
 	static final int CEILING = 6;
+
+	/**
+	 * 체력 80% 가 터진 뒤 착지 확률에 곱하는 값.
+	 *
+	 * <p>사람이 2026-10-04 에 「80프로 터지고 착지 확률을 좀 더 올렸으면 좋겠어. 지금보다 30프로는
+	 * 더」라고 했다. 「30프로 더」를 확률에 곱하는 1.3 으로 읽었다 — 1/6 이 0.2167 이 된다.
+	 * 확률에 0.3 을 <b>더하는</b> 뜻이었다면 1/6 이 0.467 로 세 배 가까이 뛰므로 사람이 말한
+	 * 「좀 더」와 맞지 않는다.
+	 */
+	static final float HEALTH_80_BOOST = 1.3F;
 
 	private DragonLandingDice() {
 	}
@@ -169,6 +218,71 @@ public final class DragonLandingDice {
 	}
 
 	/**
+	 * 바닐라 주사위가 굴린 값을 받아 <b>체력 80% 이후라면 한 번 더 기회</b>를 준다.
+	 *
+	 * <p>{@code DragonHoldingPatternLandingMixin} 이 부르는 자리다. 바닐라는 돌려준 값이
+	 * <b>0 이면 착지</b>한다({@code findNewTarget} 의 {@code ifne} — 26.3 바이트코드에서 확인했다).
+	 *
+	 * <p>순서가 비용이다 — 이미 0(착지)이면 팀 목록을 열지 않고, 80% 가 안 터졌으면 난수를
+	 * 건드리지 않는다. 그래서 <b>80% 이전과 시련이 꺼진 판에서는 바닐라 난수 흐름까지 그대로</b>다.
+	 *
+	 * @param level  드래곤이 있는 판. 서버 판이 아니면 손대지 않는다
+	 * @param random 바닐라가 굴린 그 주사위({@code dragon.getRandom()})
+	 * @param bound  바닐라 주사위에 실제로 넘긴 상한. {@link #cap} 을 지난 값이다
+	 * @param rolled 바닐라 주사위가 낸 값
+	 */
+	public static int boost(@Nullable Level level, RandomSource random, int bound, int rolled) {
+		// 이미 앉기로 나왔으면 더 볼 것이 없다.
+		if (rolled == 0) {
+			return rolled;
+		}
+		return anyHealth80Passed(level) ? reroll(random, bound, rolled) : rolled;
+	}
+
+	/**
+	 * 두 번째 굴림. <b>산수와 난수만</b> 쓴다 — 판을 모르므로 시험이 분포를 직접 잰다.
+	 *
+	 * @param rolled 바닐라 주사위가 낸 값. 0 이 아니어야 뜻이 있다
+	 */
+	static int reroll(RandomSource random, int bound, int rolled) {
+		return random.nextFloat() < extraChance(bound) ? 0 : rolled;
+	}
+
+	/** 체력 80% 이후 한 굴림의 착지 확률. 1 을 넘지 않는다. */
+	static float boostedChance(int bound) {
+		if (bound <= 1) {
+			return 1.0F;
+		}
+		return Math.min(1.0F, HEALTH_80_BOOST / bound);
+	}
+
+	/**
+	 * 바닐라가 「안 앉는다」를 냈을 때 두 번째 굴림이 앉힐 확률 {@code q}.
+	 *
+	 * <p>{@code 1/n + (1 - 1/n) × q = 1.3/n} 을 {@code q} 로 푼 값이고, 정리하면
+	 * {@code 0.3 / (n - 1)} 이다. 상한이 1 이하면 바닐라가 언제나 0 을 내므로 여기까지 오지 않는다.
+	 */
+	static float extraChance(int bound) {
+		if (bound <= 1) {
+			return 0.0F;
+		}
+		float base = 1.0F / bound;
+		return (boostedChance(bound) - base) / (1.0F - base);
+	}
+
+	/**
+	 * 이 세션이 <b>시련이 돌고 체력 80% 가 이미 터진</b> 전투인가.
+	 *
+	 * <p>판별을 새로 짜지 않는다 — {@code DragonTrialManager} 가 체력 비율 {@code ≤ 0.80} 인 틱에
+	 * {@code fire(HEALTH_80)} 을 부르고 그것이 {@link DragonTrialSession#fired()} 에 남는다.
+	 * {@code fire} 는 시련을 끈 세션에서 아무것도 쌓지 않지만, 「시련이 도는가」를 한 번 더 묻는
+	 * 것은 그 성질이 바뀌는 날에도 시련을 끈 판이 바닐라로 남게 하려는 것이다.
+	 */
+	static boolean health80Passed(@Nullable DragonTrialSession session) {
+		return trialLive(session) && session.fired().contains(TrialCatalog.Trigger.HEALTH_80);
+	}
+
+	/**
 	 * 이 세션이 <b>시련이 도는 전투</b>인가.
 	 *
 	 * <p>판별을 새로 짜지 않는다 — {@link DragonTrialSession#trialsEnabled()} 가 전투가 열린 틱에
@@ -198,6 +312,28 @@ public final class DragonLandingDice {
 		}
 		for (ShareTeam team : TeamManager.get(host).allTeams()) {
 			if (trialLive(DragonTrialManager.sessionOf(team.teamId()))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * 이 판에 <b>시련을 켜고 체력 80% 가 터진 전투가 하나라도</b> 있는가.
+	 *
+	 * <p>{@link #anyTrialLive} 와 같은 까닭으로 팀을 가리지 않는다 — 드래곤이 하나뿐이다.
+	 * 모를 때는 거짓(바닐라 쪽)이다.
+	 */
+	private static boolean anyHealth80Passed(@Nullable Level level) {
+		if (!(level instanceof ServerLevel server)) {
+			return false;
+		}
+		MinecraftServer host = server.getServer();
+		if (host == null) {
+			return false;
+		}
+		for (ShareTeam team : TeamManager.get(host).allTeams()) {
+			if (health80Passed(DragonTrialManager.sessionOf(team.teamId()))) {
 				return true;
 			}
 		}

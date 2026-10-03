@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * <ol>
  *   <li>⚠⚠ <b>연출 동안 시계가 돌지 않는다.</b> 그것을 지키는 배선이 시각 계산 하나뿐이라
  *       ({@code Stand.clockBase}) 값이 어긋나면 <b>연출 중에 번개가 떨어지고 지대가 줄어든다</b></li>
- *   <li><b>체력이 한 번에 튀지 않고 차오른다.</b> 그리고 <b>그 한 줄이 곧 무적</b>이다</li>
+ *   <li><b>체력이 한 번에 튀지 않고 차오른다.</b> 피해를 막는 것은 그 줄이 아니라
+ *       {@code DragonLastStandShield} 다(2026-10-04 — {@code DragonLastStandShieldTest})</li>
  *   <li><b>신호기 넷이 정사각형이고 지대 안</b>이다</li>
  *   <li><b>되돌릴 것을 남기지 않는다</b> — 무적 깃발도 페이즈도 만지지 않는다</li>
  * </ol>
@@ -224,7 +225,8 @@ class DragonLastStandEntryTest {
 		assertFalse(bytes.contains("setInvulnerable"),
 				"저장되는 무적 깃발을 쓰면 연출 중에 서버가 죽었을 때 되돌릴 기회가 없다");
 		assertFalse(bytes.contains("setPhase"), "페이즈는 DragonLastStand.hold 하나만 만진다");
-		assertTrue(bytes.contains("setHealth"), "체력을 매 틱 쓰는 것이 무적이자 회복이다");
+		assertTrue(bytes.contains("setHealth"),
+				"체력을 매 틱 쓰는 것이 「점점 차오르는」 회복이다(막는 것은 DragonLastStandShield)");
 	}
 
 	/** 지킬 것 — 파티클은 긴 형식, 소리는 {@code playEach}, 받은 {@code now} 만 쓴다. */

@@ -473,7 +473,8 @@ class DragonLastStandTest {
 	 * ⚠ <b>십자 균열 23 은 사람이 적은 「무장 기준 6.8」을 만드는 피해원이라야 한다.</b>
 	 *
 	 * <p>여기는 흡입과 <b>반대쪽</b>이다 — {@code explosion} 이라야 6.77 이고
-	 * {@code lightningBolt} 로 쏘면 4.56 이라 세 번을 다 맞아도 13.7 로 <b>안 죽는다.</b>
+	 * {@code lightningBolt} 로 쏘면 4.56 이라 두 번을 다 맞아도 9.1 로 <b>안 죽는다</b>(세 번 긋던
+	 * 때도 13.7 로 안 죽었다).
 	 * {@code GearedDamage.TARGET_PER_HIT} 이 「난이도 곱이 있는 쪽은 23」이라고 적어 둔 그것이다.
 	 */
 	@Test
@@ -489,7 +490,7 @@ class DragonLastStandTest {
 		float bolt = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
 				GearedDamage.Source.LIGHTNING_BOLT);
 		assertTrue(bolt * DragonLastStandPatterns.CROSS_ROUNDS < GearedDamage.TEAM_HEALTH,
-				"lightningBolt() 로 쏘면 세 번을 다 맞아도 안 죽는다 — 실제 한 대 " + bolt);
+				"lightningBolt() 로 쏘면 두 번을 다 맞아도 안 죽는다 — 실제 한 대 " + bolt);
 	}
 
 	/**
@@ -510,8 +511,8 @@ class DragonLastStandTest {
 		assertEquals(DragonLastStandPatterns.crossDurationTicks(),
 				DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
 				"칸에 적은 합과 패턴 쪽 계산이 갈라졌다");
-		assertEquals(130, DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
-				"60 + 30 + 30 + 여운 10 이다");
+		assertEquals(100, DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
+				"60 + 30 + 여운 10 이다");
 
 		// 터지는 틱이 길이 안에 들어 있어야 한다. 넘치면 피해가 아예 안 들어간다.
 		assertTrue(DragonLastStandPatterns.SUCK_WARN_TICKS
@@ -526,7 +527,7 @@ class DragonLastStandTest {
 	/**
 	 * ⚠ <b>브레스 잠금의 미리 잠그는 길이는 브레스 길이여야 한다.</b>
 	 *
-	 * <p>새 패턴 둘이 브레스보다 <b>길다</b>(180 · 130 대 120). 그래서 「가장 긴 패턴」으로
+	 * <p>흡입이 브레스보다 <b>길다</b>(180 대 100, 십자는 100 으로 같다). 그래서 「가장 긴 패턴」으로
 	 * 잠금을 잡고 있었다면 여기서 어긋난다 — {@code DragonLastStandZone.shrinkLockoutLead} 가
 	 * 재는 것은 <b>브레스 한 판이 들어갈 자리</b>이고 새 패턴은 축소와 겹쳐도 되므로 그대로여야
 	 * 한다.

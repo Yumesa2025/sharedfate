@@ -130,13 +130,14 @@ public final class TrialVelocity {
 	 *       ({@link DragonLastStandPatterns#AIRBORNE_PUSH_SCALE} 가 수평에 대해 한 약속과 같은
 	 *       약속이다)</li>
 	 *   <li><b>십자 띄움도 그대로다.</b> 띄워진 사람은 실제로 올라가고 있으므로 천장이 그 속도다 —
-	 *       {@link DragonLastStandPatterns#CROSS_LIFT_BLOCKS} 의 6칸이 안 깎인다</li>
+	 *       {@link DragonLastStandPatterns#CROSS_LIFT_BLOCKS} 의 12칸이 안 깎인다</li>
 	 *   <li>⚠ <b>{@link DragonLastStandPatterns#CROSS_LIFT_SPEED} 를 두 번째 천장으로 겹친다.</b>
 	 *       클라이언트가 보내 준 수를 홀로 믿으면 거짓 보고 한 번에 이 자름이 통째로 열린다 —
-	 *       <b>우리가 일부러 싣는 가장 큰 세로</b>가 6칸 띄움이므로 그보다 위는 우리 것이 아니다
+	 *       <b>우리가 일부러 싣는 가장 큰 세로</b>가 12칸 띄움이므로 그보다 위는 우리 것이 아니다
 	 *       (「자리 폭격」의 {@code TrialRisks.launchVelocity(4)} = 0.8 도 그 아래다 —
 	 *       {@code TrialVelocityTest} 가 센다). ⚠ 다만 그 천장만으로는 <b>안전하지 않다</b>:
-	 *       1.00746 을 12틱마다 다시 실으면 여덟 번에 <b>48칸</b>이 오른다 — 낙사를 막는 것은
+	 *       1.49053 을 12틱마다 다시 실으면 12틱에 11.2칸씩, 여덟 번에 <b>약 90칸</b>이 오른다
+	 *       (6칸이던 때는 1.00746 · 48칸) — 낙사를 막는 것은
 	 *       「사람이 실제로 올라간 만큼」쪽이고 이쪽은 거짓 보고용 보험이다</li>
 	 * </ul>
 	 *

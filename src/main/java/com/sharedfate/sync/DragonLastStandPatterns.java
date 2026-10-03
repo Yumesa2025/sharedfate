@@ -2,7 +2,6 @@ package com.sharedfate.sync;
 
 import com.sharedfate.SharedFateMod;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.PowerParticleOption;
@@ -47,9 +46,9 @@ import java.util.UUID;
  *   <caption>지금 무엇이 무엇인가</caption>
  *   <tr><th></th><th>뽑히는가</th><th>언제 도는가</th></tr>
  *   <tr><td>날개 퍼덕이기</td><td>그렇다</td><td>골랐을 때 100틱</td></tr>
- *   <tr><td>부채꼴 브레스</td><td>그렇다</td><td>골랐을 때 120틱</td></tr>
+ *   <tr><td>부채꼴 브레스</td><td>그렇다</td><td>골랐을 때 100틱(2026-10-04 에 120 → 100)</td></tr>
  *   <tr><td><b>공허 흡입</b></td><td>그렇다</td><td>골랐을 때 180틱</td></tr>
- *   <tr><td><b>십자 균열</b></td><td>그렇다</td><td>골랐을 때 130틱</td></tr>
+ *   <tr><td><b>십자 균열</b></td><td>그렇다</td><td>골랐을 때 100틱(2026-10-04 에 130 → 100)</td></tr>
  *   <tr><td><b>상시 번개</b></td><td><b>아니다</b></td><td>3초 뒤부터 <b>7.8초마다 계속</b></td></tr>
  *   <tr><td><b>반구 블록 파괴</b></td><td><b>아니다</b></td><td>1초마다 계속 —
  *       {@link DragonLastStandDome} 에 있다</td></tr>
@@ -108,7 +107,7 @@ import java.util.UUID;
  * {@code DRAGON_FIREBALL_EXPLODE} 와 {@code END_GATEWAY_SPAWN} 이 둘 다 {@code random/explode1~4}
  * (일반 폭발음)이었고, {@code FIRECHARGE_USE} 가 {@code mob/ghast/fireball4} 로
  * {@code ENDER_DRAGON_SHOOT}·{@code GHAST_SHOOT} 과 같은 파일이었다. 그래서 아래 표의
- * <b>오른쪽 칸을 26.3 바닐라 {@code sounds.json} 에서 직접 열어 확인했고</b>, 일곱이 전부 다른
+ * <b>오른쪽 칸을 26.3 바닐라 {@code sounds.json} 에서 직접 열어 확인했고</b>, 여덟이 전부 다른
  * 파일이다. 소리를 바꾸는 사람은 <b>반드시 그 파일을 다시 열 것.</b>
  *
  * <table border="1">
@@ -123,10 +122,18 @@ import java.util.UUID;
  *   <tr><td>십자 균열</td><td><b>{@code DEEPSLATE_BREAK}</b></td>
  *       <td><b>{@code block/deepslate/break1~4}</b></td>
  *       <td>{@code WARDEN_DIG}</td><td>{@code mob/warden/dig}</td></tr>
+ *   <tr><td>공허 흡입의 <b>불 결계</b>(2026-10-04)</td><td colspan="2">—</td>
+ *       <td><b>{@code FIRE_AMBIENT}</b></td><td><b>{@code fire/fire}</b></td></tr>
  * </table>
  *
+ * <p>⚠ 2026-10-04 에 <b>여덟째</b>가 생겼다 — 불 결계의 {@code FIRE_AMBIENT}. 26.3
+ * {@code sounds.json} 에서 {@code block.fire.ambient} 가 {@code fire/fire} 하나를 가리키고 이 저장소의
+ * 어느 카드도 그 파일을 안 쓴다(쓰는 소리 48개를 통째로 훑었다). ⚠ <b>같은 파일을 쓰는 다른 이름이
+ * 있다</b> — {@code BLAZE_BURN}({@code entity.blaze.burn})도 {@code fire/fire} 다. 「불 결계와 다른
+ * 불 소리」가 필요해지면 그쪽은 고를 수 없다.
+ *
  * <p>공용 층 소리({@link TrialWarning#soundFor})는 <b>그대로 둔다.</b> 그것이 이 판의 규약이라
- * 사람이 카드마다 새 신호를 배우지 않는 근거이고, 쓰는 파일도 위의 일곱과 겹치지 않는다 —
+ * 사람이 카드마다 새 신호를 배우지 않는 근거이고, 쓰는 파일도 위의 여덟과 겹치지 않는다 —
  * {@code mob/enderdragon/growl1~4}({@code ENDER_DRAGON_GROWL}) · {@code block/beacon/activate} ·
  * {@code random/orb}({@code EXPERIENCE_ORB_PICKUP})다.
  *
@@ -161,7 +168,8 @@ import java.util.UUID;
  * <table border="1">
  *   <caption>사람 말과 그 답</caption>
  *   <tr><th>사람 말</th><th>뒤집힌 규칙</th><th>대신 막는 것</th></tr>
- *   <tr><td><b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b></td>
+ *   <tr><td><b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b> → 2026-10-04
+ *       <b>「십자 맞았을 때 하늘로 지금보다 2배는 더 날려버려」</b>(12칸)</td>
  *       <td>「<b>세로로 띄우지 않습니다</b> — 띄우면 마찰이 안 먹어 훨씬 멀리 갑니다」</td>
  *       <td>{@link #liftCross} — 가로를 한 톨도 안 더하고, 낙하 피해를 그 띄움 몫만 면제한다</td></tr>
  *   <tr><td><b>「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」</b></td>
@@ -180,7 +188,8 @@ import java.util.UUID;
  * 2026-10-04 에 사람이 본 것이 그것이다.
  *
  * <p>⚠ <b>그런데 띄운 사람은 「공중에 있는 사람」이 된다.</b> 곧 <b>내가 만든 상태가 남이 만든
- * 넉백의 입력</b>이 된다 — 띄워 놓고 1.25초 안에 날개 퍼덕이기가 오면 그 사람은 공중에서 맞는다.
+ * 넉백의 입력</b>이 된다 — 띄워 놓고 1.75초(12칸 띄움, 2026-10-04 전에는 6칸 · 1.25초) 안에 날개
+ * 퍼덕이기가 오면 그 사람은 공중에서 맞는다.
  * {@link #AIRBORNE_PUSH_SCALE} 가 공중 세기를 바닥과 같게 맞춰 두었고 천장 둘이 그대로 걸려 있어
  * 그때도 섬 안이다 — {@code DragonLastStandPatternsTest.띄워진_직후에_밀려도_섬_밖으로_못_나간다}
  * 가 그 사실을 붙든다.
@@ -202,16 +211,24 @@ import java.util.UUID;
  * 함께 키웠고, 그러면서 최악이 <b>272 → 356</b> 으로 올랐다. 전에는 「번개 + 부채꼴 예고」였는데
  * 이제는 <b>「번개 + 십자가 터지는 틱」</b>이다 — 그 틱에 갈라짐 연출과 솟는 기둥과 <b>다음 십자의
  * 예고</b>와 <b>띄워진 사람 발밑의 기둥</b>이 함께 나간다({@link #crossPoints}). 그 뒤 십자가
- * 사람을 띄우면서 <b>356 → 360</b> 이 됐고(사람당 한 점 × 넷), 예산까지 80점이 남았다. 그 몫을
- * 쓰려는 사람은 {@code DragonLastStandPatternsTest.한_틱_점_예산을_넘지_않는다} 가 못박아 둔 수부터
- * 고쳐야 한다.
+ * 사람을 띄우면서 <b>356 → 360</b> 이 됐다(사람당 한 점 × 넷).
+ *
+ * <p>⚠⚠ <b>2026-10-04 에 360 → 322 로 내려왔다.</b> 사람이 십자 예고를 <b>「브레스처럼 투명땅으로」</b>
+ * 바꾸라고 해서 먼지 선(54점)과 흰 기둥 벽(108점)을 걷고 디스플레이 판으로 깔았다
+ * ({@link DragonLastStandCrossPanel} — 판은 점을 안 쓴다). 대신 한 회차에 십자가 <b>둘</b> 터지게 되어
+ * 터지는 틱의 갈라짐 연출이 두 벌(124 × 2)이다. 그래서 가장 바쁜 틱의 주인은 여전히 <b>「번개 +
+ * 십자가 터지는 틱」</b>이고 그 틱이 {@code 70 + 248 + 4 = 322} 다. 공허 흡입에 불 결계(17점)가
+ * 더해졌지만 163점이라 그 아래다. 수를 쓰려는 사람은
+ * {@code DragonLastStandPatternsTest.한_틱_점_예산을_넘지_않는다} 가 못박아 둔 수부터 고쳐야 한다.
  *
  * <p>⚠ <b>내리치는 틱도 이제 센다.</b> 번개가 맞은 사람 발밑에 점을 뿌리게 되어
  * ({@link #slowStruck}) 「내리치는 틱은 0점」이 거짓이 됐다 — {@link #lightningPoints} 가 예고 틱
  * (70)과 내리침 틱(48) 가운데 큰 쪽을 센다.
  *
- * <p>그리고 부채꼴의 <b>빨간 투명 면은 점을 한 개도 쓰지 않는다.</b> 파티클이 아니라 디스플레이
- * 개체라 예산과 무관하다 — {@link DragonLastStandConePanel} 을 볼 것.
+ * <p>그리고 부채꼴과 십자의 <b>빨간 투명 면은 점을 한 개도 쓰지 않는다.</b> 파티클이 아니라
+ * 디스플레이 개체라 예산과 무관하다 — {@link DragonLastStandConePanel}·{@link DragonLastStandCrossPanel}
+ * 을 볼 것. ⚠ 대신 <b>개체 수와 패킷</b>이라는 다른 자가 생긴다(부채꼴 18장 · 십자 한 회차 평지 16장,
+ * 최악 304장 — {@link DragonLastStandCrossPanel} 클래스 설명).
  */
 public final class DragonLastStandPatterns {
 
@@ -349,20 +366,54 @@ public final class DragonLastStandPatterns {
 	 */
 	static final double WING_PUSH_CUT = 0.5;
 	/**
-	 * 넉백 세기를 한 번에 곱하는 배율. <b>{@code 1.5 × 0.5 = 0.75}</b> 다.
+	 * ⚠⚠ 사람이 2026-10-04 에 <b>다시 올린</b> 몫. <b>「반대로 계속 밀치는 패턴은 밀치는 힘이 지금
+	 * 거의 없어진 것처럼 됐어. 50프로 키워」</b>.
+	 *
+	 * <p>「지금」이 {@link #WING_PUSH_CUT} 으로 깎은 뒤(0.75)를 가리키므로 곱이 {@code 0.75 × 1.5} 다.
+	 * 지우지 말 것 — 셋이 다 남아 있어야 「1.5배 → 절반 → 1.5배」가 스스로 말해진다.
+	 *
+	 * <h2>⚠ 「거의 없어진 것처럼」의 정체 — 코드는 수평을 한 톨도 안 깎았다</h2>
+	 *
+	 * <p>2026-10-04 에 {@code 1bf6c84}(세로 자르기 · 날개 밀치기 끊기)와 {@code 6ae77f2}(공중 비율)를
+	 * 따라가 보았다. <b>수평을 줄이는 줄은 없다.</b>
+	 *
+	 * <ul>
+	 *   <li>{@link TrialVelocity#syncedVertical} 은 <b>세로 한 성분만</b> 받고 돌려준다. {@link #shove} 의
+	 *       수평은 {@code stepX × speed} 를 그대로 덮어쓴다</li>
+	 *   <li>{@link #isAirborne} 은 바닥에 선 사람에게 거짓이다 — {@code Ground.surfaceAt} 이
+	 *       <b>가장 높은 블록 + 1</b>(설 수 있는 높이)을 돌려주므로 선 사람의 {@code y − 지표} 가 0 이다</li>
+	 *   <li>천장 둘은 섬 안쪽에서 걸리지 않는다 — {@code pushDistance} 는 반경 32 원까지,
+	 *       {@code groundedReach} 는 땅이 끊기는 데까지만 자른다. 부탁한 거리(3칸)보다 한참 멀다</li>
+	 * </ul>
+	 *
+	 * <p>원인은 <b>고치기 전의 느낌이 버그로 부풀어 있었던 것</b>이다. {@code 1bf6c84} 전에는 바닐라
+	 * 드래곤이 날개 상자 안의 사람 세로에 매 틱 {@code +0.2} 를 쌓았고 {@code shove} 가 그것을 본인에게
+	 * 배달했다. 번치를 맞은 사람이 <b>뜨고</b>, 뜬 채로는 감쇠가 0.546 → 0.91 이라 같은 수평 속도가
+	 * <b>다섯 배</b>를 밀었다(바닥 0.59칸 → 공중 3.0칸). 사람이 기억하는 세기가 그것이고,
+	 * {@link #WING_PUSH_CUT} 의 「너무심해」도 그 버그 위에서 나온 말이다. 버그가 닫히자 설계값 그대로인
+	 * <b>바닥 0.59칸</b>만 남았다 — 걷는 사람이 0.6초에 2.6칸을 가므로 그것은 「없다」로 읽힌다.
+	 *
+	 * <p>⚠ <b>1.5배로도 버그 시절 세기에는 한참 못 미친다.</b> 바닥 한 번치가 0.59 → <b>0.89칸</b> 이고
+	 * ({@code DragonLastStandPatternsTest.날개_넉백이_다시_1점5배가_됐다}), 버그 시절은 공중으로 떠서
+	 * 그 다섯 배였다. 사람이 다시 「약하다」고 하면 그 비교를 먼저 보여 줄 것.
+	 */
+	static final double WING_PUSH_REGAIN = 1.5;
+	/**
+	 * 넉백 세기를 한 번에 곱하는 배율. <b>{@code 1.5 × 0.5 × 1.5 = 1.125}</b> 다
+	 * (2026-10-04 전에는 {@code 1.5 × 0.5 = 0.75}).
 	 *
 	 * <p>구간마다 따로 곱하지 않고 <b>한 곳</b>에서 곱한다. 「4~12칸 구간만」으로 읽으면 12칸 밖의
 	 * 잦아드는 구간이 그대로 남아 <b>12.0 과 12.1 의 결과가 절벽처럼 갈린다</b> — 잦아드는 구간은
 	 * {@link #WING_PUSH_BLOCKS} 의 비율로 적혀 있어 저절로 따라 움직인다.
 	 *
-	 * <p>⚠ <b>이것은 「세기」의 답이고 「공중」의 답이 아니다.</b> 반으로 줄여도 떠 있는 사람은 바닥의
-	 * 다섯 배를 가므로, 줄인 뒤의 6 은 공중에서 옛 세기의 2.5배와 같다. 그쪽은
-	 * {@link #AIRBORNE_PUSH_SCALE} 가 따로 막는다 — <b>둘은 다른 문제이고 둘 다 사람이 말했다.</b>
+	 * <p>⚠ <b>이것은 「세기」의 답이고 「공중」의 답이 아니다.</b> 떠 있는 사람은 바닥의 다섯 배를 가는
+	 * 것을 {@link #AIRBORNE_PUSH_SCALE} 가 따로 막는다 — <b>둘은 다른 문제이고 둘 다 사람이 말했다.</b>
 	 */
-	static final double WING_PUSH_SCALE = WING_PUSH_RAISE * WING_PUSH_CUT;
+	static final double WING_PUSH_SCALE = WING_PUSH_RAISE * WING_PUSH_CUT * WING_PUSH_REGAIN;
 
 	/**
-	 * 가장 강한 구간에서 <b>부탁하는</b> 미는 거리(칸). <b>4 → 6 → 3 이다.</b>
+	 * 가장 강한 구간에서 <b>부탁하는</b> 미는 거리(칸). <b>4 → 6 → 3 → 4.5 다</b>(마지막이
+	 * 2026-10-04 의 {@link #WING_PUSH_REGAIN}).
 	 *
 	 * <h2>밑값 4 는 왜 4 였는가</h2>
 	 *
@@ -381,6 +432,10 @@ public final class DragonLastStandPatterns {
 	 * 된다」만 지킨 추정이고, 3 은 <b>사람이 실제로 맞아 보고 정한 값</b>이다. 이 판의 규칙대로
 	 * 플레이로 정해진 쪽이 이긴다.
 	 *
+	 * <p>⚠ <b>2026-10-04 에 4.5 로 다시 올랐다</b>({@link #WING_PUSH_REGAIN}). 3 이 「너무심해」였던 것은
+	 * 세로 배달 버그로 사람이 떠서 다섯 배를 밀렸기 때문이었고, 버그가 닫힌 뒤의 3 은 「거의 없어진
+	 * 것처럼」이었다. 4.5 는 단위(8)의 16분의 9 라 「한 번치가 한 대와 같으면 안 된다」는 그대로 선다.
+	 *
 	 * <p>⚠ <b>천장은 그대로다.</b> 세기를 어떻게 바꿔도 목적지는 {@code TrialEnderStorm.pushDistance}
 	 * (반경 32 안)와 {@code TrialLandingShock.groundedReach}(땅이 이어진 데까지)가 자른다 —
 	 * {@code DragonLastStandPatternsTest} 가 <b>새 값으로 섬 곳곳에서 다시 굴려 본다.</b>
@@ -392,13 +447,14 @@ public final class DragonLastStandPatterns {
 	 */
 	static final double WING_PUSH_BLOCKS = TrialEnderStorm.PUSH_BLOCKS / 2.0 * WING_PUSH_SCALE;
 	/**
-	 * 드래곤 바로 아래에서 부탁하는 미는 거리(칸). <b>1.5 → 2.25 → 1.125 다.</b>
+	 * 드래곤 바로 아래에서 부탁하는 미는 거리(칸). <b>1.5 → 2.25 → 1.125 → 1.6875 다.</b>
 	 *
 	 * <p>0 이 아닌 것은 「약하다」이지 「없다」가 아니기 때문이다. 0 으로 두면 머리 밑이
 	 * <b>완전한 안전지대</b>가 되어 이 패턴이 아무것도 요구하지 않는다.
 	 *
 	 * <p>같은 배율을 여기에도 곱한다. 한쪽만 깎으면 <b>「4칸 이내는 약하다」의 정도가 달라진다</b> —
-	 * 6 : 2.25 였던 비가 3 : 2.25 가 되면 머리 밑이 상대적으로 덜 안전해진다.
+	 * 6 : 2.25 였던 비가 3 : 2.25 가 되면 머리 밑이 상대적으로 덜 안전해진다. 올릴 때도 같다
+	 * (4.5 : 1.6875 = 6 : 2.25 그대로).
 	 */
 	static final double WING_NEAR_PUSH_BLOCKS = 1.5 * WING_PUSH_SCALE;
 
@@ -442,8 +498,23 @@ public final class DragonLastStandPatterns {
 
 	// ------------------------------------------------------------------ ② 부채꼴 브레스
 
-	/** 예고(틱). 5초. <b>사람이 정한 값이고 「즉사 허용」의 조건 셋 중 하나다.</b> */
-	static final int CONE_WARN_TICKS = 100;
+	/**
+	 * 예고(틱). <b>4초. 사람이 정한 값이고 「즉사 허용」의 조건 셋 중 하나다.</b>
+	 *
+	 * <p>⚠⚠ <b>2026-10-04 에 5초 → 4초로 줄었다.</b> 사람 말: <b>「브레스 터지는 시간을 1초
+	 * 감소시켜」</b>. 문서의 「즉사 허용」 조건이 <b>「5초 예고 · 머리 고정 · 90도」</b>였으므로 그
+	 * 첫째를 <b>사람이 손으로 4초로 고친 것</b>이다 — 시험({@code 즉사를_허용하는_조건_셋이_지켜진다})이
+	 * 이제 4초를 바닥으로 붙든다. <b>사람에게 다시 묻지 않고 그 아래로 내리지 말 것.</b>
+	 *
+	 * <p>묶여 있는 것이 저절로 따라간다 — 패턴 길이 120 → 100({@code Pattern.CONE_BREATH}), 축소 앞
+	 * 잠금 120 → 100({@code DragonLastStandZone.shrinkLockoutLead}), 면의 심지 120 → 100
+	 * ({@code DragonLastStandConePanel.FUSE_TICKS}), 충전음 다섯 번 → 네 번({@link #chargePitch}).
+	 * 쿨 8초({@code BREATH_COOLDOWN_TICKS})와 「축소 직후 3초 금지」는 예고 길이와 무관한 시계라
+	 * 그대로이고 여전히 말이 된다 — 쿨은 시작에서 재고 연속 금지가 있어, 다음 브레스를 고를 수 있는
+	 * 가장 이른 틱이 {@code 100 + 40 + 100 + 40 = 280틱} 뒤라 160틱 쿨은 전처럼(그때 300) 실제로는
+	 * 걸리지 않는다.
+	 */
+	static final int CONE_WARN_TICKS = 80;
 	/**
 	 * 터진 뒤 불꽃이 남는 시간(틱). 1초.
 	 *
@@ -464,13 +535,14 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>사람이 <b>「부채꼴 브레스도 전조에 소리를 뭔가 넣엇으면해」</b>라고 했다. 그런데
 	 * {@link #warnCone} 은 <b>처음부터 {@link TrialWarning#soundFor} 를 부르고 있었다.</b> 들리지
-	 * 않았던 까닭은 층 소리가 <b>5초 동안 세 번</b>뿐이고({@code stageFor} 가 100·50·14틱 남은
-	 * 자리에서만 바뀐다) 그 첫 번째가 <b>드래곤 울음</b>이라 붙박이 드래곤이 제 울음을 내는 것과
-	 * 구별되지 않기 때문이다.
+	 * 않았던 까닭은 층 소리가 <b>예고 내내 세 번</b>뿐이고({@code stageFor} 가 100·50·14틱 남은
+	 * 자리에서만 바뀐다 — 예고가 80틱이 된 지금은 첫 틱·50·14) 그 첫 번째가 <b>드래곤 울음</b>이라
+	 * 붙박이 드래곤이 제 울음을 내는 것과 구별되지 않기 때문이다.
 	 *
 	 * <p>그래서 층 소리를 <b>그대로 두고</b> 그 위에 <b>되풀이되는 충전음</b>을 얹었다 — 1초마다
-	 * 한 번씩 다섯 번, 음높이가 {@link #chargePitch} 로 낮은 데서 높은 데까지 오른다. 「무언가
-	 * 차오르고 있다」는 되풀이와 음높이로만 말할 수 있고, 한 번 울리는 소리로는 못 한다.
+	 * 한 번씩, 음높이가 {@link #chargePitch} 로 낮은 데서 높은 데까지 오른다. 「무언가 차오르고
+	 * 있다」는 되풀이와 음높이로만 말할 수 있고, 한 번 울리는 소리로는 못 한다. 예고가 4초가 되어
+	 * 다섯 번이던 것이 <b>네 번</b>(0·20·40·60틱)이고, 마지막이 여전히 가장 높다.
 	 */
 	static final int CONE_CHARGE_TICKS = 20;
 	/** 충전음의 첫 음높이. */
@@ -510,38 +582,56 @@ public final class DragonLastStandPatterns {
 	static final double SUCK_REACH = CONE_RANGE;
 
 	/**
-	 * ⚠ <b>「달리기보다 약간 약하게」의 「약간」.</b> <b>사람이 정하지 않았다.</b>
+	 * ⚠ <b>처음 정한 「달리기보다 약간 약하게」의 「약간」.</b> <b>사람이 정하지 않은 값이었다.</b>
 	 *
 	 * <p>사람이 정한 것은 <b>「반대쪽으로 달려서 도망가야지」</b>, 곧 <b>달리면 벗어나는 것이
 	 * 정답</b>이다. 그러려면 세기가 달리기보다 <b>반드시 약해야</b> 하고, 한참 약하면
-	 * 「빨려들어간다」가 말뿐이 된다. 0.85 가 그 둘 사이다.
+	 * 「빨려들어간다」가 말뿐이 된다. 0.85 가 그 둘 사이였고, 그때의 답이 이랬다 — 달리면 1초에
+	 * +0.86칸, 걸으면 −0.47칸(끌려든다), 가만히 −4.87칸.
+	 *
+	 * <p>지우지 말 것. {@link #SUCK_PULL_KEEP} 과 곱해 {@link #SUCK_SPRINT_RATIO} 가 되므로, 이 값이
+	 * 남아 있어야 「0.5525 라는 어정쩡한 수가 어디서 왔나」가 스스로 말해진다.
+	 */
+	static final double SUCK_SPRINT_RATIO_FIRST = 0.85;
+	/**
+	 * ⚠⚠ 사람이 2026-10-04 에 <b>깎은</b> 몫. <b>「빨아들이는 패턴 빨아들이는 힘이 35프로 감소시키는
+	 * 대신, 드래곤 주위에 있으면 계속 딜 맞게」</b>. 35% 를 빼고 남는 것이 0.65 다.
+	 *
+	 * <p>「대신」이 요점이다 — 당김을 줄이고 그 자리를 <b>불 결계</b>({@link #SUCK_FIRE_RADIUS})가
+	 * 메운다. 당김만 보면 이 패턴이 쉬워졌지만 원 안에 머무는 값이 새로 생겼다.
+	 */
+	static final double SUCK_PULL_KEEP = 0.65;
+	/**
+	 * 당기는 세기가 달리기 입력의 몇 배인가. <b>{@code 0.85 × 0.65 = 0.5525}</b> 다
+	 * (2026-10-04 전에는 0.85).
 	 *
 	 * <table border="1">
-	 *   <caption>이 값이 만드는 답 (달리기 = 0.2864칸/틱 = 5.73칸/초)</caption>
-	 *   <tr><th>사람이 하는 것</th><th>1초에 벌거나 잃는 거리</th></tr>
-	 *   <tr><td><b>달려서 반대쪽으로</b></td><td><b>+0.86칸</b> — 벗어난다</td></tr>
-	 *   <tr><td>걸어서 반대쪽으로</td><td>−0.47칸 — 끌려든다</td></tr>
-	 *   <tr><td>가만히</td><td>−4.87칸 — 그냥 끌려든다</td></tr>
+	 *   <caption>이 값이 만드는 답 (달리기 = 0.2863칸/틱 · 걷기 = 0.2203칸/틱 · 당김 천장 = 0.1582칸/틱)</caption>
+	 *   <tr><th>사람이 하는 것</th><th>1초에 벌거나 잃는 거리</th><th>0.85 였을 때</th></tr>
+	 *   <tr><td><b>달려서 반대쪽으로</b></td><td><b>+2.56칸</b> — 벗어난다</td><td>+0.86칸</td></tr>
+	 *   <tr><td>걸어서 반대쪽으로</td><td><b>+1.24칸 — 이제 벗어난다</b></td><td>−0.47칸(끌려든다)</td></tr>
+	 *   <tr><td>가만히</td><td>−3.16칸 — 끌려든다</td><td>−4.87칸</td></tr>
 	 * </table>
 	 *
-	 * <p>곧 <b>달리기만 답이다.</b> 5초 동안 달리면 4.3칸을 벌므로, 드래곤 머리에 붙어 있던
-	 * 사람(반경 3 남짓)이 반경 4 를 넘기는 데 1.2초면 된다 — 그것이 「붙어 있던 사람을 그 자리에서
-	 * 쫓아낸다」다.
+	 * <p>⚠⚠ <b>「달리기만 답이다」가 깨졌다 — 사람이 그것을 고른 것이다.</b> 0.65 를 곱하면 당김 천장
+	 * (0.158)이 <b>걷기 종착 속도(0.220) 아래로</b> 내려가 걸어도 벗어난다. 전에는 시험이
+	 * 「걸으면 끌려든다」를 붙들고 있었고, 지금은 거꾸로 「걸어도 벗어난다 · 가만히 있으면 끌려든다」를
+	 * 붙든다({@code DragonLastStandPatternsTest.흡입은_달리기보다_약하다}). 대신 머무는 값이 불 결계로
+	 * 생겼다 — 걸어서 반경 3 → 4 를 넘기는 데 0.8초라 결계 한 대(20틱 주기)를 맞을까 말까다.
 	 *
-	 * <p>⚠ <b>진짜로 벽에 닿는 것은 예고 3초 동안이다.</b> 예고 중에는 손이 아직 닿지 않으므로
-	 * 검은 원을 보고 곧바로 달린 사람은 3초에 <b>17칸</b>을 간다 — 3단계 지대(반변 12)에서는
-	 * 그것만으로 벽이다. 사람이 말한 긴장이 그 자리에 있고 <b>쉽게 만들지 말 것.</b>
+	 * <p>5초 동안 달리면 12.8칸을 벌고 걸으면 6.2칸을 번다. 예고 3초 동안은 손이 닿지 않으므로 검은
+	 * 원을 보고 곧바로 달린 사람이 3초에 17칸을 가는 것은 그대로다.
 	 *
 	 * <p>1.0 을 넘기면 어떤 사람도 벗어날 수 없어 「달리면 벗어난다」가 그 자리에서 거짓이 된다 —
 	 * {@code DragonLastStandPatternsTest} 가 그 선을 붙들고 있다.
 	 */
-	static final double SUCK_SPRINT_RATIO = 0.85;
+	static final double SUCK_SPRINT_RATIO = SUCK_SPRINT_RATIO_FIRST * SUCK_PULL_KEEP;
 
 	/**
 	 * 매 틱 속도에 <b>더하는</b> 값(칸/틱).
 	 *
 	 * <p>사람의 입력 가속과 <b>같은 자리에서 같은 감쇠를 지나므로</b> 비율을 그대로 곱하면 된다 —
-	 * 둘 다 {@code v' = (v + a) × 감쇠} 의 {@code a} 다. 그래서 「달리기의 85%」가 상수 한 줄이다.
+	 * 둘 다 {@code v' = (v + a) × 감쇠} 의 {@code a} 다. 그래서 「달리기의 55.25%」가 상수 한 줄이다.
 	 */
 	static final double SUCK_STEP = WALK_INPUT * SPRINT_MULTIPLIER * SUCK_SPRINT_RATIO;
 
@@ -640,7 +730,9 @@ public final class DragonLastStandPatterns {
 	 * 가닥을 쏘는 세기. {@link #WING_GUST_DRIFT} 와 <b>같은 값이다.</b>
 	 *
 	 * <p>⚠ <b>이 값은 입자에만 쓴다.</b> 사람을 당기는 세기는 {@link #SUCK_STEP} 이고
-	 * <b>달리기 입력의 85%</b> 라는 사람의 약속 위에 서 있다 — 둘을 같은 수로 묶지 말 것.
+	 * <b>달리기 입력의 55.25%</b>(사람이 2026-10-04 에 35% 깎았다) 위에 서 있다 — 둘을 같은 수로 묶지
+	 * 말 것. ⚠ 당김을 깎으면서 <b>가닥은 그대로 두었다.</b> 「안으로 빨린다」는 방향의 말이지 세기의
+	 * 말이 아니고, 날개 가닥과 같은 세기여야 「반대」로 읽힌다.
 	 */
 	static final double SUCK_STREAM_DRIFT = WING_GUST_DRIFT;
 	/**
@@ -651,9 +743,9 @@ public final class DragonLastStandPatterns {
 	 * 같은 수법인데 방향이 반대다.
 	 *
 	 * <p>1.5 면 {@link #SUCK_REACH}(20)에서 {@link #SUCK_RADIUS}(4)까지 <b>16칸을 10.67틱</b>에
-	 * 지난다. 사람이 달려서 버는 것이 초당 0.86칸이므로 흐름이 사람보다 <b>35배</b> 빠르고, 그래서
-	 * 「흐름은 빠른데 나는 버틸 수 있다」가 보인다. 느리게 하면 흐름이 사람과 같은 속도로 보여
-	 * 「도망칠 수 없다」로 읽힌다.
+	 * 지난다. 사람이 달려서 버는 것이 초당 2.56칸이므로(2026-10-04 전에는 0.86칸) 흐름이 사람보다
+	 * <b>열두 배</b> 빠르고, 그래서 「흐름은 빠른데 나는 버틸 수 있다」가 보인다. 느리게 하면 흐름이
+	 * 사람과 같은 속도로 보여 「도망칠 수 없다」로 읽힌다.
 	 */
 	static final double SUCK_STREAM_SPEED = 1.5;
 	/**
@@ -668,16 +760,148 @@ public final class DragonLastStandPatterns {
 	 */
 	static final int SUCK_STREAM_PHASES = 2;
 
+	/**
+	 * ⚠⚠ <b>불 결계</b>의 반경(칸). <b>사람이 정한 값이다</b> — 검은 원({@link #SUCK_RADIUS})과 같은 자리.
+	 *
+	 * <h2>사람 말 (2026-10-04)</h2>
+	 *
+	 * <p><b>「빨아들이는 힘이 35프로 감소시키는 대신, 드래곤 주위에 있으면 계속 딜 맞게. 그리고 옆에
+	 * 있으면 딜 맞는다를 알기 쉽게 드래곤 주위에 불 결계가 생기게」</b>. 반경·초당 피해는 물어서 답을
+	 * 받았다 — <b>반경 4 · 초당 4</b>.
+	 *
+	 * <p>같은 원이라 「검은 원 안 = 터질 때 맞는다」와 「불 고리 안 = 지금 맞는다」가 <b>한 경계</b>다.
+	 * 경계가 둘이면 사람이 4칸과 다른 칸 사이에서 무엇이 무엇인지 따로 배워야 한다.
+	 */
+	static final double SUCK_FIRE_RADIUS = SUCK_RADIUS;
+
+	/**
+	 * 불 결계가 원 안의 사람에게 넣는 <b>적히는</b> 피해(초당 한 번). <b>사람이 정한 값이다</b> — 4.
+	 *
+	 * <h2>⚠ 「적히는 값」이다 — 피해원은 {@code lightningBolt()}</h2>
+	 *
+	 * <p>이 판의 피해 값은 전부 <b>무장 기준</b>으로 읽는다(문서 5장). 같은 꼴의 선례가 이미 있다 —
+	 * 안전지대 밖의 <b>「초당 8」</b>({@code DragonLastStand.OUTSIDE_ZONE_DAMAGE_PER_SECOND})이
+	 * {@code lightningBolt()} 로 넣는 적히는 값이고 무장 기준 초당 0.81 이다. 여기도 같은 표기라
+	 * <b>4 → 무장 기준 한 대 0.35</b>(방어도 19 → ×0.24, 보호 IV ×0.36) 다.
+	 *
+	 * <table border="1">
+	 *   <caption>피해원 후보와 버린 까닭</caption>
+	 *   <tr><th>피해원</th><th>버린 까닭</th></tr>
+	 *   <tr><td><b>{@code lightningBolt()}</b></td><td>← 고른 것. 하드 곱 없음 · 방어도 들음. 안전지대
+	 *       「초당 8」과 같은 꼴</td></tr>
+	 *   <tr><td>{@code inFire()}</td><td>⚠ {@code #is_fire} 라 <b>화염 저항 하나로 0</b>이 된다(26.3
+	 *       {@code LivingEntity.hurtServer} 첫머리가 {@code IS_FIRE && FIRE_RESISTANCE} 를 본다).
+	 *       게다가 상태이상은 {@code EffectSync} 가 팀 전원에게 퍼뜨리므로 <b>한 사람의 물약 한 병이
+	 *       넷의 결계를 지운다</b></td></tr>
+	 *   <tr><td>{@code onFire()}</td><td>{@code #bypasses_armor} 다 — 무장 기준의 셈과 성질이 다르다
+	 *       (부채꼴이 {@code magic} 을 버린 까닭과 같다)</td></tr>
+	 *   <tr><td>{@code explosion(null, null)}</td><td>하드 ×1.5 가 걸려 「4」가 6 으로 읽힌다 — 사람이
+	 *       적은 수와 다르다</td></tr>
+	 * </table>
+	 *
+	 * <h2>⚠⚠ 흡입·균열의 피해원 규칙을 깨지 않는다</h2>
+	 *
+	 * <p>문서 6장의 「흡입과 균열이 <b>서로 다른</b> 피해원이어야 정한 값(6.9 / 6.8)이 나온다」는 <b>각
+	 * 카드의 값이 제 피해원으로 셈해져야 한다</b>는 말이다. 결계는 흡입과 같은 {@code lightningBolt()}
+	 * 를 쓰지만 <b>흡입의 터짐(35)도 균열(23)도 피해원이 그대로</b>이고, 결계의 4 는 그 둘과 따로
+	 * 셈한다. 바꾼 것은 결계를 하나 <b>더한</b> 것뿐이다.
+	 *
+	 * <h2>⚠ 인원수로 곱해진다 — 안전지대와 다르다</h2>
+	 *
+	 * <p>안전지대는 「넷이 다 밖이어도 초당 8 하나」로 <b>한 사람에게만</b> 넣는다. 결계는 사람 말이
+	 * <b>「드래곤 주위에 있으면 계속 딜 맞게」</b>라 <b>원 안의 사람마다</b> 넣는다 — 넷이 5초 내내
+	 * 머물면 {@code 0.35 × 5 × 4 = 6.9} 가 팀에 들어간다(공유 체력은 팀원별 피해를 합산한다,
+	 * {@code StatMirror.fold}). 그 위에 터짐이 사람마다 6.93 이다. 「한 사람에게만」으로 바꾸려면
+	 * {@code DragonLastStandZone.punish} 의 「가장 멀리 나간 사람」 꼴을 가져오면 된다.
+	 */
+	static final float SUCK_FIRE_DAMAGE = 4.0F;
+
+	/** 불 결계가 피해를 넣는 주기(틱). 1초. 사람이 「초당」이라고 했다. */
+	static final int SUCK_FIRE_PERIOD_TICKS = 20;
+
+	/**
+	 * ⚠⚠ <b>바닐라 피격 무적의 「차액만」 구간</b>(틱). 결계가 터짐 직전 이만큼 안에서는 때리지 않는다.
+	 *
+	 * <h2>이것이 없으면 터짐 35 가 깎이거나 사라진다</h2>
+	 *
+	 * <p>26.3 {@code LivingEntity.hurtServer} 를 바이트코드로 읽었다(필드 이름이
+	 * {@code invulnerableTime} 에서 <b>{@code damageCooldownTime}</b> 으로 바뀌어 있다).
+	 *
+	 * <pre>{@code
+	 * if (damageCooldownTime > 10.0F && !source.is(BYPASSES_COOLDOWN)) {
+	 *     if (amount <= lastHurt) return false;          // 막힌다
+	 *     actuallyHurt(amount - lastHurt);               // 차액만 들어간다
+	 *     lastHurt = amount;
+	 * } else {
+	 *     lastHurt = amount; damageCooldownTime = 20; actuallyHurt(amount);
+	 * }
+	 * }</pre>
+	 *
+	 * <p>{@code ServerPlayer.tick} 이 그 값을 틱마다 1 씩 줄인다. 곧 <b>결계 4 를 맞은 뒤 10틱 안에
+	 * 터지면 35 가 아니라 31 만</b> 들어가고, 결계를 바꿔 35 이상을 넣는 날에는 터짐이 <b>통째로
+	 * 막힌다</b>. ⚠ {@code #bypasses_cooldown} 태그는 26.3 바닐라에서 <b>비어 있어</b>(데이터 파일에서
+	 * 확인했다) 피해원 고르기로는 피할 수 없다 — 그래서 <b>시각</b>으로 피한다({@link #suckFireDue}).
+	 *
+	 * <p>10 은 바닐라의 수({@code 10.0F})이고 우리가 고른 수가 아니다. {@code 20} 으로 세우고 그 반이
+	 * 넘는 동안만 막으므로 「마지막 결계와 터짐 사이가 10틱보다 길다」면 터짐이 언제나 온전하다.
+	 */
+	static final int HURT_COOLDOWN_GUARD_TICKS = 10;
+
+	/**
+	 * 불꽃 벽을 <b>몇 틱에 나눠</b> 세울지. <b>3</b> 이다.
+	 *
+	 * <p>26.3 {@code RisingParticle} 이 불꽃 수명을 {@code (int)(8.0 / (굴림 × 0.8 + 0.2))} 곧
+	 * <b>8~40틱</b>으로 잡는다(바이트코드로 확인했다 — {@code burnCone} 이 적어 둔 그 값이다). 8 보다 작은
+	 * 폭이면 어떤 자리도 꺼지지 않는다. 6 이 아니라 3 인 것은 <b>밀도</b>다 — 한 자리에 3틱마다 새
+	 * 불꽃이 올라 가장 짧게 사는 불꽃으로도 <b>세 개가 겹쳐</b> 서 있고, 그래야 「점선」이 아니라
+	 * 「벽」으로 읽힌다. 사람이 <b>「알기 쉽게」</b>라고 했다.
+	 */
+	static final int SUCK_FIRE_STRIDE = 3;
+
+	/**
+	 * 불꽃을 위로 쏘는 세기(칸/틱). 그 불꽃이 올라가는 높이가 <b>0.7~2.0칸</b>이다({@link #flameRise}).
+	 *
+	 * <p>26.3 {@code RisingParticle} 은 받은 속도에 바닐라가 굴린 값의 1% 만 더하고 마찰 {@code 0.96}
+	 * 으로만 줄인다(중력이 없다 — {@code FlameParticle.move} 가 충돌도 안 본다). 그래서 이 값이 거의
+	 * 그대로 위로 가는 속도다. 0.1 이면 가장 짧게 사는 불꽃이 무릎(0.7), 가장 오래 사는 것이 사람 키
+	 * (2.0)에서 사그라든다 — <b>낮은 벽</b>이다. 더 높이면 같은 원의 빨간 고리·흰 기둥을 가린다.
+	 */
+	static final double SUCK_FIRE_RISE = 0.1;
+
+	/** {@code RisingParticle} 의 마찰. 26.3 생성자가 {@code friction = 0.96F} 를 넣는다. */
+	private static final double FLAME_FRICTION = 0.96;
+
 	// ------------------------------------------------------------------ ④ 십자 균열
 
-	/** 십자를 긋는 횟수. <b>사람이 정한 값이다</b> — 「3번 반복하는 패턴」. */
-	static final int CROSS_ROUNDS = 3;
+	/**
+	 * 터지는 <b>회차</b> 수. <b>사람이 정한 값이다</b> — 처음 「3번 반복하는 패턴」에서 2026-10-04 에
+	 * <b>둘</b>로 바뀌었다.
+	 *
+	 * <p>사람 말: <b>「2페이지때 십자 나오고 다른 각도로 십자 나오고 이런 걸 차라리 그 두 십자를
+	 * 한번에 같이 발동시켜. 그리고 다음에도 두 개 같이 터지고」</b>. 곧 <b>회차마다 십자 둘</b>
+	 * ({@link #CROSSES_PER_ROUND})이고 회차가 둘이다 — 세 번 긋던 각도 셋(0 · 45 · 22.5)에 67.5 를 더해
+	 * 넷을 두 회차로 묶은 꼴이다({@link #CROSS_ANGLES}).
+	 *
+	 * <p>⚠ <b>「세 대에 전멸」이 이 패턴 혼자서는 이제 안 된다.</b> 한 회차에 한 사람은 한 번만
+	 * 맞으므로({@link #fireRound}) 한 판에 최대 <b>두 대</b> — 무장 기준 {@code 6.77 × 2 = 13.54} 다.
+	 * 전에는 세 번을 다 맞으면 20.31 로 전멸이었다.
+	 */
+	static final int CROSS_ROUNDS = 2;
+	/**
+	 * 한 회차에 <b>동시에</b> 터지는 십자 수. 2 — 사람이 「그 두 십자를 한번에」라고 했다.
+	 *
+	 * <p>한 회차의 십자들은 <b>고르게 벌어져 있어야</b> 한다({@code 90 ÷ 2 = 45도}). 그래야 팔 여덟이
+	 * 45도마다 하나씩 서고, 바닥 면의 가운데 팔각형이 팔 폭과 맞물린다
+	 * ({@link DragonLastStandCrossPanel#hubApothem}). 시험이 그 간격을 붙든다.
+	 */
+	static final int CROSSES_PER_ROUND = 2;
 	/** 첫 십자의 예고(틱). 3초. <b>사람이 정한 값이다.</b> */
 	static final int CROSS_FIRST_WARN_TICKS = 60;
 	/**
 	 * 터진 뒤 다음 십자까지(틱). 1.5초. <b>사람이 정한 값이다.</b>
 	 *
-	 * <p>그러니 둘째·셋째 십자의 예고는 <b>1.5초</b>다. 그것이 우연히 맞는 값이 아니다 —
+	 * <p>그러니 둘째 회차의 예고는 <b>1.5초</b>다(회차가 셋이던 때는 둘째·셋째). 그것이 우연히 맞는
+	 * 값이 아니다 —
 	 * {@code TrialWarning.TICKS_SIDESTEP} 이 정확히 30틱이고 「<b>옆으로 비킬</b> 시간」이라고
 	 * 적혀 있다. 이 패턴이 요구하는 것이 딱 그것이다(사람 말: <b>「단순 피하기」</b>) — 첫 십자는
 	 * 어느 사분면에 설지 고르는 3초가 필요하지만, 그 뒤로는 각도가 도는 것을 이미 봤으므로 옆으로
@@ -696,7 +920,8 @@ public final class DragonLastStandPatterns {
 	 * 선이 뻗는 거리(칸). <b>사람이 정하지 않았다</b> — 「아레나를 가로지르는」의 「아레나」다.
 	 *
 	 * <p>{@code TrialRisks.ARENA_RADIUS}(40)를 쓴다. 새 숫자를 만들지 않았고, 이 저장소가 「섬
-	 * 반경」으로 쓰는 값이라 그 밖은 허공이다 — 허공에는 {@link #dot} 이 애초에 점을 찍지 않는다.
+	 * 반경」으로 쓰는 값이라 그 밖은 허공이다 — 허공에는 {@link #dot} 이 점을 찍지 않고
+	 * {@link DragonLastStandCrossPanel} 이 판을 세우지 않는다.
 	 *
 	 * <p>{@code DragonLastStandZone.START_RADIUS}(42, 기둥 줄)를 쓰지 않은 까닭은 그쪽이
 	 * <b>「처음에는 아무도 밖이 아니어야」</b>를 위한 값이라 <b>섬 밖 허공까지 걸친다</b>는 것을
@@ -705,83 +930,29 @@ public final class DragonLastStandPatterns {
 	static final double CROSS_REACH = TrialRisks.ARENA_RADIUS;
 
 	/**
-	 * ⚠ 세 번의 각도(도). <b>사람이 셋 중에 이것을 골랐다.</b>
+	 * ⚠ 회차마다 <b>동시에</b> 터지는 십자들의 기준 각도(도). <b>{@code {0, 45} → {22.5, 67.5}}</b> 다.
 	 *
-	 * <p>{@code +} → {@code ×} → <b>22.5도 어긋난 십자</b>다. 근거는 십자가 <b>90도 대칭</b>이라는
-	 * 것이다 — 「대각선으로 십자 긋고 다시 대각선으로」를 글자대로 읽으면 {@code 45 + 45 = 90} 이라
-	 * <b>셋째가 첫째와 같은 모양</b>이 되어 세 번이 두 번이 된다. 22.5 는 그 사이를 다시 반으로
-	 * 갈라 <b>세 번이 다 다르게</b> 만드는 값이다.
+	 * <h2>어디서 왔는가</h2>
 	 *
-	 * <p>⚠ <b>배열 길이가 {@link #CROSS_ROUNDS} 와 같아야 한다.</b> 시험이 붙들고 있다.
+	 * <p>처음에는 세 번을 차례로 그었다 — {@code +} → {@code ×} → <b>22.5도 어긋난 십자</b>. 사람이 셋
+	 * 중에 그것을 골랐고 근거는 십자가 <b>90도 대칭</b>이라 「대각선으로 두 번」이면 셋째가 첫째와 같은
+	 * 모양이 된다는 것이었다.
+	 *
+	 * <p>2026-10-04 에 사람이 <b>「그 두 십자를 한번에 같이 발동시켜. 그리고 다음에도 두 개 같이
+	 * 터지고」</b>라고 해서 앞의 둘(0 · 45)을 <b>첫 회차에 함께</b>, 22.5 와 그 짝 67.5 를 <b>둘째 회차에
+	 * 함께</b> 터뜨린다. 둘째 회차가 첫 회차의 <b>정확히 사이</b>(22.5도 어긋남)라 「다른 각도로」가
+	 * 그대로 남고, 첫 회차의 안전한 쐐기 한가운데가 둘째 회차의 선이 된다 — 첫 회차를 피한 자리에
+	 * 그대로 서 있으면 둘째에 맞는다.
+	 *
+	 * <p>⚠ <b>한 회차 안의 십자는 45도 간격이어야 한다</b>({@code 90 ÷ CROSSES_PER_ROUND}). 바닥 면이
+	 * 팔 여덟을 45도마다 깔고 가운데를 팔각형으로 맞물리므로 간격이 어긋나면 면이 판정과 갈린다.
+	 * 시험이 그 간격과 「넷이 다 다른 모양」을 붙든다.
 	 */
-	static final double[] CROSS_ANGLES = {0.0, 45.0, 22.5};
-
-	/**
-	 * 십자의 가장자리 선에 점을 찍는 간격(칸). {@link #MARK_GAP}(0.5)보다 성기다.
-	 *
-	 * <p>선 하나가 지름 <b>80칸</b>이라 0.5 간격이면 가장자리 넷에 640점이고 그것만으로 예산을
-	 * 넘긴다. 1.0 이면 320점이고 {@link #CROSS_MARK_STRIDE} 로 나눠 54점이 된다. 곧은 선은
-	 * 고리와 달리 점 사이가 1칸이어도 <b>선으로 읽힌다</b> — 고리에 0.5 가 필요했던 까닭은
-	 * 곡률이었다({@code TrialWarning.ringGap}).
-	 */
-	static final double CROSS_MARK_GAP = 1.0;
-
-	/**
-	 * 십자 가장자리를 <b>몇 틱에 나눠</b> 그릴지. 상시 번개와 <b>같은 값이자 같은 근거</b>다
-	 * (먼지 수명 최소 8틱).
-	 *
-	 * <p>⚠ 둘째·셋째 예고가 <b>30틱</b>뿐이라 처음 여섯 틱이 성긴 것이 예고의 <b>1/5</b> 이다.
-	 * 그래도 6 을 쓰는 것은 각도가 <b>이미 예측되는 것</b>이라 첫 여섯 틱에 선을 다 읽어야 할
-	 * 이유가 없기 때문이고, 첫 십자는 예고가 60틱이라 넉넉하다.
-	 */
-	static final int CROSS_MARK_STRIDE = TrialEndRain.MARK_MAX_STRIDE;
+	static final double[][] CROSS_ANGLES = {{0.0, 45.0}, {22.5, 67.5}};
 
 	/** 터지는 틱에 갈라짐을 그리는 간격(칸). 표식이 아니라 연출이라 성기다. */
 	private static final double CROSS_FLASH_GAP = 2.0;
 
-	/**
-	 * ⚠⚠ 십자 가장자리 먼지의 크기. <b>사람이 가장 세게 지적한 것이 이 패턴이다.</b>
-	 *
-	 * <p><b>「특히 십자가 공격이 너무 잘 안보엿어」</b>
-	 *
-	 * <p>왜 안 보였는지가 값에 그대로 있었다. 가장자리 넷을 <b>여섯 틱에 나눠</b> 그리는데
-	 * ({@link #CROSS_MARK_STRIDE}) 둘째·셋째 예고가 <b>30틱</b>뿐이라 성긴 구간이 예고의 <b>5분의
-	 * 1</b>이고, 그 점들이 <b>80칸짜리 직선 넷</b>에 1칸 간격으로 흩어져 있었다. 20칸 밖에서 보면
-	 * 1칸 간격의 작은 점은 바닥 무늬와 구별되지 않는다.
-	 *
-	 * <p>26.3 {@code DustParticleBase} 는 이 값을 <b>크기와 수명 둘 다에</b> 곱한다 —
-	 * {@code quadSize × 0.75 × 크기} 와 {@code 수명 = max(1, (int)(8.0 / (굴림×0.8 + 0.2)) × 크기)}
-	 * 다(26.3 클래스 파일을 뜯어 확인했다). 1.5 면 수명이 8~40틱에서 <b>12~60틱</b>이 되어
-	 * <b>나눠 그린 여섯 몫이 한 번도 안 끊기고 한 선으로 선다</b>. 「착지 충격」이 같은 이유로
-	 * 1.25 를 쓴다({@code TrialLandingShock.WAKE_SCALE}).
-	 *
-	 * <p>⚠ <b>살아 있는 점 수를 함께 봐야 한다.</b> 화면에 남는 수가 {@code 한 틱 점수 × 수명} 인데
-	 * 이 패턴의 가장자리 몫이 54점이라 {@code 54 × 60 = 3,240} 이고,
-	 * {@link TrialEnderPulse#EDGE_MAX_POINTS} 가 {@code 240 × 40} 으로 그어 둔 선(9,600)보다 한참
-	 * 아래다. 부채꼴 예고(236점)에 이 크기를 쓰면 {@code 236 × 60 = 14,160} 이라 <b>그 선을
-	 * 넘는다</b> — 그래서 여기에만 쓴다.
-	 */
-	static final float CROSS_DUST_SCALE = 1.5F;
-	/**
-	 * 십자 가장자리에 <b>흰 벽</b>을 세울 때의 점 간격(칸). <b>{@link #CROSS_MARK_GAP} 과 같다.</b>
-	 *
-	 * <p>같은 값인 것이 일부러다. 빨간 점과 흰 기둥이 <b>정확히 같은 자리</b>에 서므로 바닥 선이
-	 * 그대로 벽이 되고, {@link #markCross} 가 한 바퀴를 돌면서 지표를 <b>한 번만</b> 묻는다 —
-	 * 간격을 달리하면 하이트맵을 두 벌 묻는다.
-	 *
-	 * <p>벽이 필요한 까닭은 부채꼴과 같다. 선 안에 선 사람은 바닥 선을 <b>시선과 나란하게</b> 보므로
-	 * 거의 못 본다. 「여기서부터 안전」을 말하는 갈래는 세로로 선 것뿐이다.
-	 */
-	static final double CROSS_WALL_GAP = CROSS_MARK_GAP;
-	/**
-	 * 그 벽을 <b>몇 틱에 나눠</b> 세울지. <b>3 이고 6 이 아니다.</b>
-	 *
-	 * <p>⚠ 벽은 {@code CRIT} 이고 그 수명이 <b>최소 4틱</b>이다(26.3 {@code CritParticle} 이
-	 * {@code max(1, 6.0 / (굴림×0.8 + 0.6))} 으로 4~10틱을 잡는다). 먼지 기준인 6 을 쓰면 마지막
-	 * 몫을 찍는 틱에 첫 몫이 이미 죽어 <b>벽이 영영 안 닫힌다</b> — 「착지 충격」이 같은 근거로
-	 * 들고 있는 상한을 <b>그쪽에서 가져온다</b>({@code TrialLandingShock.MAX_STRIDE}).
-	 */
-	static final int CROSS_WALL_STRIDE = TrialLandingShock.MAX_STRIDE;
 	/** 터지는 틱에 갈라짐에서 <b>솟는</b> 기둥의 간격(칸). 연출이라 바닥 선보다 한참 성기다. */
 	private static final double CROSS_BURST_GAP = 4.0;
 	/**
@@ -803,8 +974,11 @@ public final class DragonLastStandPatterns {
 	 * 소리뿐이었다 — 곧 <b>「무엇인가 온다」는 들렸지만 「십자가 온다」는 안 들렸다.</b> 부채꼴은
 	 * {@code GHAST_WARN} 을, 흡입은 {@code BREEZE_INHALE} 을 이미 얹고 있었고 여기만 비어 있었다.
 	 *
-	 * <p>0.5초인 것은 예고가 <b>3초 · 1.5초 · 1.5초</b>라는 것이다. 1초로 하면 둘째·셋째 예고에
-	 * <b>두 번</b>밖에 울리지 않아 「되풀이된다」가 안 들린다. 0.5초면 6 · 3 · 3 번이다.
+	 * <p>0.5초인 것은 예고가 <b>3초 · 1.5초</b>(회차가 셋이던 때는 3 · 1.5 · 1.5)라는 것이다. 1초로
+	 * 하면 둘째 예고에 <b>두 번</b>밖에 울리지 않아 「되풀이된다」가 안 들린다. 0.5초면 6 · 3 번이다.
+	 *
+	 * <p>⚠ 2026-10-04 에 예고 선(먼지·흰 기둥)을 걷고 바닥 면으로 바꾼 뒤로 <b>예고 중의 신호는 면 ·
+	 * 이 균열음 · 층 소리 셋</b>이다. 면은 「어디」만 말하고 「언제」는 이 소리가 말하므로 지우지 말 것.
 	 */
 	static final int CROSS_CRACK_TICKS = 10;
 	/** 균열음의 첫 음높이. */
@@ -839,7 +1013,10 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <h2>사람 말</h2>
 	 *
-	 * <p><b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b>
+	 * <p><b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b> → 2026-10-04
+	 * <b>「십자 맞았을 때 하늘로 지금보다 2배는 더 날려버려」</b>. 6 → <b>12</b> 다. 그 낙하가 맨몸이면
+	 * 피해 9({@code ceil(12 − 3)})라는 것을 사람에게 알렸고, 그 피해는 {@link #liftCross} 가 이 띄움
+	 * 몫만 면제한다.
 	 *
 	 * <h2>⚠ 「세로로 띄우지 않습니다」를 어기는 자리다</h2>
 	 *
@@ -853,30 +1030,47 @@ public final class DragonLastStandPatterns {
 	 *   <li><b>이 패턴은 밀지 않는다.</b> 사람이 <b>「단순 피하기」</b>라고 못박은 카드라 수평
 	 *       성분이 애초에 0 이고, 그래서 세로만 주는 것이 가능하다. 미는 패턴(날개 퍼덕이기)에
 	 *       같은 짓을 하면 그날로 낙사 장치다</li>
-	 *   <li><b>띄워진 사람이 다음 번치의 입력이 된다.</b> 1.25초 동안 공중이라 그 사이에 날개
-	 *       퍼덕이기가 오면 공중에서 맞는데, {@link #AIRBORNE_PUSH_SCALE} 와 천장 둘이 그대로
-	 *       걸려 있어 그때도 섬 안이다 — 시험이 그 경우를 통째로 굴린다</li>
+	 *   <li><b>띄워진 사람이 다음 번치의 입력이 된다.</b> 1.75초(12칸 · 35틱) 동안 공중이라 그 사이에
+	 *       날개 퍼덕이기가 오면 공중에서 맞는데, {@link #AIRBORNE_PUSH_SCALE} 와 천장 둘이 그대로
+	 *       걸려 있어 그때도 섬 안이다 — 시험이 그 경우를 통째로 굴린다. ⚠ 높이를 두 배로 해도 이
+	 *       보장은 <b>공중 시간과 무관하다</b>: 비율은 「공중에 있는가」만 묻고 천장 둘은 「어디까지」만
+	 *       자르므로 35틱 내내 공중이어도 번치마다 같은 셈이다. 게다가 실제로는 그 겹침이 안 생긴다 —
+	 *       마지막 회차 뒤 여운 10틱 + 쉬는 시간 최소 40틱 = <b>50틱이 35틱보다 길다</b>(패턴은 한 번에
+	 *       하나뿐이다)</li>
 	 * </ol>
 	 *
-	 * <h2>6 은 <b>도달 높이</b>다 — 처음 속도가 아니다</h2>
+	 * <h2>⚠ 높이가 두 배라 <b>제 발로 가는 거리</b>가 늘었다 (2026-10-04)</h2>
+	 *
+	 * <p>띄우기는 가로를 더하지 않지만 <b>공중에 있는 시간</b>이 25틱 → 35틱이다. 공중에서도 사람은
+	 * 제 입력으로 움직이므로(달리는 중이면 틱당 0.026 가속 · 감쇠 0.91) <b>달리던 채로 키를 안 놓으면
+	 * 6칸 때 6.1칸 → 지금 9.0칸</b>을 간다(손을 놓으면 1.6 → 1.7칸). 섬 가장자리에서 바깥으로 달리다
+	 * 맞은 사람은 그만큼 더 나간다 — 이것은 이 카드가 미는 거리가 아니라 <b>사람이 스스로 가는
+	 * 거리</b>라 천장 둘을 걸지 않았고, {@code TrialLandingShock.EDGE_MARGIN}(6칸, 스프린트 점프 한 번)
+	 * 보다 길어졌다는 것만 적어 둔다. 사람이 「2배」를 알고 정한 값이다.
+	 *
+	 * <h2>12 는 <b>도달 높이</b>다 — 처음 속도가 아니다</h2>
 	 *
 	 * <p>{@link #CROSS_LIFT_SPEED} 가 이 높이에서 역산된다. 바닐라 점프(처음 0.42 → <b>1.2522칸</b>)
-	 * 의 <b>4.8배</b>이고, 올라가는 데 12틱 · 되돌아오는 데 25틱이라 <b>1.25초쯤 공중에 있다.</b>
-	 * 「점프하게」가 그 느낌이다.
+	 * 의 <b>9.6배</b>이고, 올라가는 데 16틱 · 되돌아오는 데 35틱이라 <b>1.75초쯤 공중에 있다.</b>
+	 * (6칸이던 때는 4.8배 · 12틱 · 25틱 · 1.25초.)
 	 */
-	static final double CROSS_LIFT_BLOCKS = 6.0;
+	static final double CROSS_LIFT_BLOCKS = 12.0;
 	/**
-	 * ⚠ 그 높이에 닿는 <b>처음 세로 속도</b>(칸/틱). <b>1.00746</b> 이다.
+	 * ⚠ 그 높이에 닿는 <b>처음 세로 속도</b>(칸/틱). <b>1.49053</b> 이다(6칸이던 때 1.00746).
 	 *
 	 * <p>{@link #liftSpeed} 가 {@link #liftApex} 를 이분법으로 뒤집어 낸다. 값을 손으로 적지 않는
-	 * 까닭은 <b>사람이 말한 것이 「6칸」이고 속도는 거기서 나오는 것</b>이기 때문이다 — 속도를 적어
-	 * 두면 중력이나 감쇠가 바뀌는 판에서 높이가 조용히 달라진다.
+	 * 까닭은 <b>사람이 말한 것이 「칸」이고 속도는 거기서 나오는 것</b>이기 때문이다 — 속도를 적어
+	 * 두면 중력이나 감쇠가 바뀌는 판에서 높이가 조용히 달라진다. 「2배」가 높이의 2배이지 속도의 2배가
+	 * 아닌 것도 그래서 저절로 맞는다(속도는 1.48배다).
+	 *
+	 * <p>⚠ <b>이 값이 {@link TrialVelocity#syncedVertical} 의 두 번째 천장이다.</b> 「우리가 일부러 싣는
+	 * 가장 큰 세로」라서이고, 12칸이 되며 그 천장도 1.007 → 1.491 로 올랐다 — 거짓 보고용 보험이
+	 * 그만큼 헐거워졌다(낙사를 막는 것은 여전히 「실제로 올라간 만큼」쪽이다).
 	 *
 	 * <p>⚠ <b>{@code TrialRisks.launchVelocity} 를 쓰지 않았다.</b> 그쪽은 공기 저항을 뺀 근사
-	 * ({@code √(2gh)})라 6칸을 넣으면 0.9798 이 나오고 실제 도달이 <b>5.70칸</b>이다(0.30칸 ·
-	 * 5% 모자람). 「자리 폭격」은 그 모자람을 <b>알고</b> 받아들였는데(그 메서드에 「카드의 위험은
-	 * 떠 있는 동안 못 피한다이지 정확한 높이가 아니다」라고 적혀 있다) 여기서는 사람이 높이를
-	 * 수로 말했으므로 그 근사를 쓸 수 없다. ⚠ 그쪽을 고치지 않은 것도 의도다 —
+	 * ({@code √(2gh)})라 12칸을 넣으면 1.3856 이 나오고 실제 도달이 <b>10.55칸</b>이다(1.45칸 ·
+	 * 12% 모자람, 6칸 때는 5%). 「자리 폭격」은 그 모자람을 <b>알고</b> 받아들였는데 여기서는 사람이
+	 * 높이를 수로 말했으므로 그 근사를 쓸 수 없다. ⚠ 그쪽을 고치지 않은 것도 의도다 —
 	 * {@code TrialRisks} 는 읽기만 한다.
 	 */
 	static final double CROSS_LIFT_SPEED = liftSpeed(CROSS_LIFT_BLOCKS);
@@ -1152,7 +1346,7 @@ public final class DragonLastStandPatterns {
 	 * 부채꼴 브레스가 고정한 방향(도)과 그것을 고른 판.
 	 *
 	 * <p>⚠ <b>예고 중에 조준이 바뀌지 않는 것이 「즉사 허용」의 조건 셋 중 하나다.</b> 매 틱 다시
-	 * 재면 사람이 옆으로 빠져도 부채꼴이 따라와 5초 예고가 아무 뜻이 없다.
+	 * 재면 사람이 옆으로 빠져도 부채꼴이 따라와 4초 예고가 아무 뜻이 없다.
 	 *
 	 * <p>한 칸뿐인 것은 패턴이 <b>한 번에 하나만</b> 돌기 때문이다
 	 * ({@code DragonLastStand.advance}). 판을 가리키는 것은 시작 틱이고, 그것이 달라지면 새 판이라
@@ -1160,6 +1354,16 @@ public final class DragonLastStandPatterns {
 	 */
 	private static long coneAimedFor = Long.MIN_VALUE;
 	private static float coneYaw;
+
+	/**
+	 * 십자 바닥 면을 <b>어느 판 · 몇 회차</b> 것으로 세워 두었는가.
+	 *
+	 * <p>{@link #coneAimedFor} 와 같은 수법이다. 「예고 첫 틱이면 세운다」를 {@code step == …} 으로
+	 * 물으면 그 한 틱이 빠질 때(그 틱에 패턴이 시작하지 않은 판 등) 면이 영영 안 선다. 「세워 둔 것이
+	 * 지금 회차가 아니면 세운다」로 물으면 빠진 틱 다음 틱에라도 선다.
+	 */
+	private static long crossPanelAt = Long.MIN_VALUE;
+	private static int crossPanelRound = -1;
 
 	/**
 	 * 상시 번개의 시계. <b>{@link DragonLastStandZone} 의 {@code drivingSince} 와 같은 모양</b>이다.
@@ -1223,16 +1427,22 @@ public final class DragonLastStandPatterns {
 	 * <b>상태이상이 아니라 속성 수정자</b>라 바닐라가 걷어 가지 않는다. 이 메서드는
 	 * {@code DragonLastStand.onFightClosed}(전투가 닫힐 때)와 {@code DragonLastStand.clearState}
 	 * (월드가 바뀌거나 서버가 내려갈 때) 둘 다에서 불리므로, <b>그 두 길이 여기 한 줄로 막힌다.</b>
+	 *
+	 * <p>⚠ <b>{@link DragonLastStandCrossPanel#drop()} 도 같은 까닭으로 여기 있다</b>(2026-10-04). 십자
+	 * 바닥 면도 개체라 지우지 않으면 남는다.
 	 */
 	static void clearState() {
 		coneAimedFor = Long.MIN_VALUE;
 		coneYaw = 0.0F;
+		crossPanelAt = Long.MIN_VALUE;
+		crossPanelRound = -1;
 		lightningOwner = Long.MIN_VALUE;
 		lightningNextVolleyAt = 0L;
 		lightningStrikeAt = Long.MIN_VALUE;
 		lightningSpots = List.of();
 		releaseSlows();
 		DragonLastStandConePanel.drop();
+		DragonLastStandCrossPanel.drop();
 	}
 
 	/**
@@ -1252,7 +1462,7 @@ public final class DragonLastStandPatterns {
 			case WING_BEAT -> wingBeat(end, dragon, members, at, now, (int) step);
 			case CONE_BREATH -> coneBreath(end, dragon, members, at, now, (int) step);
 			case VOID_SUCTION -> voidSuction(end, dragon, members, (int) step);
-			case CROSS_FISSURE -> crossFissure(end, dragon, members, (int) step);
+			case CROSS_FISSURE -> crossFissure(end, dragon, members, at, (int) step);
 		}
 	}
 
@@ -1302,11 +1512,12 @@ public final class DragonLastStandPatterns {
 	 * {@link #AIRBORNE_PUSH_SCALE} 가 그쪽을 따로 막는다. <b>셋 다 있어야 하고 셋이 다른 일을
 	 * 한다</b>: 천장 둘은 「허공으로 못 나간다」, 비율은 「점프가 이득도 손해도 아니다」다.
 	 *
-	 * <h2>세기를 절반으로 줄였다</h2>
+	 * <h2>세기를 절반으로 줄였다가 1.5배로 되돌렸다</h2>
 	 *
 	 * <p><b>「30프로미만 2페이지에서 밀쳐지는게 너무심해 지금보다 50프로는 안밀쳐지게하고」</b> —
-	 * {@link #WING_PUSH_CUT} 이 그 몫이다. 피해가 0 인 패턴이라 세기를 줄여도 잃는 것이 없고,
-	 * 요구하는 행동(비켜서 다시 붙기)은 그대로 남는다.
+	 * {@link #WING_PUSH_CUT} 이 그 몫이다. 그 뒤 2026-10-04 에 <b>「밀치는 힘이 지금 거의 없어진 것처럼
+	 * 됐어. 50프로 키워」</b> — {@link #WING_PUSH_REGAIN} 이다. 둘 사이에 세로 배달 버그가 닫혀 사람이
+	 * 더는 뜨지 않게 된 것이 까닭이고, 그 따라감이 {@link #WING_PUSH_REGAIN} 에 적혀 있다.
 	 *
 	 * <h2>⚠ 연출이 「밀어낸다」를 말해야 한다</h2>
 	 *
@@ -1557,7 +1768,7 @@ public final class DragonLastStandPatterns {
 	// ------------------------------------------------------------------ ② 부채꼴 브레스
 
 	/**
-	 * 부채꼴 브레스 — 5초 예고 · 예고와 함께 머리 고정 · 90도 · 20칸 · 피해
+	 * 부채꼴 브레스 — 4초 예고(2026-10-04 에 5초 → 4초) · 예고와 함께 머리 고정 · 90도 · 20칸 · 피해
 	 * {@code DragonLastStand.CONE_BREATH_DAMAGE}(65) · <b>잔류 없음.</b>
 	 *
 	 * <h2>⚠⚠ 피해원을 {@code explosion(null, null)} 으로 골랐다</h2>
@@ -1603,7 +1814,7 @@ public final class DragonLastStandPatterns {
 	 * <p>{@code DragonLastStand.hold} 가 좌표를 못박아 바닐라가 yRot 을 건드리지 않으므로
 	 * ({@code aiStep} 의 {@code abs(xdd) > 1e-5} 가지가 죽어 있다) 예고가 도는 동안 같은 값을
 	 * 눌러 두면 그것으로 끝이다. 방향은 <b>예고 첫 틱에 한 번</b> 고르고
-	 * ({@link #coneAimedFor}) 그 뒤로 다시 재지 않는다 — 다시 재면 5초 예고가 아무 뜻이 없다.
+	 * ({@link #coneAimedFor}) 그 뒤로 다시 재지 않는다 — 다시 재면 4초 예고가 아무 뜻이 없다.
 	 *
 	 * <h2>부채꼴을 어떻게 그렸는가 — 네 갈래다</h2>
 	 *
@@ -1741,10 +1952,11 @@ public final class DragonLastStandPatterns {
 	 * 그 틱의 충전음 음높이. 낮은 데서 시작해 <b>마지막 한 번이 가장 높다.</b>
 	 *
 	 * <p>나누는 것이 {@code CONE_WARN_TICKS} 가 아니라 <b>마지막으로 울리는 틱</b>
-	 * ({@code 100 − 20 = 80})이다. 예고 길이로 나누면 마지막 울림이 0.8 진행에 머물러
+	 * ({@code 80 − 20 = 60})이다. 예고 길이로 나누면 마지막 울림이 0.75 진행에 머물러
 	 * {@link #CONE_CHARGE_PITCH_HIGH} 가 <b>한 번도 나지 않는다</b> — 「끝까지 올라갔다」가 안 들린다.
+	 * 예고를 4초로 줄였어도 이 식이 그대로 맞는 까닭이 그것이다(값에서 셈한다).
 	 *
-	 * <p>월드 없이 답이 정해지는 계산이라 시험이 다섯 번을 직접 굴려 본다.
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 네 번을 직접 굴려 본다.
 	 */
 	static float chargePitch(int step) {
 		int last = CONE_WARN_TICKS - CONE_CHARGE_TICKS;
@@ -1969,7 +2181,7 @@ public final class DragonLastStandPatterns {
 	 * 고리 하나를 <b>벽으로</b> 세운다. 점은 {@link #ringWallPoints} 개이고 전부 위로 쏘아진다.
 	 *
 	 * <p>나눠 그리지 않는다. {@code CRIT} 수명이 4~10틱이라 나눌 폭이 3 뿐인데
-	 * ({@link #CROSS_WALL_STRIDE}) 반경 4·12 짜리 고리 둘이 {@value #RING_WALL_GAP} 간격이면
+	 * ({@code TrialLandingShock.MAX_STRIDE}) 반경 4·12 짜리 고리 둘이 {@value #RING_WALL_GAP} 간격이면
 	 * 통틀어 68점뿐이라 나눠서 얻을 것이 없다.
 	 */
 	private static void ringWall(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center,
@@ -2106,6 +2318,26 @@ public final class DragonLastStandPatterns {
 	 * 까닭은 부채꼴 브레스와 같다: {@code #bypasses_armor} 라 <b>무장해도 줄지 않아</b> 이 판의
 	 * 모든 셈이 서 있는 「무장 기준」과 성질이 다르다.
 	 *
+	 * <h2>⚠⚠ 불 결계 (2026-10-04) — 당김을 35% 깎은 「대신」이다</h2>
+	 *
+	 * <p>사람 말: <b>「빨아들이는 힘이 35프로 감소시키는 대신, 드래곤 주위에 있으면 계속 딜 맞게. 그리고
+	 * 옆에 있으면 딜 맞는다를 알기 쉽게 드래곤 주위에 불 결계가 생기게」</b>.
+	 *
+	 * <table border="1">
+	 *   <caption>결계가 하는 일</caption>
+	 *   <tr><th>{@code step}</th><th>보이는가</th><th>아픈가</th></tr>
+	 *   <tr><td>{@code 0 ~ 59}(예고)</td><td><b>그렇다</b> — 불꽃 벽이 선다</td><td>아니다</td></tr>
+	 *   <tr><td>{@code 60 ~ 159}(흡입)</td><td>그렇다</td><td><b>60·80·100·120·140</b> 에 원 안이면
+	 *       {@link #SUCK_FIRE_DAMAGE} 한 대씩 — 다섯 번</td></tr>
+	 *   <tr><td>{@code 160}(터짐)</td><td>사라진다</td><td>터짐 35 만. ⚠ 결계는 그 앞 <b>20틱</b>에
+	 *       멈춰 있다({@link #HURT_COOLDOWN_GUARD_TICKS})</td></tr>
+	 * </table>
+	 *
+	 * <p>⚠ <b>사람을 불붙이지 않는다.</b> 불이 붙으면 결계 밖으로 나가도 계속 타 「결계 안에서만
+	 * 딜」이 거짓이 되고, 공유 체력이라 넷이 함께 타면 합산된다. 그래서 피해는 우리가 직접
+	 * {@code hurtServer} 로 넣고 불꽃은 파티클뿐이다({@link #burnCone} 이 「불을 실제로 붙이지 않는다」
+	 * 를 지키는 것과 같다).
+	 *
 	 * <h2>⚠ 브레스처럼 잠그지 않았다 — 축소와 겹쳐도 된다</h2>
 	 *
 	 * <p>브레스의 「축소 중 금지」는 <b>피할 곳이 두 번 사라지기</b> 때문에 붙었다. 흡입은
@@ -2126,6 +2358,15 @@ public final class DragonLastStandPatterns {
 			warnSuckSound(end, members, step);
 			if (step >= SUCK_WARN_TICKS) {
 				pullSuck(end, members, center, step);
+			}
+			if (step == 0 || suckFireDue(step)) {
+				// 결계가 서는 틱과 결계가 때리는 틱에 한 번씩. 「치익」이 딜과 같은 박자라 「지금
+				// 맞았다」가 소리로도 들린다. playEach 다 — 팀원 루프에서 level.playSound 를 부르면
+				// 모여 있는 넷이 네 겹으로 듣는다.
+				TrialWarning.playEach(end, members, SoundEvents.FIRE_AMBIENT, 1.0F, 0.8F);
+			}
+			if (suckFireDue(step)) {
+				burnInside(end, members, center);
 			}
 			return;
 		}
@@ -2170,6 +2411,106 @@ public final class DragonLastStandPatterns {
 		// 바깥에서 드래곤 쪽으로 흐르는 가닥. 사람이 말한 그대로다 — 「입자들이 드래곤에게
 		// 빨려들어가는 입자가 잘보이면 이해하잖아」.
 		streamSuck(end, ground, center, step);
+		// 불 결계. 예고 첫 틱부터 선다 — 「옆에 있으면 딜 맞는다를 알기 쉽게」.
+		fireWall(end, ground, center, step);
+	}
+
+	/**
+	 * ⚠ <b>불 결계의 불꽃 벽.</b> 반경 {@link #SUCK_FIRE_RADIUS} 둘레에서 불꽃이 무릎~사람 키까지
+	 * 피어오른다.
+	 *
+	 * <p>{@link #dot} 의 {@code rise} 와 같은 수법이다 — 개수를 0 으로 보내면 뒤의 세 값이 방향이고
+	 * 마지막이 속도로 읽혀 <b>점 하나가 위로 쏘아진다</b>. 불꽃은 중력이 없고 마찰 0.96 으로만
+	 * 줄어 {@link #flameRise} 만큼 오르다 사그라든다. 자리마다 3틱마다 새 불꽃이 오르므로
+	 * ({@link #SUCK_FIRE_STRIDE}) 한 자리에 높이가 다른 불꽃이 여럿 서 있어 <b>벽</b>으로 읽힌다.
+	 *
+	 * <p>⚠ <b>빨간 고리 점 사이에 선다.</b> 같은 원이고 같은 점 수({@code TrialWarning.ringPoints})라
+	 * 반 칸 돌려 놓지 않으면 불꽃이 빨간 점을 정확히 덮는다 — 반 칸 돌리면 「여기가 경계」(빨강)와
+	 * 「여기가 불」(주황)이 번갈아 보인다.
+	 *
+	 * <p>⚠ <b>불을 실제로 붙이지 않는다</b>({@link #voidSuction} 의 결계 절). 블록도 놓지 않는다.
+	 *
+	 * <p>허공에는 찍지 않는다. {@link #dot} 과 같은 까닭이다.
+	 */
+	private static void fireWall(ServerLevel end, TrialEnderPulse.Ground ground, Vec3 center,
+			int step) {
+		int points = TrialWarning.ringPoints(SUCK_FIRE_RADIUS);
+		for (int index = 0; index < points; index++) {
+			if (Math.floorMod(index - step, SUCK_FIRE_STRIDE) != 0) {
+				continue;
+			}
+			double angle = (Math.PI * 2.0 * (index + 0.5)) / points;
+			double x = center.x + Math.cos(angle) * SUCK_FIRE_RADIUS;
+			double z = center.z + Math.sin(angle) * SUCK_FIRE_RADIUS;
+			int surface = ground.surfaceAt(end, x, z);
+			if (surface == TrialEnderPulse.NO_GROUND) {
+				continue;
+			}
+			end.sendParticles(ParticleTypes.FLAME, true, false, x, surface + GROUND_OFFSET, z,
+					0, 0.0, 1.0, 0.0, SUCK_FIRE_RISE);
+		}
+	}
+
+	/**
+	 * 위로 쏜 불꽃이 <b>수명 {@code lifetime} 틱 동안</b> 올라가는 높이(칸).
+	 *
+	 * <p>26.3 {@code RisingParticle} 은 중력이 없고 매 틱 속도에 {@value #FLAME_FRICTION} 을 곱한다 —
+	 * 곧 {@code v + 0.96v + 0.96²v + …} 를 수명만큼 더한 값이다. 바닐라가 처음 속도에 더하는 굴림은
+	 * {@code 0.01 × (±0.06 남짓)} 이라 셈에서 뺐다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 수명의 양 끝(8 · 40틱)을 직접 굴린다.
+	 */
+	static double flameRise(double speed, int lifetime) {
+		double velocity = Math.max(0.0, speed);
+		double height = 0.0;
+		for (int tick = 0; tick < lifetime; tick++) {
+			height += velocity;
+			velocity *= FLAME_FRICTION;
+		}
+		return height;
+	}
+
+	/**
+	 * ⚠⚠ 이 틱에 불 결계가 <b>때리는가.</b> 흡입 구간 동안 {@link #SUCK_FIRE_PERIOD_TICKS} 마다,
+	 * <b>단 터짐 직전 {@link #HURT_COOLDOWN_GUARD_TICKS} 틱 안은 빼고</b>.
+	 *
+	 * <p>뒤의 조건이 이 메서드의 전부다. 결계 한 대가 터짐 10틱 안에 들어가면 바닐라 피격 무적이
+	 * 터짐 35 를 <b>차액(31)만</b> 넣거나 통째로 막는다 — 근거는 {@link #HURT_COOLDOWN_GUARD_TICKS} 에
+	 * 있다. 지금 값(주기 20)으로는 마지막 결계가 140 이고 터짐이 160 이라 그 조건이 걸리지 않지만,
+	 * <b>주기를 고치는 사람이 그 셈을 다시 하지 않아도</b> 터짐이 온전하도록 조건으로 적어 둔다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 180틱을 통째로 훑는다.
+	 */
+	static boolean suckFireDue(int step) {
+		int burst = SUCK_WARN_TICKS + SUCK_PULL_TICKS;
+		if (step < SUCK_WARN_TICKS || step >= burst) {
+			return false;
+		}
+		if ((step - SUCK_WARN_TICKS) % SUCK_FIRE_PERIOD_TICKS != 0) {
+			return false;
+		}
+		return burst - step > HURT_COOLDOWN_GUARD_TICKS;
+	}
+
+	/**
+	 * 불 결계 한 대. <b>원 안의 사람마다 한 번</b>이다.
+	 *
+	 * <p>판정은 터짐과 같은 {@code TrialRisks.insideMark}(세로를 보지 않는 원)다 — 같은 원이 두 자로
+	 * 재어지면 「결계 안이었는데 터짐은 안 맞았다」 같은 어긋남이 생긴다.
+	 *
+	 * <p>⚠ <b>불을 붙이지 않는다</b>({@code setRemainingFireTicks}·{@code igniteForSeconds} 를 부르지
+	 * 않는다). 피해원에 실체도 달지 않는다 — 실체가 붙으면 바닐라가 스스로 밀어낸다.
+	 */
+	private static void burnInside(ServerLevel end, List<ServerPlayer> members, Vec3 center) {
+		for (ServerPlayer member : members) {
+			if (member.isSpectator()) {
+				continue;
+			}
+			if (!TrialRisks.insideMark(member.position(), center, SUCK_FIRE_RADIUS)) {
+				continue;
+			}
+			member.hurtServer(end, end.damageSources().lightningBolt(), SUCK_FIRE_DAMAGE);
+		}
 	}
 
 	/**
@@ -2395,45 +2736,39 @@ public final class DragonLastStandPatterns {
 	// ------------------------------------------------------------------ ④ 십자 균열
 
 	/**
-	 * 십자 균열 — 폭 3칸 선 넷 · <b>세 번</b> · 각도가 매번 다르다 · 피해
+	 * 십자 균열 — 폭 3칸 선 · <b>회차마다 십자 둘이 동시에</b> · 두 회차 · 각도가 회차마다 다르다 · 피해
 	 * {@code DragonLastStand.CROSS_FISSURE_DAMAGE}(23) · <b>잔류 없음.</b>
 	 *
-	 * <p>사람 말: <b>「십자균열을 내고 그냥 이름만 균열이지 십자로 긋고 다시 대각선으로 십자긋고
-	 * 다시 대각선으로 긋고 3번 반복하는 패턴 단순 피하기」</b>
+	 * <p>처음 사람 말: <b>「십자균열을 내고 그냥 이름만 균열이지 십자로 긋고 다시 대각선으로 십자긋고
+	 * 다시 대각선으로 긋고 3번 반복하는 패턴 단순 피하기」</b>. 2026-10-04 에 <b>「그 두 십자를 한번에
+	 * 같이 발동시켜. 그리고 다음에도 두 개 같이 터지고」</b>로 바뀌었다.
 	 *
-	 * <h2>세 번의 시각</h2>
+	 * <h2>두 회차의 시각</h2>
 	 *
 	 * <table border="1">
-	 *   <caption>{@code step} 으로 읽는 세 번</caption>
+	 *   <caption>{@code step} 으로 읽는 두 회차</caption>
 	 *   <tr><th>{@code step}</th><th>무엇을 하는가</th><th>각도</th></tr>
-	 *   <tr><td>{@code 0 ~ 59}</td><td>첫 십자 예고(3초)</td><td>{@code +} (0도)</td></tr>
-	 *   <tr><td>{@code 60}</td><td>첫 십자 <b>터짐</b> + 둘째 예고 시작</td><td>→ {@code ×} (45도)</td></tr>
-	 *   <tr><td>{@code 90}</td><td>둘째 <b>터짐</b> + 셋째 예고 시작</td><td>→ 22.5도</td></tr>
-	 *   <tr><td>{@code 120}</td><td>셋째 <b>터짐</b></td><td></td></tr>
-	 *   <tr><td>{@code 121 ~ 129}</td><td>아무것도 없다. 바닥은 이미 안전하다</td><td></td></tr>
+	 *   <tr><td>{@code 0 ~ 59}</td><td>첫 회차 예고(3초) — 바닥 면이 선다</td><td>{@code +} 와 {@code ×}
+	 *       (0 · 45도) 함께</td></tr>
+	 *   <tr><td>{@code 60}</td><td>첫 회차 <b>터짐</b> + 둘째 예고 시작</td><td>→ 22.5 · 67.5도 함께</td></tr>
+	 *   <tr><td>{@code 90}</td><td>둘째 <b>터짐</b></td><td></td></tr>
+	 *   <tr><td>{@code 91 ~ 99}</td><td>아무것도 없다. 바닥은 이미 안전하다</td><td></td></tr>
 	 * </table>
 	 *
 	 * <p>⚠ <b>터지는 틱과 다음 예고가 시작하는 틱이 같다.</b> 1.5초 사이에 「아무 표식도 없는 틈」을
-	 * 두면 사람이 그 1.5초를 쉬는 시간으로 읽고, 그러면 셋을 잇달아 낸 뜻이 없어진다.
+	 * 두면 사람이 그 1.5초를 쉬는 시간으로 읽는다. 예고 시간 구조(첫 3초 · 다음 1.5초)는 사람이 바꾸라고
+	 * 하지 않아 그대로다.
 	 *
-	 * <h2>⚠⚠ 사람이 <b>가장 세게 지적한 것이 이 패턴의 가시성</b>이다</h2>
+	 * <h2>⚠⚠ 예고는 <b>빨간 투명 바닥</b>이다 (2026-10-04)</h2>
 	 *
-	 * <p><b>「특히 십자가 공격이 너무 잘 안보엿어」</b>
-	 *
-	 * <p>왜 안 보였는지가 값에 그대로 있었다 — <b>80칸짜리 직선 넷에 1칸 간격의 작은 점</b>을
-	 * <b>여섯 틱에 나눠</b> 뿌리는데, 둘째·셋째 예고가 30틱뿐이라 성긴 구간이 예고의 5분의 1이었다.
-	 * 20칸 밖에서 보면 그것은 바닥 무늬와 구별되지 않고, 선 안에 선 사람은 바닥 선을 시선과
-	 * 나란하게 보므로 아예 못 본다.
-	 *
-	 * <p>답이 넷이다. <b>어디가 위험한가</b>를 앞의 셋이, <b>언제 터지는가</b>를 넷째가 말한다.
+	 * <p>사람이 이 패턴의 가시성을 두 번 지적했다 — <b>「특히 십자가 공격이 너무 잘 안보엿어」</b>, 그리고
+	 * <b>「이것도 브레스처럼 투명땅으로 표시했으면 해」</b>. 처음 답(먼지 1.5배 · 같은 자리 흰 기둥)을
+	 * <b>걷어내고</b> 부채꼴과 같은 판을 깐다({@link DragonLastStandCrossPanel}). 남은 신호는 셋이다.
 	 *
 	 * <ol>
-	 *   <li><b>먼지를 1.5배로</b> — 크기와 수명이 함께 오른다({@link #CROSS_DUST_SCALE})</li>
-	 *   <li><b>같은 자리에 흰 기둥</b> — 바닥 선이 그대로 벽이 된다({@link #markCross})</li>
-	 *   <li><b>터질 때 솟는 기둥</b> — 눕는 {@code SWEEP_ATTACK} 만으로는 터진 것이 안 보인다
-	 *       ({@link #flashCross})</li>
-	 *   <li><b>균열음이 0.5초마다, 음높이가 오른다</b> — 넷 가운데 이 패턴만 제 소리가 없었다
-	 *       ({@link #CROSS_CRACK_TICKS})</li>
+	 *   <li><b>바닥 면</b> — 어디가 위험한가. 점을 안 쓴다(디스플레이 개체)</li>
+	 *   <li><b>균열음이 0.5초마다, 음높이가 오른다</b> — 언제 터지는가({@link #CROSS_CRACK_TICKS})</li>
+	 *   <li><b>터질 때 솟는 기둥</b> — 터졌다({@link #flashCross})</li>
 	 * </ol>
 	 *
 	 * <h2>낙사도 밀기도 없다</h2>
@@ -2446,34 +2781,36 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>사람이 적어 둔 것이 <b>「피해 23(무장 기준 6.8)」</b>이고, {@code GearedDamage} 로 풀면
 	 * {@code explosion} 이 <b>6.77</b> 이다({@code lightningBolt} 는 4.56 이라 사람이 적은 수와
-	 * 다르다). 곧 여기서도 <b>값이 피해원을 정했다.</b> 마침 {@code explosion} 이 이 판의
-	 * 표준이다 — 「연쇄 포격」·「기둥 화염구」·「종말의 비」·「착지 충격」·「엔더폭풍」·부채꼴
-	 * 브레스가 모두 그것을 쓴다.
+	 * 다르다). 곧 여기서도 <b>값이 피해원을 정했다.</b>
 	 *
-	 * <h2>⚠ 한 번에 한 대다 — 중심에서는 선 둘이 겹친다</h2>
+	 * <h2>⚠⚠ 한 회차에 한 사람은 <b>한 번</b>이다 — 가운데서는 선 넷이 겹친다</h2>
 	 *
-	 * <p>십자는 중심에서 두 선이 만나므로 그 자리는 <b>두 선 안</b>이다. 그래도
-	 * {@link #insideCross} 가 <b>물음 하나</b>이고 {@link #fireCross} 가 사람마다
-	 * {@code hurtServer} 를 <b>한 번</b>만 부르므로 겹침이 곱으로 오지 않는다 — 상시 번개가
-	 * {@code break} 한 줄로 지키는 것을 이쪽은 <b>구조로</b> 지킨다.
+	 * <p>십자 둘이 함께 터지면 가운데(반경 3.9칸 안)는 <b>여덟 팔이 다 지나는 자리</b>다. 십자마다
+	 * 따로 물으면 거기 선 사람이 두 번 맞고 두 번 띄워진다. 그래서 {@link #insideRound} 가 <b>물음
+	 * 하나</b>로 「이 회차의 어느 선 안인가」를 답하고, {@link #fireRound} 가 사람마다 {@code hurtServer}
+	 * 와 띄우기를 <b>한 번</b>만 부른다 — 상시 번개가 {@code break} 한 줄로 지키는 것을 이쪽은
+	 * <b>구조로</b> 지킨다.
 	 *
 	 * <h2>⚠ 브레스처럼 잠그지 않았다 — 축소와 겹쳐도 된다</h2>
 	 *
-	 * <p>안전한 자리는 선 사이의 <b>사분면</b>이고 그것은 <b>어느 반경에서나 있다</b> — 지대가
-	 * 좁아져도 사라지지 않는다. 낙사도 밀기도 없고 즉사도 아니다(무장 기준 6.77, 세 대에 전멸).
+	 * <p>안전한 자리는 선 사이의 <b>쐐기</b>이고 그것은 <b>어느 반경에서나 있다</b>. 십자 둘이 함께라
+	 * 쐐기가 45도로 좁아졌다 — 반경 6칸(마지막 지대의 절반)에서 쐐기 폭이 1.7칸이고 그 원의 35%(128도)
+	 * 만 안전하다(전에는 반 넘게). ⚠ 반경 3.92칸 안은 <b>어디에도 쐐기가 없다</b> — 가운데 팔각형이 그
+	 * 자리다. 그래도 피할 자리가 사람 폭(0.6)보다 넉넉히 남는다({@code DragonLastStandPatternsTest.십자는_마지막_지대에서도_피할_곳이_있다}).
 	 *
+	 * @param at   이 패턴이 시작한 틱. 바닥 면을 「어느 판의 몇 회차」로 세웠는지 가르는 데 쓴다
 	 * @param step 이 패턴이 시작한 뒤 지난 틱
 	 */
 	private static void crossFissure(ServerLevel end, EnderDragon dragon,
-			List<ServerPlayer> members, int step) {
+			List<ServerPlayer> members, long at, int step) {
 		Vec3 center = dragon.position();
 		int fired = crossFiredRound(step);
 		if (fired >= 0) {
-			fireCross(end, members, center, CROSS_ANGLES[fired]);
+			fireRound(end, members, center, CROSS_ANGLES[fired]);
 		}
 		int pending = crossPendingRound(step);
 		if (pending >= 0) {
-			warnCross(end, members, center, pending, step);
+			warnCross(end, members, center, pending, at, step);
 		}
 	}
 
@@ -2492,7 +2829,7 @@ public final class DragonLastStandPatterns {
 		return crossFireStep(CROSS_ROUNDS - 1) + CROSS_AFTERGLOW_TICKS;
 	}
 
-	/** 이 틱에 터지는 십자의 번호. 터지지 않으면 {@code -1}. */
+	/** 이 틱에 터지는 회차의 번호. 터지지 않으면 {@code -1}. */
 	static int crossFiredRound(int step) {
 		for (int round = 0; round < CROSS_ROUNDS; round++) {
 			if (step == crossFireStep(round)) {
@@ -2503,7 +2840,7 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 이 틱에 <b>예고 중인</b> 십자의 번호. 셋이 다 터진 뒤면 {@code -1}.
+	 * 이 틱에 <b>예고 중인</b> 회차의 번호. 다 터진 뒤면 {@code -1}.
 	 *
 	 * <p>⚠ 터지는 틱({@code step == crossFireStep(r)})에는 <b>다음</b> 번호를 돌려준다. 그 틱에
 	 * 표식이 끊기지 않아야 한다 — 클래스 설명의 「터지는 틱과 다음 예고가 시작하는 틱이 같다」.
@@ -2517,13 +2854,14 @@ public final class DragonLastStandPatterns {
 		return -1;
 	}
 
-	/** 그 번호의 예고 길이(틱). 첫째는 3초, 나머지는 1.5초다. */
+	/** 그 회차의 예고 길이(틱). 첫째는 3초, 둘째는 1.5초다. */
 	static int crossWarnTicks(int round) {
 		return round <= 0 ? CROSS_FIRST_WARN_TICKS : CROSS_GAP_TICKS;
 	}
 
 	/**
-	 * 예고. 가장자리 선 넷을 {@link #CROSS_MARK_STRIDE} 로 나눠 그리고 층 소리를 낸다.
+	 * 예고. 그 회차의 <b>바닥 면</b>을 한 번 세우고({@link DragonLastStandCrossPanel}) 균열음과 층 소리를
+	 * 낸다. <b>점은 한 개도 안 쓴다</b>(2026-10-04 에 먼지 선 · 흰 기둥을 걷었다).
 	 *
 	 * <h2>⚠ 균열음을 얹었다 — <b>전에는 이 패턴만 제 소리가 없었다</b></h2>
 	 *
@@ -2543,8 +2881,14 @@ public final class DragonLastStandPatterns {
 	 * 파일이 달라 <b>「금이 간다 → 갈라졌다」가 한 쌍</b>으로 들린다.
 	 */
 	private static void warnCross(ServerLevel end, List<ServerPlayer> members, Vec3 center,
-			int round, int step) {
-		markCross(end, center, CROSS_ANGLES[round], step);
+			int round, long at, int step) {
+		if (crossPanelAt != at || crossPanelRound != round) {
+			// 이 회차의 면이 아직 안 섰다. 앞 회차가 터지는 틱이 곧 이 틱이라 fireRound 가 방금 앞
+			// 면을 지웠고, 여기서 새 면을 세운다 — 「터지는 틱과 다음 예고가 시작하는 틱이 같다」.
+			crossPanelAt = at;
+			crossPanelRound = round;
+			DragonLastStandCrossPanel.raise(end, center, CROSS_ANGLES[round]);
+		}
 		int warn = crossWarnTicks(round);
 		int into = step - (crossFireStep(round) - warn);
 		if (into >= 0 && into % CROSS_CRACK_TICKS == 0) {
@@ -2569,11 +2913,12 @@ public final class DragonLastStandPatterns {
 	 * 예고 길이로 나누면 마지막 울림이 {@link #CROSS_CRACK_PITCH_HIGH} 에 못 닿아 「지금 터진다」가
 	 * 안 들린다 — 부채꼴의 {@link #chargePitch} 가 같은 함정을 같은 방법으로 피한다.
 	 *
-	 * <p>⚠ <b>예고 길이를 받는다.</b> 첫 십자는 3초이고 둘째·셋째는 1.5초라
-	 * ({@link #crossWarnTicks}) 고정된 길이로 나누면 둘째·셋째가 <b>0.7~1.1 에서 끝난다.</b>
-	 * 세 번이 모두 같은 음높이로 끝나야 「셋째가 마지막」이 아니라 「매번 그렇다」가 된다.
+	 * <p>⚠ <b>예고 길이를 받는다.</b> 첫 회차는 3초이고 둘째는 1.5초라({@link #crossWarnTicks})
+	 * 고정된 길이로 나누면 둘째가 <b>0.7~1.1 에서 끝난다.</b> 회차가 셋에서 둘로 줄어도(2026-10-04) 이
+	 * 식은 「몇 번째인가」를 세지 않으므로 고칠 것이 없었다 — 회차마다 같은 음높이로 끝나야 「마지막」이
+	 * 아니라 「매번 그렇다」가 된다.
 	 *
-	 * <p>월드 없이 답이 정해지는 계산이라 시험이 세 번을 통째로 굴려 본다.
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 두 회차를 통째로 굴려 본다.
 	 *
 	 * @param into      그 십자의 예고가 시작한 뒤 지난 틱
 	 * @param warnTicks 그 십자의 예고 길이(틱)
@@ -2589,95 +2934,34 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 십자의 가장자리를 바닥에 그린다. <b>선 둘의 양쪽 가장자리, 곧 줄 넷이다.</b>
+	 * 한 회차가 터진다. <b>피해와 띄우기는 이 한 틱에 한 사람당 한 번</b>이다 — 그 회차의 십자가
+	 * 몇 개든.
 	 *
-	 * <p>폭 3칸이므로 가장자리가 중심선에서 {@link #CROSS_HALF_WIDTH}(1.5)씩 떨어져 있다. 중심선을
-	 * 그리지 않는 것은 <b>그것이 위험의 한가운데</b>라 경계를 말하지 않기 때문이고, 가장자리 둘이
-	 * 3칸 간격이라 밴드 안에 선 사람도 가까운 쪽을 본다.
+	 * <p>⚠⚠ <b>사람 루프가 바깥이고 물음이 하나다.</b> 십자마다 사람을 돌면 가운데(두 십자가 다
+	 * 지나는 자리)에 선 사람이 <b>두 번 맞고 두 번 띄워진다</b> — 피해는 바닐라 피격 무적이 두 번째를
+	 * 막아 주더라도 띄우기는 막지 않는다. 그래서 {@link #insideRound} 한 번으로 「이 회차의 어느 선
+	 * 안인가」를 묻고 한 번만 친다.
 	 *
-	 * <h2>⚠ 두 겹이고 <b>지표는 한 번만</b> 묻는다</h2>
-	 *
-	 * <p>사람이 <b>「특히 십자가 공격이 너무 잘 안보엿어」</b>라고 한 자리다. 답이 셋이다.
-	 *
-	 * <ol>
-	 *   <li><b>먼지를 키웠다</b>({@link #CROSS_DUST_SCALE}). 크기와 수명이 함께 올라 나눠 그린
-	 *       여섯 몫이 끊기지 않는다</li>
-	 *   <li><b>같은 자리에 흰 기둥을 세웠다.</b> 선 안에 선 사람은 바닥 선을 시선과 나란하게 보므로
-	 *       거의 못 본다 — 부채꼴이 가장자리에 벽을 세운 그 까닭이고 같은 수법이다
-	 *       ({@code TrialLandingShock.EDGE_RISE_SPEED})</li>
-	 *   <li><b>나누는 폭이 둘로 갈린다.</b> 빨강은 먼지라 6, 흰 기둥은 {@code CRIT} 이라 3 이다
-	 *       ({@link #CROSS_WALL_STRIDE}). 6 이 3 의 배수이므로 <b>빨간 점이 서는 자리에는 늘 기둥도
-	 *       선다</b> — 빨강만 뜨는 틱이 없다</li>
-	 * </ol>
-	 *
-	 * <p>한 바퀴로 도는 것이 중요하다. 두 바퀴로 짜면 <b>같은 자리의 하이트맵을 두 번</b> 묻고,
-	 * 선 넷이 324자리라 그 차이가 매 틱 324번이다({@code Ground} 의 청크 기억은 한 칸뿐이다).
-	 *
-	 * @param baseDeg 이 십자의 기준 각도(도)
-	 * @param step    나눠 그리기의 위상. 매 틱 1씩 늘어야 빈자리가 순서대로 메워진다
-	 */
-	private static void markCross(ServerLevel end, Vec3 center, double baseDeg, int step) {
-		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
-		ParticleOptions deadly =
-				new DustParticleOptions(TrialWarning.Colors.DEADLY, CROSS_DUST_SCALE);
-		int index = 0;
-		for (int line = 0; line < 2; line++) {
-			double radians = Math.toRadians(baseDeg + line * 90.0);
-			// 이 저장소의 앞 방향 규약이다 — (sin, −cos) 이 앞이고 그 수직이 (cos, sin) 이다.
-			double alongX = Math.sin(radians);
-			double alongZ = -Math.cos(radians);
-			double sideX = Math.cos(radians);
-			double sideZ = Math.sin(radians);
-			for (int edge = -1; edge <= 1; edge += 2) {
-				double offX = sideX * CROSS_HALF_WIDTH * edge;
-				double offZ = sideZ * CROSS_HALF_WIDTH * edge;
-				// 선은 중심을 지나 양쪽으로 뻗는다. 「아레나를 가로지르는」이 그 뜻이다.
-				for (double along = -CROSS_REACH; along <= CROSS_REACH; along += CROSS_MARK_GAP) {
-					int at = index++;
-					boolean floorDue = Math.floorMod(at - step, CROSS_MARK_STRIDE) == 0;
-					boolean wallDue = Math.floorMod(at - step, CROSS_WALL_STRIDE) == 0;
-					if (!floorDue && !wallDue) {
-						continue;
-					}
-					double x = center.x + alongX * along + offX;
-					double z = center.z + alongZ * along + offZ;
-					int surface = ground.surfaceAt(end, x, z);
-					if (surface == TrialEnderPulse.NO_GROUND) {
-						// 허공에 찍으면 「저기가 바닥이다」라고 거짓말한다.
-						continue;
-					}
-					if (floorDue) {
-						end.sendParticles(deadly, true, false, x, surface + GROUND_OFFSET, z,
-								1, 0.0, 0.0, 0.0, 0.0);
-					}
-					if (wallDue) {
-						// 개수를 0 으로 보내면 뒤 값이 속도로 읽혀 점을 안 늘리고 기둥이 선다.
-						end.sendParticles(ParticleTypes.CRIT, true, false,
-								x, surface + GROUND_OFFSET, z,
-								0, 0.0, 1.0, 0.0, TrialLandingShock.EDGE_RISE_SPEED);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * 터진다. <b>피해는 이 한 틱에 한 사람당 한 번</b>이다.
+	 * <p>이 틱에 <b>바닥 면을 지운다.</b> 터진 뒤의 바닥은 안전하므로 한 틱이라도 더 남기면 표식이
+	 * 거짓말을 한다(부채꼴의 {@link #fireCone} 과 같다). 다음 회차가 있으면 같은 틱에
+	 * {@link #warnCross} 가 새 면을 세운다.
 	 *
 	 * <p>소리는 <b>{@code WARDEN_DIG}</b> 다. ⚠ {@code sounds.json} 을 열어 골랐고
-	 * {@code mob/warden/dig} 는 이 저장소의 어느 카드도 쓰지 않는다. 뜻도 맞는다 — 워든이 땅을
-	 * 헤집는 소리라 「바닥이 갈라진다」가 그대로다. 공허 흡입의 {@code WARDEN_SONIC_BOOM} 과
-	 * <b>파일이 다르므로</b> 두 패턴이 같은 소리로 들리지 않는다.
+	 * {@code mob/warden/dig} 는 이 저장소의 어느 카드도 쓰지 않는다. 십자가 둘이어도 <b>한 번</b>
+	 * 울린다 — 「회차가 터졌다」가 한 사건이다.
 	 */
-	private static void fireCross(ServerLevel end, List<ServerPlayer> members, Vec3 center,
-			double baseDeg) {
-		flashCross(end, center, baseDeg);
+	private static void fireRound(ServerLevel end, List<ServerPlayer> members, Vec3 center,
+			double[] angles) {
+		DragonLastStandCrossPanel.drop();
+		for (double baseDeg : angles) {
+			flashCross(end, center, baseDeg);
+		}
 		TrialWarning.playEach(end, members, SoundEvents.WARDEN_DIG, 1.0F, 0.8F);
 		for (ServerPlayer member : members) {
 			if (member.isSpectator()) {
 				continue;
 			}
-			if (!insideCross(member.getX() - center.x, member.getZ() - center.z, baseDeg,
+			if (!insideRound(member.getX() - center.x, member.getZ() - center.z, angles,
 					CROSS_HALF_WIDTH, CROSS_REACH)) {
 				continue;
 			}
@@ -2686,17 +2970,37 @@ public final class DragonLastStandPatterns {
 			member.hurtServer(end, end.damageSources().explosion(null, null),
 					DragonLastStand.CROSS_FISSURE_DAMAGE);
 			// ⚠ 피해 뒤에 띄운다. 앞에 두면 hurtServer 가 지나가며 속도를 건드릴 수 있고, 그러면
-			// 「6칸」이 맞는 사람마다 달라진다.
+			// 「12칸」이 맞는 사람마다 달라진다.
 			liftCross(end, member);
 		}
+	}
+
+	/**
+	 * 그 자리가 <b>이 회차의 어느 십자</b> 안인가. 십자가 몇 개든 <b>답은 하나</b>다.
+	 *
+	 * <p>{@link #fireRound} 가 이 물음 하나로 사람마다 한 번만 친다 — 가운데처럼 여러 선이 겹치는
+	 * 자리에서 「두 번 맞는다」가 구조적으로 없는 까닭이 이것이다. 바닥 면
+	 * ({@link DragonLastStandCrossPanel})이 칠한 자리도 이 물음으로 재어진다(시험이 판 귀퉁이를 여기에
+	 * 넣어 본다).
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.
+	 */
+	static boolean insideRound(double dx, double dz, double[] angles, double halfWidth,
+			double reach) {
+		for (double baseDeg : angles) {
+			if (insideCross(dx, dz, baseDeg, halfWidth, reach)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
 	 * ⚠⚠ 맞은 사람을 <b>위로 {@value #CROSS_LIFT_BLOCKS}칸 솟구치게</b> 한다. <b>가로는 한 톨도
 	 * 건드리지 않는다.</b>
 	 *
-	 * <p>사람 말: <b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b>.
-	 * 왜 이것이 이 전투의 명문 규칙을 뒤집는 것이고 왜 그래도 안전한지는
+	 * <p>사람 말: <b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b> →
+	 * 2026-10-04 <b>「지금보다 2배는 더 날려버려」</b>(12칸). 왜 이것이 이 전투의 명문 규칙을 뒤집는 것이고 왜 그래도 안전한지는
 	 * {@link #CROSS_LIFT_BLOCKS} 에 길게 적어 두었다.
 	 *
 	 * <h2>⚠ 가로를 더하지 않는 것이 이 메서드의 전부다</h2>
@@ -2742,17 +3046,17 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <h2>⚠⚠ 낙하 피해를 <b>이 띄움 몫만</b> 없앤다</h2>
 	 *
-	 * <p>6칸에서 떨어지면 바닐라 낙하 피해가 <b>3</b> 이다({@code ceil(6 − 안전 낙하 3)}). 그리고
-	 * ⚠ <b>{@code minecraft:fall} 은 {@code #bypasses_armor} 에 들어 있어 다이아 풀셋이 한 점도
-	 * 안 깎는다</b>(26.3 {@code data/minecraft/tags/damage_type/bypasses_armor.json} 에서 확인했다) —
-	 * 듣는 것은 보호 IV 뿐이라 무장 기준 <b>3 × 0.36 = 1.08</b> 이다.
+	 * <p>12칸에서 떨어지면 바닐라 낙하 피해가 <b>9</b> 다({@code ceil(12 − 안전 낙하 3)}, 6칸이던 때
+	 * 3). 그리고 ⚠ <b>{@code minecraft:fall} 은 {@code #bypasses_armor} 에 들어 있어 다이아 풀셋이 한
+	 * 점도 안 깎는다</b>(26.3 {@code data/minecraft/tags/damage_type/bypasses_armor.json} 에서 확인했다)
+	 * — 듣는 것은 보호 IV 뿐이라 무장 기준 <b>9 × 0.36 = 3.24</b> 다. 맨몸이면 9 그대로다(사람에게
+	 * 알렸다).
 	 *
-	 * <p>그 1.08 은 {@code TrialRisks.worstCaseTickDamage} 가 <b>세지 않는 피해</b>다. 이 패턴이
-	 * 세 번 터지므로 통틀어 <b>3.24 가 셈 밖에서</b> 얹히고, 적힌 값으로 잡아 둔 세 대의 20.31 이
-	 * 실제로는 <b>23.55</b> 가 된다. ⚠ <b>「세 대에 전멸」의 여유가 {@code 20.31 − 20 = 0.31}
-	 * 뿐</b>이라는 것이 요점이다 — 한 대당 1.08 은 그 여유의 <b>세 배가 넘고</b>, 같은 초에 도는
-	 * 상시 번개(무장 기준 6.93)까지 더하면 사람이 정한 기준이 <b>어디서 깨졌는지 알 수 없는 채로</b>
-	 * 깨진다. 셈에 안 들어오는 피해를 늘리지 않는 것이 이 판의 규칙이다.
+	 * <p>그 3.24 는 {@code TrialRisks.worstCaseTickDamage} 가 <b>세지 않는 피해</b>다. 한 판에 최대 두
+	 * 대라 통틀어 <b>6.48 이 셈 밖에서</b> 얹히고, 적힌 값으로 잡아 둔 두 대의 13.54 가 실제로는
+	 * <b>20.02</b> — <b>팀 체력 20 을 넘는다.</b> 면제가 빠지는 날 「두 대에 안 죽는다」가 그
+	 * 자리에서 거짓이 된다. 셈에 안 들어오는 피해를 늘리지 않는 것이 이 판의 규칙이고, 높이가 두 배가
+	 * 되어 이 면제의 무게도 세 배가 됐다.
 	 *
 	 * <p>쓰는 것은 바닐라가 <b>바로 이 일을 위해</b> 들고 있는 장치다 — 26.3
 	 * {@code LivingEntity.setIgnoreFallDamageFromCurrentImpulse(boolean, Vec3)} 이고,
@@ -2774,7 +3078,7 @@ public final class DragonLastStandPatterns {
 	 *   <li><b>제자리에 떨어지면</b> {@code d ≤ 0} 이라 피해가 0 이고, 그 자리에서
 	 *       {@code resetCurrentImpulseContext()} 가 불려 <b>면제가 그 틱에 사라진다</b></li>
 	 *   <li><b>띄운 자리보다 10칸 아래에 떨어지면</b> {@code d = 10} 이라 <b>그 10칸 몫은 그대로
-	 *       아프다.</b> 「6칸 띄웠으니 그 뒤의 낙하는 전부 공짜」가 아니다</li>
+	 *       아프다.</b> 「12칸 띄웠으니 그 뒤의 낙하는 전부 공짜」가 아니다</li>
 	 *   <li>⚠ <b>이미 떨어지던 중에 맞아도</b> 그 사람이 이미 쌓아 둔 낙하 거리는 면제되지 않는다
 	 *       ({@code min} 의 오른쪽이 띄운 자리에서부터만 재기 때문이다)</li>
 	 * </ul>
@@ -2841,7 +3145,7 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>⚠ {@code √(2gh)} 로 풀지 않는 까닭이 여기 있다. 그 근사는 <b>감쇠를 빼먹고</b>(낮게 뜬다)
 	 * <b>이산 합을 적분으로 바꿔</b>(높게 뜬다) 두 오차가 높이마다 다르게 상쇄된다 — 4칸에서는
-	 * 0.7% 모자라는데 6칸에서는 <b>5%</b>(5.70칸) 모자란다.
+	 * 0.7% 모자라는데 6칸에서는 <b>5%</b>(5.70칸), 12칸에서는 <b>12%</b>(10.55칸) 모자란다.
 	 *
 	 * <p>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.
 	 */
@@ -2884,7 +3188,7 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 그 처음 세로 속도로 <b>몇 틱 올라가는가.</b> 12틱(0.6초)이다.
+	 * 그 처음 세로 속도로 <b>몇 틱 올라가는가.</b> 12칸이면 16틱(0.8초)이다(6칸이던 때 12틱).
 	 *
 	 * <p>{@link #liftApex} 와 같은 식을 세기만 한다. 재는 것은 <b>띄워진 사람이 공중에 있는
 	 * 시간</b>이고, 그 시간이 날개 퍼덕이기의 번치 간격({@value #WING_PULSE_TICKS}틱)보다 길다는
@@ -2901,14 +3205,16 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * ⚠⚠ 그 처음 세로 속도로 띄워진 사람이 <b>공중에 있는 시간</b>(틱). <b>25틱(1.25초)</b>이다.
+	 * ⚠⚠ 그 처음 세로 속도로 띄워진 사람이 <b>공중에 있는 시간</b>(틱). 12칸이면 <b>35틱(1.75초)</b>
+	 * 이다(6칸이던 때 25틱).
 	 *
-	 * <p>올라갔다가 띄운 자리 높이로 되돌아올 때까지를 센다. 올라가는 12틱보다 내려오는 13틱이 긴
+	 * <p>올라갔다가 띄운 자리 높이로 되돌아올 때까지를 센다. 올라가는 16틱보다 내려오는 19틱이 긴
 	 * 것은 세로 감쇠가 {@value #LIFT_DRAG} 뿐이라 떨어지는 속도가 계속 커지되 거리는 천천히 쌓이기
 	 * 때문이다.
 	 *
 	 * <p>⚠ <b>이 수가 이 작업에서 가장 중요한 수다.</b> 날개 퍼덕이기의 번치 간격이
-	 * {@value #WING_PULSE_TICKS}틱이라 <b>띄워진 사람은 공중에서 번치를 두 번 받는다</b> — 곧
+	 * {@value #WING_PULSE_TICKS}틱이라 <b>띄워진 사람은 공중에서 번치를 두세 번 받는다</b>(6칸이던 때
+	 * 두 번) — 곧
 	 * 「내가 만든 상태가 남이 만든 넉백의 입력」이 되는 것이 <b>드문 일이 아니라 거의 언제나</b>다.
 	 * 그때 받는 세기를 바닥과 같게 맞추는 것이 {@link #AIRBORNE_PUSH_SCALE} 이고, 시험이 그
 	 * 부등호를 붙든다.
@@ -3411,8 +3717,9 @@ public final class DragonLastStandPatterns {
 	 * <b>번개는 언제나 함께 돈다</b> — 번개가 패턴이었을 때의 「셋 중 가장 바쁜 것」은 이제 틀린
 	 * 식이다. {@code TrialLandingShock.MAX_POINTS_PER_TICK}(440)과 견줄 값이다.
 	 *
-	 * <p>안전지대는 월드 보더라 <b>점을 한 개도 쓰지 않고</b>, 부채꼴의 빨간 면은 디스플레이 개체라
-	 * <b>역시 한 개도 쓰지 않는다</b>({@link DragonLastStandConePanel}).
+	 * <p>안전지대는 월드 보더라 <b>점을 한 개도 쓰지 않고</b>, 부채꼴과 십자의 빨간 면은 디스플레이
+	 * 개체라 <b>역시 한 개도 쓰지 않는다</b>({@link DragonLastStandConePanel}·
+	 * {@link DragonLastStandCrossPanel}).
 	 *
 	 * <p>값에서 직접 센다 — 개수나 반경을 올리는 사람이 예산을 눈으로 세지 않아도 시험이 먼저
 	 * 멈춰 세운다.
@@ -3494,7 +3801,11 @@ public final class DragonLastStandPatterns {
 
 	/**
 	 * 예고 틱 — 검은 속(나눠 그린 한 틱 몫) + 빨간 경계 고리(매 틱 전부) + <b>그 고리의 벽</b>
-	 * + <b>안으로 흐르는 가닥</b>.
+	 * + <b>안으로 흐르는 가닥</b> + <b>불 결계의 불꽃 벽</b>(2026-10-04, 나눠 세운 한 틱 몫 17점).
+	 *
+	 * <p>흡입 구간에도 같은 것이 나가고 결계가 때리는 틱에 더 나가는 점은 없다(피해와 소리뿐이다).
+	 * 끌려가는 사람 발밑의 재는 꾸러미 하나라 사람당 한 장이고, 0.5초마다라 예고 틱과 같은 틱에 와도
+	 * 이 수가 넉넉히 남는다 — 이 패턴은 가장 바쁜 틱의 주인이 아니다.
 	 *
 	 * <p>속을 나눠 그리지 않으면 여기가 231점 더 올라 <b>부채꼴 예고를 넘어</b>
 	 * {@link #worstCasePointsPerTick} 의 답이 바뀐다 — {@link #SUCK_MARK_STRIDE} 를 볼 것.
@@ -3507,25 +3818,40 @@ public final class DragonLastStandPatterns {
 		// 나눠 그리기는 위상에 따라 하나 더 나갈 수 있다. 예산은 늘 나쁜 쪽을 봐야 한다.
 		int stroke = (fill + SUCK_MARK_STRIDE - 1) / SUCK_MARK_STRIDE;
 		return stroke + TrialWarning.ringPoints(SUCK_RADIUS) + ringWallPoints(SUCK_RADIUS)
-				+ SUCK_STREAM_SPOKES * SUCK_STREAM_PHASES;
+				+ SUCK_STREAM_SPOKES * SUCK_STREAM_PHASES + suckFirePoints();
+	}
+
+	/**
+	 * 불 결계의 불꽃 벽 한 틱 몫. 둘레 점을 {@link #SUCK_FIRE_STRIDE} 로 나눈다.
+	 *
+	 * <p>나눠 세우기는 위상에 따라 하나 더 나갈 수 있으므로 올림이다 — 예산은 늘 나쁜 쪽을 본다.
+	 */
+	static int suckFirePoints() {
+		int ring = TrialWarning.ringPoints(SUCK_FIRE_RADIUS);
+		return (ring + SUCK_FIRE_STRIDE - 1) / SUCK_FIRE_STRIDE;
 	}
 
 	/**
 	 * 십자 균열 — 예고 틱과 터지는 틱 가운데 바쁜 쪽.
 	 *
-	 * <p>⚠ <b>터지는 틱에는 둘이 함께 나간다.</b> 그 틱에 앞 십자가 터지고 다음 십자의 예고가
-	 * 시작하므로({@link #crossPendingRound} 의 경고) 갈라짐 연출과 새 표식이 같은 틱이다.
+	 * <p>⚠ <b>터지는 틱에는 둘이 함께 나간다.</b> 그 틱에 앞 회차가 터지고 다음 회차의 예고가
+	 * 시작하므로({@link #crossPendingRound} 의 경고) 갈라짐 연출과 새 표식이 같은 틱이다. 예고가 이제
+	 * 바닥 면이라 0점이지만 식은 그대로 둔다 — 예고에 점을 다시 얹는 날 이 합이 저절로 맞다.
+	 *
+	 * <p>⚠ 갈라짐 연출이 <b>회차의 십자 수만큼</b>이다(2026-10-04 부터 둘). 한 회차에 둘이 터지므로
+	 * 둘 다 갈라지는 모습이 보여야 「두 개 같이 터지고」가 눈에 보인다.
 	 */
 	static int crossPoints() {
 		return Math.max(crossWarnPoints(),
-				crossFlashPoints() + crossLiftPoints() + crossWarnPoints());
+				CROSSES_PER_ROUND * crossFlashPoints() + crossLiftPoints() + crossWarnPoints());
 	}
 
 	/**
 	 * 띄워진 사람마다 발밑에 서는 기둥({@link #liftCross}). <b>사람당 한 점</b>이다.
 	 *
 	 * <p>개수를 0 으로 보내 속도로 읽히게 하는 길이라 기둥 하나가 점 하나다 — 그래서 넷이 다 맞아도
-	 * {@value #BUDGET_MEMBERS} 점이다. 날개 퍼덕이기가 밀린 사람마다 돌풍 하나를 쓰는 것과
+	 * {@value #BUDGET_MEMBERS} 점이다. 십자가 둘이어도 <b>사람당 한 번</b>만 띄우므로({@link #fireRound})
+	 * 이 수는 그대로다. 날개 퍼덕이기가 밀린 사람마다 돌풍 하나를 쓰는 것과
 	 * <b>같은 셈</b>이다({@link #wingBeatPoints}).
 	 *
 	 * <p>⚠ 터지는 틱에만 나간다. 그 틱이 이미 이 페이즈의 가장 바쁜 틱이므로 <b>이 넷이 그대로
@@ -3536,22 +3862,19 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 예고 틱 — 가장자리 줄 넷을 <b>두 겹</b>으로 그린 한 틱 몫.
+	 * 예고 틱 — <b>0점</b>이다. 2026-10-04 에 먼지 선(54)과 흰 기둥 벽(108)을 걷고 바닥 면
+	 * ({@link DragonLastStandCrossPanel})으로 바꿨다. 판은 디스플레이 개체라 점을 안 쓴다.
 	 *
-	 * <p>빨강은 먼지라 여섯 틱에, 흰 기둥은 {@code CRIT} 이라 <b>세 틱에</b> 나눈다
-	 * ({@link #CROSS_WALL_STRIDE}). 둘을 더하는 것이 맞는 셈이다 — 6 이 3 의 배수라 빨강이 서는
-	 * 틱에는 기둥도 서므로 <b>두 몫이 같은 틱에 함께 나간다.</b>
+	 * <p>메서드를 지우지 않은 것은 {@link #crossPoints} 의 식이 「터지는 틱 = 갈라짐 + 띄움 + 다음
+	 * 예고」를 그대로 말하게 하려는 것이다. 예고에 점을 다시 얹는 사람은 여기에 더하면 된다.
 	 */
 	static int crossWarnPoints() {
-		int whole = 2 * 2 * crossLinePoints(CROSS_MARK_GAP);
-		int floor = (whole + CROSS_MARK_STRIDE - 1) / CROSS_MARK_STRIDE;
-		int wall = (2 * 2 * crossLinePoints(CROSS_WALL_GAP) + CROSS_WALL_STRIDE - 1)
-				/ CROSS_WALL_STRIDE;
-		return floor + wall;
+		return 0;
 	}
 
 	/**
-	 * 터지는 틱에만 나가는 갈라짐 연출. 중심선 둘뿐이라 가장자리보다 성기다.
+	 * 터지는 틱에만 나가는 갈라짐 연출 — <b>십자 하나</b> 몫. 중심선 둘뿐이라 성기다. 한 회차에
+	 * 십자가 {@link #CROSSES_PER_ROUND} 개라 {@link #crossPoints} 가 그만큼 곱한다.
 	 *
 	 * <p>납작한 {@code SWEEP_ATTACK} 과 <b>솟는 기둥</b>이 함께 나간다 — 눕는 것만으로는 터진 것이
 	 * 눈높이에서 안 보인다({@link #flashCross}).

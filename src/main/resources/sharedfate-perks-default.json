@@ -79,7 +79,7 @@
       "id": "sharedfate:glass_world",
       "icon": "minecraft:glass",
       "name": "유리 세계",
-      "description": "엔더 드래곤을 제외한 모든 몹의 체력이 ×0.4 가 됩니다. 대신 받는 피해가 ×2.5 가 됩니다.",
+      "description": "엔더 드래곤을 제외한 모든 몹의 체력이 ×0.4 가 됩니다. 대신 받는 피해가 ×2 가 됩니다.",
       "rarity": "prism",
       "effects": [
         {
@@ -91,7 +91,7 @@
         },
         {
           "type": "damage_taken",
-          "multiplier": 2.5
+          "multiplier": 2.0
         }
       ]
     },
@@ -651,7 +651,7 @@
       "id": "sharedfate:brink",
       "icon": "minecraft:redstone",
       "name": "벼랑 끝",
-      "description": "체력이 75% 이하일 때 힘 II 와 신속 I·저항 I 을 얻습니다. 대신 체력이 75% 를 넘을 때 나약함 I 을 얻습니다.",
+      "description": "체력이 75% 이하일 때 힘 II 와 신속 I·저항 I 을 얻습니다. 대신 체력이 75% 를 넘을 때 공격력이 15% 감소합니다.",
       "rarity": "prism",
       "set_types": [
         "power"
@@ -680,9 +680,10 @@
           ],
           "when_false": [
             {
-              "type": "status_effect",
-              "effect": "minecraft:weakness",
-              "amplifier": 0
+              "type": "attribute",
+              "attribute": "minecraft:attack_damage",
+              "operation": "add_multiplied_total",
+              "amount": -0.15
             }
           ]
         }
