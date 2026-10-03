@@ -1,10 +1,12 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.SharedFateMod;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.PowerParticleOption;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -12,12 +14,19 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LightningBolt;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * 「최후의 저항」의 <b>패턴 넷</b>과 <b>상시 번개</b>. {@code DragonLastStand.runPattern} 이 여기로 넘긴다.
@@ -144,6 +153,38 @@ import java.util.List;
  * ({@link #SUCK_MAX_INWARD}) — 입자가 위로 빨려 올라가면 사람이 「들린다」로 읽고, 실제로는
  * 들리지 않으므로 그것이 거짓 신호다.
  *
+ * <h2>⚠⚠ 사람에게 <b>세로 속도</b>와 <b>이동 속도</b>를 거는 자리가 생겼다 (2026-10-01)</h2>
+ *
+ * <p>사람이 플레이해 보고 둘을 더 시켰다. <b>둘 다 이 저장소의 명문 규칙을 사람이 알고 뒤집은
+ * 것</b>이라, 규칙이 막으려던 사고를 이 파일이 대신 막는다.
+ *
+ * <table border="1">
+ *   <caption>사람 말과 그 답</caption>
+ *   <tr><th>사람 말</th><th>뒤집힌 규칙</th><th>대신 막는 것</th></tr>
+ *   <tr><td><b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b></td>
+ *       <td>「<b>세로로 띄우지 않습니다</b> — 띄우면 마찰이 안 먹어 훨씬 멀리 갑니다」</td>
+ *       <td>{@link #liftCross} — 가로를 한 톨도 안 더하고, 낙하 피해를 그 띄움 몫만 면제한다</td></tr>
+ *   <tr><td><b>「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」</b></td>
+ *       <td>상태이상은 {@code EffectSync} 가 <b>팀 전원에게 퍼뜨린다</b></td>
+ *       <td>{@link #slowStruck} — 상태이상을 안 걸고 <b>이동 속도를 직접 깎는다</b></td></tr>
+ * </table>
+ *
+ * <p>⚠ <b>세로를 더하는 곳은 {@link #liftCross} 하나다.</b> 날개 퍼덕이기({@link #shove})와 공허
+ * 흡입({@link #pullSuck})은 세로를 <b>읽어서 내려 보내기만</b> 한다 — 그 둘은 <b>미는</b> 패턴이라
+ * 띄우면 마찰이 빠져 섬 밖으로 나간다({@link #AIRBORNE_PUSH_SCALE}). 십자는 <b>밀지 않으므로</b>
+ * 그 사고가 성립하지 않는다.
+ *
+ * <p>⚠⚠ <b>「읽은 그대로」가 아니다 — {@link TrialVelocity#syncedVertical} 을 지난다.</b> 서버가 들고 있는
+ * {@code deltaMovement} 는 <b>우리 것이 아니고</b>, 최후의 저항에서는 바닐라 드래곤이 매 틱
+ * 거기에 세로 {@code +0.2} 를 쌓아 둔다. 그 쌓인 값을 그대로 내려 보내면 사람이 하늘로 날아간다 —
+ * 2026-10-04 에 사람이 본 것이 그것이다.
+ *
+ * <p>⚠ <b>그런데 띄운 사람은 「공중에 있는 사람」이 된다.</b> 곧 <b>내가 만든 상태가 남이 만든
+ * 넉백의 입력</b>이 된다 — 띄워 놓고 1.25초 안에 날개 퍼덕이기가 오면 그 사람은 공중에서 맞는다.
+ * {@link #AIRBORNE_PUSH_SCALE} 가 공중 세기를 바닥과 같게 맞춰 두었고 천장 둘이 그대로 걸려 있어
+ * 그때도 섬 안이다 — {@code DragonLastStandPatternsTest.띄워진_직후에_밀려도_섬_밖으로_못_나간다}
+ * 가 그 사실을 붙든다.
+ *
  * <h2>한 틱 점 예산</h2>
  *
  * <p>{@code TrialLandingShock.MAX_POINTS_PER_TICK} 이 440 이고 그것이 이 판의 예산이다. 패턴 넷은
@@ -160,8 +201,14 @@ import java.util.List;
  * 좀더 가시성이 좋앗으면좋겟어」</b>·<b>「특히 십자가 공격이 너무 잘 안보엿어」</b>라고 해서 넷을
  * 함께 키웠고, 그러면서 최악이 <b>272 → 356</b> 으로 올랐다. 전에는 「번개 + 부채꼴 예고」였는데
  * 이제는 <b>「번개 + 십자가 터지는 틱」</b>이다 — 그 틱에 갈라짐 연출과 솟는 기둥과 <b>다음 십자의
- * 예고</b>가 함께 나간다({@link #crossPoints}). 예산까지 84점이 남았고, 그 몫을 쓰려는 사람은
- * {@code DragonLastStandPatternsTest.한_틱_점_예산을_넘지_않는다} 가 못박아 둔 수부터 고쳐야 한다.
+ * 예고</b>와 <b>띄워진 사람 발밑의 기둥</b>이 함께 나간다({@link #crossPoints}). 그 뒤 십자가
+ * 사람을 띄우면서 <b>356 → 360</b> 이 됐고(사람당 한 점 × 넷), 예산까지 80점이 남았다. 그 몫을
+ * 쓰려는 사람은 {@code DragonLastStandPatternsTest.한_틱_점_예산을_넘지_않는다} 가 못박아 둔 수부터
+ * 고쳐야 한다.
+ *
+ * <p>⚠ <b>내리치는 틱도 이제 센다.</b> 번개가 맞은 사람 발밑에 점을 뿌리게 되어
+ * ({@link #slowStruck}) 「내리치는 틱은 0점」이 거짓이 됐다 — {@link #lightningPoints} 가 예고 틱
+ * (70)과 내리침 틱(48) 가운데 큰 쪽을 센다.
  *
  * <p>그리고 부채꼴의 <b>빨간 투명 면은 점을 한 개도 쓰지 않는다.</b> 파티클이 아니라 디스플레이
  * 개체라 예산과 무관하다 — {@link DragonLastStandConePanel} 을 볼 것.
@@ -503,9 +550,13 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <h2>세로 성분을 어떻게 다뤘는가 — <b>한 톨도 건드리지 않는다</b></h2>
 	 *
-	 * <p>사람의 세로 속도는 <b>읽어서 그대로 돌려놓는다</b>({@link #suck} 의 {@code motion.y}).
-	 * 날개 퍼덕이기가 같은 짓을 하지만({@code shove} 의 「세로 속도는 읽어서 그대로 돌려놓는다」)
-	 * <b>당기는 쪽에는 이유가 하나 더 있다.</b>
+	 * <p>사람의 세로 속도에 <b>한 톨도 더하지 않는다</b>({@link #pullSuck} 의 {@code motion.y}).
+	 * 날개 퍼덕이기가 같은 짓을 하지만 <b>당기는 쪽에는 이유가 하나 더 있다.</b>
+	 *
+	 * <p>⚠ 다만 <b>읽은 값을 그대로 내려 보내지는 않는다</b> — {@link TrialVelocity#syncedVertical} 이
+	 * <b>올리는 쪽만</b> 자른다. 바닐라 드래곤이 서버쪽 세로에 매 틱 {@code +0.2} 를 쌓아 두고 이
+	 * 원의 중심이 바로 그 상자 한가운데이기 때문이다. <b>당기는 세기와는 무관하고</b> 스스로
+	 * 올라가는 사람에게는 아무것도 바꾸지 않는다.
 	 *
 	 * <ul>
 	 *   <li><b>아래로 당기면 사람을 땅에 눌러 넣는다.</b> 바닐라 충돌이 블록 속으로는 못 넣지만,
@@ -761,6 +812,75 @@ public final class DragonLastStandPatterns {
 	/** 균열음의 마지막 음높이. 「지금 터진다」. */
 	private static final float CROSS_CRACK_PITCH_HIGH = 1.5F;
 
+	/**
+	 * 사람 중력(칸/틱²). 26.3 {@code Attributes.GRAVITY} 기본값이
+	 * {@code RangedAttribute("attribute.name.gravity", 0.08, -1.0, 1.0)} 인 것을 바이트코드로
+	 * 확인했다.
+	 *
+	 * <p>⚠ {@code TrialRisks} 에 같은 값이 {@code GRAVITY_PER_TICK} 으로 또 있다. 그쪽이
+	 * {@code private} 이고 {@code TrialRisks} 는 <b>읽기만 하기로</b> 정해져 있어 여기 한 벌을 더
+	 * 적었다 — 열어 달라고 고치지 않은 것이 의도다.
+	 */
+	static final double LIFT_GRAVITY = 0.08;
+	/**
+	 * <b>세로</b> 감쇠. 26.3 {@code LivingEntity.travelInAir} 가 매 틱 끝에 세로 속도에
+	 * {@code 0.98} 을 곱하는 것을 바이트코드로 확인했다({@code getAirDrag} 도 같은 값을 돌려준다).
+	 *
+	 * <p>⚠ <b>수평의 {@code 0.91}({@code TrialEnderStorm.AIR_DRAG})과 다른 값이다.</b> 수평은
+	 * 거기에 블록 마찰까지 곱해 {@link #GROUND_DRAG}(0.546)가 되는데, 세로는 마찰이 끼지 않아
+	 * 바닥이든 공중이든 늘 0.98 이다. 그 차이가 「띄우면 훨씬 멀리 간다」의 근거다 — 세로는
+	 * 감쇠가 거의 없어 오래 떠 있고, 떠 있는 동안 수평은 0.91 로만 줄어든다.
+	 */
+	static final double LIFT_DRAG = 0.98;
+
+	/**
+	 * ⚠⚠ 십자에 맞은 사람이 <b>솟아오르는 높이</b>(칸). <b>사람이 명문 규칙을 알고 뒤집은
+	 * 값이다.</b>
+	 *
+	 * <h2>사람 말</h2>
+	 *
+	 * <p><b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b>
+	 *
+	 * <h2>⚠ 「세로로 띄우지 않습니다」를 어기는 자리다</h2>
+	 *
+	 * <p>이 전투의 설계 원칙에 <b>「세로로 띄우지 않습니다 — 띄우면 마찰이 안 먹어 훨씬 멀리
+	 * 갑니다」</b>가 적혀 있다({@link #AIRBORNE_PUSH_SCALE} 가 그 문장의 근거를 수로 들고 있다).
+	 * 사람이 그것을 알고 띄우라고 했으므로 <b>띄우되 그 규칙이 막으려던 사고를 따로 막는다.</b>
+	 *
+	 * <ol>
+	 *   <li><b>가로를 한 톨도 더하지 않는다</b>({@link #liftCross}). 섞으면 「마찰이 안 먹는 공중
+	 *       이동」이 되어 섬 밖으로 날아간다 — 그 규칙의 이유가 정확히 그것이다</li>
+	 *   <li><b>이 패턴은 밀지 않는다.</b> 사람이 <b>「단순 피하기」</b>라고 못박은 카드라 수평
+	 *       성분이 애초에 0 이고, 그래서 세로만 주는 것이 가능하다. 미는 패턴(날개 퍼덕이기)에
+	 *       같은 짓을 하면 그날로 낙사 장치다</li>
+	 *   <li><b>띄워진 사람이 다음 번치의 입력이 된다.</b> 1.25초 동안 공중이라 그 사이에 날개
+	 *       퍼덕이기가 오면 공중에서 맞는데, {@link #AIRBORNE_PUSH_SCALE} 와 천장 둘이 그대로
+	 *       걸려 있어 그때도 섬 안이다 — 시험이 그 경우를 통째로 굴린다</li>
+	 * </ol>
+	 *
+	 * <h2>6 은 <b>도달 높이</b>다 — 처음 속도가 아니다</h2>
+	 *
+	 * <p>{@link #CROSS_LIFT_SPEED} 가 이 높이에서 역산된다. 바닐라 점프(처음 0.42 → <b>1.2522칸</b>)
+	 * 의 <b>4.8배</b>이고, 올라가는 데 12틱 · 되돌아오는 데 25틱이라 <b>1.25초쯤 공중에 있다.</b>
+	 * 「점프하게」가 그 느낌이다.
+	 */
+	static final double CROSS_LIFT_BLOCKS = 6.0;
+	/**
+	 * ⚠ 그 높이에 닿는 <b>처음 세로 속도</b>(칸/틱). <b>1.00746</b> 이다.
+	 *
+	 * <p>{@link #liftSpeed} 가 {@link #liftApex} 를 이분법으로 뒤집어 낸다. 값을 손으로 적지 않는
+	 * 까닭은 <b>사람이 말한 것이 「6칸」이고 속도는 거기서 나오는 것</b>이기 때문이다 — 속도를 적어
+	 * 두면 중력이나 감쇠가 바뀌는 판에서 높이가 조용히 달라진다.
+	 *
+	 * <p>⚠ <b>{@code TrialRisks.launchVelocity} 를 쓰지 않았다.</b> 그쪽은 공기 저항을 뺀 근사
+	 * ({@code √(2gh)})라 6칸을 넣으면 0.9798 이 나오고 실제 도달이 <b>5.70칸</b>이다(0.30칸 ·
+	 * 5% 모자람). 「자리 폭격」은 그 모자람을 <b>알고</b> 받아들였는데(그 메서드에 「카드의 위험은
+	 * 떠 있는 동안 못 피한다이지 정확한 높이가 아니다」라고 적혀 있다) 여기서는 사람이 높이를
+	 * 수로 말했으므로 그 근사를 쓸 수 없다. ⚠ 그쪽을 고치지 않은 것도 의도다 —
+	 * {@code TrialRisks} 는 읽기만 한다.
+	 */
+	static final double CROSS_LIFT_SPEED = liftSpeed(CROSS_LIFT_BLOCKS);
+
 	// ------------------------------------------------------------------ ⑤ 상시 번개 (패턴이 아니다)
 
 	/**
@@ -867,6 +987,115 @@ public final class DragonLastStandPatterns {
 	 */
 	static final int LIGHTNING_MARK_STRIDE = TrialEndRain.MARK_MAX_STRIDE;
 
+	/**
+	 * ⚠⚠ 번개에 맞은 사람의 <b>이동 속도를 직접 깎는 수정자 이름.</b> 상태이상이 아니다.
+	 *
+	 * <h2>사람 말</h2>
+	 *
+	 * <p>처음 말은 <b>「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」</b>였고, 그것이
+	 * 이 저장소에서 <b>불가능하다</b>는 것을 보고하자 사람이 방법을 정했다 —
+	 * <b>「그 플레이어만 구속을 구속3급으로 이속을 감소시키는쪽으로가면 되지않나? 버프효과로
+	 * 주는게 아니라」</b>
+	 *
+	 * <h2>⚠⚠ 왜 {@code MobEffects.SLOWNESS} 를 못 쓰는가 — <b>상태이상은 팀에 퍼진다</b></h2>
+	 *
+	 * <p>{@code EffectSync} 가 {@code ServerMobEffectEvents.AFTER_ADD} 에 붙어 있어, 한 사람에게
+	 * 붙은 상태이상을 그 틱에 <b>팀 전원에게 다시 붙인다.</b> 건너뛰는 문은 그 파일의
+	 * {@code private static boolean propagating} 하나뿐이고 밖에서 켤 길이 없다 — 곧
+	 * <b>{@code player.addEffect} 를 부르는 순간 「그 사람만」이 거짓이 된다.</b> 「엔더 파동」의
+	 * 구속 III 가 팀 공유인 것이 그 증거이고, 그쪽은 <b>사람이 의도한 것</b>이라 고칠 수도 없다
+	 * ({@code TrialEnderPulse.root} 에 그렇게 적혀 있다).
+	 *
+	 * <p>⚠ <b>그래서 「엔더 파동의 구속은 팀 공유인데 번개의 구속은 혼자」가 된다.</b> 버그가
+	 * 아니다. 사람이 위의 두 문장으로 그렇게 지시했고, 둘이 다른 기계를 쓰기 때문에 그렇게 될 수
+	 * 있었다 — 같은 기계로는 둘 중 하나밖에 못 한다. <b>한쪽을 다른 쪽에 맞추려는 사람은 여기서
+	 * 멈출 것.</b>
+	 *
+	 * <h2>본보기는 증강 쪽이다</h2>
+	 *
+	 * <p>{@code SneakSpeedEffect} 가 <b>같은 기계</b>를 쓴다 — {@code Attributes.MOVEMENT_SPEED} 에
+	 * {@code ADD_MULTIPLIED_TOTAL} 수정자를 <b>그 사람에게만</b> 걸고, 조건이 풀리면 이름으로
+	 * 걷어낸다. 상태이상이 아니므로 {@code EffectSync} 를 아예 지나지 않는다. 그 파일을 읽고 같은
+	 * 꼴로 적었다({@code removeModifier} 먼저 → {@code addTransientModifier}).
+	 *
+	 * <p>⚠ <b>이름을 바닐라({@code minecraft:effect.slowness})로 하면 안 된다.</b>
+	 * {@code MobEffect.removeAttributeModifiers} 가 <b>이름으로</b> 걷으므로, 진짜 구속이 한 번
+	 * 붙었다 떨어지는 것만으로 우리 몫이 함께 사라지고 {@code addAttributeModifiers} 는
+	 * 거꾸로 우리 것을 덮어쓴다.
+	 *
+	 * <h2>대가 — <b>아이콘이 없다</b></h2>
+	 *
+	 * <p>상태이상이 아니므로 화면에 아이콘이 뜨지 않는다. 「다시 선 쇠창살」(그때 이름은 「쇠창살과
+	 * 무딘 곡괭이」였다)의 <b>채굴 15% 감소</b>가 같은 대가를 치렀던 자리다 — ⚠ <b>그 감소는
+	 * 2026-10-01 에 걷혔고</b> 그 카드는 이제 쇠창살만 다시 세우므로, 「아이콘 없는 감소」를 들고
+	 * 있는 것은 <b>이 파일이 유일하다.</b> 그래서 {@link #LIGHTNING_SLOW_MARK_POINTS} 가 되먹임을
+	 * 하나 둔다.
+	 */
+	private static final Identifier LIGHTNING_SLOW_MODIFIER_ID =
+			SharedFateMod.id("last_stand_lightning_slow");
+	/**
+	 * 구속 <b>III</b> 의 증폭값. 사람이 「구속3급」이라고 했고 증폭은 0 부터 세므로 <b>2</b> 다.
+	 */
+	static final int LIGHTNING_SLOW_AMPLIFIER = 2;
+	/**
+	 * 구속 <b>한 급</b>이 이동 속도에 거는 몫. <b>바닐라에서 그대로 베낀 수다.</b>
+	 *
+	 * <p>26.3 {@code MobEffects} 의 클래스 초기화식을 {@code javap -c} 로 읽은 것이다.
+	 *
+	 * <pre>{@code
+	 * ldc           // String slowness
+	 * getstatic     // Attributes.MOVEMENT_SPEED
+	 * ldc           // String effect.slowness
+	 * ldc2_w        // double -0.15000000596046448d
+	 * getstatic     // AttributeModifier$Operation.ADD_MULTIPLIED_TOTAL
+	 * invokevirtual // MobEffect.addAttributeModifier
+	 * }</pre>
+	 *
+	 * <p>⚠ <b>{@code 0.15} 가 아니라 이 긴 수다.</b> 바닐라가 {@code float 0.15F} 를
+	 * {@code double} 로 넓힌 값이라 끝자리가 남아 있고, 시험이 <b>바닐라가 만든 수정자와
+	 * 1.0E-12 안에서 같은지</b>를 보기 때문에 반올림해 적으면 그 시험이 멈춘다.
+	 */
+	static final double SLOWNESS_AMOUNT_PER_LEVEL = -0.15000000596046448;
+	/**
+	 * 구속 III 가 거는 몫. <b>{@code -0.45000001788139343}</b> 이다.
+	 *
+	 * <p>급을 곱하는 식까지 바닐라와 같다 — 26.3 {@code MobEffect.AttributeTemplate.create(int)} 가
+	 * {@code new AttributeModifier(id, amount × (amplifier + 1), operation)} 인 것을 바이트코드로
+	 * 확인했다({@code iload_1; iconst_1; iadd; i2d; dmul}).
+	 *
+	 * <p><b>연산이 {@code ADD_MULTIPLIED_TOTAL} 이므로 이동 속도가 × 0.55 가 된다</b>(45% 감소).
+	 * 26.3 {@code AttributeInstance.calculateValue} 가 그 갈래에서 {@code 값 ×= (1 + 몫)} 을 하는
+	 * 것까지 바이트코드로 확인했다. ⚠ <b>연산을 바꾸면 「구속 3급」이 거짓이 된다</b> — 같은 −0.45
+	 * 를 {@code ADD_VALUE} 로 걸면 기본 이동 속도 0.1 이 음수가 되어 아예 못 걷는다.
+	 */
+	static final double LIGHTNING_SLOW_AMOUNT =
+			SLOWNESS_AMOUNT_PER_LEVEL * (LIGHTNING_SLOW_AMPLIFIER + 1);
+	/**
+	 * 깎아 두는 시간(틱). <b>1초. 사람이 정한 값이다.</b>
+	 *
+	 * <p>⚠ <b>바닐라가 세어 주지 않는다.</b> 상태이상은 시간이 다하면 바닐라가 걷어 가는데 직접
+	 * 깎은 것은 <b>우리가 걷어야 한다</b> — 안 걷으면 <b>영구히 느린 사람</b>이 남는다. 걷는 자리가
+	 * 둘이고 둘 다 있어야 한다({@link #expireSlows} · {@link #releaseSlows}).
+	 */
+	static final int LIGHTNING_SLOW_TICKS = 20;
+	/**
+	 * 깎인 그 사람 발밑에 터뜨리는 점 수. <b>아이콘이 없으니 이것이 유일한 신호다.</b>
+	 *
+	 * <p>「엔더 파동」이 구속을 걸 때 쓰는 신호와 <b>같은 입자·같은 퍼짐</b>이다
+	 * ({@code TrialEnderPulse.root} 의 {@code PORTAL} 24점 · 퍼짐 {@code 0.35, 0.05, 0.35}). 사람이
+	 * 이미 그 카드에서 <b>「발이 묶였다」의 그림</b>으로 배운 것이라 새로 배울 것이 없다.
+	 *
+	 * <p>⚠ <b>24 가 아니라 12 인 것은 점 예산이다.</b> 내리치는 틱은 바닥 표식이 없어 번개 몫이
+	 * 0 인데, 여기에 사람마다 점을 뿌리면 <b>그 틱이 새로 가장 바쁜 틱이 될 수 있다.</b>
+	 * {@code 12 × 4인 = 48} 점이고 그것이 예고 틱의 {@code 70} 점 아래라 <b>가장 바쁜 틱이 안
+	 * 움직인다</b> — {@link #lightningPoints} 가 그 둘 가운데 큰 쪽을 센다.
+	 *
+	 * <p>⚠ <b>소리를 더하지 않았다.</b> 이 페이즈는 사람 말(<b>「각각 패턴마다 소리가
+	 * 구분되엇으면해」</b>)에 따라 <b>일곱 소리가 전부 다른 파일</b>인 상태로 맞춰져 있고, 번개는
+	 * 스스로 천둥과 착탄음을 낸다. 여덟째 소리를 얹으면 그 일곱의 뜻이 묶히는 쪽이 손해가 크다.
+	 */
+	static final int LIGHTNING_SLOW_MARK_POINTS = 12;
+
 	// ------------------------------------------------------------------ 그리는 값
 
 	/** 바닥 표식의 점 간격(칸). {@code TrialWarning.POINT_GAP} 과 같다. */
@@ -951,6 +1180,35 @@ public final class DragonLastStandPatterns {
 	private static long lightningStrikeAt = Long.MIN_VALUE;
 	private static List<Vec3> lightningSpots = List.of();
 
+	/**
+	 * ⚠⚠ 번개에 이동 속도를 깎인 사람과 <b>걷어낼 시각</b>.
+	 *
+	 * <p>상태이상이 아니므로 <b>바닐라가 시간을 세어 주지 않는다.</b> 이 표가 「누구에게서 언제
+	 * 걷어야 하는가」의 유일한 기록이고, 비어 있는 것이 곧 「아무도 안 깎여 있다」다.
+	 *
+	 * <h2>⚠ {@code ServerPlayer} 를 들고 있는 까닭</h2>
+	 *
+	 * <p>{@link #clearState} 는 {@code SERVER_STOPPED} 에서도 불려 <b>월드도 서버도 만질 수
+	 * 없다</b> — UUID 만 적어 두면 그 자리에서 사람을 찾을 길이 없어 수정자가 남는다. 수정자를
+	 * 걷는 것은 <b>그 사람의 속성 표를 만지는 것뿐이고 월드가 필요 없으므로</b>, 개체를 들고 있으면
+	 * 그 자리에서 걷을 수 있다 — {@link DragonLastStandConePanel}·{@code DragonLastStandObjects} 가
+	 * 「월드를 못 만지는 자리에서 거두려고 개체를 들고 있다」고 적어 둔 것과 <b>같은 까닭이고 같은
+	 * 수법</b>이다.
+	 *
+	 * <p>참조가 오래 남을 걱정은 {@link #expireSlows} 가 <b>매 틱</b> 쓸어 없앤다 — 보통 20틱이면
+	 * 비고, 접속을 끊은 사람은 {@code isRemoved()} 로 그 틱에 빠진다.
+	 */
+	private static final Map<UUID, Slow> SLOWED = new HashMap<>();
+
+	/**
+	 * 한 사람의 깎임. {@code until} 은 <b>걷어낼 시각</b>이고 {@code player} 는 그 사람이다.
+	 *
+	 * @param player 수정자를 걷을 대상. 월드 없이 걷기 위해 개체를 들고 있다({@link #SLOWED})
+	 * @param until  이 틱이 되면 걷는다. 곧 {@code 맞은 틱 + }{@value #LIGHTNING_SLOW_TICKS}
+	 */
+	private record Slow(ServerPlayer player, long until) {
+	}
+
 	private DragonLastStandPatterns() {
 	}
 
@@ -960,6 +1218,11 @@ public final class DragonLastStandPatterns {
 	 * <p>⚠ <b>{@link DragonLastStandConePanel#drop()} 이 여기 있는 것이 중요하다.</b> 이 메서드는
 	 * {@code SERVER_STOPPED} 에서도 불려 월드를 만질 수 없는데, 빨간 면은 <b>파티클이 아니라
 	 * 개체</b>라 지우지 않으면 남는다. 그쪽이 개체를 들고 있으므로 월드 없이 지울 수 있다.
+	 *
+	 * <p>⚠ <b>{@link #releaseSlows} 가 여기 있는 것도 같은 까닭이다.</b> 번개가 깎아 둔 이동 속도는
+	 * <b>상태이상이 아니라 속성 수정자</b>라 바닐라가 걷어 가지 않는다. 이 메서드는
+	 * {@code DragonLastStand.onFightClosed}(전투가 닫힐 때)와 {@code DragonLastStand.clearState}
+	 * (월드가 바뀌거나 서버가 내려갈 때) 둘 다에서 불리므로, <b>그 두 길이 여기 한 줄로 막힌다.</b>
 	 */
 	static void clearState() {
 		coneAimedFor = Long.MIN_VALUE;
@@ -968,6 +1231,7 @@ public final class DragonLastStandPatterns {
 		lightningNextVolleyAt = 0L;
 		lightningStrikeAt = Long.MIN_VALUE;
 		lightningSpots = List.of();
+		releaseSlows();
 		DragonLastStandConePanel.drop();
 	}
 
@@ -1021,7 +1285,14 @@ public final class DragonLastStandPatterns {
 	 * <h2>세로로 한 칸도 띄우지 않는다</h2>
 	 *
 	 * <p>띄우면 바닥 마찰이 안 먹어 적힌 거리를 끝까지 날아가고 낙하 피해도 붙는다. 「착지 충격」·
-	 * 「엔더폭풍」이 같은 이유로 세로 속도를 읽어서 그대로 돌려놓는다.
+	 * 「엔더폭풍」도 세로를 올리지 않는다.
+	 *
+	 * <p>⚠⚠ <b>세로를 「읽어서 그대로」 돌려놓는 것이 2026-10-04 에 사고가 됐다.</b> 서버가 들고
+	 * 있는 세로는 <b>우리가 쓴 값이 아니라</b> 바닐라 드래곤이 매 틱 쌓아 둔 값이고,
+	 * {@code syncVelocity} 를 켜는 한 줄이 그것을 본인에게 배달한다 —
+	 * {@link TrialVelocity#syncedVertical} 에 전부 적어 두었다.
+	 * ⚠ <b>「착지 충격」·「엔더폭풍」의 {@code push} 도 같은 날 같은 함수를 지나게 됐다</b> — 그 둘은
+	 * 최후의 저항 밖에서 도는 카드라 바닐라 넉백이 그대로 쌓이고, 배달을 막는 것이 그 함수뿐이다.
 	 *
 	 * <h2>⚠ 그런데 <b>사람이 스스로 뛰면</b> 천장 둘로는 모자랐다</h2>
 	 *
@@ -1099,6 +1370,11 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>⚠ <b>속도를 덮어쓴다.</b> 더하면 달리던 사람이 들고 있던 수평 속도가 얹혀 천장이 계산한
 	 * 목적지를 지나쳐 간다 — 그 한 줄이 「달리는 중에 밀려도 안전하다」의 근거다.
+	 *
+	 * <p>⚠⚠ <b>덮어쓰는 것이 수평을 지키는 동시에 수평의 오염까지 지운다.</b> 바닐라
+	 * {@code EnderDragon.knockBack} 은 수평도 쌓는데({@code dx ÷ max(dx²+dz², 0.1) × 4}, 드래곤
+	 * 몸통 중심에서 0.316칸에 선 사람에게 <b>12.65칸/틱</b>) 그 값이 덮어써져 사라진다. 세로만
+	 * 읽어서 돌려놓고 있었기 때문에 <b>세로로만 샜다</b> — {@link TrialVelocity#syncedVertical} 을 볼 것.
 	 */
 	private static void shove(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
 			Vec3 center, long at, long now) {
@@ -1122,9 +1398,13 @@ public final class DragonLastStandPatterns {
 		}
 		double speed = shoveSpeed(distance, isAirborne(end, ground, member));
 		Vec3 motion = member.getDeltaMovement();
-		// 세로 속도는 읽어서 그대로 돌려놓는다. 더하지 않고 덮어쓰는 것은 들고 있던 수평
-		// 속도가 얹혀 천장이 계산한 목적지를 넘지 않게 하기 위해서다.
-		member.setDeltaMovement(stepX * speed, motion.y, stepZ * speed);
+		// 수평을 더하지 않고 덮어쓰는 것은 들고 있던 속도가 얹혀 천장이 계산한 목적지를 넘지
+		// 않게 하기 위해서다. ⚠ 세로는 「읽은 그대로」가 아니라 TrialVelocity.syncedVertical
+		// 을 지난다 —
+		// 바닐라 드래곤이 매 틱 +0.2 를 쌓아 두고 그것을 그대로 배달하면 사람이 하늘로 간다.
+		member.setDeltaMovement(stepX * speed,
+				TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
+				stepZ * speed);
 		// 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 제자리로 되돌아간다.
 		member.syncVelocity = true;
 		// 밀린 사람은 2초 동안 안전지대 밖 피해를 안 받는다. 사람이 정한 유예다.
@@ -2038,9 +2318,16 @@ public final class DragonLastStandPatterns {
 			if (!(pull > 0.0)) {
 				continue;
 			}
-			// 세로 속도는 읽어서 그대로 돌려놓는다. 위로 당기면 사람이 들려 공중 감쇠에 들어가고
-			// 그때는 달려도 못 벗어난다 — SUCK_MAX_INWARD 를 볼 것.
-			member.setDeltaMovement(motion.x - outX * pull, motion.y, motion.z - outZ * pull);
+			// 세로를 위로 당기지 않는다. 당기면 사람이 들려 공중 감쇠에 들어가고 그때는 달려도
+			// 못 벗어난다 — SUCK_MAX_INWARD 를 볼 것.
+			// ⚠ 읽은 값을 그대로 돌려놓지도 않는다. 이 원은 드래곤 발밑이라 사람이 바닐라
+			// knockBack 상자 한가운데에 서는 자리이고, 쌓인 세로를 그대로 배달하면 날개
+			// 퍼덕이기와 똑같이 하늘로 간다 — TrialVelocity.syncedVertical 을 볼 것. 올리는 쪽만
+			// 자르므로 「세로를 안 건드린다」는 약속은 그대로다(스스로 올라가는 사람은 한 톨도 안
+			// 달라진다).
+			member.setDeltaMovement(motion.x - outX * pull,
+					TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
+					motion.z - outZ * pull);
 			// 켜지 않으면 서버 혼자 당긴 것이 되어 다음 틱에 제자리로 되돌아간다.
 			member.syncVelocity = true;
 			if (step % SUCK_BREATH_TICKS == 0) {
@@ -2398,6 +2685,249 @@ public final class DragonLastStandPatterns {
 			// 것은 「낙사·섬 밖으로 미는 것 없음」이다.
 			member.hurtServer(end, end.damageSources().explosion(null, null),
 					DragonLastStand.CROSS_FISSURE_DAMAGE);
+			// ⚠ 피해 뒤에 띄운다. 앞에 두면 hurtServer 가 지나가며 속도를 건드릴 수 있고, 그러면
+			// 「6칸」이 맞는 사람마다 달라진다.
+			liftCross(end, member);
+		}
+	}
+
+	/**
+	 * ⚠⚠ 맞은 사람을 <b>위로 {@value #CROSS_LIFT_BLOCKS}칸 솟구치게</b> 한다. <b>가로는 한 톨도
+	 * 건드리지 않는다.</b>
+	 *
+	 * <p>사람 말: <b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b>.
+	 * 왜 이것이 이 전투의 명문 규칙을 뒤집는 것이고 왜 그래도 안전한지는
+	 * {@link #CROSS_LIFT_BLOCKS} 에 길게 적어 두었다.
+	 *
+	 * <h2>⚠ 가로를 더하지 않는 것이 이 메서드의 전부다</h2>
+	 *
+	 * <p>{@code setDeltaMovement} 에 넘기는 x·z 가 <b>읽은 그대로</b>다. 세로만 덮어쓴다 —
+	 * {@link #shove} 가 거꾸로 <b>가로만 덮어쓰고 세로는 올리는 쪽만 자른다</b>
+	 * ({@link TrialVelocity#syncedVertical})는 것과 정확히 반대이고, 둘이 합쳐 「이 파일은 가로와 세로를 섞지
+	 * 않는다」가 된다. ⚠ <b>이 메서드는 {@link TrialVelocity#syncedVertical} 을 안 지난다</b> — 여기서 쓰는
+	 * 세로는 <b>우리가 지은 값</b>({@link #CROSS_LIFT_SPEED})이라 남이 쌓아 둔 것이 섞일 자리가
+	 * 없다. 덮어쓰기라는 것 자체가 그 방어다. 가로를 조금이라도
+	 * 더하면 그 사람은 <b>마찰이 안 먹는 공중에서</b> 그만큼을 가고, 그것이 「세로로 띄우지
+	 * 않습니다」가 막으려던 사고다. ⚠ 그래서 <b>천장 둘
+	 * ({@code TrialEnderStorm.pushDistance}·{@code TrialLandingShock.groundedReach})을 부르지
+	 * 않는다</b> — 수평으로 한 칸도 옮기지 않으므로 자를 것이 없다. <b>빠뜨린 것이 아니다.</b>
+	 *
+	 * <h2>⚠⚠ 그 논증에 구멍이 하나 있었다 — <b>2026-10-04 에 뿌리에서 닫았다</b></h2>
+	 *
+	 * <p>「수평으로 한 칸도 옮기지 않는다」는 <b>우리가 더하지 않는다</b>는 말이고,
+	 * <b>우리가 배달하지 않는다</b>는 말이 아니었다. {@link TrialVelocity#syncedVertical} 을 파면서 드러난
+	 * 것인데, 서버가 들고 있는 {@code deltaMovement} 의 <b>수평에도</b> 바닐라
+	 * {@code EnderDragon.knockBack} 이 매 틱 값을 쌓았다 —
+	 * {@code dx ÷ max(dx²+dz², 0.1) × 4} 라 <b>거리로 나누는 식</b>이고 분모가 {@code 0.1} 에서
+	 * 멈추므로 {@code √0.1} 칸에서 <b>12.65칸/틱</b>이 최댓값이다. 그 값이 쌓이면 바닥 종착
+	 * <b>15.2칸/틱</b> · 공중 종착 <b>127.9칸/틱</b>이다.
+	 *
+	 * <p>{@link #shove} 는 수평을 <b>덮어쓰므로</b> 그 오염이 그 자리에서 사라진다. 그런데
+	 * <b>이 메서드와 {@link #pullSuck} 은 수평을 읽어서 돌려놓고</b> {@code syncVelocity} 를 켠다 —
+	 * 곧 <b>쌓인 수평을 본인에게 배달하면서 동시에 그 사람을 공중(감쇠 0.91)으로 띄우고 낙하
+	 * 피해까지 면제</b>하는 자리였다. 셋이 겹쳤다.
+	 *
+	 * <p>⚠⚠ <b>닫은 자리는 이 파일이 아니다.</b> {@code EnderDragonContactDamageMixin} 이
+	 * {@code hurt} 와 함께 <b>{@code knockBack} 까지 같은 {@code contactDamageOff()} 깃발로
+	 * 끊는다</b> — 최후의 저항이 도는 동안 바닐라가 쌓는 세로·수평이 <b>아예 생기지 않으므로</b>
+	 * 「읽어서 돌려놓는다」가 돌려놓을 오염이 없다. <b>여기와 {@link #pullSuck} 의 실행되는 코드는
+	 * 한 줄도 안 고쳤다</b> — 「들고 있던 가로 속도를 바꾸지 않는다」는 설계 약속을 그대로 두고
+	 * 구멍만 닫는 길이 그것이었기 때문이다. 못박은 시험:
+	 * {@code 띄워진_뒤_쌓인_수평을_안고_밀려도_섬_밖으로_못_나간다}.
+	 *
+	 * <p>⚠ <b>그래도 「남이 쌓아 둔 값을 믿지 않는다」는 규약은 남는다.</b> 뿌리를 끊은 것은
+	 * <b>최후의 저항에서만</b>이고(일반 전투의 날개 밀치기는 바닐라 동작이라 끊으면 안 된다),
+	 * 그 깃발이 내려간 자리에서 이 메서드를 부르는 길이 생기면 구멍이 그대로 돌아온다.
+	 * {@link TrialVelocity#syncedVertical} 을 세로의 보험으로 남겨 둔 것과 같은 까닭이다.
+	 *
+	 * <h2>⚠⚠ 낙하 피해를 <b>이 띄움 몫만</b> 없앤다</h2>
+	 *
+	 * <p>6칸에서 떨어지면 바닐라 낙하 피해가 <b>3</b> 이다({@code ceil(6 − 안전 낙하 3)}). 그리고
+	 * ⚠ <b>{@code minecraft:fall} 은 {@code #bypasses_armor} 에 들어 있어 다이아 풀셋이 한 점도
+	 * 안 깎는다</b>(26.3 {@code data/minecraft/tags/damage_type/bypasses_armor.json} 에서 확인했다) —
+	 * 듣는 것은 보호 IV 뿐이라 무장 기준 <b>3 × 0.36 = 1.08</b> 이다.
+	 *
+	 * <p>그 1.08 은 {@code TrialRisks.worstCaseTickDamage} 가 <b>세지 않는 피해</b>다. 이 패턴이
+	 * 세 번 터지므로 통틀어 <b>3.24 가 셈 밖에서</b> 얹히고, 적힌 값으로 잡아 둔 세 대의 20.31 이
+	 * 실제로는 <b>23.55</b> 가 된다. ⚠ <b>「세 대에 전멸」의 여유가 {@code 20.31 − 20 = 0.31}
+	 * 뿐</b>이라는 것이 요점이다 — 한 대당 1.08 은 그 여유의 <b>세 배가 넘고</b>, 같은 초에 도는
+	 * 상시 번개(무장 기준 6.93)까지 더하면 사람이 정한 기준이 <b>어디서 깨졌는지 알 수 없는 채로</b>
+	 * 깨진다. 셈에 안 들어오는 피해를 늘리지 않는 것이 이 판의 규칙이다.
+	 *
+	 * <p>쓰는 것은 바닐라가 <b>바로 이 일을 위해</b> 들고 있는 장치다 — 26.3
+	 * {@code LivingEntity.setIgnoreFallDamageFromCurrentImpulse(boolean, Vec3)} 이고,
+	 * {@code ServerPlayer.onExplosionHit} 이 바람 충전에 밀린 사람에게 {@code position()} 을 넘겨
+	 * 부르는 그 메서드다(바이트코드로 확인했다).
+	 *
+	 * <h2>⚠ 다른 낙하가 공짜가 되지 않는 근거 — <b>거리에 자가 달려 있다</b></h2>
+	 *
+	 * <p>26.3 {@code LivingEntity.causeFallDamage} 의 첫 줄이 이렇다(바이트코드로 확인했다).
+	 *
+	 * <pre>{@code
+	 * d = min(fallDistance, currentImpulseImpactPos.y − getY())
+	 * }</pre>
+	 *
+	 * <p>곧 면제되는 것은 <b>「띄운 자리보다 위」인 몫뿐</b>이다. 우리가 넘기는 자리가 <b>띄우는
+	 * 그 순간의 발밑</b>이므로
+	 *
+	 * <ul>
+	 *   <li><b>제자리에 떨어지면</b> {@code d ≤ 0} 이라 피해가 0 이고, 그 자리에서
+	 *       {@code resetCurrentImpulseContext()} 가 불려 <b>면제가 그 틱에 사라진다</b></li>
+	 *   <li><b>띄운 자리보다 10칸 아래에 떨어지면</b> {@code d = 10} 이라 <b>그 10칸 몫은 그대로
+	 *       아프다.</b> 「6칸 띄웠으니 그 뒤의 낙하는 전부 공짜」가 아니다</li>
+	 *   <li>⚠ <b>이미 떨어지던 중에 맞아도</b> 그 사람이 이미 쌓아 둔 낙하 거리는 면제되지 않는다
+	 *       ({@code min} 의 오른쪽이 띄운 자리에서부터만 재기 때문이다)</li>
+	 * </ul>
+	 *
+	 * <p>⚠ <b>{@code resetFallDistance()} 를 부르지 않는다.</b> 부르면 바로 위의 마지막 줄이
+	 * 깨져 <b>맞기 전에 떨어지고 있던 몫까지 공짜</b>가 된다. 「자리 폭격」
+	 * ({@code TrialRisks.launch})은 거꾸로 <b>낙하 거리를 매 틱 지우는</b> 쪽인데, 그쪽은 면제가
+	 * <b>시간</b>으로만 끊겨 「스스로 절벽에서 뛰어내렸을 때 한 번 봐 주는 것」을 대가로 적어 두었다.
+	 * 여기서는 그 대가를 치르지 않으려고 <b>거리로 끊는 쪽</b>을 골랐고, 그래서 지울 상태도 돌릴
+	 * 시계도 없다.
+	 *
+	 * <h2>되먹임</h2>
+	 *
+	 * <p>발밑에서 {@code CRIT} 하나를 <b>위로</b> 쏜다. {@link #flashCross} 가 같은 틱에 중심선마다
+	 * 세우는 기둥과 <b>같은 입자·같은 세기</b>({@link #CROSS_BURST_RISE})라 「저 기둥 하나가 내 발밑에
+	 * 섰다」로 읽힌다. 개수를 0 으로 보내므로 점은 <b>하나</b>다.
+	 */
+	private static void liftCross(ServerLevel end, ServerPlayer member) {
+		// ⚠ 새 속도를 짓는 것을 liftMotion 한 곳에 모아 둔다. 월드 없이 답이 정해지는 계산이라
+		// 시험이 「가로가 들어온 그대로인가」를 거기서 직접 굴린다 — 여기서 손으로 적으면
+		// 그 시험이 아무것도 재지 못한다.
+		member.setDeltaMovement(liftMotion(member.getDeltaMovement()));
+		// 켜지 않으면 서버 혼자 띄운 것이 되어 잠시 뒤 제자리로 되돌아간다.
+		member.syncVelocity = true;
+		// 이 띄움에서 비롯한 낙하만 면제한다. 넘기는 자리가 「띄운 순간의 발밑」이라 그보다
+		// 아래로 떨어지는 몫은 그대로 아프다 — 위의 「다른 낙하가 공짜가 되지 않는 근거」를 볼 것.
+		member.setIgnoreFallDamageFromCurrentImpulse(true, member.position());
+		// 개수 0 이라 뒤 값이 속도로 읽혀 점을 하나만 쓰고 기둥이 선다.
+		end.sendParticles(ParticleTypes.CRIT, true, false,
+				member.getX(), member.getY() + GROUND_OFFSET, member.getZ(),
+				0, 0.0, 1.0, 0.0, CROSS_BURST_RISE);
+	}
+
+	/**
+	 * ⚠⚠ 띄운 뒤의 속도. <b>세로만 덮어쓰고 가로는 받은 그대로 돌려준다.</b>
+	 *
+	 * <p>이 메서드가 「<b>가로 성분을 한 톨도 더하지 않는다</b>」의 전부이고, 그것이 사람이 명문
+	 * 규칙을 뒤집은 자리에서 <b>규칙이 막으려던 사고를 대신 막는 한 줄</b>이다 — 가로가 섞이면
+	 * 떠 있는 동안 마찰이 안 먹어 그만큼이 통째로 이동이 된다({@link #AIRBORNE_PUSH_SCALE}).
+	 *
+	 * <p>⚠ <b>{@link #shove} 와 정확히 반대다.</b> 그쪽은 가로만 덮어쓰고 세로는
+	 * {@link TrialVelocity#syncedVertical} 로 <b>올리는 쪽만</b> 자른다. 둘을 나란히 두면 「이 파일은 가로와
+	 * 세로를 섞지 않는다」가 읽힌다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 가로를 바꿔 넣어 가며 직접 굴린다.
+	 */
+	static Vec3 liftMotion(Vec3 motion) {
+		return new Vec3(motion.x, CROSS_LIFT_SPEED, motion.z);
+	}
+
+	/**
+	 * 그 처음 세로 속도로 <b>실제로 올라가는 높이</b>(칸). 공기 저항까지 센 값이다.
+	 *
+	 * <p>26.3 {@code LivingEntity.travelInAir} 의 순서를 그대로 굴린다(바이트코드로 확인했다) —
+	 * <b>자리를 먼저 옮기고</b>({@code handleRelativeFrictionAndCalculateMovement} 안의
+	 * {@code move}), 그 다음 세로 속도에서 중력을 빼고, 마지막에 {@value #LIFT_DRAG} 를 곱한다.
+	 *
+	 * <pre>{@code
+	 * y += v;  v = (v - 0.08) * 0.98
+	 * }</pre>
+	 *
+	 * <p><b>이 식이 맞는 것은 바닐라 점프로 검산된다</b> — 처음 0.42 를 넣으면 <b>1.2522칸</b>이
+	 * 나오고 그것이 널리 알려진 바닐라 점프 높이다. 시험이 그 검산을 먼저 한다.
+	 *
+	 * <p>⚠ {@code √(2gh)} 로 풀지 않는 까닭이 여기 있다. 그 근사는 <b>감쇠를 빼먹고</b>(낮게 뜬다)
+	 * <b>이산 합을 적분으로 바꿔</b>(높게 뜬다) 두 오차가 높이마다 다르게 상쇄된다 — 4칸에서는
+	 * 0.7% 모자라는데 6칸에서는 <b>5%</b>(5.70칸) 모자란다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.
+	 */
+	static double liftApex(double speed) {
+		double velocity = speed;
+		double height = 0.0;
+		while (velocity > 0.0) {
+			height += velocity;
+			velocity = (velocity - LIFT_GRAVITY) * LIFT_DRAG;
+		}
+		return height;
+	}
+
+	/**
+	 * 그 높이에 닿는 <b>처음 세로 속도</b>(칸/틱). {@link #liftApex} 를 이분법으로 뒤집는다.
+	 *
+	 * <p>닫힌 식이 없는 것은 <b>몇 틱 올라가는가가 정수</b>라 구간마다 식이 갈리기 때문이다. 이분법
+	 * 은 {@link #liftApex} 가 단조이므로 반드시 수렴하고, 60번이면 {@code double} 의 자리까지
+	 * 간다 — 클래스가 열릴 때 한 번 돌고 {@link #CROSS_LIFT_SPEED} 에 들어앉는다.
+	 *
+	 * <p>위쪽 끝을 4 로 잡은 것은 <b>그것이 바닐라 종착 낙하 속도(3.92칸/틱)보다 크기</b> 때문이다.
+	 * 그 속도로도 안 닿는 높이는 이 판에서 올라갈 수 없는 높이이고, 그때는 4 를 돌려주는 것이
+	 * <b>조용히 1 을 돌려주는 것보다 눈에 띈다.</b>
+	 */
+	static double liftSpeed(double height) {
+		if (!(height > 0.0)) {
+			return 0.0;
+		}
+		double low = 0.0;
+		double high = 4.0;
+		for (int step = 0; step < 60; step++) {
+			double middle = (low + high) / 2.0;
+			if (liftApex(middle) < height) {
+				low = middle;
+			} else {
+				high = middle;
+			}
+		}
+		return high;
+	}
+
+	/**
+	 * 그 처음 세로 속도로 <b>몇 틱 올라가는가.</b> 12틱(0.6초)이다.
+	 *
+	 * <p>{@link #liftApex} 와 같은 식을 세기만 한다. 재는 것은 <b>띄워진 사람이 공중에 있는
+	 * 시간</b>이고, 그 시간이 날개 퍼덕이기의 번치 간격({@value #WING_PULSE_TICKS}틱)보다 길다는
+	 * 것이 「띄운 뒤에 밀릴 수 있다」의 근거다 — 시험이 그 부등호를 붙든다.
+	 */
+	static int liftRiseTicks(double speed) {
+		double velocity = speed;
+		int ticks = 0;
+		while (velocity > 0.0) {
+			ticks++;
+			velocity = (velocity - LIFT_GRAVITY) * LIFT_DRAG;
+		}
+		return ticks;
+	}
+
+	/**
+	 * ⚠⚠ 그 처음 세로 속도로 띄워진 사람이 <b>공중에 있는 시간</b>(틱). <b>25틱(1.25초)</b>이다.
+	 *
+	 * <p>올라갔다가 띄운 자리 높이로 되돌아올 때까지를 센다. 올라가는 12틱보다 내려오는 13틱이 긴
+	 * 것은 세로 감쇠가 {@value #LIFT_DRAG} 뿐이라 떨어지는 속도가 계속 커지되 거리는 천천히 쌓이기
+	 * 때문이다.
+	 *
+	 * <p>⚠ <b>이 수가 이 작업에서 가장 중요한 수다.</b> 날개 퍼덕이기의 번치 간격이
+	 * {@value #WING_PULSE_TICKS}틱이라 <b>띄워진 사람은 공중에서 번치를 두 번 받는다</b> — 곧
+	 * 「내가 만든 상태가 남이 만든 넉백의 입력」이 되는 것이 <b>드문 일이 아니라 거의 언제나</b>다.
+	 * 그때 받는 세기를 바닥과 같게 맞추는 것이 {@link #AIRBORNE_PUSH_SCALE} 이고, 시험이 그
+	 * 부등호를 붙든다.
+	 */
+	static int liftAirborneTicks(double speed) {
+		double velocity = speed;
+		double height = 0.0;
+		int ticks = 0;
+		while (true) {
+			height += velocity;
+			ticks++;
+			velocity = (velocity - LIFT_GRAVITY) * LIFT_DRAG;
+			if (height <= 0.0) {
+				return ticks;
+			}
+			if (ticks > 1200) {
+				// 되돌아오지 않는 속도를 넣었다. 영원히 도는 것보다 눈에 띄는 수를 돌려준다.
+				return ticks;
+			}
 		}
 	}
 
@@ -2588,6 +3118,9 @@ public final class DragonLastStandPatterns {
 	 */
 	static void tickLightning(ServerLevel end, EnderDragon dragon, List<ServerPlayer> members,
 			long beganAt, long now) {
+		// ⚠ 맨 앞이다. 깎아 둔 이동 속도를 걷는 유일한 「시간」 길이고, 볼리가 없는 틱에도 돌아야
+		// 한다 — 아래 어느 분기에서 되돌아가도 1초는 1초여야 한다.
+		expireSlows(now);
 		if (lightningOwner != beganAt) {
 			// 남의 판이거나 첫 틱이다. 진입 무적이 끝나는 자리에서 첫 볼리를 연다 —
 			// DragonLastStand.ENTRY_GRACE_TICKS 는 첫 패턴을 고르는 시각과 같은 값이고,
@@ -2617,7 +3150,7 @@ public final class DragonLastStandPatterns {
 		}
 		// 부등호가 「같다」가 아니라 「지났다」인 것이 요점이다. 틱을 건너뛰어도(렉·시간 정지)
 		// 예고를 보여 준 볼리는 반드시 내리친다.
-		strikeLightning(end, members, lightningSpots);
+		strikeLightning(end, members, lightningSpots, now);
 		lightningStrikeAt = Long.MIN_VALUE;
 		lightningSpots = List.of();
 	}
@@ -2654,9 +3187,13 @@ public final class DragonLastStandPatterns {
 	 * <p>⚠⚠ <b>{@code break} 를 지우지 말 것.</b> 겹침을 허용한 지금 <b>「한 사람은 한 발」을
 	 * 지키는 것이 이 한 줄뿐</b>이고, 3겹 구역은 거의 모든 볼리에 있다(위의 표). 지우면 무장
 	 * 기준 20.79 로 그 자리에서 전멸이다.
+	 *
+	 * <p>⚠ <b>이동 속도 깎기도 그 {@code break} 안쪽이다.</b> 맞는 자리가 겹쳐도 깎는 것은 한 번이고,
+	 * {@link #slowStruck} 이 어차피 <b>붙이기 전에 걷어내므로</b> 두 겹이 되지 않는다 —
+	 * 안전장치가 둘이 된 것이지 {@code break} 를 대신하는 것이 아니다.
 	 */
 	private static void strikeLightning(ServerLevel end, List<ServerPlayer> members,
-			List<Vec3> spots) {
+			List<Vec3> spots, long now) {
 		for (Vec3 spot : spots) {
 			bolt(end, spot);
 		}
@@ -2670,10 +3207,128 @@ public final class DragonLastStandPatterns {
 				}
 				member.hurtServer(end, end.damageSources().lightningBolt(),
 						DragonLastStand.LIGHTNING_DAMAGE);
+				// 사람이 정한 것 — 「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」.
+				// 맞은 그 사람에게만이고, 상태이상이 아니라 이동 속도를 직접 깎는다.
+				slowStruck(end, member, now);
 				// ⚠ 한 사람은 한 발이다. 겹침을 허용했으므로 이 줄이 유일한 안전장치다 —
 				// 세 겹 자리에 서 있으면 20.79 로 전멸이고, 그런 자리는 거의 매 볼리에 있다.
 				break;
 			}
+		}
+	}
+
+	/**
+	 * ⚠⚠ 맞은 <b>그 사람 하나</b>의 이동 속도를 구속 III 급으로 깎는다. <b>상태이상이 아니다.</b>
+	 *
+	 * <p>사람 말: <b>「그 플레이어만 구속을 구속3급으로 이속을 감소시키는쪽으로가면 되지않나?
+	 * 버프효과로 주는게 아니라」</b>. 왜 {@code MobEffects.SLOWNESS} 로는 「그 사람만」이 안 되는지와
+	 * 왜 수정자 이름을 바닐라와 달리 두는지는 {@link #LIGHTNING_SLOW_MODIFIER_ID} 에 적어 두었다.
+	 *
+	 * <h2>⚠ 두 겹으로 쌓이지 않는다 — <b>걷어내기가 먼저다</b></h2>
+	 *
+	 * <p>{@code removeModifier} 를 먼저 부르는 것이 그것이다. 26.3
+	 * {@code AttributeInstance.addTransientModifier} 는 같은 이름이 이미 있으면
+	 * <b>{@code IllegalArgumentException} 을 던지고</b>(바이트코드의 {@code putIfAbsent} +
+	 * {@code "Modifier is already applied on this attribute!"}), 이름을 달리해 두 벌을 걸면
+	 * {@code ADD_MULTIPLIED_TOTAL} 이 <b>곱으로</b> 쌓여 {@code 0.55 × 0.55 = 0.3025} 가 된다 —
+	 * 곧 <b>구속 6급</b>이다. 7.8초 주기에 1초 깎기라 겹칠 일이 드물어 보이지만 볼리가 늦게
+	 * 내리치는 길이 있고({@code now ≥ lightningStrikeAt}), 무엇보다 <b>드물게 일어나는 것이 가장
+	 * 늦게 발견된다.</b> {@code SneakSpeedEffect} 가 같은 순서를 같은 까닭으로 쓴다.
+	 *
+	 * <h2>⚠ {@code addTransientModifier} 다 — <b>저장되지 않는다</b></h2>
+	 *
+	 * <p>{@code addPermanentModifier} 로 걸면 <b>사람 파일에 들어가</b> 서버를 껐다 켜도 느린 사람이
+	 * 남고, 그것은 우리 코드가 한 줄도 돌지 않는 판에서도 남는다. {@code transient} 는 메모리에만
+	 * 있으므로 <b>접속을 끊거나 서버가 내려가는 것만으로 사라진다</b> — 걷어내는 자리 둘
+	 * ({@link #expireSlows}·{@link #releaseSlows})은 <b>살아 있는 판</b>을 위한 것이다.
+	 *
+	 * <h2>되먹임 — 아이콘이 없으므로</h2>
+	 *
+	 * <p>{@link #LIGHTNING_SLOW_MARK_POINTS} 에 왜 「엔더 파동」과 같은 그림인지, 왜 24 가 아니라
+	 * 12 인지, 왜 소리를 더하지 않았는지 적어 두었다.
+	 */
+	private static void slowStruck(ServerLevel end, ServerPlayer member, long now) {
+		AttributeInstance speed = member.getAttribute(Attributes.MOVEMENT_SPEED);
+		if (speed == null) {
+			return;
+		}
+		// ⚠ 걷어내기가 먼저다. 이 한 줄이 「두 겹으로 쌓이지 않는다」의 전부이고, 없으면
+		// addTransientModifier 가 같은 이름에 예외를 던진다.
+		speed.removeModifier(LIGHTNING_SLOW_MODIFIER_ID);
+		speed.addTransientModifier(new AttributeModifier(LIGHTNING_SLOW_MODIFIER_ID,
+				LIGHTNING_SLOW_AMOUNT, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+		SLOWED.put(member.getUUID(), new Slow(member, now + LIGHTNING_SLOW_TICKS));
+		// 「엔더 파동」이 발을 묶을 때 쓰는 그림과 같다 — 사람이 이미 배운 신호다. 긴 형식이라
+		// 아레나 반대편의 팀원도 「저 사람이 묶였다」를 본다.
+		end.sendParticles(ParticleTypes.PORTAL, true, false,
+				member.getX(), member.getY() + 0.1, member.getZ(),
+				LIGHTNING_SLOW_MARK_POINTS, 0.35, 0.05, 0.35, 0.0);
+	}
+
+	/**
+	 * ⚠⚠ 1초가 지난 사람에게서 깎기를 걷는다. <b>{@link #tickLightning} 이 매 틱 부른다.</b>
+	 *
+	 * <p>이 메서드가 「{@value #LIGHTNING_SLOW_TICKS}틱 뒤에 반드시 걷힌다」의 전부다. 상태이상이
+	 * 아니므로 바닐라가 세어 주지 않는다 — <b>빠뜨리면 영구히 느린 사람이 남는다.</b>
+	 *
+	 * <p>걷는 조건이 셋이고, 뒤의 둘은 <b>표에 적힌 시각을 믿을 수 없는 경우</b>를 위한 것이다.
+	 *
+	 * <ol>
+	 *   <li>{@code now} 가 걷을 시각에 닿았다 — 보통의 길이다</li>
+	 *   <li>⚠ <b>그 사람이 월드에서 사라졌다</b>({@code isRemoved()}). 접속을 끊거나 죽어서 새
+	 *       개체로 돌아온 경우다. 수정자는 {@code transient} 라 그 사람과 함께 이미 사라졌으므로
+	 *       여기서 할 일은 <b>표에서 지워 참조를 놓는 것</b>뿐이다</li>
+	 *   <li>⚠ <b>걷을 시각이 턱없이 멀다</b>({@code until − now >} 깎는 시간). 이 페이즈는 시계를
+	 *       {@code clockBase} 로 미루고 판이 얼 수도 있어 <b>{@code now} 가 뒤로 갈 수 있다</b> —
+	 *       그러면 영영 오지 않는 시각을 기다리게 된다. 되감겼다는 것이 드러나는 유일한 표시가
+	 *       이 부등호다</li>
+	 * </ol>
+	 */
+	private static void expireSlows(long now) {
+		if (SLOWED.isEmpty()) {
+			return;
+		}
+		Iterator<Slow> each = SLOWED.values().iterator();
+		while (each.hasNext()) {
+			Slow slow = each.next();
+			boolean due = now >= slow.until() || slow.until() - now > LIGHTNING_SLOW_TICKS;
+			if (!due && !slow.player().isRemoved()) {
+				continue;
+			}
+			unslow(slow.player());
+			each.remove();
+		}
+	}
+
+	/**
+	 * ⚠⚠ 깎여 있는 <b>모든</b> 사람에게서 걷는다. {@link #clearState} 가 부른다.
+	 *
+	 * <p>{@link #expireSlows} 가 「시간이 다했으니」 걷는 쪽이고 이쪽은 <b>「판이 끝났으니」</b>
+	 * 걷는 쪽이다. 둘 다 있어야 하는 까닭은 <b>드래곤이 깎인 1초 안에 죽을 수 있기</b> 때문이다 —
+	 * 그러면 {@link #tickLightning} 이 다시 불리지 않아 시간 쪽이 영영 안 돈다.
+	 *
+	 * <p>⚠ <b>월드도 서버도 만지지 않는다.</b> 속성 수정자를 걷는 것은 그 사람의 속성 표를 만지는
+	 * 것뿐이라, {@code SERVER_STOPPED} 에서 불려도 할 수 있다 — {@link #SLOWED} 가 UUID 가 아니라
+	 * 개체를 들고 있는 유일한 이유가 그것이다.
+	 */
+	private static void releaseSlows() {
+		for (Slow slow : SLOWED.values()) {
+			unslow(slow.player());
+		}
+		SLOWED.clear();
+	}
+
+	/**
+	 * 한 사람에게서 깎기를 걷는다. <b>이름으로 걷으므로 몇 번 불러도 같다.</b>
+	 *
+	 * <p>속성이 없을 수가 있는 것은 아니지만({@code Player.createAttributes} 에 이동 속도가 있다)
+	 * {@code getAttribute} 가 {@code Nullable} 이라 보고 지난다 — 여기서 터지면 걷어내기가 통째로
+	 * 멈춰 <b>영구히 느린 사람</b>이 남는다.
+	 */
+	private static void unslow(ServerPlayer player) {
+		AttributeInstance speed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+		if (speed != null) {
+			speed.removeModifier(LIGHTNING_SLOW_MODIFIER_ID);
 		}
 	}
 
@@ -2862,7 +3517,22 @@ public final class DragonLastStandPatterns {
 	 * 시작하므로({@link #crossPendingRound} 의 경고) 갈라짐 연출과 새 표식이 같은 틱이다.
 	 */
 	static int crossPoints() {
-		return Math.max(crossWarnPoints(), crossFlashPoints() + crossWarnPoints());
+		return Math.max(crossWarnPoints(),
+				crossFlashPoints() + crossLiftPoints() + crossWarnPoints());
+	}
+
+	/**
+	 * 띄워진 사람마다 발밑에 서는 기둥({@link #liftCross}). <b>사람당 한 점</b>이다.
+	 *
+	 * <p>개수를 0 으로 보내 속도로 읽히게 하는 길이라 기둥 하나가 점 하나다 — 그래서 넷이 다 맞아도
+	 * {@value #BUDGET_MEMBERS} 점이다. 날개 퍼덕이기가 밀린 사람마다 돌풍 하나를 쓰는 것과
+	 * <b>같은 셈</b>이다({@link #wingBeatPoints}).
+	 *
+	 * <p>⚠ 터지는 틱에만 나간다. 그 틱이 이미 이 페이즈의 가장 바쁜 틱이므로 <b>이 넷이 그대로
+	 * 최악에 더해진다</b> — 시험이 그 수를 못박는다.
+	 */
+	static int crossLiftPoints() {
+		return BUDGET_MEMBERS;
 	}
 
 	/**
@@ -2899,12 +3569,32 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 상시 번개 — 노랑 고리 열 개를 <b>여섯 틱에 나눠</b> 그린 한 틱 몫.
+	 * 상시 번개 — <b>예고 틱과 내리치는 틱 가운데 바쁜 쪽.</b>
 	 *
-	 * <p>내리치는 틱에는 표식이 없고 번개 엔티티뿐이라 0 이다. 여기서 세는 것은 <b>예고 틱</b>이고
-	 * 예고가 60틱이라 그것이 사실상 언제나다.
+	 * <p>⚠ <b>예전에는 예고 틱만 셌다.</b> 「내리치는 틱에는 표식이 없고 번개 엔티티뿐이라 0 이다」가
+	 * 그 근거였는데, 번개가 <b>맞은 사람 발밑에 점을 뿌리게</b> 되면서({@link #slowStruck}) 그 말이
+	 * 거짓이 됐다. 내리치는 틱이 더 바빠지는 날 <b>이 식이 조용히 틀린 답을 주면</b> 예산을 넘긴
+	 * 것을 아무도 모른다.
+	 *
+	 * <p>지금은 예고 {@code 70} 대 내리침 {@code 48} 이라 답이 안 바뀐다 —
+	 * {@link #LIGHTNING_SLOW_MARK_POINTS} 가 그 여유를 수로 적어 두었다.
 	 */
 	static int lightningPoints() {
+		return Math.max(lightningWarnPoints(), lightningStrikePoints());
+	}
+
+	/** 예고 틱 — 노랑 고리 열 개를 <b>여섯 틱에 나눠</b> 그린 한 틱 몫. 예고가 60틱이라 거의 언제나다. */
+	static int lightningWarnPoints() {
 		return LIGHTNING_COUNT * TrialWarning.strokePoints(LIGHTNING_RADIUS, LIGHTNING_MARK_STRIDE);
+	}
+
+	/**
+	 * 내리치는 틱 — <b>바닥 표식이 없고</b> 맞은 사람마다의 발밑 입자뿐이다.
+	 *
+	 * <p>번개 엔티티는 클라이언트가 스스로 그리므로 점을 쓰지 않는다. 여기서 세는 것은 이동 속도를
+	 * 깎였다는 신호 하나이고({@link #LIGHTNING_SLOW_MARK_POINTS}), 최악은 <b>넷이 다 맞은</b> 경우다.
+	 */
+	static int lightningStrikePoints() {
+		return BUDGET_MEMBERS * LIGHTNING_SLOW_MARK_POINTS;
 	}
 }

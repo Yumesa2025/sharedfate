@@ -692,9 +692,24 @@ public final class TrialEnderStorm {
 	 * <p>속도를 <b>더하지 않고 덮어쓴다</b>({@code setDeltaMovement}). 더하면 이미 들고 있던
 	 * 수평 속도가 얹혀 천장이 계산한 목적지를 넘는다.
 	 *
-	 * <p>세로 속도는 읽어서 그대로 돌려놓는다. 띄우면 낙하 피해가 붙고, 공중에서는 바닥 마찰이
+	 * <p>세로 속도는 <b>올리는 쪽만 자르고</b> 그 밖에는 읽은 그대로 돌려놓는다
+	 * ({@link TrialVelocity#syncedVertical}). 띄우면 낙하 피해가 붙고, 공중에서는 바닥 마찰이
 	 * 안 먹어 적힌 거리를 끝까지 날아간다 — 그때 천장을 지키는 것이
 	 * {@link #pushDistance} 뿐이므로 여기서 한 칸도 띄우지 않는다.
+	 *
+	 * <p>⚠⚠ <b>「읽은 그대로」가 2026-10-04 에 사고가 됐다 — 세로는 우리가 쓴 값이 아니다.</b>
+	 * 바닐라 {@code EnderDragon.knockBack} 이 날개 상자 안의 사람에게 <b>매 틱 세로 +0.2</b> 를
+	 * 쌓는데({@code isSitting()} 조건은 <u>피해</u>에만 붙어 있다) 바닐라는 그 값을 <b>본인에게 안
+	 * 보낸다</b>. 그래서 서버 혼자 쌓는 숫자인데, 바로 아래 {@code syncVelocity} 가
+	 * <b>{@code getDeltaMovement()} 통째로</b>를 본인에게 내려보낸다 — 사람 말로
+	 * <b>「드래곤 밀치는 패턴떄 점프하면 하늘로 날라가버림」</b>이다. 착지는 드래곤을 포디움에
+	 * 160틱 붙박아 두므로 그 창에서 이 카드가 터지면 <b>5.648칸/틱(도달 109칸)</b>이 그대로
+	 * 내려간다. 수평은 <b>덮어쓰므로</b> 같은 오염이 그 자리에서 사라진다 — 세로만 샜다.
+	 *
+	 * <p>⚠ 그래서 여기서 고친 것은 <b>내려보내는 값을 자르는 것</b>뿐이고 바닐라 넉백은 한 줄도
+	 * 건드리지 않는다. {@code EnderDragonContactDamageMixin} 의 {@code knockBack} 차단은
+	 * <b>최후의 저항 전용</b>이라 이 카드가 도는 페이즈에는 닿지 않고, 그 차단을 여기까지 넓히면
+	 * 「끄면 완전한 바닐라 엔더드래곤전」의 경계를 한 칸 더 움직이는 일이 된다.
 	 *
 	 * <p>{@code syncVelocity} 를 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 클라이언트가 보고한
 	 * 제자리로 되돌아간다({@code TrialRisks.launch} 와 같은 이유).
@@ -710,7 +725,12 @@ public final class TrialEnderStorm {
 		}
 		double speed = pushVelocity(distance);
 		Vec3 motion = member.getDeltaMovement();
-		member.setDeltaMovement(away.x * speed, motion.y, away.z * speed);
+		// 수평은 덮어쓴다. ⚠ 세로는 「읽은 그대로」가 아니라 TrialVelocity.syncedVertical 을
+		// 지난다 — 바닐라 드래곤이 매 틱 +0.2 를 쌓아 두고 그것을 그대로 배달하면 사람이 하늘로
+		// 간다. 스스로 뛴 사람·떨어지는 사람은 비트 단위로 안 달라진다.
+		member.setDeltaMovement(away.x * speed,
+				TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
+				away.z * speed);
 		member.syncVelocity = true;
 		return true;
 	}

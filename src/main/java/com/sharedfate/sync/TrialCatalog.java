@@ -345,13 +345,23 @@ public final class TrialCatalog {
 		 *
 		 * @param arrowImmune  참이면 크리스탈이 투사체에 맞지 않는다. 올라가서 깨야 한다
 		 * @param restoreCage  참이면 모든 크리스탈에 쇠창살이 다시 생긴다. 없던 탑에도 생긴다
-		 * @param digSlowdown  참이면 팀 전원의 <b>채굴 속도가 15% 깎인다</b>
+		 * @param digSlowdown  참이면 팀 전원의 <b>채굴 속도가 깎인다</b>
 		 *                     ({@code TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER}).
-		 *                     ⚠ <b>채굴 피로 상태이상이 아니다.</b> 예전에는 채굴 피로 I 을 걸었는데
-		 *                     그것은 바닐라에서 {@code 0.3^(등급+1)} 이라 <b>70% 감소</b>이고, 사람이
-		 *                     플레이해 보고 <b>「무딘곡괭이 이거 채굴피로1은 심하고 채굴 속도
-		 *                     15프로감소로」</b>라고 정했다. 15% 를 내는 바닐라 상태이상이 없어
-		 *                     {@code Player.getDestroySpeed} 에 직접 곱한다
+		 *                     <p>⚠⚠ <b>2026-10-01 현재 이것을 참으로 적은 카드가 하나도 없다.</b>
+		 *                     걸어 둔 길은 그대로 살아 있으니 켜고 싶으면 카드에 {@code true} 를
+		 *                     적으면 된다. 세 걸음을 밟아 여기까지 왔다.
+		 *                     <ol>
+		 *                       <li><b>채굴 피로 I</b> 이었다. 그것은 바닐라에서
+		 *                           {@code 0.3^(등급+1)} 이라 등급 0 에서도 <b>70% 감소</b>다</li>
+		 *                       <li>사람이 플레이해 보고 <b>「무딘곡괭이 이거 채굴피로1은 심하고
+		 *                           채굴 속도 15프로감소로」</b>라고 해서, 15% 를 내는 바닐라
+		 *                           상태이상이 없으므로 {@code Player.getDestroySpeed} 에
+		 *                           <b>직접 0.85 를 곱하는</b> 쪽으로 옮겼다</li>
+		 *                       <li><b>2026-10-01 — 사람이 그 15% 마저 통째로 걷으라고 했다.</b>
+		 *                           「무딘곡괭이는 채굴감소 없앳으니 이름 변경해」. 그래서
+		 *                           {@code sharedfate:iron_cage} 가 이것을 {@code false} 로 적고
+		 *                           이름이 「다시 선 쇠창살」이 되었다</li>
+		 *                     </ol>
 		 */
 		record CrystalGuard(boolean arrowImmune, boolean restoreCage, boolean digSlowdown)
 				implements Risk {
@@ -703,21 +713,29 @@ public final class TrialCatalog {
 					"남은 크리스탈이 화살에 맞지 않습니다. 올라가서 깨야 합니다.",
 					POOL_FIRST_CRYSTAL,
 					new Risk.CrystalGuard(true, false, false)),
-			new Trial("sharedfate:iron_cage", "쇠창살과 무딘 곡괭이",
-					"모든 크리스탈에 쇠창살이 다시 생기고 팀 전원의 채굴 속도가 15% 느려집니다.",
+			new Trial("sharedfate:iron_cage", "다시 선 쇠창살",
+					"모든 크리스탈에 쇠창살이 다시 생깁니다. 없던 탑에도 생깁니다.",
 					POOL_FIRST_CRYSTAL,
-					// 「채굴 피로에 걸립니다」였다. 사람이 플레이해 보고 「무딘곡괭이 이거
-					// 채굴피로1은 심하고 채굴 속도 15프로감소로」라고 해서 바꿨다.
+					// ⚠⚠ 이 카드는 효과가 하나뿐이다. 빠뜨린 것이 아니라 사람이 알고 고른
+					// 것이다 — 세 걸음을 밟았다.
 					//
-					// 채굴 피로 I 은 바닐라에서 0.3^(등급+1) 이라 등급 0 에서도 채굴 속도를
-					// 70% 깎는다(26.3 Player.getDestroySpeed 의 바이트코드에서 읽었다).
-					// 15% 는 그 4분의 1도 안 되는 값이고, 그런 배율을 내는 바닐라 상태이상은
-					// 없다 — 그래서 실행기가 getDestroySpeed 의 결과에 0.85 를 직접 곱한다.
-					// 값과 그 길은 TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER 에 있다.
+					// ① 「채굴 피로에 걸립니다」였다. 채굴 피로 I 은 바닐라에서 0.3^(등급+1)
+					//    이라 등급 0 에서도 채굴 속도를 70% 깎는다(26.3
+					//    Player.getDestroySpeed 의 바이트코드에서 읽었다).
+					// ② 사람이 플레이해 보고 「무딘곡괭이 이거 채굴피로1은 심하고 채굴 속도
+					//    15프로감소로」라고 해서, 15% 를 내는 바닐라 상태이상이 없으므로
+					//    getDestroySpeed 의 결과에 0.85 를 직접 곱하는 쪽으로 옮겼다.
+					// ③ 2026-10-01 — 사람이 「무딘곡괭이는 채굴감소 없앳으니 이름 변경해」라고
+					//    해서 그 15% 를 통째로 걷었다. 효과가 둘에서 하나로 줄었고, 이름도
+					//    「쇠창살과 무딘 곡괭이」에서 남은 효과만 말하는 「다시 선 쇠창살」로
+					//    바꿨다. id 는 바꾸지 않았다 — 저장된 상태·명령 자동완성·월드 파일이
+					//    sharedfate:iron_cage 를 들고 있다.
 					//
-					// ⚠ 상태이상이 아니게 되었으므로 화면에 아이콘이 뜨지 않는다. 카드 이름과
-					// 이 설명이 「곡괭이가 무뎌졌다」를 말하는 유일한 자리다.
-					new Risk.CrystalGuard(false, true, true)),
+					// ⚠ 깎는 길(TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER)은 지우지 않고
+					// 그대로 두었다. 되살리려면 셋째 값을 true 로 적으면 된다. 지우지 않은
+					// 까닭은 그 길의 믹스인 자리를 mining_speed 증강이 함께 쓰기 때문이다 —
+					// 한쪽을 걷으려다 둘 다 걷으면 증강이 죽는다.
+					new Risk.CrystalGuard(false, true, false)),
 			new Trial("sharedfate:dragon_mark", "표적",
 					"크리스탈을 깬 사람이 10초 동안 표적이 되고 드래곤이 구체를 5발 날립니다. 그다음 20초는 쉽니다.",
 					POOL_FIRST_CRYSTAL,

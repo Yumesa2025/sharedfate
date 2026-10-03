@@ -44,6 +44,16 @@ class TrialRisksTest {
 	/** 「자리 폭격」의 주기. 실제 카드 값과 같게 둬야 시험이 현실과 붙어 있다. */
 	private static final int INTERVAL = 240;
 	private static final long GRANTED = 1000L;
+	/**
+	 * ⚠ 26.3 {@code LivingEntity.aiStep} 이 <b>사람의</b> 서버쪽 수평을 정확히 {@code 0.0} 으로
+	 * 눌러 버리는 문턱({@code horizontalDistanceSqr} 기준, = 0.003칸/틱의 제곱).
+	 *
+	 * <p>{@code is(EntityTypes.PLAYER)} 갈래만 이렇게 <b>x 와 z 를 함께</b> 누르고, 사람이 아닌
+	 * 것은 축마다 따로 {@code |v| < 0.003} 을 묻는다. 바이트코드에서 확인했다. 바닐라 쪽 수라
+	 * 우리 코드에서 읽어 올 자리가 없어 시험에만 적는다 — {@link #정상_플레이어는_비트_단위로_달라지지_않는다}
+	 * 가 쓰는 유일한 자리다.
+	 */
+	private static final double SERVER_HORIZONTAL_SNAP_SQR = 9.0E-6;
 
 	// ------------------------------------------------------------------ 위상
 
@@ -271,6 +281,205 @@ class TrialRisksTest {
 		assertEquals(0, TrialRisks.fallGraceTicks(0.0),
 				"「낙뢰」는 띄우지 않는다. 여기서 면제가 붙으면 스스로 뛰어내린 낙사까지 사라진다");
 		assertEquals(0, TrialRisks.fallGraceTicks(-3.0));
+	}
+
+	// ------------------------------- ⚠⚠ 쌓인 수평을 배달하지 않는다 (2026-10-04)
+
+	/**
+	 * ⚠⚠ <b>서버 혼자 쌓아 둔 수평을 본인에게 배달하지 않는다.</b>
+	 *
+	 * <h2>고치기 전에 무슨 줄이었나</h2>
+	 *
+	 * <p>{@code launch} 가 {@code setDeltaMovement(motion.x, launchVelocity(height), motion.z)}
+	 * 였다. 세로는 덮어쓰면서 <b>수평은 {@code getDeltaMovement()} 에서 읽어 그대로 돌려놓았고</b>,
+	 * 바로 다음 줄의 {@code syncVelocity} 가 <b>그 순간의 {@code getDeltaMovement()} 통째로</b>를
+	 * 본인에게 내려보낸다({@code ClientboundSetEntityMotionPacket}). 사람 말로
+	 * <b>「드래곤 밀치는 패턴떄 점프하면 하늘로 날라가버림」</b>의 수평 쪽이다.
+	 *
+	 * <p>쌓는 쪽은 바닐라 {@code EnderDragon.knockBack} 이다. 26.3 바이트코드에서 확인한 식이
+	 * {@code dx ÷ max(dx²+dz², 0.1) × 4} 라 분모가 {@code 0.1} 에서 멈추고, 그래서 한 틱
+	 * 최댓값이 <b>{@code √0.1} 칸에서 12.649칸/틱</b>이다. ⚠ {@code isSitting()} 조건은
+	 * <b>피해에만</b> 붙어 있어 미는 것은 조건 없이 매 틱 돈다.
+	 *
+	 * <h2>⚠ 이 시험이 무엇으로 빨개지는가</h2>
+	 *
+	 * <p><b>{@code TrialRisks} 가 {@code getDeltaMovement} 를 더 이상 부르지 않는다</b>는 것이
+	 * 이 시험의 중심이다. 그 이름이 쓰이던 자리는 저장소 전체에서 {@code launch} 한 군데뿐이라
+	 * (고치기 전 658줄), <b>상수 풀에 있다 = 들고 있던 값을 읽는다</b>가 성립한다. 고치기 전에는
+	 * 이 줄에서 멈췄다.
+	 *
+	 * <p>값 쪽은 {@link TrialRisks#launchMotion} 이 받는다 — {@code ServerPlayer} 를 띄우지 않고도
+	 * 「배달되는 값」을 물을 수 있게 떼어 둔 자리다.
+	 */
+	@Test
+	void 쌓인_수평을_배달하지_않는다() {
+		assertFalse(references(classBytes(TrialRisks.class), "getDeltaMovement"),
+				"TrialRisks 가 들고 있던 속도를 읽는다 — 읽어서 돌려놓으면 바로 다음 줄의"
+						+ " syncVelocity 가 그것을 본인에게 배달한다. 이 카드는 수평을 일부러"
+						+ " 싣지 않으므로 읽을 이유가 없다");
+
+		Vec3 sent = TrialRisks.launchMotion(4.0);
+		assertEquals(0.0, sent.x, 0.0, "내려보내는 수평 x 가 0 이 아니다");
+		assertEquals(0.0, sent.z, 0.0, "내려보내는 수평 z 가 0 이 아니다");
+
+		// 고치기 전에 그 자리로 내려가던 수. 26.3 knockBack 은 max(dx²+dz², 0.1) 로 나눈다.
+		double impulse = 4.0 / Math.sqrt(0.1);
+		assertEquals(12.649, impulse, 0.001, "바닐라가 한 틱에 더하는 수평이 12.65칸/틱이다");
+		double grounded = impulse * DragonLastStandPatterns.GROUND_DRAG
+				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
+		double airborne = impulse * TrialEnderStorm.AIR_DRAG / (1.0 - TrialEnderStorm.AIR_DRAG);
+		assertEquals(15.21, grounded, 0.01, "바닥 종착 속도가 15.2칸/틱이다");
+		assertEquals(127.9, airborne, 0.1, "공중 종착 속도가 127.9칸/틱이다");
+		assertTrue(airborne > TrialRisks.ARENA_RADIUS,
+				"이 수가 섬 반경보다 작으면 위 설명을 고칠 것 — 한 틱에 섬을 넘는 세기여야 한다");
+	}
+
+	/**
+	 * ⚠⚠ <b>정상 플레이어는 비트 단위로 달라지지 않는다.</b>
+	 *
+	 * <h2>왜 「0 으로 덮어쓰기」가 걷는 사람을 세우지 않는가</h2>
+	 *
+	 * <p>26.3 {@code LivingEntity.aiStep} 이 <b>사람에게만 따로 묻는 갈래</b>를 들고 있다 —
+	 * {@code is(EntityTypes.PLAYER)} 이면 {@code horizontalDistanceSqr() < 9.0E-6}
+	 * (= 0.003칸/틱) 일 때 <b>x 와 z 를 둘 다 정확히 {@code 0.0} 으로</b> 눌러 둔다(바이트코드에서
+	 * 확인했다). 게다가 {@code ServerPlayer} 는 {@code xxa}·{@code zza} 를 한 번도 쓰지 않고
+	 * {@code ServerGamePacketListenerImpl} 은 {@code setDeltaMovement} 를 한 번도 부르지 않는다 —
+	 * <b>사람의 걸음·달리기·점프는 서버쪽 {@code getDeltaMovement()} 에 들어오지 않는다.</b>
+	 *
+	 * <p>그래서 <b>아무도 밀지 않은 사람의 서버쪽 수평은 정확히 {@code 0.0}</b> 이고, 고치기 전
+	 * 줄이 그 사람에게 실어 보내던 값도 {@code 0.0} 이었다. 곧 이 덮어쓰기가 바꾸는 값은
+	 * <b>남이 밀어 넣은 것뿐</b>이다.
+	 *
+	 * <p>⚠ 세로는 이 시험이 보는 것이 아니다 — {@code launch} 는 처음부터 세로를 덮어썼고
+	 * ({@code launchVelocity}) 그래서 {@link TrialVelocity#syncedVertical} 을 지나지 않는다.
+	 */
+	@Test
+	void 정상_플레이어는_비트_단위로_달라지지_않는다() {
+		// 서버쪽 수평이 혼자 사그라지는 과정. 입력이 0 이라 마찰만 남고, 0.003 아래에서 바닐라가
+		// 정확히 0.0 으로 눌러 둔다. 달리던 종착 속도에서 출발해도 여덟 틱이면 끝난다.
+		double sprint = DragonLastStandPatterns.WALK_INPUT
+				* DragonLastStandPatterns.SPRINT_MULTIPLIER
+				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
+		assertEquals(0.286, sprint, 0.001, "달리기 종착 속도가 달라졌으면 아래 틱 수도 볼 것");
+		double carried = sprint;
+		int ticks = 0;
+		while (carried != 0.0) {
+			if (carried * carried < SERVER_HORIZONTAL_SNAP_SQR) {
+				// 26.3 aiStep: 사람이면 horizontalDistanceSqr 하나로 x·z 를 함께 0 으로 만든다.
+				carried = 0.0;
+				break;
+			}
+			carried *= DragonLastStandPatterns.GROUND_DRAG;
+			ticks++;
+		}
+		assertEquals(0.0, carried, 0.0, "서버쪽 수평이 정확히 0.0 이 되지 않는다");
+		assertEquals(8, ticks, "마지막으로 밀린 뒤 여덟 틱이면 서버쪽 수평이 정확히 0.0 이다");
+
+		// 그 사람에게 고치기 전 줄과 고친 줄이 같은 비트를 보낸다.
+		Vec3 clean = new Vec3(carried, 1.234, carried);
+		Vec3 before = 고치기_전에_내려보내던_값(clean, 4.0);
+		Vec3 after = TrialRisks.launchMotion(4.0);
+		assertEquals(before.x, after.x, 0.0, "가만히 선 사람·걷는 사람·달리는 사람의 수평 x 가 달라졌다");
+		assertEquals(before.z, after.z, 0.0, "가만히 선 사람·걷는 사람·달리는 사람의 수평 z 가 달라졌다");
+		assertEquals(before.y, after.y, 0.0, "세로는 처음부터 덮어쓰던 자리다 — 달라질 수 없다");
+
+		// 그리고 남이 밀어 넣은 사람에게는 반드시 달라야 한다. 안 달라지면 이 시험이
+		// 「아무것도 안 고쳤다」를 통과시키는 시험이 된다.
+		Vec3 pushed = new Vec3(4.0 / Math.sqrt(0.1), 1.234, 4.0 / Math.sqrt(0.1));
+		assertNotEquals(고치기_전에_내려보내던_값(pushed, 4.0).x, after.x,
+				"남이 쌓아 둔 수평이 그대로 나간다");
+	}
+
+	/**
+	 * ⚠⚠ <b>쌓인 수평 12.649 를 안고 띄워져도 섬을 벗어나지 않는다.</b>
+	 *
+	 * <p>엔드 섬 밖은 허공이고 공유 체력이라 <b>한 사람의 낙사가 팀 전멸이고 그것이 회차 끝이자
+	 * 월드 삭제</b>다. 그러니 이것은 「값이 맞는가」가 아니라 <b>「일어날 수 있는가」</b>를 묻는
+	 * 시험이고 답이 「없다」여야 한다.
+	 *
+	 * <h2>⚠ 이 카드에는 수평 천장이 아예 없다</h2>
+	 *
+	 * <p>「엔더폭풍」의 {@code TrialEnderStorm.pushDistance} 나 「착지 충격」의
+	 * {@code TrialLandingShock.groundedReach} 같은 것이 <b>없다</b> — 세로만 띄우는 설계라 수평을
+	 * 잴 이유가 없었다. 그래서 배달된 수평에는 아무 천장도 안 걸렸다. <b>0 이 그 천장을 대신
+	 * 한다</b>: 내려보내는 수평이 0 이면 띄워진 사람이 지나는 칸이 하나뿐이라 섬 모양을 훑을
+	 * 필요가 없다.
+	 *
+	 * <p>⚠ {@code DragonLastStandPatternsTest} 의 {@code 밀려도_섬을_벗어나지_않는다} 를 쓰지
+	 * 않는다. 그 도우미는 <b>날개 번치가 미는 길</b>을 천장 둘로 재는 것이라 미는 방향과 거리가
+	 * 있어야 돌아가는데, 이 카드는 미는 것이 아니고 <b>수평 이동이 0</b> 이라 잴 길이 없다.
+	 * 억지로 끼우면 「0 을 36방향으로 굴려 보는」 시험이 된다.
+	 */
+	@Test
+	void 쌓인_수평을_안고_띄워져도_섬을_벗어나지_않는다() {
+		Vec3 sent = TrialRisks.launchMotion(4.0);
+		// ⚠ 이 한 줄을 일부러 두 시험에 겹쳐 둔다. 「내려보내는 값이 0 이다」만 물으면 실제
+		// setDeltaMovement 가 아직 들고 있던 값을 읽고 있어도 초록이 되고, 그러면 이 시험의
+		// 주장(「섬을 벗어나지 않는다」)이 거짓인 채로 통과한다.
+		assertFalse(references(classBytes(TrialRisks.class), "getDeltaMovement"),
+				"내려보내는 값이 0 이어도 실행기가 들고 있던 속도를 읽으면 배달되는 것은 그쪽이다");
+
+		// 띄워진 사람은 공중이라 감쇠가 0.91 이다. 그 속도로 끝까지 나아가는 거리를
+		// DragonLastStandPatterns 의 식으로 잰다 — 시험이 제 식을 따로 들면 두 벌이 된다.
+		assertEquals(0.0, DragonLastStandPatterns.airborneTravel(Math.hypot(sent.x, sent.z)), 0.0,
+				"띄워진 사람이 수평으로 한 칸이라도 나아가면 이 카드에 천장이 필요해진다");
+
+		// 고치기 전에 나아가던 거리. 섬 반경 40 과 나란히 적어 둔다.
+		double impulse = 4.0 / Math.sqrt(0.1);
+		double airborne = impulse * TrialEnderStorm.AIR_DRAG / (1.0 - TrialEnderStorm.AIR_DRAG);
+		assertTrue(DragonLastStandPatterns.airborneTravel(impulse) > TrialRisks.ARENA_RADIUS,
+				"한 틱치만 안고 있어도 섬을 넘었다는 것이 이 시험의 전제다");
+		assertTrue(DragonLastStandPatterns.airborneTravel(airborne) > TrialRisks.ARENA_RADIUS * 10.0,
+				"종착 속도를 안고 있으면 섬 반경의 열 배를 넘었다");
+
+		// 실제로 떠 있는 시간만 세어도 섬을 넘는다. launchVelocity(4) = 0.8 이라 올라갔다
+		// 내려오는 데 20틱이고, 그동안 수평 감쇠가 바닥 0.546 이 아니라 공중 0.91 이다.
+		int flight = (int) Math.round(2.0 * TrialRisks.launchVelocity(4.0) / 0.08);
+		assertEquals(20, flight, "띄워져 있는 시간이 달라졌으면 아래 거리도 다시 셀 것");
+		double travel = 0.0;
+		double speed = impulse;
+		for (int tick = 0; tick < flight; tick++) {
+			travel += speed;
+			speed *= TrialEnderStorm.AIR_DRAG;
+		}
+		assertEquals(119.2, travel, 0.1,
+				"고치기 전에 한 틱치를 안고 띄워진 사람이 나아가던 거리다 — 섬 반경의 세 배다");
+		assertTrue(travel > TrialRisks.ARENA_RADIUS * 2.0,
+				"이 수가 섬 지름보다 작으면 위 설명을 고칠 것");
+	}
+
+	/**
+	 * ⚠ <b>위로 4칸 띄우는 성질이 그대로다.</b> 수평을 막는 일이 이 카드의 설계를 깎지 않았다는
+	 * 것을 값에서 센다 — 사람이 정한 것은 「12초마다 · 2초 전 발자국 · 피해 35 · 반경 2.6 ·
+	 * 위로 4칸」이고 그중 하나도 이번에 움직이지 않았다.
+	 */
+	@Test
+	void 위로_네_블록_띄우는_성질이_그대로다() {
+		TrialCatalog.Risk.DelayedStrike card = onlyStrike("sharedfate:ground_strike");
+		assertEquals(240, card.interval(), "12초마다다");
+		assertEquals(40, card.lookback(), "2초 전 발자국이다");
+		assertEquals(35.0F, card.damage(), "무장 기준 세 대에 전멸인 값이다");
+		assertEquals(2.6, card.radius(), 0.0, "사람이 30% 키운 반경이다");
+		assertEquals(4.0, card.launch(), 0.0, "위로 4칸이다");
+		assertEquals(1, card.count(), "한 군데다");
+
+		// 내려보내는 세로가 그 4칸의 처음 속도 그대로다.
+		assertEquals(TrialRisks.launchVelocity(4.0), TrialRisks.launchMotion(4.0).y, 0.0,
+				"수평을 막으면서 세로가 깎이면 카드 설명과 실제가 달라진다");
+		assertEquals(0.8, TrialRisks.launchMotion(4.0).y, 1.0E-9, "√(2 × 0.08 × 4) = 0.8 칸/틱");
+		assertEquals(40, TrialRisks.fallGraceTicks(4.0),
+				"낙하 피해 면제는 이 카드의 설계다. 걷으면 띄우는 것이 그대로 낙사 장치가 된다");
+	}
+
+	/**
+	 * 고치기 전 {@code launch} 가 {@code setDeltaMovement} 에 넣던 값.
+	 *
+	 * <p>시험이 <b>무엇이 달라졌는지</b>를 비트로 말할 수 있어야 해서 그 한 줄을 여기 남긴다.
+	 * 실제 코드에는 더 이상 없다 — {@link #쌓인_수평을_배달하지_않는다} 가 그것을 바이트열에서
+	 * 못박는다.
+	 */
+	private static Vec3 고치기_전에_내려보내던_값(Vec3 carried, double height) {
+		return new Vec3(carried.x, TrialRisks.launchVelocity(height), carried.z);
 	}
 
 	// ------------------------------------------------------------------ 값으로 돈다

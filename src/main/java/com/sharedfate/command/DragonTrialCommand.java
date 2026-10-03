@@ -197,7 +197,16 @@ public final class DragonTrialCommand {
 							+ " /shareteam create ... dragontrials on <이름> 으로 다시 만드세요."));
 			return 0;
 		}
-		DragonTrialManager.forceStart(source.getServer(), team);
+		// ⚠⚠ 2026-10-01 — 이 명령도 「둘째 겹」을 지난다. 드래곤이 이미 죽은 월드에서 전투를
+		// 열면 그 자리에서 「처치」로 판정되고 사람이 다시 엔드에 서 있으므로 수락창이 또 떠
+		// 무한 고리가 된다(DragonTrialManager.endFightLive 에 로그와 함께 적어 두었다).
+		// 거절되면 팀을 옮기지도 않았으므로, 조용히 지나가지 말고 무엇을 해야 하는지까지 적는다.
+		if (!DragonTrialManager.forceStart(source.getServer(), team)) {
+			source.sendFailure(Component.literal(
+					"이 월드의 드래곤전이 이미 끝났습니다 (살아 있는 엔더 드래곤이 없습니다)."
+							+ "\n엔드 크리스탈 넷을 출구 포털에 놓아 드래곤을 되살린 뒤 다시 쓰세요."));
+			return 0;
+		}
 		source.sendSuccess(() -> Component.literal("엔드 전투를 열었습니다. 팀을 엔드로 불렀습니다."),
 				true);
 		return 1;
@@ -306,8 +315,19 @@ public final class DragonTrialCommand {
 				if (guard.restoreCage()) {
 					line.append("쇠창살 재생 ");
 				}
+				// ⚠ 2026-10-01 현재 이 갈래로 오는 카드가 하나도 없다 — 사람이 「무딘곡괭이는
+				// 채굴감소 없앳으니 이름 변경해」라고 해서 sharedfate:iron_cage 가 digSlowdown 을
+				// false 로 적고 이름이 「다시 선 쇠창살」이 되었다. 곧 이 줄은 영영 안 찍힌다.
+				// 그래도 지우지 않는 것은 길이 살아 있어서다 — 카드에 true 를 적으면 그 틱부터
+				// 다시 찍혀야 한다(TrialCatalog.Risk.CrystalGuard 설명의 세 걸음).
+				//
+				// ⚠ 「채굴 피로 I」이라고 적혀 있던 것은 그보다 한 걸음 전의 사실이다. 그
+				// 상태이상은 26.3 에서 70% 감소라 너무 세서 걷혔고, 뒤에 살아남은 길은
+				// Player.getDestroySpeed 에 배율을 직접 먹이는 쪽이다(TrialCrystalGuard).
+				// 상태이상이 아니므로 아이콘이 없다 — 「채굴 피로」라고 적어 두면 목록을 읽은
+				// 사람이 화면에서 찾을 수 없는 것을 찾는다.
 				if (guard.digSlowdown()) {
-					line.append("채굴 피로 I ");
+					line.append("채굴 무뎌짐 ");
 				}
 				yield line.toString().trim();
 			}

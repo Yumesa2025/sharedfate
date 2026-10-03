@@ -1,6 +1,9 @@
 package com.sharedfate.sync;
 
 import com.sharedfate.TestBootstrap;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -215,6 +218,170 @@ class DragonLastStandPatternsTest {
 	}
 
 	/**
+	 * ⚠⚠ <b>드래곤이 서버쪽에 쌓아 둔 세로를 클라이언트로 내보내지 않는다.</b>
+	 *
+	 * <p>사람 말: <b>「드래곤 밀치는 패턴떄 점프하면 하늘로 날라가버림」</b>(2026-10-04).
+	 *
+	 * <p>원인이 <b>이 파일의 세기에 없었다.</b> 26.3 {@code EnderDragon.knockBack} 이 날개 상자
+	 * ({@code wing1}·{@code wing2} 의 {@code inflate(4,2,4).move(0,-2,0)}) 안의 사람에게 매 틱
+	 * {@code push(…, 0.2, …)} 를 <b>더하고</b>, {@code isSitting()} 조건은 <b>피해에만</b> 붙어
+	 * 있어 최후의 저항에서도 미는 것은 그대로 돈다. {@code Entity.push} 가 켜는
+	 * {@code needsSync} 는 <b>본인에게 안 가므로</b> 바닐라에서는 서버 혼자 쌓는 숫자인데,
+	 * {@code shove} 가 켜는 {@code syncVelocity} 는 <b>본인에게 가고 보내는 것이 그 순간의
+	 * {@code getDeltaMovement()} 통째로</b>다.
+	 *
+	 * <p>그래서 여기서 재는 것은 <b>「우리가 무엇을 배달하는가」</b>다. 쌓이는 과정을 틱마다 굴려
+	 * 보고, 번치가 오는 틱에 나가는 세로가 <b>사람이 실제로 올라간 만큼을 넘지 않는지</b> 본다.
+	 */
+	@Test
+	void 드래곤이_쌓아_둔_세로를_클라이언트로_내보내지_않는다() {
+		// 26.3 EnderDragon.knockBack 의 세로. 바이트코드에 ldc2_w 0.20000000298023224 로 박혀 있다.
+		double dragonPush = 0.20000000298023224;
+		double gravity = DragonLastStandPatterns.LIFT_GRAVITY;
+		double drag = DragonLastStandPatterns.LIFT_DRAG;
+
+		// 가만히 서 있는 사람이다 — 클라이언트가 보고하는 세로 움직임이 0 이다.
+		double server = -gravity * drag;
+		double worstShipped = 0.0;
+		double worstRaw = 0.0;
+		for (int tick = 1; tick <= DragonLastStand.Pattern.WING_BEAT.durationTicks(); tick++) {
+			server = (server + dragonPush - gravity) * drag;
+			if (tick % DragonLastStandPatterns.WING_PULSE_TICKS != 0) {
+				continue;
+			}
+			worstRaw = Math.max(worstRaw, server);
+			worstShipped = Math.max(worstShipped,
+					TrialVelocity.syncedVertical(server, 0.0));
+		}
+
+		// ① 고치기 전에 무엇이 나갔는지 못박는다. 그 수가 사람이 본 것이다.
+		assertEquals(5.0233, worstRaw, 0.0005,
+				"쌓이는 식이 달라졌으면 위 설명도 고칠 것 — (v + 0.2 − 0.08) × 0.98 이다");
+		assertEquals(91.1, DragonLastStandPatterns.liftApex(worstRaw), 0.5,
+				"그 속도의 도달 높이가 91칸이다 — 「하늘로 날라가버림」이 그것이다");
+		assertTrue(DragonLastStandPatterns.liftApex(worstRaw)
+						> DragonLastStandPatterns.CROSS_LIFT_BLOCKS * 10.0,
+				"세로를 읽은 그대로 돌려놓으면 십자 띄움의 열 배 넘게 솟는다");
+
+		// ② 고친 뒤에는 한 톨도 안 나간다. 서 있는 사람은 올라가고 있지 않으므로 천장이 0 이다.
+		assertEquals(0.0, worstShipped, 1.0E-12,
+				"올라가고 있지 않은 사람에게 올라가는 속도를 보내면 그것이 곧 「하늘로 날아간다」다");
+
+		// ③ 고정점까지 쌓여도 그대로다. 상자 안에 오래 서 있으면 5.88 칸/틱에 수렴한다.
+		double fixedPoint = (dragonPush - gravity) * drag / (1.0 - drag);
+		assertEquals(5.88, fixedPoint, 0.01, "고정점이 5.88 칸/틱이다");
+		assertEquals(0.0, TrialVelocity.syncedVertical(fixedPoint, 0.0), 1.0E-12);
+		// ⚠ 26.3 에는 「속도 패킷이 3.9 에서 잘린다」가 없다. LpVec3.ABS_MAX_VALUE = 1.7179869183E10
+		//   이라 옛 판의 그 자름을 천장으로 믿으면 안 된다.
+		assertEquals(0.0, TrialVelocity.syncedVertical(1.0E9, 0.0), 1.0E-12,
+				"패킷이 알아서 잘라 줄 것을 기대하면 안 된다 — 26.3 은 자르지 않는다");
+	}
+
+	/**
+	 * ⚠ <b>자름이 실제로 배선돼 있다.</b> 순수 함수 시험은 함수가 맞는지만 보고, 그 함수를
+	 * <b>안 부르면</b> 아무것도 못 잡는다.
+	 *
+	 * <p>천장이 {@code getKnownMovement()} 라는 것까지 함께 본다 — 서버가 들고 있는
+	 * {@code deltaMovement} 로는 「사람이 실제로 올라간 만큼」을 알 수 없고, 26.3
+	 * {@code ServerGamePacketListenerImpl} 이 그 수를 넣어 주는 자리가 거기 하나다.
+	 */
+	@Test
+	void 세로_자름이_속도를_내려_보내는_자리에_걸려_있다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("syncedVertical"),
+				"자름을 한 곳에 모아 두지 않으면 밀기와 흡입이 두 벌이 되어 한쪽만 고쳐진다");
+		assertTrue(bytes.contains("com/sharedfate/sync/TrialVelocity"),
+				"자름이 이 파일 안으로 돌아왔다 — 「엔더폭풍」·「착지 충격」도 같은 함수를 지나므로"
+						+ " 한 벌로 모아 둔 자리가 TrialVelocity 다");
+		assertTrue(bytes.contains("getKnownMovement"),
+				"천장이 없다 — deltaMovement 만 보면 남이 쌓아 둔 값과 사람 몫을 가를 수 없다");
+		// ⚠ 쌓는 쪽을 끄는 것은 남의 파일이다 — EnderDragonContactDamageMixin 이 hurt 와
+		//   knockBack 을 둘 다 끊는다(2026-10-04 에 knockBack 이 더해졌다). 다만 그 깃발은
+		//   DragonLastStand.contactDamageOff() 곧 최후의 저항 전용이라, 일반 전투·착지에서는
+		//   바닐라가 그대로 쌓고 배달을 막는 것이 이 자름뿐이다. 그래서 지우지 말 것 — 속도를
+		//   내려 보내는 자리는 남이 쌓아 둔 값을 믿지 않는 것이 규약이다.
+		assertFalse(bytes.contains("knockBack"),
+				"이 파일이 바닐라 넉백에 손대면 안 된다 — 끄는 것은 믹스인의 일이다");
+	}
+
+	/**
+	 * ⚠⚠ <b>내리는 쪽은 한 톨도 안 건드린다.</b> 떨어지는 사람을 더 세게 떨어뜨리면 그것이 새
+	 * 낙사 장치다.
+	 *
+	 * <p>이 함수가 하는 일을 한 문장으로 못박는 시험이다 — <b>올리는 쪽만 자르고 그 밖에는
+	 * 받은 값을 그대로 돌려준다.</b>
+	 */
+	@Test
+	void 세로를_내리기만_하고_올리지_않는다() {
+		double[] clients = {-9.0, -1.0, -0.0784, 0.0, 0.42, 1.0, 50.0, 1.0E9};
+		for (double client : clients) {
+			for (double y = -5.0; y <= 6.0; y += 0.01) {
+				double got = TrialVelocity.syncedVertical(y, client);
+				assertTrue(got <= y + 1.0E-12,
+						"세로를 올렸다: " + y + " 가 " + got + " 이 됐다 (클라 " + client + ")");
+				assertTrue(got <= DragonLastStandPatterns.CROSS_LIFT_SPEED + 1.0E-12,
+						"이 파일이 세로로 만드는 가장 큰 값보다 크다 — 거짓 보고 한 번에 열린다");
+			}
+			// 내려가는 중은 바뀌지 않는다. 클라이언트가 무엇을 보고했든 그렇다.
+			for (double y = -5.0; y <= 0.0; y += 0.001) {
+				assertEquals(y, TrialVelocity.syncedVertical(y, client), 0.0,
+						"떨어지는 중인 사람의 세로가 달라졌다 — 그 한 줄이 새 낙사 장치가 된다");
+			}
+		}
+	}
+
+	/**
+	 * ⚠⚠ <b>점프도 십자 띄움도 세로가 한 톨도 안 달라진다.</b>
+	 *
+	 * <p>수평에 대한 약속({@link #공중에서_밀려도_바닥과_같은_거리만_간다})과 <b>같은 약속</b>을
+	 * 세로에 대해 재는 자리다. 「점프하면 안 밀린다」로 만들지 않은 것과 같은 이유로 <b>「점프하면
+	 * 점프가 죽는다」로도 만들지 않는다</b> — 그러면 정답이 「퍼덕일 때는 뛰지 말라」가 된다.
+	 *
+	 * <p>스스로 올라가는 사람은 <b>자기 올라가는 속도가 곧 천장</b>이라 자름이 걸리지 않는다.
+	 * 그것이 {@code getKnownMovement()} 를 천장으로 고른 까닭이다.
+	 */
+	@Test
+	void 점프와_띄움은_세로가_한_톨도_안_달라진다() {
+		// ① 바닐라 점프. 처음 0.42 로 25틱(올라가 12틱 · 되돌아오는 몫까지)을 굴린다.
+		double v = 0.42;
+		for (int tick = 0; tick < 25; tick++) {
+			assertEquals(v, TrialVelocity.syncedVertical(v, v), 0.0,
+					tick + "틱째 점프 세로가 달라졌다 — 점프가 손해가 된다");
+			v = (v - DragonLastStandPatterns.LIFT_GRAVITY) * DragonLastStandPatterns.LIFT_DRAG;
+		}
+
+		// ② 십자 띄움. 6칸이 안 깎이는지 본다.
+		v = DragonLastStandPatterns.CROSS_LIFT_SPEED;
+		for (int tick = 0;
+				tick < DragonLastStandPatterns.liftAirborneTicks(
+						DragonLastStandPatterns.CROSS_LIFT_SPEED);
+				tick++) {
+			assertEquals(v, TrialVelocity.syncedVertical(v, v), 0.0,
+					tick + "틱째 띄움 세로가 달라졌다 — 사람이 말한 6칸이 조용히 깎인다");
+			v = (v - DragonLastStandPatterns.LIFT_GRAVITY) * DragonLastStandPatterns.LIFT_DRAG;
+		}
+
+		// ③ 오염된 서버값과 진짜 점프가 함께 있으면 사람 몫만 나간다.
+		assertEquals(0.42, TrialVelocity.syncedVertical(5.88, 0.42), 1.0E-12,
+				"쌓인 값이 섞여 나가면 점프 한 번이 90칸이 된다");
+
+		// ④ ⚠ CROSS_LIFT_SPEED 천장 하나만으로는 안전하지 않다. 1.00746 을 번치마다 다시 실으면
+		//    여덟 번에 48칸이 올라 그 낙하가 팀을 끝낸다 — 낙사를 막는 것은 「실제로 올라간 만큼」
+		//    쪽이고 천장은 거짓 보고용 보험이다. 이 수가 그 사실의 근거다.
+		double climbed = 0.0;
+		for (int pulse = 0; pulse < DragonLastStandPatterns.WING_PULSES; pulse++) {
+			double rise = DragonLastStandPatterns.CROSS_LIFT_SPEED;
+			for (int tick = 0; tick < DragonLastStandPatterns.WING_PULSE_TICKS; tick++) {
+				climbed += rise;
+				rise = (rise - DragonLastStandPatterns.LIFT_GRAVITY)
+						* DragonLastStandPatterns.LIFT_DRAG;
+			}
+		}
+		assertEquals(48.0, climbed, 0.5,
+				"천장만 믿고 「실제로 올라간 만큼」을 빼면 여덟 번에 48칸이 오른다");
+	}
+
+	/**
 	 * ⚠⚠ <b>천장 둘이 걸려 있다.</b> 하나라도 빠지면 이 패턴은 낙사 장치다.
 	 *
 	 * <p>공유 체력이라 한 사람의 낙사가 팀 전체를 끝내고 그것이 곧 월드 삭제다. 「반경 + 넉백
@@ -312,6 +479,92 @@ class DragonLastStandPatternsTest {
 				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
 		assertEquals(0.286, sprint, 0.001, "달리기 종착 속도가 달라졌으면 위 설명도 고칠 것");
 		밀려도_섬을_벗어나지_않는다("달리는 중", false, sprint);
+	}
+
+	/**
+	 * ⚠⚠ <b>드래곤 몸통 넉백을 안고 밀려도 섬 밖으로 못 나간다.</b>
+	 *
+	 * <p>2026-10-04 에 드러난 경우다. 26.3 {@code EnderDragon.knockBack} 은 세로만 쌓는 것이
+	 * 아니라 <b>수평도 쌓는다</b> — {@code dx ÷ max(dx²+dz², 0.1) × 4} 라 <b>거리로 나누는 식</b>
+	 * 이고, 분모가 {@code 0.1} 에서 멈추므로 최댓값이 <b>{@code √0.1} 칸에서 12.65칸/틱</b>이다.
+	 * 바닥 종착 속도로는 <b>15.2칸/틱</b>, 공중이면 <b>127.9칸/틱</b>이라 그 한 틱이 섬을 통째로
+	 * 넘는다.
+	 *
+	 * <p>그런데 {@code shove} 가 수평을 <b>덮어쓰므로</b> 그 값은 그 자리에서 사라진다 —
+	 * <b>세로만 읽어서 돌려놓고 있었기 때문에 세로로만 샜다.</b> 이 시험은 그 「덮어쓴다」가
+	 * 실제로 그 세기까지 지우는지를 <b>{@link #달리는_중에_밀려도_섬_밖으로_못_나간다} 와 같은
+	 * 도우미로</b> 재는 것이다. 도우미를 새로 짜면 두 벌이 되어 언젠가 한쪽만 고쳐진다.
+	 */
+	@Test
+	void 드래곤_몸통_넉백을_안고_밀려도_섬_밖으로_못_나간다() {
+		// 26.3 knockBack: max(dx²+dz², 0.1) 로 나누므로 최댓값이 √0.1 칸에서 4 ÷ √0.1 이다.
+		double impulse = 4.0 / Math.sqrt(0.1);
+		assertEquals(12.649, impulse, 0.001, "바닐라가 한 틱에 더하는 수평이 12.65칸/틱이다");
+		double grounded = impulse * DragonLastStandPatterns.GROUND_DRAG
+				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
+		double airborne = impulse * TrialEnderStorm.AIR_DRAG / (1.0 - TrialEnderStorm.AIR_DRAG);
+		assertEquals(15.21, grounded, 0.01, "바닥 종착 속도가 15.2칸/틱이다");
+		assertEquals(127.9, airborne, 0.1, "공중 종착 속도가 127.9칸/틱이다 — 한 틱에 섬을 넘는다");
+		assertTrue(airborne > TrialRisks.ARENA_RADIUS,
+				"이 수가 섬 반경보다 작으면 위 설명을 고칠 것");
+
+		// 바닥과 공중 둘 다 — 그 세기를 안고 맞아도 덮어쓰기가 지운다.
+		밀려도_섬을_벗어나지_않는다("드래곤 몸통에 눌린 채", false, grounded);
+		밀려도_섬을_벗어나지_않는다("드래곤 몸통에 눌린 채 떠서", true, airborne);
+	}
+
+	/**
+	 * ⚠⚠ <b>착지 160틱 동안 쌓인 값을 안고 밀려도 섬 밖으로 못 나간다.</b>
+	 *
+	 * <p>2026-10-04 에 재어 둔 <b>가장 나쁜 경우</b>다. 착지는 드래곤을 포디움에
+	 * {@code DragonPerch.HOLD_TICKS} = <b>160틱</b> 붙박아 두므로 머리를 때리는 사람이 최후의
+	 * 저항과 <b>같은 기하</b>에 선다. 게다가 쌓임을 끊는 것은 {@code wasHurtRecently()} 인데
+	 * {@code EnderDragonPerchRangedImmunityMixin} 이 {@code hurt} 를 HEAD 에서 끊어
+	 * <b>{@code hurtTime} 이 안 올라간다</b> — <b>원거리로만 때리는 팀에게는 160틱이 한 틱도 안
+	 * 끊기고 쌓인다.</b>
+	 *
+	 * <p>그 160틱이 만드는 수는 <b>세로 5.648칸/틱(도달 109칸)</b>과 <b>수평 공중 종착
+	 * 127.9칸/틱</b>이다. 세로는 {@link TrialVelocity#syncedVertical} 이 자르고, 수평은
+	 * {@code shove} 의 덮어쓰기가 지운다 — 여기서는 그 둘을 <b>한 시험에서</b> 본다.
+	 *
+	 * <p>⚠ <b>도우미는 {@link #드래곤_몸통_넉백을_안고_밀려도_섬_밖으로_못_나간다} 와 같은
+	 * 것을 쓴다.</b> 섬 모양과 굴리는 순서를 새로 짜면 두 벌이 되어 언젠가 한쪽만 고쳐진다.
+	 */
+	@Test
+	void 착지_160틱을_안고_밀려도_섬을_벗어나지_않는다() {
+		// ① 세로. (v + 0.2 − 0.08) × 0.98 을 160틱 굴린다. 0 에서 출발하는 것은 「포디움에 서
+		//   있던 사람이 드래곤이 앉은 틱부터 맞는다」는 뜻이고, 그것이 사람이 실제로 서는 자리다.
+		double dragonPush = 0.20000000298023224;
+		double vertical = 0.0;
+		for (int tick = 0; tick < DragonPerch.HOLD_TICKS; tick++) {
+			vertical = (vertical + dragonPush - DragonLastStandPatterns.LIFT_GRAVITY)
+					* DragonLastStandPatterns.LIFT_DRAG;
+		}
+		assertEquals(160, DragonPerch.HOLD_TICKS, "착지가 붙박아 두는 시간이 달라졌으면 위 설명도"
+				+ " 고칠 것 — 이 시험이 재는 가장 나쁜 경우가 그 시간이다");
+		assertEquals(5.648, vertical, 0.001,
+				"고치기 전에 내려가던 수다 — 쌓는 식이 달라졌으면 위 설명도 고칠 것");
+		assertEquals(109.3, DragonLastStandPatterns.liftApex(vertical), 0.1,
+				"그 속도의 도달 높이가 109칸이다 — 섬 밖 허공보다 한참 위다");
+		assertEquals(0.0, TrialVelocity.syncedVertical(vertical, 0.0), 1.0E-12,
+				"가만히 선 사람에게 올라가는 속도를 보내면 그것이 곧 「하늘로 날아간다」다");
+
+		// ② 수평. 같은 호출이 쌓는 값이고 160틱이면 둘 다 종착에 붙어 있다. 감쇠가 다르므로
+		//   바닥·공중을 따로 굴린다 — 세로가 잘린 뒤의 사람은 바닥에 붙어 있다.
+		double impulse = 4.0 / Math.sqrt(0.1);
+		double onGround = 0.0;
+		double inAir = 0.0;
+		for (int tick = 0; tick < DragonPerch.HOLD_TICKS; tick++) {
+			onGround = (onGround + impulse) * DragonLastStandPatterns.GROUND_DRAG;
+			inAir = (inAir + impulse) * TrialEnderStorm.AIR_DRAG;
+		}
+		assertEquals(15.21, onGround, 0.01, "160틱이면 바닥 종착(15.2칸/틱)에 붙는다");
+		assertEquals(127.9, inAir, 0.1, "160틱이면 공중 종착(127.9칸/틱)에 붙는다");
+		assertTrue(inAir > TrialRisks.ARENA_RADIUS,
+				"이 수가 섬 반경보다 작으면 위 설명을 고칠 것 — 한 틱에 섬을 넘는 세기여야 한다");
+
+		밀려도_섬을_벗어나지_않는다("착지 160틱을 안고 바닥에서", false, onGround);
+		밀려도_섬을_벗어나지_않는다("착지 160틱을 안고 떠서", true, inAir);
 	}
 
 	/**
@@ -819,6 +1072,144 @@ class DragonLastStandPatternsTest {
 				"예고가 옆으로 비킬 시간(30틱)보다 짧으면 사후 통보다");
 	}
 
+	/**
+	 * ⚠⚠ <b>번개에 맞은 사람만</b> 구속 III 급으로 느려진다. <b>상태이상이 아니라 이동 속도를 직접
+	 * 깎는다.</b>
+	 *
+	 * <p>사람이 처음 말한 것은 <b>「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」</b>였는데,
+	 * 이 저장소는 {@code EffectSync} 가 <b>상태이상을 팀 전원에게 퍼뜨린다</b>(「엔더 파동」의 구속
+	 * III 가 그래서 팀 공유이고 그것이 <b>사람이 의도한 것</b>이다). 건너뛰는 문이
+	 * {@code EffectSync} 의 {@code private static boolean propagating} 하나뿐이라 밖에서 켤 길이
+	 * 없다 — 그래서 사람이 방법을 바꿨다: <b>「그 플레이어만 구속을 구속3급으로 이속을
+	 * 감소시키는쪽으로가면 되지않나? 버프효과로 주는게 아니라」</b>
+	 *
+	 * <p>⚠ <b>그래서 「엔더 파동의 구속은 팀 공유인데 번개의 구속은 혼자」가 된다. 버그가 아니다.</b>
+	 * 한쪽을 다른 쪽에 맞추려는 사람은 여기서 멈출 것 — 둘이 <b>다른 기계</b>를 쓰기 때문에 그렇게
+	 * 될 수 있었고, 같은 기계로는 둘 중 하나밖에 못 한다.
+	 *
+	 * <p>여기서 재는 것은 <b>세기와 연산을 바닐라에서 뽑았는가</b>다. 값만 베끼고 연산을 다르게
+	 * 쓰면 「구속 3급」이 거짓이 되므로 <b>바닐라가 만든 수정자와 직접 견준다.</b>
+	 */
+	@Test
+	void 번개가_맞은_사람만_이속을_구속_III_급으로_깎는다() {
+		assertEquals(2, DragonLastStandPatterns.LIGHTNING_SLOW_AMPLIFIER,
+				"구속 III 는 증폭 2 다 — 증폭은 0 부터 센다");
+		assertEquals(20, DragonLastStandPatterns.LIGHTNING_SLOW_TICKS, "사람이 정한 1초다");
+
+		// ⚠ 바닐라 구속 III 가 만드는 수정자와 그대로 견준다. 값·연산·속성 셋이 다 같아야 한다.
+		boolean[] seen = {false};
+		MobEffects.SLOWNESS.value().createModifiers(
+				DragonLastStandPatterns.LIGHTNING_SLOW_AMPLIFIER, (attribute, modifier) -> {
+					assertEquals(Attributes.MOVEMENT_SPEED, attribute,
+							"바닐라 구속이 이동 속도가 아닌 것을 건드린다 — 적는 자리를 다시 볼 것");
+					assertEquals(DragonLastStandPatterns.LIGHTNING_SLOW_AMOUNT, modifier.amount(),
+							1.0E-12, "세기가 바닐라 구속 III 와 다르다");
+					assertEquals(AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL,
+							modifier.operation(),
+							"연산이 바닐라와 다르다 — 값만 같고 연산이 다르면 다른 세기가 된다");
+					seen[0] = true;
+				});
+		assertTrue(seen[0], "바닐라 구속이 이동 속도 수정자를 안 걸게 됐다 — 이 방식의 근거가 사라졌다");
+
+		// 한 급당 몫과 급 곱하기도 바닐라와 같은 식이다(AttributeTemplate.create 가 × (증폭 + 1)).
+		assertEquals(-0.15000000596046448, DragonLastStandPatterns.SLOWNESS_AMOUNT_PER_LEVEL,
+				1.0E-15, "26.3 MobEffects 의 상수를 그대로 베낀 수다 — 반올림하면 위 견주기가 멈춘다");
+		assertEquals(DragonLastStandPatterns.SLOWNESS_AMOUNT_PER_LEVEL
+						* (DragonLastStandPatterns.LIGHTNING_SLOW_AMPLIFIER + 1),
+				DragonLastStandPatterns.LIGHTNING_SLOW_AMOUNT, 1.0E-15);
+		assertEquals(-0.45, DragonLastStandPatterns.LIGHTNING_SLOW_AMOUNT, 1.0E-7, "−0.45 다");
+
+		// ADD_MULTIPLIED_TOTAL 이므로 이동 속도가 × 0.55 가 된다. 45% 감소다.
+		double factor = 1.0 + DragonLastStandPatterns.LIGHTNING_SLOW_AMOUNT;
+		assertEquals(0.55, factor, 1.0E-7, "구속 III 는 이동 속도를 0.55배로 만든다");
+
+		// ⚠ 상태이상을 걸지 않는다. 걸면 EffectSync 가 그 틱에 팀 전원에게 다시 붙인다.
+		String bytes = classBytes();
+		assertFalse(bytes.contains("MobEffectInstance"),
+				"상태이상을 걸면 EffectSync 가 팀 전원에게 퍼뜨려 「그 플레이어만」이 거짓이 된다");
+		assertFalse(bytes.contains("addEffect"), "addEffect 를 부르는 순간 팀 공유로 흘러간다");
+		assertFalse(bytes.contains("com/sharedfate/sync/EffectSync"),
+				"공유 시스템을 건드리면 모드 전체가 쓰는 길이 바뀐다 — 그쪽은 읽기만 한다");
+		// 거는 자리가 속성이다. 이름은 우리 것이어야 한다(아래 시험이 그 까닭을 센다).
+		assertTrue(bytes.contains("MOVEMENT_SPEED"), "이동 속도를 안 건드리면 느려지지 않는다");
+		assertTrue(bytes.contains("addTransientModifier"), "속성 수정자를 안 건다");
+	}
+
+	/**
+	 * ⚠⚠ <b>두 겹으로 쌓이지 않는다.</b> 쌓이면 {@code ADD_MULTIPLIED_TOTAL} 이 <b>곱</b>이라
+	 * 구속 III 가 그대로 구속 <b>6급</b>이 된다.
+	 *
+	 * <p>막는 것은 두 겹이다 — ① 같은 이름을 쓰므로 26.3
+	 * {@code AttributeInstance.addTransientModifier} 가 애초에 <b>예외를 던지고</b>
+	 * ({@code putIfAbsent} + {@code "Modifier is already applied on this attribute!"}),
+	 * ② 그래서 붙이기 전에 <b>{@code removeModifier} 를 먼저</b> 부른다. 그 순서가 곧 「다시
+	 * 맞으면 남은 시간이 1초로 채워질 뿐이다」다.
+	 */
+	@Test
+	void 번개_이속_깎기가_두_겹으로_안_쌓인다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("removeModifier"),
+				"붙이기 전에 걷어내지 않으면 addTransientModifier 가 같은 이름에 예외를 던진다");
+		// 두 겹이 되면 얼마가 되는가. 그 수가 이 시험이 막는 것이다.
+		double once = 1.0 + DragonLastStandPatterns.LIGHTNING_SLOW_AMOUNT;
+		assertEquals(0.3025, once * once, 1.0E-7,
+				"두 겹이면 0.3025배 — 구속 6급이다. 곱으로 쌓이는 연산이라 더하기로 읽지 말 것");
+		// ⚠ 이름이 바닐라와 달라야 한다. 바닐라 이름을 쓰면 진짜 구속이 붙었다 떨어지는 것만으로
+		// MobEffect.removeAttributeModifiers 가 우리 몫을 함께 걷어 간다.
+		assertFalse(bytes.contains("effect.slowness"),
+				"바닐라 수정자 이름을 쓰면 진짜 구속이 우리 몫을 걷어 가거나 덮어쓴다");
+		assertTrue(bytes.contains("last_stand_lightning_slow"), "우리 수정자 이름이 없다");
+		// 한 사람은 한 발이다. 깎기도 그 break 안쪽에 있어야 한다.
+		assertTrue(bytes.contains("slowStruck"), "깎는 자리가 없다");
+	}
+
+	/**
+	 * ⚠⚠ <b>깎아 둔 것이 새지 않는다.</b> 상태이상은 바닐라가 시간을 재서 걷어 가는데 직접 깎은
+	 * 것은 <b>우리가 걷어야 하고</b>, 안 걷으면 <b>영구히 느린 사람</b>이 남는다.
+	 *
+	 * <p>길이 넷이고 넷이 다 막혀 있어야 한다.
+	 *
+	 * <table border="1">
+	 *   <caption>새는 길과 그것을 막는 것</caption>
+	 *   <tr><th>언제</th><th>무엇이 막는가</th></tr>
+	 *   <tr><td><b>1초가 지났다</b></td><td>{@code expireSlows} — {@code tickLightning} 이 매 틱
+	 *       부른다</td></tr>
+	 *   <tr><td><b>전투가 닫혔다 · 월드가 바뀌었다 · 서버가 내려갔다</b></td>
+	 *       <td>{@code releaseSlows} — {@code clearState} 가 부르고, 그 메서드는
+	 *       {@code DragonLastStand.onFightClosed} 와 {@code DragonLastStand.clearState} 둘 다에서
+	 *       불린다</td></tr>
+	 *   <tr><td><b>접속을 끊었다 · 죽어서 돌아왔다</b></td><td>{@code transient} 수정자라 그 사람과
+	 *       함께 사라진다. {@code expireSlows} 가 {@code isRemoved()} 를 보고 표에서도 지운다</td></tr>
+	 *   <tr><td><b>서버를 껐다 켰다</b></td><td>{@code transient} 라 <b>사람 파일에 안 들어간다</b> —
+	 *       {@code addPermanentModifier} 로 걸면 이 줄이 거짓이 된다</td></tr>
+	 * </table>
+	 */
+	@Test
+	void 번개_이속_깎기가_새지_않는다() {
+		String bytes = classBytes();
+		// ① 시간. tickLightning 이 매 틱 부르는 자리다.
+		assertTrue(bytes.contains("expireSlows"), "1초 뒤에 걷는 자리가 없다");
+		// ② 판이 끝날 때. clearState 가 부르고, 뼈대가 두 길에서 그것을 부른다.
+		assertTrue(bytes.contains("releaseSlows"), "판이 끝날 때 걷는 자리가 없다");
+		String stand = read("/com/sharedfate/sync/DragonLastStand.class");
+		assertTrue(stand.contains("clearState"),
+				"뼈대가 clearState 를 안 부르면 월드가 바뀌어도 수정자가 남는다");
+		assertTrue(stand.contains("tickLightning"),
+				"뼈대가 번개를 매 틱 안 넘기면 1초 뒤에 걷는 자가 돌지 않는다");
+		// ③·④ 저장되지 않는 수정자다. 영구 수정자로 걸면 월드 파일에 남는다.
+		assertTrue(bytes.contains("addTransientModifier"));
+		assertFalse(bytes.contains("addPermanentModifier"),
+				"영구 수정자는 사람 파일에 들어가 서버를 껐다 켜도 느린 사람이 남는다");
+		assertFalse(bytes.contains("addOrReplacePermanentModifier"));
+		// 접속을 끊은 사람은 표에서도 빠진다 — 안 빠지면 clearState 까지 참조가 남는다.
+		assertTrue(bytes.contains("isRemoved"),
+				"사라진 사람을 표에서 안 지우면 개체 참조가 판이 끝날 때까지 남는다");
+
+		// 걷어내기가 실제로 비우는지. 깎인 사람이 없는 상태에서 불러도 터지지 않아야 한다.
+		DragonLastStandPatterns.clearState();
+		DragonLastStandPatterns.clearState();
+	}
+
 	// ------------------------------------------------------------------ ③ 공허 흡입
 
 	/** 사람이 정한 값 넷. 반경 4 · 예고 3초 · 흡입 5초 · 원 하나다. */
@@ -1062,6 +1453,257 @@ class DragonLastStandPatternsTest {
 		}
 	}
 
+	// ------------------------------------------------------------------ ④ 십자에 맞으면 6칸 솟는다
+
+	/**
+	 * ⚠⚠ <b>맞은 사람이 6칸 솟는다.</b> 사람이 <b>명문 규칙을 알고 뒤집은</b> 값이다.
+	 *
+	 * <p>사람 말: <b>「30프로 2페이지때 십자가 공격받앗을때도 한 6칸 띄워버려 점프하게」</b>. 이
+	 * 전투의 설계 원칙에 <b>「세로로 띄우지 않습니다 — 띄우면 마찰이 안 먹어 훨씬 멀리 갑니다」</b>가
+	 * 적혀 있고, 그 규칙이 막으려던 사고는 아래 셋이 따로 막는다.
+	 *
+	 * <p>여기서 재는 것은 <b>「6」이 도달 높이인가</b>다. 처음 속도를 적어 두고 「6칸쯤 뜬다」고
+	 * 쓰는 것이 아니라, <b>높이에서 속도를 역산</b>하고 그 속도가 실제로 그 높이에 닿는지를 센다.
+	 */
+	@Test
+	void 십자가_맞은_사람을_6칸_띄운다() {
+		assertEquals(6.0, DragonLastStandPatterns.CROSS_LIFT_BLOCKS, 1.0E-9,
+				"사람이 「한 6칸」이라고 한 값이다");
+
+		// ① 식이 맞는지부터 검산한다. 바닐라 점프(처음 0.42)가 1.2522칸이라는 것은 널리 알려진
+		//    값이고, 그것이 맞으면 「자리를 먼저 옮기고 → 중력을 빼고 → 0.98 을 곱한다」가 맞다.
+		assertEquals(1.2522, DragonLastStandPatterns.liftApex(0.42), 0.0001,
+				"바닐라 점프 높이가 안 나온다 — liftApex 의 틱 순서가 26.3 travelInAir 와 다르다");
+		assertEquals(0.08, DragonLastStandPatterns.LIFT_GRAVITY, 1.0E-9,
+				"26.3 Attributes.GRAVITY 기본값이다");
+		assertEquals(0.98, DragonLastStandPatterns.LIFT_DRAG, 1.0E-9,
+				"26.3 travelInAir 가 세로에 곱하는 값이다 — 수평의 0.91 과 다른 값이다");
+		assertNotEquals(TrialEnderStorm.AIR_DRAG, DragonLastStandPatterns.LIFT_DRAG,
+				"세로 감쇠를 수평 것으로 바꾸면 도달 높이가 조용히 달라진다");
+
+		// ② 처음 속도가 높이에서 나온다. 손으로 적은 수가 아니다.
+		assertEquals(DragonLastStandPatterns.liftSpeed(DragonLastStandPatterns.CROSS_LIFT_BLOCKS),
+				DragonLastStandPatterns.CROSS_LIFT_SPEED, 1.0E-12,
+				"속도를 손으로 적으면 중력·감쇠를 고칠 때 높이가 조용히 달라진다");
+		assertEquals(1.00746, DragonLastStandPatterns.CROSS_LIFT_SPEED, 0.00001,
+				"처음 속도가 1.00746 칸/틱이다");
+
+		// ③ 그 속도가 실제로 6칸에 닿는다. 「6칸」이 도달 높이라는 것이 이 한 줄이다.
+		assertEquals(6.0, DragonLastStandPatterns.liftApex(DragonLastStandPatterns.CROSS_LIFT_SPEED),
+				0.001, "도달 높이가 6칸이 아니다");
+		assertEquals(4.79,
+				DragonLastStandPatterns.liftApex(DragonLastStandPatterns.CROSS_LIFT_SPEED)
+						/ DragonLastStandPatterns.liftApex(0.42), 0.01,
+				"바닐라 점프의 4.79배다 — 「점프하게」가 그 느낌이다");
+
+		// ④ ⚠ TrialRisks.launchVelocity 를 쓰지 않은 근거. 그쪽은 √(2gh) 근사라 5.70칸에서 멈춘다.
+		double approximate = TrialRisks.launchVelocity(DragonLastStandPatterns.CROSS_LIFT_BLOCKS);
+		assertEquals(0.9798, approximate, 0.0001, "√(2 × 0.08 × 6) 이다");
+		assertEquals(5.702, DragonLastStandPatterns.liftApex(approximate), 0.001,
+				"근사가 5.70칸까지밖에 안 뜬다 — 「6칸」을 수로 말한 요청에는 못 쓴다");
+		assertTrue(DragonLastStandPatterns.CROSS_LIFT_SPEED > approximate,
+				"근사보다 빨라야 6칸에 닿는다");
+		// 「자리 폭격」의 4칸은 그 근사로도 3.97 이라 모자람이 0.7% 뿐이다. 그래서 그쪽은 안 고쳤다.
+		assertEquals(3.971, DragonLastStandPatterns.liftApex(TrialRisks.launchVelocity(4.0)), 0.001,
+				"「자리 폭격」의 4칸은 근사로도 거의 맞는다 — TrialRisks 를 고칠 이유가 없다");
+	}
+
+	/**
+	 * ⚠⚠ <b>가로 성분을 한 톨도 더하지 않는다.</b> 이것이 「세로로 띄우지 않습니다」를 뒤집으면서도
+	 * 안전한 유일한 근거다.
+	 *
+	 * <p>가로가 섞이면 띄워진 사람은 <b>마찰이 안 먹는 공중에서</b> 그만큼을 가고, 그것이 그 규칙이
+	 * 막으려던 사고다({@link DragonLastStandPatterns#AIRBORNE_PUSH_SCALE} 가 그 다섯 배를 수로
+	 * 들고 있다). 들고 있던 가로 속도를 <b>바꾸지도 않는다</b> — 0 으로 지우면 공중에서 조작을
+	 * 빼앗는 것이 되고, 그것은 사람이 「단순 피하기」라고 못박은 카드가 할 일이 아니다.
+	 */
+	@Test
+	void 띄우는_데_가로_성분이_없다() {
+		double[][] carried = {
+			{0.0, 0.0}, {0.3, 0.0}, {0.0, -0.3}, {0.286, 0.286}, {-1.5, 2.5}, {0.01, -0.01},
+		};
+		for (double[] motion : carried) {
+			Vec3 before = new Vec3(motion[0], -0.78, motion[1]);
+			Vec3 after = DragonLastStandPatterns.liftMotion(before);
+			assertEquals(before.x, after.x, 1.0E-12,
+					"가로 x 가 달라졌다 — 공중에서는 마찰이 안 먹어 그만큼이 통째로 이동이 된다");
+			assertEquals(before.z, after.z, 1.0E-12, "가로 z 가 달라졌다");
+			assertEquals(DragonLastStandPatterns.CROSS_LIFT_SPEED, after.y, 1.0E-12,
+					"세로를 덮어쓰지 않았다 — 떨어지던 사람은 안 뜬다");
+		}
+		// ⚠ shove 와 정확히 반대다. 그쪽은 가로만 덮어쓰고 세로를 읽은 그대로 돌려놓는다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("liftMotion"),
+				"속도를 짓는 것을 한 곳에 모아 두지 않으면 이 시험이 아무것도 재지 못한다");
+	}
+
+	/**
+	 * ⚠⚠ <b>이 띄움에서 비롯한 낙하만 공짜다.</b> 다른 낙하는 그대로 아프다.
+	 *
+	 * <p>6칸 낙하는 바닐라 피해 <b>3</b> 이고, {@code minecraft:fall} 이 {@code #bypasses_armor} 라
+	 * 다이아 풀셋이 한 점도 안 깎아 무장 기준 <b>1.08</b> 이다. 그 1.08 은
+	 * {@code TrialRisks.worstCaseTickDamage} 가 <b>세지 않는 피해</b>이고, 「큰 카드는 무장 기준 세
+	 * 대에 전멸」의 여유가 <b>0.31 뿐</b>이라 한 대당 1.08 이 얹히면 사람이 정한 기준이 조용히
+	 * 거짓이 된다.
+	 *
+	 * <p>쓰는 것은 바닐라가 바로 이 일을 위해 들고 있는 장치다 —
+	 * {@code LivingEntity.setIgnoreFallDamageFromCurrentImpulse(boolean, Vec3)} 이고, 면제되는 양이
+	 * {@code min(낙하 거리, 띄운 자리 y − 지금 y)} 라 <b>띄운 자리보다 아래로 떨어지는 몫은 그대로
+	 * 아프다.</b> 「자리 폭격」({@code TrialRisks.launch})처럼 <b>시간</b>으로 끊으면 그 사이의
+	 * 모든 낙하가 공짜가 되는데, 여기서는 <b>거리</b>로 끊었다.
+	 */
+	@Test
+	void 띄움은_그_낙하만_공짜로_만든다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("setIgnoreFallDamageFromCurrentImpulse"),
+				"낙하 피해를 면제하지 않으면 셈 밖의 피해가 매번 얹힌다");
+		// ⚠ 낙하 거리를 지우는 쪽을 쓰지 않는다. 지우면 맞기 전에 떨어지고 있던 몫까지 공짜가 되고,
+		// 면제가 시간으로만 끊겨 「스스로 절벽에서 뛰어내렸을 때 한 번 봐 주는 것」이 대가로 붙는다.
+		assertFalse(bytes.contains("resetFallDistance"),
+				"낙하 거리를 지우면 이 띄움과 무관한 낙하까지 공짜가 된다 — 거리로 끊을 것");
+		assertFalse(bytes.contains("fallDistance"),
+				"낙하 거리를 직접 만지면 면제의 자가 「거리」에서 「시간」으로 바뀐다");
+
+		// 왜 없애야 했는가 — 셈 밖의 1.08 이 0.31 짜리 여유를 세 배로 넘는다.
+		float perHit = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
+				GearedDamage.Source.EXPLOSION);
+		assertTrue(GearedDamage.wipesInThree(perHit), "균열이 세 대에 전멸인 카드가 아니게 됐다");
+		float margin = perHit * GearedDamage.HITS_TO_WIPE - GearedDamage.TEAM_HEALTH;
+		assertEquals(0.31F, margin, 0.01F, "「세 대에 전멸」의 여유가 0.31 뿐이다");
+		// 6칸 낙하의 바닐라 피해와, 그것이 무장 기준으로 얼마가 되는가.
+		int rawFall = (int) Math.ceil(DragonLastStandPatterns.CROSS_LIFT_BLOCKS - 3.0);
+		assertEquals(3, rawFall, "안전 낙하 3칸을 빼면 6칸은 피해 3 이다");
+		// fall 은 #bypasses_armor 라 방어도가 한 점도 안 깎고 보호 IV 만 듣는다.
+		float gearedFall = rawFall * (1.0F - GearedDamage.PROTECTION_EPF / 25.0F);
+		assertEquals(1.08F, gearedFall, 0.01F,
+				"낙하는 방어도를 지나가므로 보호 IV 만 듣는다 — 3 × 0.36 이다");
+		assertTrue(gearedFall > margin,
+				"셈 밖의 낙하가 「세 대에 전멸」의 여유보다 작으면 위의 경고를 다시 쓸 것: 낙하 "
+						+ gearedFall + " 대 여유 " + margin);
+		// 이 패턴은 세 번 터지므로 셈 밖의 피해가 세 번까지 얹힌다.
+		assertEquals(3, DragonLastStandPatterns.CROSS_ROUNDS);
+		assertEquals(20.31F, perHit * DragonLastStandPatterns.CROSS_ROUNDS, 0.01F,
+				"적힌 값으로 잡아 둔 세 대가 20.31 이다");
+		assertEquals(23.55F,
+				(perHit + gearedFall) * DragonLastStandPatterns.CROSS_ROUNDS, 0.02F,
+				"면제가 빠지면 세 번 다 맞은 사람이 23.55 를 받는다 — 셈에는 20.31 만 들어온다");
+	}
+
+	/**
+	 * ⚠⚠ <b>띄워진 직후에 날개 퍼덕이기가 와도 섬 밖으로 못 나간다.</b>
+	 *
+	 * <p>이것이 이번 작업에서 <b>가장 위험한 자리</b>다 — 십자가 만든 상태(공중)가 <b>남이 만든
+	 * 넉백(날개 퍼덕이기)의 입력</b>이 된다. 이 저장소에 <b>「공중에서는 같은 속도가 다섯 배를
+	 * 민다」</b>({@code AIRBORNE_PUSH_SCALE} = 0.198)가 들어온 것이 바로 그 때문이고, 띄우기는 그
+	 * 다섯 배의 조건을 <b>우리가 만들어 주는</b> 장치다.
+	 *
+	 * <p>그래서 <b>{@link #점프_중에_밀려도_섬_밖으로_못_나간다} 와 같은 도우미를 그대로 쓴다.</b>
+	 * 사람이 스스로 뛴 것이든 우리가 띄운 것이든 <b>수평으로는 같은 모델</b>이기 때문이고
+	 * ({@link #띄우는_데_가로_성분이_없다} 가 그 전제를 따로 붙든다), 도우미를 새로 짜면 두 벌이
+	 * 되어 언젠가 한쪽만 고쳐진다.
+	 *
+	 * <p>그리고 <b>이 경우가 실제로 생긴다</b>는 것도 함께 센다 — 공중에 있는 시간이 번치 간격보다
+	 * 길면 띄워진 사람이 공중에서 맞는 틱이 반드시 있다.
+	 */
+	@Test
+	void 띄워진_직후에_밀려도_섬_밖으로_못_나간다() {
+		// ① 띄워진 사람은 12틱 올라가고 25틱 만에 되돌아온다 — 번치 간격(12틱)의 두 배가 넘는다.
+		int rise = DragonLastStandPatterns.liftRiseTicks(DragonLastStandPatterns.CROSS_LIFT_SPEED);
+		int airborne =
+				DragonLastStandPatterns.liftAirborneTicks(DragonLastStandPatterns.CROSS_LIFT_SPEED);
+		assertEquals(12, rise, "6칸까지 12틱 올라간다");
+		assertEquals(25, airborne, "되돌아오는 데까지 25틱(1.25초)이다");
+		assertTrue(airborne > DragonLastStandPatterns.WING_PULSE_TICKS,
+				"공중에 있는 시간이 번치 간격보다 짧으면 「띄운 뒤에 밀린다」가 안 생긴다 — 그러면 "
+						+ "이 시험이 아무것도 재지 않는다");
+		// 번치가 두 번 들어온다. 「드물게 일어나는 일」이 아니라 거의 언제나 일어난다.
+		assertTrue(airborne >= DragonLastStandPatterns.WING_PULSE_TICKS * 2,
+				"공중에 있는 동안 번치가 두 번 들어오지 않으면 위 설명을 고칠 것: 공중 " + airborne
+						+ "틱 대 간격 " + DragonLastStandPatterns.WING_PULSE_TICKS + "틱");
+
+		// ② 그 사람이 받는 것은 「공중 세기」다. 띄우기가 가로를 안 더하므로 들고 있는 가로는 0 이다.
+		Vec3 lifted = DragonLastStandPatterns.liftMotion(Vec3.ZERO);
+		assertEquals(0.0, lifted.x, 1.0E-12);
+		assertEquals(0.0, lifted.z, 1.0E-12);
+
+		// ③ 그 상태에서 여덟 번치를 섬 곳곳에서 통째로 굴린다. 점프 중과 같은 도우미다.
+		밀려도_섬을_벗어나지_않는다("띄워진 직후", true, 0.0);
+	}
+
+	/**
+	 * ⚠⚠ <b>띄워진 뒤 쌓인 수평을 안고 밀려도 섬 밖으로 못 나간다 — 2026-10-04 에 닫은 구멍.</b>
+	 *
+	 * <p>{@link #드래곤이_쌓아_둔_세로를_클라이언트로_내보내지_않는다} 가 세로를 막은 뒤에도
+	 * <b>수평이 열려 있었다.</b>
+	 * {@code liftCross} 와 {@code pullSuck} 은 <b>수평을 읽어서 돌려놓고</b>
+	 * {@code syncVelocity} 를 켠다 — 곧 바닐라 {@code EnderDragon.knockBack} 이 쌓아 둔 수평을
+	 * <b>본인에게 배달하면서 동시에 그 사람을 공중(감쇠 0.91)으로 띄우고 낙하 피해까지 면제</b>
+	 * 하는 자리였다. {@code shove} 는 수평을 <b>덮어쓰므로</b> 거기서는 세로로만 샜다.
+	 *
+	 * <h2>⚠ 닫은 자리는 이 파일이 아니다 — <b>뿌리를 끊었다</b></h2>
+	 *
+	 * <p>{@code EnderDragonContactDamageMixin} 이 {@code hurt} 와 함께
+	 * <b>{@code knockBack} 까지 같은 {@code contactDamageOff()} 깃발로 끊는다.</b> 최후의 저항이
+	 * 도는 동안 쌓이는 값이 <b>아예 생기지 않으므로</b> 「읽어서 돌려놓는다」가 돌려놓을 오염이
+	 * 없다. <b>{@code liftCross}·{@code pullSuck} 의 실행되는 코드는 한 줄도 안 고쳤다</b> —
+	 * 「들고 있던 가로 속도를 바꾸지 않는다」는 설계 약속을 그대로 두고 구멍만 닫는 길이 그것이다.
+	 *
+	 * <p>그러니 이 시험이 묻는 것은 셋이다.
+	 *
+	 * <ol>
+	 *   <li>쌓이는 수가 그대로인가 — <b>12.65칸/틱</b>(한 틱 최댓값) · <b>15.21</b>(바닥 종착) ·
+	 *       <b>127.9</b>(공중 종착). 이 수가 바뀌면 위의 모든 설명이 함께 바뀐다</li>
+	 *   <li>⚠ <b>띄우기가 그 수를 여전히 그대로 돌려놓는가.</b> 그렇다 — 그것이 설계 약속이고,
+	 *       그래서 <b>뿌리가 끊겨 있어야만</b> 안전하다. 여기가 거짓이 되면(띄우기가 수평을
+	 *       덮어쓰게 되면) 그것도 사고다. 사람이 「가로를 한 톨도 안 더한다」로 정했다</li>
+	 *   <li><b>뿌리가 실제로 끊겨 있는가</b> — 믹스인이 {@code knockBack} 을 그 깃발로 문다</li>
+	 * </ol>
+	 *
+	 * <p>그 위에 <b>{@link #점프_중에_밀려도_섬_밖으로_못_나간다} 와 같은 도우미로</b> 세 수를
+	 * 전부 굴려 본다. 도우미를 새로 짜면 두 벌이 되어 언젠가 한쪽만 고쳐진다.
+	 */
+	@Test
+	void 띄워진_뒤_쌓인_수평을_안고_밀려도_섬_밖으로_못_나간다() {
+		// ① 26.3 knockBack: dx ÷ max(dx²+dz², 0.1) × 4. 분모가 0.1 에서 멈추므로 최댓값이
+		//    √0.1 칸에서 4 ÷ √0.1 이다.
+		double impulse = 4.0 / Math.sqrt(0.1);
+		assertEquals(12.649, impulse, 0.001, "바닐라가 한 틱에 더하는 수평이 12.65칸/틱이다");
+		double grounded = impulse * DragonLastStandPatterns.GROUND_DRAG
+				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
+		double airborne = impulse * TrialEnderStorm.AIR_DRAG / (1.0 - TrialEnderStorm.AIR_DRAG);
+		assertEquals(15.21, grounded, 0.01, "바닥 종착 속도가 15.21칸/틱이다");
+		assertEquals(127.9, airborne, 0.1, "공중 종착 속도가 127.9칸/틱이다 — 한 틱에 섬을 넘는다");
+
+		// ② ⚠ 띄우기는 그 수를 한 톨도 안 바꾼다. 설계 약속이라 바뀌면 그것도 사고다 —
+		//    그래서 안전을 보증하는 것은 이 자리가 아니라 ③ 의 뿌리다.
+		for (double carry : new double[] {impulse, grounded, airborne}) {
+			Vec3 lifted = DragonLastStandPatterns.liftMotion(new Vec3(carry, 0.0, carry));
+			assertEquals(carry, lifted.x, 1.0E-12,
+					"띄우기가 가로를 바꿨다 — 「가로를 한 톨도 안 더한다」가 거짓이 됐다");
+			assertEquals(carry, lifted.z, 1.0E-12, "같은 이유로 z 도 그대로여야 한다");
+		}
+
+		// ③ ⚠⚠ 뿌리가 끊겨 있다. 쌓이는 값이 아예 안 생기므로 ② 가 돌려놓을 오염이 없다.
+		String mixin = read("/com/sharedfate/mixin/EnderDragonContactDamageMixin.class");
+		assertTrue(mixin.contains(
+						"knockBack(Lnet/minecraft/server/level/ServerLevel;Ljava/util/List;)V"),
+				"⚠⚠ 믹스인이 knockBack 을 안 끊는다 — ② 가 그대로 돌려놓는 수평이 쌓이기 시작하고, "
+						+ "그 사람은 공중(감쇠 0.91)에서 낙하 피해도 면제된 채 섬을 넘는다. "
+						+ "서술자가 hurt 와 글자까지 같으니 이름을 특히 조심할 것");
+		assertTrue(mixin.contains("contactDamageOff"),
+				"끊는 깃발이 최후의 저항 전용 깃발이 아니다 — 일반 전투의 날개 밀치기는 바닐라 "
+						+ "동작이라 끊으면 안 된다");
+		// 이 파일은 바닐라 넉백에 손대지 않는다. 끄는 것은 믹스인의 일이다.
+		assertFalse(classBytes().contains("knockBack"),
+				"패턴 파일이 바닐라 넉백을 직접 만진다 — 끄는 자리가 둘이 되면 한쪽만 고쳐진다");
+
+		// ④ 그래도 세 수를 전부 굴려 본다. 뿌리가 끊겼다는 것만 믿지 않는 것이 이 저장소의 규칙이다.
+		밀려도_섬을_벗어나지_않는다("쌓인 한 틱치를 안고 띄워져서", true, impulse);
+		밀려도_섬을_벗어나지_않는다("쌓인 바닥 종착을 안고 띄워져서", true, grounded);
+		밀려도_섬을_벗어나지_않는다("쌓인 공중 종착을 안고 띄워져서", true, airborne);
+		밀려도_섬을_벗어나지_않는다("쌓인 한 틱치를 안고 바닥에서", false, impulse);
+	}
+
 	// ------------------------------------------------------------------ 예산과 규약
 
 	/**
@@ -1094,18 +1736,52 @@ class DragonLastStandPatternsTest {
 				"십자 예고 — 빨강 54(여섯 틱에 나눔) + 흰 기둥 108(세 틱에 나눔)");
 		assertEquals(124, DragonLastStandPatterns.crossFlashPoints(),
 				"십자가 터지는 틱 — 눕는 갈라짐 82 + 솟는 기둥 42");
-		assertEquals(286, DragonLastStandPatterns.crossPoints(),
-				"십자가 터지는 틱은 갈라짐 + 솟는 기둥 + 다음 십자의 예고가 함께 나간다");
+		assertEquals(4, DragonLastStandPatterns.crossLiftPoints(),
+				"띄워진 사람마다 발밑 기둥 하나 — 개수 0 으로 보내므로 사람당 한 점이다");
+		assertEquals(290, DragonLastStandPatterns.crossPoints(),
+				"십자가 터지는 틱은 갈라짐 + 솟는 기둥 + 띄움 기둥 + 다음 십자의 예고가 함께 나간다");
+		assertEquals(70, DragonLastStandPatterns.lightningWarnPoints(),
+				"상시 번개 예고 — 열 곳을 여섯 틱에 나눠 그린 한 틱 몫");
+		assertEquals(48, DragonLastStandPatterns.lightningStrikePoints(),
+				"상시 번개 내리침 — 바닥 표식은 없고 깎인 사람마다 발밑 입자 12점뿐이다");
 		assertEquals(70, DragonLastStandPatterns.lightningPoints(),
-				"상시 번개 — 열 곳을 여섯 틱에 나눠 그린 한 틱 몫");
-		assertEquals(356, worst,
-				"가장 바쁜 틱이 바뀌었다 — 전에는 「번개 + 부채꼴 예고」(272)였고 이제는 "
-						+ "「번개 + 십자가 터지는 틱」이다");
+				"번개는 예고 틱과 내리침 틱 가운데 바쁜 쪽이다 — 지금은 예고가 이긴다");
+		assertEquals(360, worst,
+				"가장 바쁜 틱이 바뀌었다 — 「번개 + 부채꼴 예고」(272) → 「번개 + 십자가 터지는 "
+						+ "틱」(356) → 거기에 띄움 기둥 넷이 더해져 360 이다");
 		assertEquals(DragonLastStandPatterns.lightningPoints()
 						+ DragonLastStandPatterns.crossPoints(), worst,
 				"최악이 십자가 터지는 틱이 아니게 됐으면 클래스 설명의 예산 절도 함께 고칠 것");
-		// 272 → 356 이고 예산까지 84점이 남았다. 사람이 「이펙트를 키우든」이라고 한 몫을 쓴 것이다.
+		// 272 → 356 → 360 이고 예산까지 80점이 남았다. 사람이 「이펙트를 키우든」이라고 한 몫이다.
 		assertTrue(worst > 272, "하나도 키우지 않았다 — 사람이 넷 다 키우라고 했다");
+	}
+
+	/**
+	 * ⚠ <b>번개가 내리치는 틱도 센다.</b> 「내리치는 틱은 표식이 없어 0점」이 더는 참이 아니다.
+	 *
+	 * <p>깎인 사람 발밑에 점을 뿌리게 되면서({@code slowStruck}) 그 틱에도 점이 나간다. 지금은
+	 * 예고(70)가 내리침(48)보다 바빠서 답이 안 바뀌지만, <b>그 부등호가 뒤집히는 날 식이 조용히 틀린
+	 * 답을 주면</b> 예산을 넘긴 것을 아무도 모른다 — 되먹임 점을 올리려는 사람이 여기서 멈춘다.
+	 */
+	@Test
+	void 번개는_예고_틱과_내리침_틱_가운데_바쁜_쪽을_센다() {
+		assertEquals(12, DragonLastStandPatterns.LIGHTNING_SLOW_MARK_POINTS,
+				"「엔더 파동」의 24점의 절반이다 — 그 절반이 예산에서 나온 수다");
+		assertEquals(Math.max(DragonLastStandPatterns.lightningWarnPoints(),
+						DragonLastStandPatterns.lightningStrikePoints()),
+				DragonLastStandPatterns.lightningPoints(),
+				"둘 가운데 큰 쪽을 세지 않으면 바쁜 틱이 바뀌어도 이 식이 모른다");
+		assertTrue(DragonLastStandPatterns.lightningStrikePoints()
+						< DragonLastStandPatterns.lightningWarnPoints(),
+				"내리침 틱이 예고 틱보다 바빠졌다 — 그러면 최악이 「번개 내리침 + 십자가 터지는 "
+						+ "틱」이 되고 그 합을 예산과 다시 견뎌야 한다: 내리침 "
+						+ DragonLastStandPatterns.lightningStrikePoints() + " 대 예고 "
+						+ DragonLastStandPatterns.lightningWarnPoints());
+		// 그 틱이 최악이 되면 얼마인가. 지금은 예산 안이지만 적어 두어야 다음 사람이 센다.
+		int strikeWorst = DragonLastStandPatterns.lightningStrikePoints()
+				+ DragonLastStandPatterns.crossPoints();
+		assertEquals(338, strikeWorst, "내리침 틱이 최악이 되어도 338점이다");
+		assertTrue(strikeWorst <= TrialLandingShock.MAX_POINTS_PER_TICK);
 	}
 
 	/**

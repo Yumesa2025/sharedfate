@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import com.sharedfate.SharedFateMod;
+import com.sharedfate.mixin.EnderDragonFightAccessor;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import net.minecraft.network.chat.Component;
@@ -17,6 +18,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.dimension.end.EnderDragonFight;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -67,27 +69,29 @@ import java.util.UUID;
  *
  * <p>한 명만 들어가면 나머지는 다른 차원에서 공유 체력만 깎이는 것을 구경하게 된다. 최종 보스는
  * 팀이 함께 서야 하는 자리다. 다만 네더에서 채굴하던 사람 화면이 아무 말 없이 바뀌면 버그처럼
- * 보이므로 잠깐 예고하고 옮긴다. 확인을 묻지는 않는다 — 엔더런에서 엔드 입장은 원래 돌아올 수
- * 없는 문턱이다.
+ * 보이므로 잠깐 예고하고 옮긴다.
+ *
+ * <h2>입장 수락창 — 묻지만 말리지는 않는다</h2>
+ *
+ * <p>전에는 이 자리에 「확인을 묻지는 않는다」가 적혀 있었다. <b>2026-10-01 에 사람이 묻는 창을
+ * 넣으라고 했다</b> — 「첫 엔더로 입장하면 한명이라도 엔더에 입장하면 정지하고 (시련중이면) 시련을
+ * 시작합니다. 라고 수락창이 뜨고 리더가 확인 을 누루면 …」.
+ *
+ * <p>⚠ <b>그래도 「돌아올 수 없는 문턱」은 그대로다.</b> 창에는 <b>「확인」 단추 하나뿐</b>이고,
+ * 리더가 끝내 누르지 않거나 접속을 끊어도 <b>수락한 것과 똑같이 진행된다</b>
+ * ({@link TrialEntranceGate} 의 「교착을 만들지 않는다」). 창이 하는 일은 말리는 것이 아니라
+ * <b>판이 바뀌기 전에 팀을 한 번 멈춰 세우는 것</b>이고, {@link #SUMMON_DELAY_TICKS} 의 3초
+ * 예고가 하던 몫을 훨씬 분명하게 대신한다.
+ *
+ * <p>⚠ <b>시련을 끈 팀에게는 창이 뜨지 않는다.</b> 1장이 「끄면 완전한 바닐라」라고 못박고 있다 —
+ * 그 팀은 예전 길(3초 예고 뒤 전원 소환) 그대로다. <b>소환 자체는 끄지 않는다</b>(위 「왜 전원을
+ * 부르는가」).
  */
 public final class DragonTrialManager {
 	/** 소환까지 기다리는 시간. 예고이지 말리는 장치가 아니다. */
 	private static final int SUMMON_DELAY_TICKS = 60;
 	/** 도착 직후 무적. 떨어지자마자 브레스에 맞아 팀이 절반 깎이는 것을 막는다. */
 	static final int ARRIVAL_GRACE_TICKS = 60;
-	/**
-	 * 팀이 떨어지는 자리. 엔드 섬 <b>한가운데</b>다.
-	 *
-	 * <h2>가장자리에 내려놓다가 기둥 안에 박았다</h2>
-	 *
-	 * <p>처음에는 「기둥과 크리스탈 사거리를 피한다」며 반경 40 자리에 내려놓았다. 그런데
-	 * 흑요석 기둥은 <b>반경 42 원 위에 선다</b>(바닐라 {@code EndSpikeFeature} 를 풀어 확인했다).
-	 * 2칸 차이라 기둥 굵기 안이고, 실제로 사람이 <b>기둥 속에 스폰됐다.</b>
-	 *
-	 * <p>가운데는 기둥에서 가장 멀고 모든 방향이 똑같이 열려 있다. 크리스탈 사거리를 걱정했지만
-	 * 도착 직후 무적이 그 몫을 한다.
-	 */
-	private static final Vec3 ARRIVAL_POINT = new Vec3(0.0, 75.0, 0.0);
 	private static final net.minecraft.resources.Identifier HEALTH_MODIFIER_ID =
 			SharedFateMod.id("trial/dragon_health");
 
@@ -200,15 +204,60 @@ public final class DragonTrialManager {
 	 * <p>차원 이동 이벤트를 쓰지 않고 매 틱 엔드의 사람을 훑는다. Fabric 에 쓸 만한 월드 변경
 	 * 이벤트가 없기도 하고, 이쪽이 <b>어떻게 들어왔든</b> 잡힌다 — 포털이든 명령이든 재접속이든.
 	 * 엔드에 있는 사람은 많아야 팀 인원이라 훑는 비용도 없다.
+	 *
+	 * <h2>⚠⚠ 엔드로 들어오는 길이 몇이든 <b>목이 여기 하나다</b></h2>
+	 *
+	 * <p>이 저장소의 제1 함정이 「한쪽만 막으면 반드시 샌다」이고, 사람을 엔드 밖으로 내보내는
+	 * 길은 실제로 <b>다섯</b>이라 {@code EndFightTeleportLock} 이 그 다섯을 하나하나 막는다.
+	 * 들어오는 쪽은 그 수법을 쓰지 않는다 — <b>길을 세는 대신 결과를 본다.</b> 엔드 포털·귀환
+	 * 게이트웨이·{@code /tp}·다른 모드·리스폰·엔드에서 접속 종료 후 재접속, 어느 길로 왔든
+	 * 「엔드에 서 있다」는 같으므로 {@code end.players()} 한 줄에 전부 걸린다. 길이 하나 늘어도
+	 * 이 파일은 바뀌지 않는다.
+	 *
+	 * <p>그래서 <b>입장 수락창도 여기에 붙인다.</b> 자물쇠처럼 갈래마다 걸면 그때부터 「샐 수
+	 * 있는 길」을 세야 한다.
+	 *
+	 * <h2>세 가지 가운데 하나라도 있으면 건너뛴다 — 「첫 입장」만이다</h2>
+	 *
+	 * <p>세션 · 소환 대기 · 수락창. 전투가 이미 열린 뒤에 늦게 들어온 사람에게 창이 또 뜨면
+	 * <b>싸우고 있는 팀이 다시 붙들려 단상으로 모인다.</b>
+	 *
+	 * <h2>시련을 끈 팀에게는 창이 안 뜬다</h2>
+	 *
+	 * <p>1장이 「끄면 완전한 바닐라」라고 못박고 있다. 창도 붙들기도 없이 예전 길 그대로 — 3초
+	 * 뒤에 전원 소환이다. ⚠ <b>소환 자체는 끄지 않는다.</b> 그것은 시련이 아니라 「최종 보스는
+	 * 팀이 함께 선다」는 이 모드의 규칙이고, 클래스 설명의 「팀을 엔드로 부르는 것은 끄지
+	 * 않는다」가 그 까닭이다.
+	 *
+	 * <h2>⚠⚠ 첫째 겹 — 이미 끝난 전투에는 창을 띄우지 않는다 (2026-10-01)</h2>
+	 *
+	 * <p>드래곤을 잡고도 엔드에 서 있는 사람을 이 메서드가 「첫 입장」으로 읽어 <b>무한 고리</b>가
+	 * 돌았다. 판단은 {@link #endFightLive(ServerLevel)} 하나에 있고 까닭도 거기 적혀 있다.
+	 *
+	 * <p>⚠ <b>수락창만 건너뛰어서는 안 된다.</b> 창을 띄우지 않으면 아래 예전 길
+	 * ({@link #PENDING_SUMMON} → {@link #startSession})로 그대로 흘러가 <b>같은 고리가 로그
+	 * 글자만 바꿔서 돈다</b>(「시련 끔」). 그래서 월드 단위로 한 번 보고 <b>이 메서드를 통째로</b>
+	 * 돌아간다 — 드래곤은 차원에 하나뿐이라 팀마다 다시 물을 것이 없다.
 	 */
 	private static void detectArrival(MinecraftServer server, ServerLevel end, long now) {
+		if (!endFightLive(end)) {
+			return;
+		}
 		for (ServerPlayer player : end.players()) {
 			ShareTeam team = TeamManager.get(server).teamOf(player.getUUID());
 			if (team == null) {
 				continue;
 			}
 			UUID teamId = team.teamId();
-			if (SESSIONS.containsKey(teamId) || PENDING_SUMMON.containsKey(teamId)) {
+			if (SESSIONS.containsKey(teamId) || PENDING_SUMMON.containsKey(teamId)
+					|| TrialEntranceGate.isOpen(teamId)) {
+				continue;
+			}
+			// 시련을 켠 팀은 먼저 멈춰 세우고 리더에게 묻는다. 창을 띄우지 못했으면(리더가
+			// 접속해 있지 않다) 아래 예전 길로 그대로 흘러간다 — 거기가 바닐라와 같은 길이다.
+			if (trialsEnabled(server, teamId)
+					&& TrialEntranceGate.open(end, team, findDragon(end),
+							onlineMembers(server, team), now)) {
 				continue;
 			}
 			PENDING_SUMMON.put(teamId, now + SUMMON_DELAY_TICKS);
@@ -218,6 +267,95 @@ public final class DragonTrialManager {
 							Component.literal("팀이 최종 보스에 들어섰습니다"), 5, 40, 10);
 				}
 			}
+		}
+	}
+
+	/**
+	 * 떠 있는 입장 수락창을 돌린다. 기다림이 끝나면 <b>팀 전원을 단상으로 모으고 전투를 연다.</b>
+	 *
+	 * <h2>소환 대기({@link #tickPendingSummons})보다 <b>앞</b>이다</h2>
+	 *
+	 * <p>둘은 서로 배타적이다 — {@link #detectArrival} 이 창을 띄운 팀은 {@link #PENDING_SUMMON}
+	 * 에 들어가지 않는다. 그래도 앞에 두는 것은 같은 틱에 창이 끝나고 전투가 열리는 것이
+	 * <b>소환 대기가 보기 전</b>이어야 순서가 하나로 읽히기 때문이다.
+	 *
+	 * <h2>⚠ 소환 지연 3초를 쓰지 않는다</h2>
+	 *
+	 * <p>{@link #SUMMON_DELAY_TICKS} 는 「화면이 아무 말 없이 바뀌면 버그처럼 보인다」를 메우려고
+	 * 둔 예고였다. 수락창이 그 몫을 <b>훨씬 분명하게</b> 한다 — 리더가 직접 확인을 눌렀으므로
+	 * 확인한 그 틱에 옮기는 것이 맞다. 여기서 또 3초를 기다리면 「눌렀는데 아무 일도 안
+	 * 일어난다」가 된다.
+	 *
+	 * <h2>진행하지 않는 길이 하나뿐이다</h2>
+	 *
+	 * <p>{@link TrialEntranceGate.Outcome#ABANDONED}(팀 전원 접속 종료)와 팀 해체. 나머지 셋은
+	 * <b>수락한 것과 똑같이</b> 진행한다 — 까닭은 {@link TrialEntranceGate} 의 「교착을 만들지
+	 * 않는다」에 적어 두었다.
+	 *
+	 * <h2>⚠⚠ 창이 떠 있는 사이에 전투가 끝나면 <b>붙들기를 푼다</b> (2026-10-01)</h2>
+	 *
+	 * <p>{@link #detectArrival} 이 창을 막는 것만으로는 모자라다. <b>이미 떠 있는 창</b>은
+	 * {@link TrialEntranceGate#tick} 이 「확인·시간 초과·리더 이탈·전원 종료」 넷 가운데 하나가
+	 * 될 때까지 사람을 붙들어 두므로, 그 사이에 드래곤이 죽으면 <b>최대 60초를 붙들린 채로
+	 * 남는다.</b> 공유 체력 판에서 조작이 안 되는 60초는 그 자체로 사고다.
+	 *
+	 * <p>그래서 {@link TrialEntranceGate#tick} 보다 <b>먼저</b> 보고, 끝난 전투면
+	 * {@link TrialEntranceGate#cancel} 로 <b>붙들기를 버리고 남의 화면까지 닫는다.</b>
+	 */
+	private static void tickEntranceGates(MinecraftServer server, ServerLevel end, long now) {
+		boolean live = endFightLive(end);
+		for (UUID teamId : TrialEntranceGate.openTeams()) {
+			ShareTeam team = TeamManager.get(server).teamById(teamId);
+			if (team == null) {
+				// 창이 떠 있는 사이에 팀이 해체됐다. 버리지 않으면 그 팀 id 로 전투가 영영
+				// 열리지 않는다.
+				TrialEntranceGate.abandon(teamId);
+				continue;
+			}
+			if (!live) {
+				SharedFateMod.LOGGER.info(
+						"[END] 팀 '{}' 입장 수락창을 접습니다 — 이 월드의 드래곤전이 이미 끝났습니다."
+								+ " 붙들기를 풉니다", team.name());
+				TrialEntranceGate.cancel(teamId, onlineMembers(server, team));
+				continue;
+			}
+			TrialEntranceGate.Outcome outcome =
+					TrialEntranceGate.tick(server, team, onlineMembers(server, team), now);
+			// default 없는 switch 식이다. Outcome 에 값을 더하고 여기에 갈래를 안 붙이면
+			// 컴파일이 거절한다 — 새 결말이 조용히 「기다린다」로 떨어지는 것을 막는다.
+			boolean proceed = switch (outcome) {
+				case WAIT -> false;
+				case ACCEPTED -> true;
+				case TIMED_OUT -> {
+					SharedFateMod.LOGGER.info(
+							"[END] 팀 '{}' 입장 수락창이 {}틱 동안 확인되지 않아 그대로 시작합니다"
+									+ " — 엔드 입장은 되돌릴 수 없는 문턱입니다",
+							team.name(), TrialEntranceGate.TIMEOUT_TICKS);
+					yield true;
+				}
+				case LEADERLESS -> {
+					SharedFateMod.LOGGER.info(
+							"[END] 팀 '{}' 리더가 접속을 끊어 입장 수락을 기다리지 않고 시작합니다",
+							team.name());
+					yield true;
+				}
+				case ABANDONED -> {
+					SharedFateMod.LOGGER.info(
+							"[END] 팀 '{}' 전원이 접속을 끊어 입장 수락창을 접었습니다 — 전투를 열지"
+									+ " 않습니다", team.name());
+					yield false;
+				}
+			};
+			if (!proceed) {
+				continue;
+			}
+			// ⚠ 전투를 먼저 열고 그 뒤에 모은다. 거꾸로 두면 둘째 겹(startSession)이 거절한
+			// 틱에도 팀이 이미 단상으로 끌려가 있어, 「확인했는데 아무 일도 안 일어나고 자리만
+			// 바뀌었다」가 된다.
+			if (!startSession(server, end, team, now)) {
+				continue;
+			}
+			gatherTeam(server, end, team);
 		}
 	}
 
@@ -263,6 +401,8 @@ public final class DragonTrialManager {
 		}
 		long now = end.getGameTime();
 		detectArrival(server, end, now);
+		// 입장 수락창. 소환 대기보다 앞이다 — 까닭은 그쪽 메서드 설명에 있다.
+		tickEntranceGates(server, end, now);
 		tickPendingSummons(server, end, now);
 		// ⚠ 세션을 돌리기 전이다. tickSessions 는 세션을 지울 수 있고, 지워진 팀을 다시
 		// 부르는 것은 「전투가 끝났는데 엔드로 끌려간다」가 된다.
@@ -389,15 +529,60 @@ public final class DragonTrialManager {
 			if (team == null) {
 				continue;
 			}
+			// ⚠ 전투를 먼저 열고 그 뒤에 부른다. tickEntranceGates 와 같은 까닭이다 — 3초
+			// 예고가 도는 사이에 드래곤이 죽으면 둘째 겹이 거절하는데, 거꾸로 두면 그때도
+			// 팀이 끝난 엔드로 끌려간다.
+			if (!startSession(server, end, team, now)) {
+				continue;
+			}
 			summonTeam(server, end, team);
-			startSession(server, end, team, now);
 		}
 	}
 
+	/**
+	 * 엔드 밖에 있는 팀원만 불러들인다. <b>이미 엔드에 있는 사람은 건드리지 않는다.</b>
+	 *
+	 * <p>{@link #recallStragglers} 가 2초마다 부르는 길이라 여기서 엔드 안 사람까지 옮기면
+	 * <b>싸우고 있는 사람이 2초마다 단상으로 끌려간다.</b>
+	 */
 	private static void summonTeam(MinecraftServer server, ServerLevel end, ShareTeam team) {
-		Vec3 landing = ARRIVAL_POINT;
+		moveTeam(server, end, team, false);
+	}
+
+	/**
+	 * <b>팀 전원</b>을 단상으로 모은다 — 엔드 안에 있던 사람까지.
+	 *
+	 * <h2>사람이 정한 것</h2>
+	 *
+	 * <p>입장 수락창에서 리더가 확인을 누르면 「엔더 중앙으로 보내 그 기반암 단상있는곳으로」다.
+	 * 「확인한 뒤 중앙으로 보낼 대상은 누구인가」를 따로 물었을 때 <b>「팀 전원」</b>이라고
+	 * 답했다(2026-10-01). 그래서 먼저 들어가 있던 사람도 함께 옮긴다 — 그러지 않으면 넷 가운데
+	 * 셋만 단상에 서고 한 사람은 포탈 자리에 남아 18.5초 연출을 혼자 다른 곳에서 본다.
+	 */
+	private static void gatherTeam(MinecraftServer server, ServerLevel end, ShareTeam team) {
+		moveTeam(server, end, team, true);
+	}
+
+	/**
+	 * 팀을 엔드 단상으로 옮긴다.
+	 *
+	 * <p>⚠⚠ <b>좌표를 숫자로 박지 않는다.</b> 전에는 {@code (0, 75, 0)} 이 여기 적혀 있었고 사람이
+	 * 그것을 보고 「0 75 0 이엇나?」라고 물었다 — <b>물음표가 붙은 기억</b>이었고, 실제로 두 가지가
+	 * 틀릴 수 있는 값이었다(가로는 전투 원점이 {@code (0, ?, 0)} 이 아닌 판, 세로는 섬 표면보다
+	 * 열 칸 넘게 위). 지금은 {@link TrialPodium#locate} 가 <b>바닐라가 착지 목표로 쓰는 그 점</b>을
+	 * 잡는다. 그쪽 클래스 설명에 셈과 근거가 있다.
+	 *
+	 * <p>단상은 기반암이라 <b>발밑이 사라지지 않는다.</b> 예전 자리는 섬 위 허공이어서 떨어지는
+	 * 동안을 도착 무적이 메우고 있었다.
+	 *
+	 * @param includeInEnd 이미 엔드에 있는 사람도 옮기는가. 입장 수락 뒤의 「팀 전원 모으기」만
+	 *                     참이다
+	 */
+	private static void moveTeam(MinecraftServer server, ServerLevel end, ShareTeam team,
+			boolean includeInEnd) {
+		Vec3 landing = TrialPodium.locate(end, findDragon(end));
 		for (ServerPlayer member : onlineMembers(server, team)) {
-			if (member.level().dimension() == Level.END) {
+			if (!includeInEnd && member.level().dimension() == Level.END) {
 				continue;
 			}
 			member.teleportTo(end, landing.x, landing.y, landing.z,
@@ -422,9 +607,28 @@ public final class DragonTrialManager {
 	 *
 	 * <p>로그는 <b>켬·끔을 반드시 적는다.</b> 기본값이 끔이라 「왜 시련이 안 뜨지」의 답이 거의
 	 * 언제나 이 줄에 있다.
+	 *
+	 * <h2>⚠⚠ 둘째 겹 — 죽은 드래곤·끝난 전투로는 열리지 않는다 (2026-10-01)</h2>
+	 *
+	 * <p>{@link #detectArrival} 이 첫째 겹이고 여기가 둘째다. <b>이 문을 지나는 길이 셋</b>이고
+	 * 그중 하나가 <b>{@code /shareteam trialtest start}</b>({@link #forceStart}) 라, 첫째 겹을
+	 * 지나지 않는 길이 실제로 있다 — 명령으로도 같은 고리를 만들 수 없어야 한다. 「한쪽만 막으면
+	 * 반드시 샌다」가 이 저장소의 제1 함정이다.
+	 *
+	 * <p>⚠ 여기서 거절하면 <b>세션이 열리지 않으므로</b> {@link #tickSessions} 가 「드래곤이
+	 * 없다 → 처치」로 세어 다시 {@link #detectArrival} 로 돌려보내는 일도 없다. 고리의 3·4번이
+	 * 통째로 사라지는 자리다.
+	 *
+	 * @return 전투를 열었으면 참. <b>거짓이면 부르는 쪽은 팀을 옮기지 않는다</b>
 	 */
-	private static void startSession(MinecraftServer server, ServerLevel end, ShareTeam team,
+	private static boolean startSession(MinecraftServer server, ServerLevel end, ShareTeam team,
 			long now) {
+		if (!endFightLive(end)) {
+			SharedFateMod.LOGGER.info(
+					"[END] 팀 '{}' 엔드 전투를 열지 않습니다 — 이 월드의 드래곤전이 이미 끝났습니다."
+							+ " 엔드 크리스탈 넷으로 드래곤을 되살리면 다시 열립니다", team.name());
+			return false;
+		}
 		boolean trials = trialsEnabled(server, team.teamId());
 		DragonTrialSession session = new DragonTrialSession(team.teamId(), now, trials);
 		SESSIONS.put(team.teamId(), session);
@@ -447,6 +651,7 @@ public final class DragonTrialManager {
 				team.name(), trials ? "켬" : "끔(바닐라 드래곤전)", memberCount, target,
 				countCrystals(end));
 		persist();
+		return true;
 	}
 
 	/**
@@ -963,6 +1168,86 @@ public final class DragonTrialManager {
 	}
 
 	/**
+	 * ⚠⚠ <b>이 월드의 드래곤전이 아직 살아 있는가.</b> 거짓이면 <b>이미 끝난 전투</b>라
+	 * 수락창도 띄우지 않고 세션도 열지 않는다.
+	 *
+	 * <h2>2026-10-01 의 무한 고리</h2>
+	 *
+	 * <p>사람 말: <b>「엔더드래곤 잡앗는데 시련을 시작합니다 가 떳어. 무한으로 확인 눌러도」</b>.
+	 * 시험 서버 로그(167~190줄)에 고리가 그대로 찍혀 있었다 — 1초에 두세 바퀴다.
+	 *
+	 * <ol>
+	 *   <li>드래곤을 잡는다 → {@link #tickSessions} 가 세션을 닫는다</li>
+	 *   <li>사람은 <b>여전히 엔드에 서 있다</b> → {@link #detectArrival} 이 「세션 없는 팀원이
+	 *       엔드에 있다」로 보고 수락창을 띄운다</li>
+	 *   <li>확인하면 {@link #startSession} 이 <b>드래곤 없는 전투</b>를 연다
+	 *       (로그의 「드래곤 체력 0.0 · 크리스탈 0개」가 그 증거다 —
+	 *       {@link #strengthenDragon} 은 드래곤을 못 찾으면 0.0 을 돌려준다)</li>
+	 *   <li>그 전투가 그 자리에서 「처치」로 판정된다(0초 · 0장) → 2번으로 돌아간다</li>
+	 * </ol>
+	 *
+	 * <h2>⚠ 세 가지를 <b>함께</b> 본다 — 하나만 보면 반드시 틀리는 틱이 있다</h2>
+	 *
+	 * <ol>
+	 *   <li><b>살아 있는 드래곤이 있는가</b>({@code dragonAlive}). 위 고리를 실제로 만든 것이
+	 *       이 한 가지이고, 바닐라 전투 객체를 못 읽는 판(아래)에서는 이것만 남는다.
+	 *       ⚠ 다만 이것 <b>하나만</b> 보면 안 된다 — 드래곤이 죽은 자리에 바닐라
+	 *       {@code setDragonKilled} 가 붙지 않는 길이 있다(그쪽은 UUID 가 제 드래곤과
+	 *       같을 때만 적는다). 거꾸로 <b>크리스탈로 되살리는 중</b>에는 아직 드래곤이 없으니
+	 *       이 칸이 「끝났다」로 읽히는데, 되살아난 그 틱에 다시 참이 되므로 그것은 맞다</li>
+	 *   <li><b>바닐라의 {@code EnderDragonFight.dragonKilled}</b>({@code fightClosed}).
+	 *       {@code EnderDragonFightAccessor} 가 꺼내고, <b>그 칸이 왜 옳은지와
+	 *       {@code hasPreviouslyKilledDragon} 을 왜 안 쓰는지는 그 파일에 바이트코드와 함께
+	 *       적어 두었다.</b> 한 줄로 적으면 — <b>크리스탈 넷으로 되살리면 바닐라가 이 깃발을
+	 *       스스로 내린다.</b> 전투 객체가 {@code null} 이면(바닐라 엔드가 아닌 판) 이 칸은
+	 *       「끝나지 않았다」로 둔다. 모를 때 「끝났다」로 기울면 <b>엔드에 들어가도 전투가
+	 *       영영 안 열리는 월드</b>가 생긴다</li>
+	 *   <li><b>우리 회차 상태</b>({@code runWon}). {@code sharedfate-run-state.json} 의
+	 *       {@code status} 가 {@code victory} 다. 바닐라 깃발이 아직 안 적힌 틱과 위 1번의
+	 *       UUID 어긋남을 함께 메운다. ⚠ <b>이 칸은 회차가 끝날 때까지 안 내려간다</b> — 곧
+	 *       승리로 적힌 회차에서는 되살려도 창이 안 뜨고, 그것이 의도다. 그 회차는 이미
+	 *       끝났고 월드가 초기화를 기다리는 중이다({@code WorldResetCoordinator}).
+	 *       {@code dragonKillEndsRun} 이 꺼진 서버에서는 이 칸이 언제나 거짓이라 아무 일도
+	 *       하지 않는다</li>
+	 * </ol>
+	 *
+	 * <p>⚠ <b>바닐라 되살리기를 막지 않는다.</b> 엔드 크리스탈 넷을 출구 포털에 놓아 드래곤을
+	 * 다시 띄우는 것은 바닐라 기능이고, 그 길로 드래곤이 살아나면 <b>새 전투라 수락창이 다시
+	 * 떠야 한다.</b> 1번과 2번이 둘 다 그 순간 「살아 있다」로 돌아서므로 그대로 성립한다.
+	 */
+	private static boolean endFightLive(ServerLevel end) {
+		EnderDragon dragon = findDragon(end);
+		// ⚠ findDragon 이 이미 isAlive() 로 걸렀지만 체력을 한 번 더 본다. 「살아 있다」의 뜻이
+		// 판마다 달라질 수 있는 자리이고, 여기서 틀리면 돌아오는 것이 바로 그 무한 고리다.
+		boolean dragonAlive = dragon != null && dragon.getHealth() > 0.0F;
+		EnderDragonFight fight = end.getDragonFight();
+		// ⚠ 캐스팅이 아니라 instanceof 다. 믹스인이 sharedfate.mixins.json 에 안 등록되면
+		// 캐스팅은 엔드에 사람이 있는 매 틱 ClassCastException 으로 서버를 때리는데, 이쪽은
+		// 「바닐라 깃발을 못 읽었다」로 떨어져 남은 두 수단으로 버틴다 — 그래도 조용히 넘어가지는
+		// 않는다. 등록을 못박는 시험이 따로 있다(TrialEntranceGateTest).
+		boolean fightClosed = fight instanceof EnderDragonFightAccessor accessor
+				&& accessor.sharedfate$dragonKilled();
+		return endFightLive(dragonAlive, fightClosed, RunProgressManager.isVictory());
+	}
+
+	/**
+	 * {@link #endFightLive(ServerLevel)} 의 판단만 떼어 둔 것. <b>월드를 하나도 모른다 — 시험이
+	 * 직접 굴린다.</b>
+	 *
+	 * <p>셋이 <b>모두</b> 「살아 있다」라고 말해야 참이다. 곧 <b>하나라도 「끝났다」면 끝난
+	 * 것</b>이고, 그것이 이 저장소의 제1 함정(「한쪽만 막으면 반드시 샌다」)을 값의 모양으로
+	 * 적은 것이다.
+	 *
+	 * @param dragonAlive 살아 있는 드래곤이 이 월드에 있고 체력이 0 보다 큰가
+	 * @param fightClosed 바닐라 {@code EnderDragonFight.dragonKilled}. 전투 객체를 못 읽었으면
+	 *                    <b>거짓</b>이다 — 모를 때는 「끝나지 않았다」 쪽이다
+	 * @param runWon      이 회차가 이미 승리로 적혔는가
+	 */
+	static boolean endFightLive(boolean dragonAlive, boolean fightClosed, boolean runWon) {
+		return dragonAlive && !fightClosed && !runWon;
+	}
+
+	/**
 	 * ⚠ <b>지금 엔드에 서 있는 팀원만.</b> 전투 중에 팀원에게 무엇이든 하는 코드는 이 목록을 쓴다.
 	 *
 	 * <h2>차원을 여기서 가르는 이유</h2>
@@ -1046,6 +1331,9 @@ public final class DragonTrialManager {
 		CRYSTALS_AT_START.clear();
 		READY_AT.clear();
 		RECALL_AT.clear();
+		// 수락창은 저장되지 않고 붙들기도 매 틱 다시 거는 것이라 버리기만 하면 된다.
+		// 월드를 만질 수 없는 자리에서도 불리므로(SERVER_STOPPED) 꾸러미를 보내지 않는다.
+		TrialEntranceGate.clearState();
 		TrialFreeze.reset();
 		TrialRisks.clearState();
 		DragonPassives.clearState();
@@ -1054,17 +1342,35 @@ public final class DragonTrialManager {
 		DragonLastStand.clearState();
 	}
 
-	/** 시험·명령용. 지금 당장 전투를 연다. */
-	public static void forceStart(MinecraftServer server, ShareTeam team) {
+	/**
+	 * 시험·명령용. 지금 당장 전투를 연다.
+	 *
+	 * <p>⚠⚠ <b>이 길도 둘째 겹을 지난다.</b> {@link #startSession} 이 끝난 전투를 거절하므로
+	 * {@code /shareteam trialtest start} 로도 「죽은 드래곤으로 전투를 열고 그 자리에서 처치
+	 * 판정」이라는 2026-10-01 의 무한 고리를 만들 수 없다 — 까닭은
+	 * {@link #endFightLive(ServerLevel)} 에 적혀 있다.
+	 *
+	 * @return 전투를 열었으면 참. <b>거짓이면 팀을 옮기지도 않았다</b> — 명령이 그 사실을 사람에게
+	 *         알려야 한다. 조용히 아무 일도 안 일어나면 「명령이 안 듣는다」로 시간을 버린다
+	 */
+	public static boolean forceStart(MinecraftServer server, ShareTeam team) {
 		ServerLevel end = server.getLevel(Level.END);
 		if (end == null || team == null) {
-			return;
+			return false;
 		}
 		SESSIONS.remove(team.teamId());
 		resetTrialDelay(team.teamId());
 		RECALL_AT.remove(team.teamId());
+		// ⚠ 떠 있던 입장 수락창도 접는다. 남겨 두면 다음 틱에 그 창이 「확인됐다」로 끝나면서
+		// 팀을 단상으로 모으고 전투를 한 번 더 열어 — 방금 이 명령으로 연 세션을 통째로 덮어쓴다.
+		// 명령으로 직접 여는 길이라 묻는 창이 뜻을 잃는 자리이기도 하다.
+		TrialEntranceGate.abandon(team.teamId());
+		// ⚠ 전투를 먼저 열고 그 뒤에 부른다 — 거절된 틱에 팀이 끝난 엔드로 끌려가지 않게.
+		if (!startSession(server, end, team, end.getGameTime())) {
+			return false;
+		}
 		summonTeam(server, end, team);
-		startSession(server, end, team, end.getGameTime());
+		return true;
 	}
 
 	/**

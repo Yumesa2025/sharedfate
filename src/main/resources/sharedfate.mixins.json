@@ -25,6 +25,7 @@
     "EnderDragonPerchHoldMixin",
     "EnderDragonPerchRangedImmunityMixin",
     "AbstractDragonPhaseInstanceAccessor",
+    "EnderDragonFightAccessor",
     "DragonHoldingPatternLandingMixin",
     "LivingEntityPerkDamageMixin",
     "LivingEntitySharedHealMixin",
@@ -67,7 +68,8 @@
     "ServerPlayerCritMixin",
     "ServerPlayerDeathMessageMixin",
     "SlotAccessor",
-    "BucketEmptyBanMixin"
+    "BucketEmptyBanMixin",
+    "BedBlockEndBlastMixin"
   ],
   "injectors": {
     "defaultRequire": 1

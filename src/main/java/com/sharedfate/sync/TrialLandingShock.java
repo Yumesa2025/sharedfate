@@ -924,8 +924,38 @@ public final class TrialLandingShock {
 	 * 앞의 것은 월드 없이도 답이 정해져 시험이 훑을 수 있고, 뒤의 것은 실제 섬이 둥글지 않다는
 	 * 것을 안다. 둘 중 어느 하나도 빼지 말 것 — <b>낙사 한 번이 월드 삭제</b>다.
 	 *
+	 * <h2>⚠⚠ 세로를 「읽은 그대로」 돌려놓지 않는다 — 2026-10-04</h2>
+	 *
+	 * <p>세로는 <b>우리가 쓴 값이 아니다.</b> 바닐라 {@code EnderDragon.knockBack} 이 날개 상자
+	 * ({@code wing1}·{@code wing2} 의 {@code inflate(4,2,4).move(0,-2,0)}) 안의 사람에게
+	 * <b>매 틱 세로 +0.2</b> 를 쌓는다 — ⚠ {@code isSitting()} 조건은 <u>피해</u>에만 붙어 있어
+	 * <b>미는 것은 조건 없이 돈다</b>. 바닐라는 그 값을 {@code needsSync} 로만 내보내
+	 * <b>본인에게 안 보내므로</b> 서버 혼자 쌓는 숫자인데, 바로 아래 {@code syncVelocity} 는
+	 * <b>{@code sendToTrackingPlayersAndSelf}</b> 이고 보내는 것이 <b>그 순간의
+	 * {@code getDeltaMovement()} 통째로</b>다. 사람 말로
+	 * <b>「드래곤 밀치는 패턴떄 점프하면 하늘로 날라가버림」</b>이다.
+	 *
+	 * <p>⚠⚠ <b>가장 나쁜 경우가 이 카드다.</b> 이 카드가 터지는 창이 곧 착지이고
+	 * {@code DragonPerch} 가 드래곤을 포디움에 <b>160틱</b>({@code DragonPerch.HOLD_TICKS})
+	 * 붙박아 둔다. 게다가 쌓임을 끊는 것은 {@code wasHurtRecently()}(= {@code hurtTime > 0})인데
+	 * {@code EnderDragonPerchRangedImmunityMixin} 이 {@code hurt} 를 HEAD 에서 끊어
+	 * <b>{@code hurtTime} 이 아예 안 올라간다</b> — 곧 <b>원거리로만 때리는 팀에게는 160틱이 한 틱도
+	 * 안 끊기고 쌓여</b> <b>5.648칸/틱(도달 109칸)</b>이 된다. 그 값을 그대로 내려보내면 사람이
+	 * 공중 감쇠로 들려 {@link #groundedReach} 가 짚어 둔 길과 상관없는 자리에 떨어진다.
+	 *
+	 * <p>그래서 세로를 {@link TrialVelocity#syncedVertical} 로 <b>올리는 쪽만</b> 자른다 —
+	 * <b>내리는 쪽은 한 톨도 안 건드리고</b>(떨어지는 사람을 더 세게 떨어뜨리면 그것이 새 낙사
+	 * 장치다) 스스로 뛴 사람은 <b>비트 단위로 무변화</b>다. 수평은 이 카드가 <b>덮어쓰므로</b>
+	 * 같은 호출이 쌓는 수평 오염이 그 자리에서 사라진다 — 그래서 <b>세로로만 샜다</b>.
+	 *
+	 * <p>⚠ 고친 것은 <b>내려보내는 값을 자르는 것</b>뿐이고 바닐라 넉백은 한 줄도 건드리지 않는다.
+	 * {@code EnderDragonContactDamageMixin} 의 {@code knockBack} 차단은 <b>최후의 저항 전용</b>이라
+	 * 이 카드가 도는 페이즈에는 닿지 않고, 그 차단을 착지까지 넓히면 「끄면 완전한 바닐라
+	 * 엔더드래곤전」의 경계를 한 칸 더 움직이는 일이 된다. 남이 쌓아 둔 숫자를 <b>우리가 배달하지
+	 * 않는 것</b>이 바닐라 동작을 하나도 바꾸지 않는 길이다.
+	 *
 	 * <p>{@code syncVelocity} 를 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 제자리로 되돌아간다
-	 * ({@code TrialRisks.launch} 와 같은 이유). 세로 속도는 건드리지 않고 그대로 둔다.
+	 * ({@code TrialRisks.launch} 와 같은 이유).
 	 */
 	private static void push(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
 			Vec3 center, TrialCatalog.Risk.LandingShock risk) {
@@ -948,7 +978,12 @@ public final class TrialLandingShock {
 		}
 		double speed = pushVelocity(distance);
 		Vec3 motion = member.getDeltaMovement();
-		member.setDeltaMovement(stepX * speed, motion.y, stepZ * speed);
+		// 수평은 덮어쓴다. ⚠ 세로는 「읽은 그대로」가 아니라 TrialVelocity.syncedVertical 을
+		// 지난다 — 착지 160틱 동안 바닐라가 쌓아 둔 5.648칸/틱을 그대로 배달하면 사람이 109칸을
+		// 솟는다. 스스로 뛴 사람·떨어지는 사람은 비트 단위로 안 달라진다.
+		member.setDeltaMovement(stepX * speed,
+				TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
+				stepZ * speed);
 		member.syncVelocity = true;
 	}
 

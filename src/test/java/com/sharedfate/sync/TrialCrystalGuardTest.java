@@ -33,14 +33,17 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 「크리스탈 보호막」·「쇠창살과 무딘 곡괭이」가 <b>월드 없이 확인할 수 있는 만큼</b>을 붙든다.
+ * 「크리스탈 보호막」·「다시 선 쇠창살」이 <b>월드 없이 확인할 수 있는 만큼</b>을 붙든다.
  *
- * <p>여기서 지키는 것은 셋이다.
+ * <p>여기서 지키는 것은 넷이다.
  *
  * <ol>
  *   <li><b>정적 상태가 새지 않는다</b> — {@link CrystalWatch} 는 월드보다 오래 살고, 화살
  *       면역을 켠 채 잊으면 다음 월드의 크리스탈까지 화살에 맞지 않는다.</li>
- *   <li><b>값이 흔들리지 않는다</b> — 채굴 속도 배율 0.85, 우리 치수, 카드 둘의 값.</li>
+ *   <li><b>값이 흔들리지 않는다</b> — 우리 치수, 카드 둘의 값, 카드 이름과 id.</li>
+ *   <li><b>2026-10-01 에 걷은 채굴 감소가 되살아나지 않고, 함께 걷히지도 않았다</b> — 이 카드는
+ *       채굴 속도를 한 톨도 안 깎고, 같은 믹스인을 타는 {@code mining_speed} 증강은 그대로
+ *       돈다. 이 파일에서 가장 새로 중요해진 자리다.</li>
  *   <li><b>믹스인 대상이 26.3 에 실제로 있다</b> — 이 파일에서 가장 중요한 부분이다.
  *       {@code sharedfate.mixins.json} 에 refmap 이 없어 <b>대상 서술자가 틀려도 빌드가 그냥
  *       통과</b>하고, 크리스탈을 처음 때리는 순간에야 터진다. 그때는 이미 엔드 전투 중이다.</li>
@@ -139,20 +142,114 @@ class TrialCrystalGuardTest {
 	// -------------------------------------------------- 값이 흔들리지 않는가
 
 	/**
-	 * 무딘 곡괭이는 <b>채굴 속도 15% 감소</b>다 — 채굴 피로가 아니다.
+	 * 「다시 선 쇠창살」은 채굴 속도를 <b>한 톨도</b> 안 깎는다.
 	 *
-	 * <p>사람이 「무딘곡괭이 이거 채굴피로1은 심하고 채굴 속도 15프로감소로」라고 정했다. 채굴
-	 * 피로 I 은 26.3 에서 {@code 0.3^(등급+1)} 이라 <b>70% 감소</b>이고, 그 4분의 1도 안 되는
-	 * 배율을 내는 바닐라 상태이상은 없다. 값이 흔들리면 카드 설명이 그 자리에서 거짓이 된다.
+	 * <p>세 걸음을 밟았다 — ① 채굴 피로 I(실제로는 70% 감소), ② 사람이 「무딘곡괭이 이거
+	 * 채굴피로1은 심하고 채굴 속도 15프로감소로」라고 해서 직접 15% 를 깎는 쪽, ③ 2026-10-01 에
+	 * 사람이 「무딘곡괭이는 채굴감소 없앳으니 이름 변경해」라고 해서 <b>통째로 걷음.</b>
+	 *
+	 * <p>효과가 둘에서 하나로 줄어든 것은 <b>빠뜨린 것이 아니라 사람이 알고 고른 것</b>이다.
+	 * 카드 하나만 보지 않고 목록 전체를 훑는 이유는, 되살릴 때 다른 카드에 몰래 켜 두는 길을
+	 * 막기 위해서다.
 	 */
 	@Test
-	void 무딘_곡괭이는_15퍼센트_감소다() {
-		assertEquals(0.85, TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER, 1.0e-9,
-				"15% 감소는 사람이 정한 값이다");
+	void 다시_선_쇠창살은_채굴_속도를_한_톨도_안_깎는다() {
+		assertFalse(guardOf("sharedfate:iron_cage").digSlowdown(),
+				"2026-10-01 에 사람이 채굴 15% 감소를 걷었다. 되살리려면 사람에게 먼저 물을 것");
+
+		for (TrialCatalog.Trial trial : TrialCatalog.all()) {
+			for (TrialCatalog.Risk risk : trial.risks()) {
+				if (risk instanceof TrialCatalog.Risk.CrystalGuard guard) {
+					assertFalse(guard.digSlowdown(),
+							trial.name() + " 가 채굴 감소를 켰다. 지금 그것을 켜는 카드는 없어야 한다 —"
+									+ " 켜려면 카드 이름과 설명도 함께 고쳐야 한다");
+				}
+			}
+		}
+	}
+
+	/**
+	 * ⚠⚠ <b>증강의 채굴 속도 효과는 그대로 돈다.</b>
+	 *
+	 * <p>이 카드의 몫과 {@code mining_speed} 증강이 <b>같은 믹스인 한 자리</b>를 탄다. 그래서
+	 * 「한쪽만 걷으려다 둘 다 걷는」 사고가 날 수 있는데, 그 증상은 <b>빌드도 로그도 조용하다</b> —
+	 * 실버 7 「광맥 감각」의 대가가 말없이 사라질 뿐이다.
+	 *
+	 * <p>믹스인 클래스 파일의 상수 풀에서 {@code PerkBlockBreaks.scaleDestroySpeed} 호출을 직접
+	 * 찾는다. 믹스인 클래스를 {@code .class} 리터럴로 부르면 믹스인 환경이 막으므로 이름으로
+	 * 읽는다 — 아래 서술자 시험들과 같은 방식이다.
+	 */
+	@Test
+	void 증강의_채굴_속도_효과는_그대로_돈다() throws IOException {
+		String mixin = classFileOf(CrystalWatch.class,
+				"com.sharedfate.mixin.PlayerMiningSpeedMixin");
+
+		assertTrue(mixin.contains("com/sharedfate/perk/PerkBlockBreaks"),
+				"믹스인이 PerkBlockBreaks 를 더 부르지 않는다. 시련 몫을 걷으며 증강까지 걷었다");
+		assertTrue(mixin.contains("scaleDestroySpeed"),
+				"믹스인에 scaleDestroySpeed 호출이 없다. mining_speed 증강이 죽었다");
+		assertDoesNotThrow(
+				() -> com.sharedfate.perk.PerkBlockBreaks.class.getDeclaredMethod(
+						"scaleDestroySpeed",
+						net.minecraft.world.entity.player.Player.class,
+						BlockState.class, float.class),
+				"PerkBlockBreaks.scaleDestroySpeed 가 사라졌다. 증강의 채굴 속도가 걸릴 자리가 없다");
+		assertNotNull(com.sharedfate.perk.PerkEffectType.MINING_SPEED,
+				"mining_speed 효과 유형이 사라졌다. 정의 파일이 그 자리에서 읽히지 않는다");
+	}
+
+	/**
+	 * 걷은 길은 <b>살아 있지만 아무도 켜지 않는다.</b>
+	 *
+	 * <p>배율 자체를 지우지 않은 까닭은 위 시험에 적었다 — 깎는 자리를 증강이 함께 쓴다. 되살릴
+	 * 사람이 쓸 수 있게 범위만 붙든다. <b>여기서 값을 못박지 않는 것이 일부러다</b> — 지금 도는
+	 * 효과가 아닌데 0.85 를 붙들면 「15% 감소가 아직 산다」로 읽힌다.
+	 */
+	@Test
+	void 걷은_채굴_배율은_되살릴_수_있는_범위에_있다() {
 		assertTrue(TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER < 1.0,
 				"1 이상이면 빨라지는 쪽인데, 이 길은 서버에서만 계산되므로 빨라지지 않는다");
 		assertTrue(TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER > 0.0,
-				"0 이면 그 블록을 영영 캘 수 없다. 이 카드는 시간을 빼앗는 것이지 채굴을 막는 것이 아니다");
+				"0 이면 그 블록을 영영 캘 수 없다. 이 갈래는 시간을 빼앗는 것이지 채굴을 막는 것이 아니다");
+	}
+
+	/**
+	 * 이름은 「다시 선 쇠창살」이고 <b>id 는 그대로</b>다.
+	 *
+	 * <p>이름은 2026-10-01 에 바꿨다 — 효과가 쇠창살 하나만 남았으므로 「무딘 곡괭이」가 이름에
+	 * 남아 있으면 카드가 그 자리에서 거짓을 말한다.
+	 *
+	 * <p><b>id 를 바꾸면 안 된다.</b> 저장된 세션 상태·명령 자동완성·월드 파일이
+	 * {@code sharedfate:iron_cage} 를 들고 있다. 바꾸면 이미 이 카드를 받은 판이 복원될 때
+	 * 카드가 통째로 사라진다.
+	 */
+	@Test
+	void 이름은_다시_선_쇠창살이고_id_는_그대로다() {
+		TrialCatalog.Trial cage = TrialCatalog.byId("sharedfate:iron_cage");
+		assertNotNull(cage, "id 를 바꾸면 저장된 판에서 이 카드가 통째로 사라진다");
+
+		assertEquals("다시 선 쇠창살", cage.name(),
+				"「쇠창살과 무딘 곡괭이」에서 바꿨다. 채굴 감소가 없으므로 곡괭이를 말하면 거짓이다");
+		assertFalse(cage.name().contains("곡괭이"),
+				"이름에 곡괭이가 남아 있으면 룰렛이 없는 효과를 약속한다");
+		assertFalse(cage.description().contains("채굴"),
+				"설명에 채굴이 남아 있으면 룰렛이 없는 효과를 약속한다");
+	}
+
+	/**
+	 * 남은 효과 하나 — <b>쇠창살이 없던 탑에도 다시 생긴다.</b>
+	 *
+	 * <p>효과가 둘에서 하나로 줄었으므로 이 하나가 사라지면 카드가 아무 일도 하지 않는 빈
+	 * 카드가 된다. 우리의 치수와 연결 모양은 아래 시험들이 따로 붙든다.
+	 */
+	@Test
+	void 쇠창살은_없던_탑에도_다시_생긴다() {
+		TrialCatalog.Risk.CrystalGuard cage = guardOf("sharedfate:iron_cage");
+
+		assertTrue(cage.restoreCage(),
+				"이 카드에 남은 효과는 이것 하나뿐이다. 꺼지면 아무 일도 하지 않는 카드가 된다");
+		assertFalse(cage.arrowImmune(),
+				"화살 면역은 「크리스탈 보호막」의 몫이다. 둘이 같아지면 룰렛에 이름만 둘이 된다");
 	}
 
 	/**
@@ -160,6 +257,9 @@ class TrialCrystalGuardTest {
 	 *
 	 * <p>상태이상이 아니게 되었으므로 이제 「효과가 끊긴다」가 아니라 「시효가 지난다」다. 갱신
 	 * 주기가 시효보다 길거나 같으면 곡괭이가 주기마다 빨라졌다 느려진다.
+	 *
+	 * <p>지금 이 갈래를 켜는 카드가 없어 도는 코드는 아니지만, <b>되살릴 사람이 여기서 멈추게</b>
+	 * 남겨 둔다 — 두 값의 관계가 어긋나면 게임을 띄워 봐야만 알 수 있는 종류의 고장이다.
 	 */
 	@Test
 	void 무뎌짐은_시효가_지나기_전에_다시_선언된다() {
@@ -176,6 +276,9 @@ class TrialCrystalGuardTest {
 	 * <p>{@code null} 과 서버 쪽이 아닌 플레이어에서 받은 값을 그대로 돌려주는지 본다. 여기서
 	 * 값이 달라지면 <b>시련과 무관한 모든 채굴</b>이 느려진다 — 이 파일에서 살아 있는 서버 없이
 	 * 확인할 수 있는 가장 중요한 성질이다.
+	 *
+	 * <p>2026-10-01 에 채굴 감소를 걷은 뒤로는 <b>어떤 카드도 선언을 적지 않으므로</b> 이 성질이
+	 * 곧 「시련은 채굴 속도를 건드리지 않는다」가 된다.
 	 */
 	@Test
 	void 선언이_없으면_채굴_속도를_건드리지_않는다() {
@@ -201,8 +304,8 @@ class TrialCrystalGuardTest {
 
 		assertEquals(new TrialCatalog.Risk.CrystalGuard(true, false, false), ward,
 				"「크리스탈 보호막」은 화살 면역만 건다");
-		assertEquals(new TrialCatalog.Risk.CrystalGuard(false, true, true), cage,
-				"「쇠창살과 무딘 곡괭이」는 우리를 세우고 채굴 속도를 깎는다");
+		assertEquals(new TrialCatalog.Risk.CrystalGuard(false, true, false), cage,
+				"「다시 선 쇠창살」은 우리만 세운다. 채굴 감소는 2026-10-01 에 걷었다");
 		assertNotEquals(ward, cage);
 	}
 

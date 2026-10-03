@@ -650,13 +650,71 @@ public final class TrialRisks {
 	 * <p>낙하 피해는 면제한다. 이 카드의 위험은 <b>띄워져 회피가 막히는 것</b>이지 낙사가 아니다.
 	 * 4블록만 띄워도 착지 피해가 붙으면 카드 설명과 실제가 달라지고, 공유 체력이라 한 사람의
 	 * 낙사가 팀 전체를 깎는다.
+	 *
+	 * <h2>⚠⚠ 2026-10-04 — 들고 있던 수평을 <b>읽어서 돌려놓고</b> 있었다</h2>
+	 *
+	 * <p>이 줄은 {@code setDeltaMovement(motion.x, launchVelocity(height), motion.z)} 였다.
+	 * 세로만 덮어쓰고 <b>수평은 서버가 들고 있던 값을 그대로 다시 실어</b> 보냈는데, 바로 아래
+	 * {@code syncVelocity} 가 켜는 패킷이 <b>그 순간의 {@code getDeltaMovement()} 통째로</b>다
+	 * ({@code ClientboundSetEntityMotionPacket}). 곧 <b>서버 혼자 쌓아 둔 수평을 본인에게
+	 * 배달하는 길</b>이었다 — {@link TrialVelocity#syncedVertical} 이 세로에 대해 적어 둔 것과
+	 * <b>같은 구멍이고 같은 날 드러났다.</b>
+	 *
+	 * <p>쌓는 쪽이 바닐라 {@code EnderDragon.knockBack} 이다. 26.3 바이트코드에서 확인했다 —
+	 * {@code dx ÷ max(dx²+dz², 0.1) × 4} 라 <b>거리로 나누는 식</b>이고 분모가 {@code 0.1} 에서
+	 * 멈추므로 한 틱 최댓값이 <b>{@code √0.1} 칸에서 12.649칸/틱</b>이다. 160틱이면 종착이
+	 * <b>바닥 15.21 · 공중 127.9칸/틱</b>이다. ⚠ {@code isSitting()} 조건은 <b>피해에만</b> 붙어
+	 * 있어 <b>미는 것은 조건 없이 매 틱</b> 돈다.
+	 *
+	 * <p>⚠ <b>이 카드는 「최후의 저항」 밖에서 돈다.</b> {@code EnderDragonContactDamageMixin} 이
+	 * 뿌리에서 {@code knockBack} 을 끊는 것은 {@code DragonLastStand.contactDamageOff()} 곧
+	 * <b>최후의 저항 전용</b>이라 입장 자리의 이 카드에는 닿지 않는다. 그리고 ⚠⚠ <b>이 카드는
+	 * 수평 천장을 아예 갖고 있지 않다</b> — 「엔더폭풍」의 {@code pushDistance} 나 「착지 충격」의
+	 * {@code groundedReach} 같은 것이 없다(세로만 띄우는 설계라 수평을 잴 이유가 없었다). 곧
+	 * 배달된 수평에는 <b>아무 천장도 안 걸렸다.</b>
+	 *
+	 * <p>⚠ <b>띄우는 것 자체가 그 수평을 더 멀리 보낸다.</b> {@code launchVelocity(4)} = 0.8 이라
+	 * <b>20틱</b>을 떠 있고, 그동안 수평 감쇠가 바닥 0.546 이 아니라 <b>공중 0.91</b>이다. 한 틱치
+	 * 12.649 를 안고 20틱 떠 있으면 <b>119칸</b>을 나아간다 — 섬 반경이
+	 * {@value #ARENA_RADIUS} 다. 거기에 낙하 피해 면제까지 붙어 있어 <b>떨어지는 것을 막는 장치가
+	 * 하나도 없다.</b>
+	 *
+	 * <h2>고친 방법 — <b>수평을 0 으로 덮어쓴다</b>({@link #launchMotion})</h2>
+	 *
+	 * <p>자르지 않고 덮어쓰는 쪽을 골랐다. 근거가 둘이다.
+	 *
+	 * <ul>
+	 *   <li><b>이 카드는 수평을 일부러 싣지 않는다.</b> {@code TrialCatalog.Risk.DelayedStrike} 는
+	 *       {@code launch} <b>높이 하나</b>만 들고 있고 카드 설명이 「맞으면 <b>하늘로</b>
+	 *       떠오릅니다」다. 실을 수평이 없으면 <b>천장이 아니라 0</b> 이 답이다 —
+	 *       {@code DragonLastStandPatterns.shove}·{@code TrialEnderStorm.push}·
+	 *       {@code TrialLandingShock.push} 가 수평을 덮어써서 같은 오염을 겪지 않은 것과 같은 꼴
+	 *       이다. 세로를 자른 것({@code syncedVertical})은 <b>우리가 일부러 싣는 세로가
+	 *       있었기 때문</b>(십자 띄움 6칸)이지 자름이 더 나은 모양이라서가 아니다</li>
+	 *   <li><b>0 이라야 「섬 밖으로 못 나간다」가 증명이 된다.</b> 자르려면 천장을
+	 *       {@code getKnownMovement()} 에서 받아야 하는데 그것은 <b>클라이언트가 보낸 수</b>라
+	 *       상한이 우리 손에 없다 — 26.3 {@code handleMovePlayer} 의 「moved too quickly」는
+	 *       <b>제곱 거리로 한 틱당 100</b>, 곧 <b>10칸/틱</b>까지 통과시킨다(바이트코드에서
+	 *       확인했다). 0 이면 띄워진 사람의 수평 이동이 <b>0칸</b>이라, 이 카드가 사람을
+	 *       <b>제가 선 칸 위로만</b> 올린다</li>
+	 * </ul>
+	 *
+	 * <p>⚠ <b>정상 플레이어는 비트 단위로 달라지지 않는다.</b> 26.3 {@code LivingEntity.aiStep} 이
+	 * <b>사람에게만</b> 따로 묻는 갈래를 들고 있다 — {@code is(EntityTypes.PLAYER)} 이면
+	 * {@code horizontalDistanceSqr() < 9.0E-6}(= 0.003칸/틱) 일 때 <b>x 와 z 를 둘 다 정확히
+	 * {@code 0.0} 으로</b> 눌러 둔다(바이트코드에서 확인했다). 그리고 {@code ServerPlayer} 는
+	 * {@code xxa}·{@code zza} 를 한 번도 쓰지 않고 {@code ServerGamePacketListenerImpl} 은
+	 * {@code setDeltaMovement} 를 한 번도 부르지 않으므로, <b>아무도 밀지 않은 사람의 서버쪽
+	 * 수평은 정확히 {@code 0.0}</b> 이다 — 걷는 사람·달리는 사람·가만히 선 사람·제 발로 뛴 사람이
+	 * 모두 그 자리다. 곧 이 덮어쓰기가 바꾸는 값은 <b>남이 밀어 넣은 것뿐</b>이다.
 	 */
 	private static void launch(ServerPlayer player, double height, long now) {
 		if (!(height > 0.0)) {
 			return;
 		}
-		Vec3 motion = player.getDeltaMovement();
-		player.setDeltaMovement(motion.x, launchVelocity(height), motion.z);
+		// ⚠ 들고 있던 값을 읽지 않는다. 읽어서 돌려놓으면 바로 아래 syncVelocity 가 그것을
+		// 본인에게 배달한다 — 2026-10-04 의 「하늘로 날라가버림」이 그 길이었다.
+		player.setDeltaMovement(launchMotion(height));
 		player.syncVelocity = true;
 		player.fallDistance = 0.0;
 		player.resetFallDistance();
@@ -1000,6 +1058,27 @@ public final class TrialRisks {
 	 */
 	static double launchVelocity(double height) {
 		return Math.sqrt(2.0 * GRAVITY_PER_TICK * Math.max(0.0, height));
+	}
+
+	/**
+	 * ⚠⚠ 띄울 때 <b>실어 보내는 속도 통째로.</b> <b>수평이 0 인 것이 이 함수의 전부다.</b>
+	 *
+	 * <p>{@link #launch} 가 {@code setDeltaMovement} 에 넣는 값이고, 그 줄이 켜는
+	 * {@code syncVelocity} 가 <b>그 순간의 {@code getDeltaMovement()} 통째로</b>를 본인에게
+	 * 내려보낸다. 곧 <b>여기 적지 않은 것은 배달되지 않는다</b>는 것이 이 함수를 떼어 둔 이유다 —
+	 * 전에는 수평을 {@code player.getDeltaMovement()} 에서 <b>읽어서 돌려놓았고</b>, 그것이
+	 * 2026-10-04 의 「하늘로 날라가버림」이었다(까닭은 {@link #launch} 에 적어 두었다).
+	 *
+	 * <p>⚠ <b>수평을 실을 일이 생기면 천장을 먼저 만들어야 한다.</b> 이 카드에는 「엔더폭풍」의
+	 * {@code TrialEnderStorm.pushDistance} 나 「착지 충격」의 {@code TrialLandingShock.groundedReach}
+	 * 같은 것이 <b>없다</b>. 수평이 0 이라서 필요가 없었을 뿐이고, 0 이 아니게 되는 날
+	 * <b>엔드 섬 밖은 허공이고 공유 체력이라 한 사람의 낙사가 팀 전멸</b>이다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 여기서 직접 수를 센다 — {@code ServerPlayer} 를
+	 * 띄우지 않고도 「배달되는 값」을 물을 수 있는 자리를 하나 만들어 두는 것이 요점이다.
+	 */
+	static Vec3 launchMotion(double height) {
+		return new Vec3(0.0, launchVelocity(height), 0.0);
 	}
 
 	/**

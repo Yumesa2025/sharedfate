@@ -14,6 +14,7 @@ import com.sharedfate.client.perk.DoubleJumpHandler;
 import com.sharedfate.client.perk.PerkClientState;
 import com.sharedfate.client.perk.PerkDrawScreen;
 import com.sharedfate.client.perk.PerkOfferScreen;
+import com.sharedfate.client.trial.TrialEntranceScreen;
 import com.sharedfate.client.trial.TrialRouletteScreen;
 import com.sharedfate.net.ClientVersionPayload;
 import com.sharedfate.net.StatSnapshotPayload;
@@ -32,6 +33,8 @@ import com.sharedfate.net.SelectedSlotPayload;
 import com.sharedfate.net.SharedFateNetworking;
 import com.sharedfate.net.TeamSyncPayload;
 import com.sharedfate.net.TeamWipePayload;
+import com.sharedfate.net.TrialEntranceClosePayload;
+import com.sharedfate.net.TrialEntranceOfferPayload;
 import com.sharedfate.net.TrialHotbarLockPayload;
 import com.sharedfate.net.TrialRoulettePayload;
 import com.sharedfate.net.WorldResetPayload;
@@ -152,6 +155,16 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(TrialRoulettePayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> openTrialRoulette(context.client(), payload)));
+		// 엔드 입장 수락창. 서버가 1초마다 다시 보내므로 이미 떠 있는 창을 밀어내지 않는다 —
+		// 그 까닭은 openTrialEntrance 에 적어 두었다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialEntranceOfferPayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> openTrialEntrance(context.client(), payload)));
+		// 리더가 확인했거나 기다림이 끝났다. 누른 사람의 창은 제 손으로 닫히고 나머지 셋은
+		// 이 지시로 닫힌다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialEntranceClosePayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> closeTrialEntrance(context.client(), payload)));
 		// 시련 「굳는 손」이 굳혀 둔 핫바 칸. HotbarHighlight 가 그리기 스레드에서 읽으므로
 		// 갱신도 클라이언트 본 스레드에서 한다.
 		//
@@ -308,6 +321,52 @@ public class SharedFateClient implements ClientModInitializer {
 			return;
 		}
 		client.setScreenAndShow(new TrialRouletteScreen(payload));
+	}
+
+	/**
+	 * 엔드 입장 수락창을 연다.
+	 *
+	 * <p>서버가 <b>1초마다 다시 보낸다</b>({@code TrialEntranceGate.OFFER_RESEND_TICKS}). 그래서
+	 * 세 갈래가 필요하다.
+	 *
+	 * <ol>
+	 *   <li><b>같은 창이 이미 떠 있다</b> — 리더 이름과 누를 수 있는지만 갈아 끼우고 <b>시계는
+	 *       건드리지 않는다.</b> 새 창으로 바꿔 끼우면 남은 시간이 매초 제자리로 튀어 영영 안
+	 *       닫히는 것처럼 보인다</li>
+	 *   <li><b>밀어내면 안 되는 창이 떠 있다</b> — 사망 화면과 증강 선택창이다. 둘 다 그 자리에서
+	 *       해야 할 일이 있는 창이라 덮으면 안 된다. ⚠ 그래서 <b>이 사람은 수락창을 지금 못
+	 *       본다</b> — 1초 뒤에 다시 오므로 그 창을 닫으면 그때 뜬다. 한 번만 보냈다면 영영 못
+	 *       보고, 그 사람이 리더면 팀이 제한시간을 다 쓴다</li>
+	 *   <li>그 밖 — 띄운다. 다른 창(인벤토리 등)은 밀어낸다. 판이 바뀌는 자리라 그쪽이 더 급하다</li>
+	 * </ol>
+	 */
+	private static void openTrialEntrance(Minecraft client, TrialEntranceOfferPayload payload) {
+		if (!TrialEntranceScreen.shouldOpen(payload)) {
+			return;
+		}
+		if (client.gui.screen() instanceof TrialEntranceScreen open) {
+			if (open.openedTick() == payload.openedTick()) {
+				open.absorb(payload);
+				return;
+			}
+		} else if (client.gui.screen() instanceof DeathScreen
+				|| client.gui.screen() instanceof PerkOfferScreen) {
+			return;
+		}
+		client.setScreenAndShow(new TrialEntranceScreen(payload));
+	}
+
+	/**
+	 * 서버의 지시로 엔드 입장 수락창을 닫는다.
+	 *
+	 * <p>다른 화면이 떠 있으면 아무것도 하지 않는다. 늦게 도착한 지시가 <b>그 사이에 열린 다음
+	 * 창</b>을 닫아 버리지 않도록 창의 이름표까지 맞춰 본다 — 전투가 끝나고 다시 엔드에 들어가면
+	 * 창이 또 열리므로 실제로 일어날 수 있다.
+	 */
+	private static void closeTrialEntrance(Minecraft client, TrialEntranceClosePayload payload) {
+		if (client.gui.screen() instanceof TrialEntranceScreen open) {
+			open.closeFromServer(payload.openedTick());
+		}
 	}
 
 	/**

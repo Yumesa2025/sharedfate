@@ -10,16 +10,21 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * 채굴 속도에 끼어드는 <b>단 하나의</b> 자리. 지금 둘이 여기를 탄다.
+ * 채굴 속도에 끼어드는 <b>단 하나의</b> 자리. 둘이 여기를 탄다.
  *
  * <ul>
- *   <li>{@code mining_speed} 증강 — 실버 7 「광맥 감각」의 대가</li>
- *   <li>시련 「쇠창살과 무딘 곡괭이」의 <b>채굴 속도 15% 감소</b>
- *       ({@link com.sharedfate.sync.TrialCrystalGuard#DIG_SLOWDOWN_MULTIPLIER}). 사람이
- *       「채굴피로1은 심하고 채굴 속도 15프로감소로」라고 정했는데 그 배율을 내는 바닐라
- *       상태이상이 없어 이 길로 왔다. <b>믹스인을 새로 만들지 않았다</b> — 잡을 자리가 같으니
- *       파일을 하나 더 만들면 {@code sharedfate.mixins.json} 에 줄이 늘고, 재정의되는 메서드에
- *       거는 사고를 낼 자리가 하나 늘 뿐이다</li>
+ *   <li>{@code mining_speed} 증강 — 실버 7 「광맥 감각」의 대가. <b>지금 실제로 도는 쪽은
+ *       이것뿐이다.</b></li>
+ *   <li>시련의 채굴 무뎌짐
+ *       ({@link com.sharedfate.sync.TrialCrystalGuard#DIG_SLOWDOWN_MULTIPLIER}). ⚠⚠
+ *       <b>2026-10-01 현재 이것을 켜는 카드가 하나도 없다</b> — 「쇠창살과 무딘 곡괭이」가
+ *       채굴 피로 I → 직접 15% 감소를 거쳐 왔다가, 사람이 「무딘곡괭이는 채굴감소 없앳으니
+ *       이름 변경해」라고 해서 그 몫을 통째로 걷고 「다시 선 쇠창살」이 되었다. 아래 호출은
+ *       남겨 두었다 — <b>이 믹스인을 증강이 함께 쓰므로 한쪽을 걷으려다 둘 다 걷으면 증강이
+ *       죽는다.</b> 되살리려면 카드에 {@code digSlowdown = true} 를 적으면 된다.
+ *       <b>믹스인을 새로 만들지 않은</b> 까닭도 그대로다 — 잡을 자리가 같으니 파일을 하나 더
+ *       만들면 {@code sharedfate.mixins.json} 에 줄이 늘고, 재정의되는 메서드에 거는 사고를 낼
+ *       자리가 하나 늘 뿐이다</li>
  * </ul>
  *
  * <p>둘을 <b>곱해서</b> 먹인다. 함께 걸리면 곱이 맞는다 — 증강이 0.7 이고 시련이 0.85 면
@@ -74,7 +79,8 @@ public abstract class PlayerMiningSpeedMixin {
 		float original = callback.getReturnValueF();
 		Player self = (Player) (Object) this;
 		float scaled = PerkBlockBreaks.scaleDestroySpeed(self, state, original);
-		// 시련 「쇠창살과 무딘 곡괭이」. 블록을 가리지 않으므로 상태만 보고 곱한다.
+		// 시련의 채굴 무뎌짐. 블록을 가리지 않으므로 상태만 보고 곱한다.
+		// ⚠ 지금 이것을 켜는 카드가 없어 늘 base 를 그대로 돌려준다. 떼지 않은 까닭은 위에.
 		scaled = TrialCrystalGuard.scaleDestroySpeed(self, scaled);
 		if (scaled != original) {
 			callback.setReturnValue(scaled);

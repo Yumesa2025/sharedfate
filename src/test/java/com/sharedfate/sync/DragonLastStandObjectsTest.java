@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import com.sharedfate.TestBootstrap;
+import com.sharedfate.config.SharedFateConfig;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.AfterEach;
@@ -24,19 +25,22 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * 「최후의 저항」의 <b>오브젝트 파도</b>.
  *
- * <p>여기서 붙들어 두는 것 여덟.
+ * <p>여기서 붙들어 두는 것 아홉.
  *
  * <ol>
- *   <li>⚠⚠ <b>사람이 정한 값</b> — 25%·10% 두 번 · 2/4/5/6 · 체력 30 · 15초 · 5% 회복 ·
- *       <b>크기 한 칸</b>. 특히 <b>4인이 여섯을 다 놓치면 30%</b>라는 사실을 숫자로 못박아 둔다.
- *       사람이 그것을 알고 고른 값이라 <b>누가 「너무 세다」고 줄이면 그 판단이 사라진다</b></li>
+ *   <li>⚠⚠ <b>사람이 정한 값</b> — 25%·10% 두 번 · 2/4/5/6 · 체력 30 · <b>연결 2초</b> ·
+ *       <b>초당 0.5% 누수</b> · <b>타이머 없음</b> · 크기 한 칸</li>
+ *   <li>⚠⚠ <b>초당 0.5% 가 실제로 몇인가</b>를 수로 못박는다 — 하나가 12 · 여섯이 72 ·
+ *       깎아야 하는 1200 이 전부 되돌아오는 데 16.6초. ⚠ <b>시험이 0.5 를 손으로 적지 않는다</b> —
+ *       {@code LEAK_FRACTION_PER_SECOND} 와 설정의 인원당 체력에서 뽑는다. 사람이 이 값을 또
+ *       움직일 것이므로 두 군데에 적히면 안 된다</li>
+ *   <li>⚠⚠ <b>박힌 뒤 2초 전에는 선도 회복도 없다</b></li>
+ *   <li>⚠⚠ <b>부서지면 그 크리스탈 몫이 멈춘다</b> — 몫을 굳혀 들고 있지 않다</li>
  *   <li><b>자리가 마지막 지대 안이고 서로 겹치지 않는다</b></li>
  *   <li>⚠⚠ <b>보이는 크기와 맞는 상자가 같다</b> — 값 하나에서 둘이 나온다</li>
- *   <li>⚠ <b>크리스탈마다 뜨던 바는 없고 타이머 바는 하나 남았다</b></li>
- *   <li>⚠ <b>연결선은 회복이 도는 동안만 보이고 드래곤에게 닿는다</b></li>
- *   <li><b>무엇으로 깎이나</b>가 한 함수에 모여 있다</li>
- *   <li><b>개체가 하나도 안 샌다</b> — 자리마다 둘(상자 + 그림)이다</li>
- *   <li><b>늘어난 점이 한 틱 예산 아래다</b></li>
+ *   <li>⚠ <b>바가 하나도 없다</b> — 크리스탈마다 뜨던 것도, 가운데 타이머도</li>
+ *   <li><b>개체가 하나도 안 샌다</b> — 자리마다 둘(상자 + 그림)이고 <b>치우는 자리가 일곱</b>이다</li>
+ *   <li><b>늘어난 점이 한 틱 예산 아래다</b> — 31 → 37</li>
  * </ol>
  */
 class DragonLastStandObjectsTest {
@@ -78,75 +82,119 @@ class DragonLastStandObjectsTest {
 		assertEquals(6, DragonLastStandObjects.objectCount(7), "다섯 이상은 4인 값으로 자른다");
 	}
 
-	/** 체력과 타이머가 사람이 정한 값이다. */
+	/** 체력과 <b>연결 지연 2초</b>가 사람이 정한 값이다. */
 	@Test
-	void 체력과_타이머가_사람이_정한_값이다() {
+	void 체력과_연결_지연이_사람이_정한_값이다() {
 		assertEquals(30.0F, DragonLastStandObjects.OBJECT_HEALTH, 1.0E-6F);
-		assertEquals(300, DragonLastStandObjects.TIMER_TICKS, "15초다 — 10초에서 사람이 늘렸다");
-		assertEquals(0.05F, DragonLastStandObjects.MISS_HEAL_FRACTION, 1.0E-6F);
+		assertEquals(2 * DragonLastStandObjects.SECOND_TICKS,
+				DragonLastStandObjects.LINK_DELAY_TICKS,
+				"사람이 「소환되고 2초뒤부터 엔더드래곤에 연결되고」라고 했다");
+		assertTrue(DragonLastStandObjects.LEAK_FRACTION_PER_SECOND > 0.0F,
+				"연결된 뒤에 아무것도 안 새면 이 파도가 하는 일이 없다");
 	}
 
 	/**
-	 * ⚠⚠ <b>4인이 여섯을 다 놓치면 30% = 720 이다.</b>
+	 * ⚠⚠ <b>타이머가 없다.</b> 「시간 안에 부숴라」가 아니라 <b>「살아 있는 동안 계속 샌다」</b>다.
 	 *
-	 * <p>이 페이즈가 깎아야 하는 것이 1200 이라 <b>절반이 넘는다.</b> 사람이 그 사실을 알고
-	 * 타이머만 10 → 15초로 늘렸다 — 여기를 「너무 세다」로 줄이면 그 판단이 사라진다.
+	 * <p>타이머가 있던 자리에서 쓰던 길이 전부 사라졌는지 본다 — 상수 하나라도 되살아나면
+	 * 「부술 때까지」가 그 자리에서 거짓이 된다.
 	 */
 	@Test
-	void 넷이_여섯을_놓치면_절반이_넘게_되돌아간다() {
-		int worst = DragonLastStandObjects.objectCount(4);
-		float share = DragonLastStandObjects.MISS_HEAL_FRACTION * worst;
-		assertEquals(0.30F, share, 1.0E-5F, "최대 체력의 30% 다");
+	void 타이머가_하나도_남아_있지_않다() {
+		for (String gone : new String[] {"TIMER_TICKS", "DRAIN_TICKS", "MISS_HEAL_FRACTION",
+				"remainingRatio", "healStep", "drainPitch", "waveTicks"}) {
+			assertFalse(declares(gone),
+					gone + " 이 되살아났다 — 사람이 타이머를 없애고 「부술떄까지」로 바꿨다");
+		}
+		String bytes = classBytes();
+		assertFalse(bytes.contains("reshapeBarFill"),
+				"줄어드는 바가 되살아났다 — 셀 시간이 없으므로 가리킬 수가 없다");
+	}
 
-		float max = 2400.0F;
-		float healed = max * share;
-		assertEquals(720.0F, healed, 0.5F, "4인 기준 720 이다");
-		// 30% 에서 20%p 를 받아 50% 로 들어오므로 깎을 것이 1200 이다.
+	/**
+	 * ⚠⚠ <b>초당 0.5% 가 실제로 몇인지 수로 못박는다.</b>
+	 *
+	 * <p>⚠ <b>0.5 를 손으로 적지 않는다.</b> 사람이 1% → 0.5% 로 벌써 한 번 움직였으므로 또 움직일
+	 * 값이고, 시험이 그 수를 따로 적으면 <b>한쪽만 고쳐지는 날</b>이 온다. 비율은
+	 * {@code LEAK_FRACTION_PER_SECOND} 에서, 최대 체력은 <b>설정의 인원당 체력</b>에서 뽑는다.
+	 *
+	 * <p>남기는 사실은 셋이다 — 하나가 초당 얼마 · 여섯이 초당 얼마 · <b>깎아야 하는 1200 이 전부
+	 * 되돌아오는 데 몇 초</b>.
+	 */
+	@Test
+	void 초당_얼마가_되돌아가는지_수로_못박는다() {
+		// 4인 기준 최대 체력. 「600 × 4」를 값에서 센다 — DragonTrialManager.strengthenDragon 이
+		// 인원당 체력을 곱하고, 사람 표가 넷에서 끝나므로 넷이 이 판의 최대 인원이다.
+		int members = DragonLastStandObjects.COUNT_BY_MEMBERS.length;
+		assertEquals(4, members, "사람의 표가 넷에서 끝난다");
+		float max = (float) new SharedFateConfig().dragonHealthPerMember * members;
+		assertEquals(2400.0F, max, 0.5F, "4인 기준 2400 이다 — 설정의 기본값이 바뀌면 여기가 먼저 안다");
+
+		// 하나가 1초에. 0.5% 면 12 다.
+		float one = DragonLastStandObjects.leakPerSecond(max);
+		assertEquals(max * DragonLastStandObjects.LEAK_FRACTION_PER_SECOND, one, 1.0E-4F);
+		assertEquals(12.0F, one, 0.01F, "0.5% 면 하나가 초당 12 다");
+		assertEquals(one / DragonLastStandObjects.SECOND_TICKS,
+				DragonLastStandObjects.leakPerTick(max), 1.0E-5F, "틱 값이 초 값을 20으로 나눈 것이다");
+		assertEquals(0.6F, DragonLastStandObjects.leakPerTick(max), 0.001F, "한 틱에 0.6 이다");
+
+		// 여섯이 1초에. 72 다.
+		int most = DragonLastStandObjects.objectCount(members);
+		assertEquals(6, most);
+		float six = one * most;
+		assertEquals(72.0F, six, 0.05F, "여섯이 살아 있으면 초당 72 다");
+
+		// ⚠ 이 페이즈가 깎아야 하는 것. 30% 로 들어와 +20%p 를 받아 50% 에서 시작한다.
 		float toKill = DragonLastStand.healedHealth(max * DragonLastStand.ENTRY_HEALTH_RATIO, max);
 		assertEquals(1200.0F, toKill, 0.5F);
-		assertTrue(healed > toKill / 2.0F,
-				"절반 넘게 되돌아가는 것이 이 파도의 무게다 — 값을 바꾸지 말 것");
+		float secondsToUndoAll = toKill / six;
+		assertEquals(16.6F, secondsToUndoAll, 0.1F,
+				"여섯이 살아 있으면 16.6초에 이 페이즈가 깎아야 할 전부가 되돌아온다");
+
+		// ⚠⚠ 사람이 1% 에서 내린 까닭이 이 수다. 1% 면 8.3초였다.
+		assertEquals(8.3F, toKill / (six * 2.0F), 0.1F,
+				"1% 면 8.3초였다 — 체력 30짜리 여섯을 2초에 다 부수는 것이 불가능하므로 과했다");
+		assertTrue(secondsToUndoAll * 20.0F > DragonLastStandObjects.allLinkedTicks(most),
+				"전부 되돌아오는 시간이 전부 연결되는 시간보다 짧으면 팀이 손쓸 틈이 없다");
 	}
 
 	/**
-	 * ⚠ <b>나눠 줘도 총량이 그대로다.</b>
+	 * ⚠⚠ <b>체력 30짜리 여섯을 2초 안에 다 부수는 것은 불가능하다.</b>
 	 *
-	 * <p>회복을 {@code DRAIN_TICKS}틱에 나눈 것은 <b>연결선과 소리를 위해서</b>이고 사람이 정한
-	 * 5%×개수를 건드린 것이 아니다. 합이 어긋나면 그 자리에서 값이 바뀐 것이 된다.
+	 * <p>그러므로 <b>연결은 반드시 일어난다</b> — 이 파도는 누수를 <b>피하는</b> 싸움이 아니라
+	 * <b>줄이는</b> 싸움이고, 그것이 사람이 1% 를 0.5% 로 내린 근거다. 여기를 「2초면 부술 수 있다」로
+	 * 읽고 비율을 되올리면 그 판단이 사라진다.
 	 */
 	@Test
-	void 나눠_줘도_회복_총량이_그대로다() {
-		float total = 720.0F;
-		float sum = 0.0F;
-		for (int gone = 0; gone < DragonLastStandObjects.DRAIN_TICKS; gone++) {
-			float step = DragonLastStandObjects.healStep(total, gone);
-			assertTrue(step > 0.0F, gone + "틱에 아무것도 안 줬다 — 선만 보이고 회복이 없는 틱이다");
-			sum += step;
-		}
-		assertEquals(total, sum, 0.05F, "사람이 정한 5%×개수가 새면 안 된다");
-		// 나누어떨어지지 않는 총량에서도 새지 않는다.
-		float odd = 777.7F;
-		float oddSum = 0.0F;
-		for (int gone = 0; gone < DragonLastStandObjects.DRAIN_TICKS; gone++) {
-			oddSum += DragonLastStandObjects.healStep(odd, gone);
-		}
-		assertEquals(odd, oddSum, 0.05F, "마지막 틱이 나머지를 메워야 한다");
+	void 연결_전에_다_부수는_것은_불가능하다() {
+		int most = DragonLastStandObjects.objectCount(DragonLastStandObjects.COUNT_BY_MEMBERS.length);
+		float need = DragonLastStandObjects.OBJECT_HEALTH * most;
+		assertEquals(180.0F, need, 0.5F, "여섯이면 180 이다");
+		// 다이아 검 7 · 쿨타임 0.625초(12.5틱)라 2초에 네 번이 한계다. 넷이 함께 쳐도 네 자리뿐이다.
+		int swings = DragonLastStandObjects.LINK_DELAY_TICKS / 13;
+		float best = 7.0F * swings * DragonLastStandObjects.COUNT_BY_MEMBERS.length;
+		assertTrue(best < need,
+				"2초에 넣을 수 있는 최선이 " + best + " 인데 " + need + " 가 필요하다 — "
+						+ "연결을 피할 길이 없으므로 비율이 「피하면 0」을 전제로 정해질 수 없다");
 	}
 
 	// ------------------------------------------------------------------ 시간표
 
-	/** 마지막이 박히는 틱이 값에서 직접 나온다. */
+	/** 마지막이 박히는 틱과 <b>전부 연결되는 틱</b>이 값에서 직접 나온다. */
 	@Test
 	void 심는_시간이_값에서_나온다() {
 		assertEquals(DragonLastStandObjects.RISE_TICKS + DragonLastStandObjects.FALL_TICKS,
 				DragonLastStandObjects.plantTicks(1), "하나면 선 1초 + 낙하 1초다");
 		assertEquals(20 + 5 * 10 + 20, DragonLastStandObjects.plantTicks(6), "여섯이면 90틱이다");
-		assertEquals(DragonLastStandObjects.plantTicks(6) + DragonLastStandObjects.TIMER_TICKS,
-				DragonLastStandObjects.waveTicks(6));
-		assertTrue(DragonLastStandObjects.plantTicks(6) < DragonLastStandObjects.TIMER_TICKS,
-				"심는 시간이 타이머보다 길면 「15초」가 무슨 말인지 알 수 없다");
-		assertTrue(DragonLastStandObjects.DRAIN_TICKS < DragonLastStandObjects.TIMER_TICKS / 4,
-				"회복 구간이 길어지면 패턴이 도는 중에 구경만 하는 시간이 길어진다");
+		assertEquals(DragonLastStandObjects.plantTicks(6)
+						+ DragonLastStandObjects.LINK_DELAY_TICKS,
+				DragonLastStandObjects.allLinkedTicks(6), "마지막이 박힌 뒤 2초에 전부가 붙는다");
+		assertEquals(130, DragonLastStandObjects.allLinkedTicks(6),
+				"여섯이면 130틱이고 그 틱이 점 예산에서 가장 바쁜 틱이다");
+		// ⚠ 세우는 구간과 새는 구간이 겹친다 — 이 겹침이 옛 규칙에는 없었고 점 예산을 올렸다.
+		assertTrue(DragonLastStandObjects.LINK_DELAY_TICKS
+						< DragonLastStandObjects.plantTicks(6) - DragonLastStandObjects.RISE_TICKS,
+				"연결 지연이 세우는 시간보다 길면 겹침이 없다 — 지금은 겹치므로 예산이 37이다");
 	}
 
 	/** 떨어지는 높이가 위에서 아래로만 간다. 뒤집히면 오브젝트가 땅에서 솟는다. */
@@ -165,23 +213,37 @@ class DragonLastStandObjectsTest {
 	}
 
 	/**
-	 * ⚠ <b>타이머는 마지막이 박힌 뒤에야 시작한다.</b>
+	 * ⚠⚠ <b>박힌 뒤 2초 전에는 연결도 선도 회복도 없다.</b>
 	 *
-	 * <p>떨어지는 동안 바가 줄면 사람이 정한 「15초」가 거짓이 된다.
+	 * <p>사람 말이 「소환되고 2초뒤부터 엔더드래곤에 연결되고 선이 회복되는거야」다. 그 2초를
+	 * <b>틱 단위로 훑는다</b> — 한 틱이라도 일찍 붙으면 사람이 정한 2초가 거짓이고, 늦게 붙으면
+	 * 선이 뜨는 때와 회복이 시작하는 때가 갈린다.
+	 *
+	 * <p>⚠ <b>크리스탈마다 따로</b>다. 원점이 「파도가 열린 틱」이 아니라 <b>그것이 박힌 틱</b>이라는
+	 * 것을 여러 원점으로 확인한다 — 먼저 떨어진 것이 먼저 새는 것이 이 바뀜의 핵이다.
 	 */
 	@Test
-	void 타이머가_마지막이_박힌_뒤에_돈다() {
-		int countdown = DragonLastStandObjects.plantTicks(6);
-		assertEquals(1.0F, DragonLastStandObjects.remainingRatio(0, countdown), 1.0E-6F);
-		assertEquals(1.0F, DragonLastStandObjects.remainingRatio(countdown, countdown), 1.0E-6F,
-				"박히는 그 틱까지는 가득이다");
-		assertEquals(0.5F, DragonLastStandObjects.remainingRatio(
-				countdown + DragonLastStandObjects.TIMER_TICKS / 2, countdown), 1.0E-6F);
-		assertEquals(0.0F, DragonLastStandObjects.remainingRatio(
-				countdown + DragonLastStandObjects.TIMER_TICKS, countdown), 1.0E-6F);
-		assertEquals(0.0F, DragonLastStandObjects.remainingRatio(
-				countdown + DragonLastStandObjects.TIMER_TICKS * 3, countdown), 1.0E-6F,
-				"넘겨도 음수가 되면 바가 왼쪽으로 뻗는다");
+	void 박힌_뒤_2초_전에는_선도_회복도_없다() {
+		for (int plantedAt : new int[] {40, 50, 60, 70, 80, 90}) {
+			for (int step = plantedAt; step < plantedAt + DragonLastStandObjects.LINK_DELAY_TICKS;
+					step++) {
+				assertFalse(DragonLastStandObjects.linkedBy(step, plantedAt),
+						plantedAt + "틱에 박힌 것이 " + step + "틱에 벌써 붙었다 — "
+								+ (step - plantedAt) + "틱밖에 안 지났다");
+			}
+			int links = plantedAt + DragonLastStandObjects.LINK_DELAY_TICKS;
+			assertTrue(DragonLastStandObjects.linkedBy(links, plantedAt),
+					"「2초뒤부터」이므로 " + links + "틱이 연결의 첫 틱이어야 한다");
+			assertTrue(DragonLastStandObjects.linkedBy(links + 1000, plantedAt),
+					"한 번 붙으면 부술 때까지 떨어지지 않는다");
+		}
+		// 아직 안 박힌 자리는 어느 틱에도 안 붙는다 — plantedAt 이 −1 인 것이 그 상태다.
+		assertFalse(DragonLastStandObjects.linkedBy(100000, -1),
+				"하늘에 있는 것이 회복시키면 사람이 때릴 수 없는 것이 샌다");
+
+		// ⚠ 먼저 떨어진 것이 먼저 샌다. 여섯이면 선이 0.5초마다 한 줄씩 늘어난다.
+		assertTrue(DragonLastStandObjects.linkedBy(80, 40), "처음 것은 80틱에 붙는다");
+		assertFalse(DragonLastStandObjects.linkedBy(80, 90), "마지막 것은 아직 하늘에 있다");
 	}
 
 	// ------------------------------------------------------------------ 자리
@@ -325,70 +387,111 @@ class DragonLastStandObjectsTest {
 				"빌보드가 CENTER 라야 어느 각도에서도 보이는 크기가 같다");
 	}
 
-	// ------------------------------------------------------------------ 바는 하나다
+	// ------------------------------------------------------------------ 바가 하나도 없다
 
 	/**
-	 * ⚠⚠ <b>크리스탈마다 뜨던 바는 없고, 타이머 바는 하나 남았다.</b>
+	 * ⚠⚠ <b>바가 하나도 없다.</b> 크리스탈마다 뜨던 것도, 아레나 가운데 타이머도.
 	 *
-	 * <p>사람 말이 「그 크리스탈들 체력바를 없애」다. 지운 것은 <b>자리마다 떠 있던 그 바</b>이고
-	 * <b>타이머 자체는 지우지 않았다</b> — 지우면 남은 시간을 볼 길이 사라진다. 자리에 바 칸이
-	 * 하나도 없고 파도에 둘(배경 + 채움)이 있는 것이 그 사실이다.
+	 * <p>사람 말이 「그 크리스탈들 체력바를 없애」라 <b>자리마다 떠 있던 바</b>를 먼저 걷었고, 그 뒤
+	 * <b>타이머가 통째로 사라지면서</b> 하나 남았던 것도 지웠다 — <b>가로로 줄어드는 바는 「남은
+	 * 시간」으로만 읽힌다.</b> 줄지 않는 바를 띄워 두면 사람이 <b>오지 않는 무언가를 기다린다.</b>
+	 *
+	 * <p>말하는 수단은 셋 남았다 — 연결선(어느 것이 샌다) · 소리(얼마나 샌다) · 드래곤 보스바
+	 * (얼마나 되돌아갔다). 바를 다시 넣으려는 사람은 그 셋이 이미 하는 말을 두 번 하게 된다.
 	 */
 	@Test
-	void 체력바는_없고_타이머_바는_하나다() {
+	void 바가_하나도_없다() {
 		assertEquals(1, glowFields("Slot"),
 				"자리가 들고 있는 빛은 흰 신호기 선 하나뿐이어야 한다 — 크리스탈 위에 뜬 바는 "
 						+ "그 크리스탈의 체력으로 읽힌다");
 		assertEquals("line", glowFieldName("Slot"), "자리에 남은 빛이 흰 선이 아니다");
-		assertEquals(2, glowFields("Wave"),
-				"타이머 바는 파도에 하나다(어두운 배경 한 장 + 줄어드는 흰 채움 한 장) — "
-						+ "타이머 표시를 지우면 사람이 남은 시간을 볼 길이 없다");
+		assertEquals(0, glowFields("Wave"),
+				"파도가 바를 하나라도 들고 있다 — 타이머가 없어졌으므로 가리킬 수가 없다");
 
-		// 타이머를 그리는 길이 그대로 살아 있다.
 		String bytes = classBytes();
-		assertTrue(bytes.contains("raiseBarBack") && bytes.contains("raiseBarFill"),
-				"타이머 바를 세우는 줄이 사라졌다");
-		assertTrue(bytes.contains("reshapeBarFill"), "바가 줄어들지 않으면 타이머가 아니다");
-		assertTrue(DragonLastStandObjects.remainingRatio(0, 10)
-				> DragonLastStandObjects.remainingRatio(
-						10 + DragonLastStandObjects.TIMER_TICKS / 2, 10),
-				"가로로 줄어드는 것이 사람이 눈으로 확인할 목록에 있다");
+		for (String bar : new String[] {"raiseBarBack", "raiseBarFill", "reshapeBarFill"}) {
+			assertFalse(bytes.contains(bar),
+					bar + " 을 다시 부른다 — 줄어드는 바는 「남은 시간」으로만 읽히고 셀 시간이 없다");
+		}
+		// 흰 신호기 선은 그대로다. 그것은 바가 아니라 「여기 생긴다」를 말하는 등장 연출이다.
+		assertTrue(bytes.contains("raisePillar"), "흰 신호기 선이 사라졌다 — 등장 연출의 절반이다");
 	}
 
 	// ------------------------------------------------------------------ 연결선과 회복
 
 	/**
-	 * ⚠⚠ <b>연결선은 회복이 도는 동안만 보인다.</b>
+	 * ⚠⚠ <b>선과 회복이 같은 조건 하나에 달려 있다 — {@code Slot.linked}.</b>
 	 *
-	 * <p>사람 말이 「그 크리스탈에서 엔더드래곤으로 연결해서 체력을 회복하고잇다는걸 보여줫으면」
-	 * 이다. 15초가 남았는데 선이 보이면 <b>거짓말</b>이 되므로, 선을 그리는 함수는
-	 * {@code drain} 하나만 부를 수 있게 {@code private} 이고 회복이 도는 창은
-	 * {@link DragonLastStandObjects#healStep} 이 값으로 못박는다.
+	 * <p>사람 말이 「2초뒤부터 엔더드래곤에 연결되고 <b>선이</b> 회복되는거야」다. 선이 보이는 때와
+	 * 체력이 흐르는 때가 갈리면 그 말이 거짓이 되므로, <b>둘을 가르는 함수가 하나여야 한다.</b>
 	 *
-	 * <p>⚠ 시험이 못 보는 것: 「{@code beams} 를 {@code drain} 만 부른다」는 바이트코드로 셀 수
-	 * 없다. 셀 수 있는 것은 <b>그 함수가 바깥에서 못 불린다는 것</b>과 <b>회복이 도는 창의 모양</b>
-	 * 이다.
+	 * <p>⚠ 세는 방법. 선을 그리는 {@code beams} 와 회복을 주는 {@code leak} 이 둘 다
+	 * {@code private} 이고(바깥에서 못 부른다), <b>{@code Slot.linked} 가 그 하나뿐인 조건</b>이며
+	 * 그것이 <b>{@code standing()} 을 함께 묻는다</b>는 것을 바이트코드로 본다.
+	 *
+	 * <p>⚠ 시험이 못 보는 것: 「{@code beams} 가 {@code standing()} 대신 {@code linked()} 를
+	 * 쓴다」를 호출 자리마다 셀 수는 없다. 셀 수 있는 것은 <b>그 함수들이 존재하고 감춰져 있다는
+	 * 것</b>과 <b>조건의 모양</b>이다.
 	 */
 	@Test
-	void 연결선이_회복이_도는_동안만_보인다() throws Exception {
+	void 선과_회복이_같은_조건에_달려_있다() throws Exception {
 		Method beams = DragonLastStandObjects.class.getDeclaredMethod("beams",
 				net.minecraft.server.level.ServerLevel.class,
 				net.minecraft.world.entity.boss.enderdragon.EnderDragon.class,
 				Class.forName("com.sharedfate.sync.DragonLastStandObjects$Wave"), int.class);
 		assertTrue(Modifier.isPrivate(beams.getModifiers()),
 				"선을 그리는 길이 공개되면 회복과 무관한 자리에서 그릴 수 있다");
+		Method leak = DragonLastStandObjects.class.getDeclaredMethod("leak",
+				net.minecraft.server.level.ServerLevel.class,
+				net.minecraft.world.entity.boss.enderdragon.EnderDragon.class,
+				java.util.List.class,
+				Class.forName("com.sharedfate.sync.DragonLastStandObjects$Wave"), int.class);
+		assertTrue(Modifier.isPrivate(leak.getModifiers()),
+				"회복을 주는 길이 공개되면 파도 밖에서 드래곤을 채울 수 있다");
 
-		// 회복이 도는 창 밖에서는 줄 체력이 0 이다 — 그 창이 곧 선이 보이는 구간이다.
-		assertEquals(0.0F, DragonLastStandObjects.healStep(720.0F, -1), 1.0E-6F);
-		assertEquals(0.0F,
-				DragonLastStandObjects.healStep(720.0F, DragonLastStandObjects.DRAIN_TICKS),
-				1.0E-6F, "창을 넘겨서도 회복하면 선이 꺼진 뒤에 체력이 찬다");
-		assertTrue(DragonLastStandObjects.healStep(720.0F, 0) > 0.0F,
-				"첫 틱부터 회복이 돌아야 선과 회복이 같은 틱에 시작한다");
+		// 하나뿐인 조건. ⚠ standing() 을 함께 묻는 것이 「부서지면 멈춘다」의 전부다.
+		Class<?> slot = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Slot");
+		assertTrue(slot.getDeclaredMethod("linked", int.class) != null, "조건이 사라졌다");
+		assertTrue(read("/com/sharedfate/sync/DragonLastStandObjects$Slot.class")
+						.contains("standing"),
+				"linked 가 standing 을 안 묻는다 — 부서진 자리가 계속 회복시킨다");
+		// 선을 그리는 쪽이 그 조건을 부른다.
+		assertTrue(classBytes().contains("linked"), "선을 그리는 쪽이 연결 조건을 안 묻는다");
 
-		// 파도가 없으면 회복도 없고, 그래서 선도 없다.
-		assertFalse(DragonLastStandObjects.draining());
+		// 파도가 없으면 샐 것도 없다.
+		assertFalse(DragonLastStandObjects.leaking());
 		assertFalse(DragonLastStandObjects.running());
+		assertEquals(0, DragonLastStandObjects.linkedCount(100000),
+				"파도가 없는데 연결된 것이 있다");
+	}
+
+	/**
+	 * ⚠⚠ <b>부서지면 그 크리스탈 몫이 멈춘다 — 몫을 굳혀 들고 있지 않다.</b>
+	 *
+	 * <p>옛 규칙은 15초가 지나는 틱에 「못 부순 개수」를 <b>굳혀</b> 들고 있었고({@code Wave.missed} ·
+	 * {@code Wave.healTotal}) 그래서 <b>부순 뒤에도 그 몫이 흘렀다</b> — 그것을 막으려고 회복 중에는
+	 * 못 부수게 했던 것이 {@code Shard.spent} 다. 지금은 <b>굳는 몫이 없으므로</b> 그 둘이 전부
+	 * 사라져야 한다.
+	 */
+	@Test
+	void 부서지면_그_크리스탈_몫이_멈춘다() throws Exception {
+		Class<?> wave = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Wave");
+		for (Field field : wave.getDeclaredFields()) {
+			assertFalse(field.getName().equals("missed") || field.getName().equals("healTotal"),
+					"파도가 " + field.getName() + " 을 굳혀 들고 있다 — 부순 뒤에도 그 몫이 흐른다");
+		}
+		Class<?> shard = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Shard");
+		for (Field field : shard.getDeclaredFields()) {
+			assertFalse(field.getName().equals("spent"),
+					"「회복 중에는 못 부순다」가 되살아났다 — 부수는 것이 유일한 대응이다");
+		}
+		for (Method method : shard.getDeclaredMethods()) {
+			assertFalse(method.getName().equals("spend"), "spend() 가 되살아났다");
+		}
+
+		// 매 틱 다시 세는 길이 있고 틱을 받는다 — 굳혀 둘 수 없는 모양이다.
+		assertTrue(DragonLastStandObjects.class.getDeclaredMethod("linkedCount", int.class) != null,
+				"연결된 개수를 매 틱 다시 세는 길이 없다");
 	}
 
 	/**
@@ -400,42 +503,76 @@ class DragonLastStandObjectsTest {
 	@Test
 	void 연결선이_드래곤에게_닿는다() {
 		int stride = DragonLastStandObjects.BEAM_STRIDE;
-		for (int gone = 0; gone < DragonLastStandObjects.DRAIN_TICKS; gone++) {
+		// ⚠ 선이 상시이므로 훑는 구간에 끝이 없다. 한 바퀴(BEAM_POINTS × stride)보다 넉넉히 본다.
+		for (int step = 0; step < 400; step++) {
 			// 그리는 쪽과 같은 셈이다 — 나눠 그리므로 틱마다 찍는 자리가 다르다.
 			double first = -1.0;
 			double last = -1.0;
-			for (int index = Math.floorMod(gone, stride);
+			for (int index = Math.floorMod(step, stride);
 					index < DragonLastStandObjects.BEAM_POINTS; index += stride) {
-				double along = DragonLastStandObjects.beamAlong(index, gone);
+				double along = DragonLastStandObjects.beamAlong(index, step);
 				if (first < 0.0) {
 					first = along;
 				}
 				last = along;
 			}
-			assertTrue(first >= 0.0 && first < 0.3, gone + "틱의 첫 점이 크리스탈에서 떨어졌다");
-			assertTrue(last <= 1.0, gone + "틱의 마지막 점이 드래곤을 지나쳤다");
+			assertTrue(first >= 0.0 && first < 0.3, step + "틱의 첫 점이 크리스탈에서 떨어졌다");
+			assertTrue(last <= 1.0, step + "틱의 마지막 점이 드래곤을 지나쳤다");
 			double awayFromDragon = DragonLastStandObjects.RING_RADIUS * (1.0 - last);
 			assertTrue(awayFromDragon < 8.0,
-					gone + "틱의 마지막 점이 드래곤 상자 밖이다(" + awayFromDragon + "칸)");
+					step + "틱의 마지막 점이 드래곤 상자 밖이다(" + awayFromDragon + "칸)");
 		}
 		// 틱이 흐르면 점이 밀린다 — 점을 하나도 더 쓰지 않고 흐르는 방향을 보여 주는 길이다.
 		assertTrue(DragonLastStandObjects.beamAlong(0, 0)
 				< DragonLastStandObjects.beamAlong(0, 1), "점이 밀리지 않으면 점선이 그대로 선다");
 	}
 
-	/** 회복 소리는 주기가 있고 음높이가 <b>올라간다.</b> 매 틱이면 초당 20번이다. */
+	/**
+	 * ⚠⚠ <b>누수 소리는 끝이 없으므로 주기를 늘리고 음량을 내렸다.</b>
+	 *
+	 * <p>앞 규칙에서는 회복이 <b>30틱으로 끝나는 구간</b>이라 0.5초마다 세 번이 전부였고 음높이가
+	 * 「끝나 간다」를 말했다. 지금은 <b>부술 때까지</b>라 0.5초를 그대로 두면 초당 두 번이 영원히
+	 * 울리고, 음높이를 시간으로 올리면 1.5초 뒤부터 <b>늘 천장</b>이라 아무 말도 하지 않는다.
+	 *
+	 * <p>그래서 ① 주기를 2초로 ② 음량을 절반으로 ③ 음높이를 <b>연결된 개수</b>로 바꿨다 —
+	 * <b>부수면 다음 소리가 내려간다.</b>
+	 */
 	@Test
-	void 회복_소리에_주기가_있다() {
-		assertTrue(DragonLastStandObjects.HEAL_SOUND_TICKS > 1,
-				"주기가 없으면 회복이 도는 동안 초당 20번 난다");
-		assertTrue(DragonLastStandObjects.DRAIN_TICKS / DragonLastStandObjects.HEAL_SOUND_TICKS
-				>= 3, "회복이 도는 동안 세 번은 들려야 한 흐름으로 읽힌다");
-		assertTrue(DragonLastStandObjects.drainPitch(0)
-				< DragonLastStandObjects.drainPitch(DragonLastStandObjects.DRAIN_TICKS - 1),
-				"떨어지는 음높이는 「끝나 간다」로 들린다");
+	void 누수_소리가_귀를_아프게_하지_않는다() {
+		assertEquals(2 * DragonLastStandObjects.SECOND_TICKS,
+				DragonLastStandObjects.LEAK_SOUND_TICKS,
+				"끝이 없는 소리라 2초다 — 0.5초면 부술 때까지 초당 두 번이 영원히 울린다");
+		assertTrue(DragonLastStandObjects.LEAK_SOUND_TICKS
+						< 4 * DragonLastStandObjects.SECOND_TICKS,
+				"바닐라 신호기 주변음이 4초 주기다 — 그보다 느리면 「주변음」으로 들려 사건이 안 된다");
+		assertEquals(0, DragonLastStandObjects.LINK_DELAY_TICKS
+						% DragonLastStandObjects.LEAK_SOUND_TICKS,
+				"첫 연결이 일어나는 틱에 첫 소리가 맞아야 한다");
+		assertTrue(DragonLastStandObjects.LEAK_VOLUME < 1.0F,
+				"끝이 없는 소리가 예고음과 같은 음량이면 드래곤의 울음·날개·번개를 덮는다");
+		assertTrue(DragonLastStandObjects.LEAK_VOLUME > 0.0F, "안 들리면 「샌다」를 알 길이 없다");
+
+		// 음높이는 「몇 개가 붙어 있나」다 — 시간이 아니다. 부수면 내려간다.
+		int most = DragonLastStandObjects.objectCount(DragonLastStandObjects.COUNT_BY_MEMBERS.length);
+		assertEquals(0.8F, DragonLastStandObjects.leakPitch(1), 1.0E-5F, "하나면 0.8 이다");
+		assertEquals(1.2F, DragonLastStandObjects.leakPitch(most), 1.0E-5F, "여섯이면 1.2 다");
+		float previous = -1.0F;
+		for (int linked = 1; linked <= most; linked++) {
+			float pitch = DragonLastStandObjects.leakPitch(linked);
+			assertTrue(pitch > previous, linked + "개에서 음높이가 안 올랐다");
+			previous = pitch;
+		}
+		assertEquals(DragonLastStandObjects.leakPitch(most),
+				DragonLastStandObjects.leakPitch(most + 10), 1.0E-5F,
+				"개수를 넘겨도 천장이어야 한다 — 바닐라 음높이 상한이 2.0 이다");
+
 		String bytes = classBytes();
 		assertTrue(bytes.contains("AMETHYST_BLOCK_RESONATE"),
-				"회복 소리가 없다 — block/amethyst/resonate1~4 다(sounds.json 에서 확인했다)");
+				"누수 소리가 없다 — block/amethyst/resonate1~4 다(sounds.json 에서 확인했다)");
+		assertTrue(bytes.contains("ENDER_DRAGON_GROWL"),
+				"첫 연결을 알리는 포효가 없다 — 파도마다 한 번이다");
+		assertFalse(bytes.contains("BEACON_DEACTIVATE"),
+				"「시간이 꺼졌다」 소리가 남아 있다 — 꺼질 시간이 없다");
 		assertTrue(bytes.contains("playEach"),
 				"위치 기반 playSound 를 팀원 루프에서 부르면 사람 수만큼 겹친다");
 	}
@@ -454,7 +591,7 @@ class DragonLastStandObjectsTest {
 		assertTrue(DragonLastStandObjects.accepts(false, true),
 				"가해자가 사라진 폭발도 팀이 한 일이다");
 		assertFalse(DragonLastStandObjects.accepts(false, false),
-				"낙하·허공·불처럼 아무도 안 한 일로 사라지면 파도가 공짜가 된다");
+				"낙하·허공·불처럼 아무도 안 한 일로 사라지면 그 몫의 누수가 공짜로 멈춘다");
 	}
 
 	/** 체력 30 이 실제로 몇 대인가. 값이 사람 감각에 닿는지 숫자로 남긴다. */
@@ -473,7 +610,11 @@ class DragonLastStandObjectsTest {
 	 *
 	 * <p>26.3 {@code EnderDragon.checkCrystals} 가 <b>드래곤 상자를 32칸 부풀린 범위</b>의
 	 * {@code EndCrystal} 을 찾아 10틱마다 체력 1 을 준다. 오브젝트는 드래곤 발밑 9칸이라 반드시
-	 * 그 안이고, 15초면 30 을 공짜로 돌려준다 — 그리고 크리스탈에는 애초에 체력이 없다.
+	 * 그 안이다 — 그리고 크리스탈에는 애초에 체력이 없다.
+	 *
+	 * <p>⚠ <b>이제 더 나쁘다.</b> 바닐라가 얹는 <b>초당 2</b> 는 우리가 재는 누수에 섞여 사람이 보는
+	 * 수를 우리 값이 아니게 만들고, <b>연결되기 전 2초에도 들어간다</b> — 「2초 전에는 아무 일도
+	 * 없다」가 그 자리에서 거짓이 된다.
 	 */
 	@Test
 	void 진짜_엔드_크리스탈을_쓰지_않는다() {
@@ -483,9 +624,14 @@ class DragonLastStandObjectsTest {
 		assertFalse(bytes.contains("END_CRYSTAL;"),
 				"개체 종류로 크리스탈을 쓰면 안 된다 — 아이템으로 쓰는 것은 모습뿐이다");
 		assertTrue(bytes.contains("ARMOR_STAND"), "맞는 상자와 체력을 들 개체가 없다");
-		// 15초 동안 공짜로 돌아갔을 체력. 그 수를 남겨 둔다.
-		assertEquals(30, DragonLastStandObjects.TIMER_TICKS / 10,
-				"크리스탈을 썼다면 파도마다 이만큼이 공짜로 되돌아간다");
+
+		// 바닐라가 공짜로 얹는 양(10틱마다 1 = 초당 2)을 우리 값과 견준다.
+		float max = (float) new SharedFateConfig().dragonHealthPerMember
+				* DragonLastStandObjects.COUNT_BY_MEMBERS.length;
+		float vanilla = DragonLastStandObjects.SECOND_TICKS / 10.0F;
+		assertEquals(2.0F, vanilla, 1.0E-5F, "바닐라가 10틱마다 1 이라 초당 2 다");
+		assertTrue(vanilla > DragonLastStandObjects.leakPerSecond(max) * 0.1F,
+				"바닐라 몫이 우리 몫의 10% 를 넘는다 — 섞이면 사람이 보는 수가 우리 값이 아니다");
 	}
 
 	// ------------------------------------------------------------------ 지우는 길
@@ -508,9 +654,53 @@ class DragonLastStandObjectsTest {
 		}
 		assertTrue(shard.contains("com/sharedfate/sync/DragonLastStandShells"),
 				"부서지는 틱에 그림을 거두지 않으면 때릴 수 없는 크리스탈이 남는다");
+
+		// ⚠⚠ 심지를 「파도 길이 + 여유」로 셀 수 없다 — 파도에 길이가 없어졌다. 페이즈 시계가 기준이다.
 		assertTrue(DragonLastStandObjects.FUSE_TICKS
-						>= DragonLastStandObjects.waveTicks(6) + DragonLastStandObjects.DRAIN_TICKS,
-				"심지가 파도 + 회복보다 짧으면 오브젝트가 도중에 사라진다");
+						>= DragonLastStandZone.escalationStartTicks(),
+				"심지가 페이즈 시계보다 짧으면 못 부순 크리스탈이 공짜로 사라진다 — "
+						+ "사람이 정한 「부술떄까지」가 그 자리에서 거짓이 된다");
+		assertEquals((int) DragonLastStandZone.escalationStartTicks()
+						+ DragonLastStandObjects.plantTicks(6),
+				DragonLastStandObjects.FUSE_TICKS,
+				"값에서 직접 나와야 페이즈 길이를 고치는 사람이 여기를 따로 안 고친다");
+	}
+
+	/**
+	 * ⚠⚠ <b>치우는 자리가 일곱이다.</b> 하나라도 지우면 다음 판에 부술 수 없는 것이 떠 있다.
+	 *
+	 * <p>바를 걷으면서 사라진 것은 <b>바의 빛뿐</b>이고 상자와 그림을 거두는 일곱은 그대로여야 한다.
+	 * 이름으로 못박는다 — 이 저장소가 「한쪽만 막으면 반드시 샌다」를 여러 번 적어 둔 자리다.
+	 */
+	@Test
+	void 치우는_자리_일곱이_그대로다() throws Exception {
+		Class<?> shard = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Shard");
+		// ①②③④⑤ 상자가 사라지는 자리와 그림을 거두는 자리.
+		assertTrue(shard.getDeclaredMethod("shouldBeSaved") != null, "① 저장 막기가 사라졌다");
+		assertTrue(shard.getDeclaredMethod("tick") != null, "② 심지가 사라졌다");
+		assertTrue(shard.getDeclaredMethod("shatter",
+				net.minecraft.server.level.ServerLevel.class) != null, "③ 부서지는 자리가 사라졌다");
+		assertTrue(shard.getDeclaredMethod("hurtServer",
+						net.minecraft.server.level.ServerLevel.class,
+						net.minecraft.world.damagesource.DamageSource.class, float.class) != null,
+				"④ 운영자 /kill 자리가 사라졌다");
+		Class<?> slot = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Slot");
+		assertTrue(DragonLastStandObjects.class.getDeclaredMethod("advance",
+						net.minecraft.server.level.ServerLevel.class, slot, int.class) != null,
+				"⑤ 상자만 사라진 자리를 쓸어내는 길이 사라졌다");
+		// ⑥⑦ 파도가 끝나는 틱과 상태 비우기.
+		Class<?> wave = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Wave");
+		assertTrue(DragonLastStandObjects.class.getDeclaredMethod("close",
+						net.minecraft.server.level.ServerLevel.class, java.util.List.class, wave,
+						boolean.class) != null,
+				"⑥ 파도가 끝나는 틱이 사라졌다");
+		assertTrue(DragonLastStandObjects.class.getDeclaredMethod("clearState") != null,
+				"⑦ 상태 비우기가 사라졌다");
+		// 그림 쪽도 하나만 지우는 길과 전부 쓸어내는 길이 둘 다 있어야 한다.
+		assertTrue(DragonLastStandShells.class.getDeclaredMethod("drop",
+				DragonLastStandShells.Shell.class) != null, "그림 하나를 거두는 길이 사라졌다");
+		assertTrue(DragonLastStandShells.class.getDeclaredMethod("drop") != null,
+				"놓친 그림까지 쓸어내는 길이 사라졌다");
 	}
 
 	/** 아무것도 안 세운 상태에서 비워도 탈이 없다. 월드 없는 시험이 부를 수 있는 길이다. */
@@ -526,18 +716,20 @@ class DragonLastStandObjectsTest {
 	}
 
 	/**
-	 * ⚠ <b>비우는 길은 회복을 주지 않는다.</b>
+	 * ⚠ <b>비우는 길도, 닫는 길도 회복을 주지 않는다.</b>
 	 *
-	 * <p>회복은 <b>회복이 도는 1.5초</b> 한 곳에만 있다. 전투가 끝나는 자리에서 얹으면 죽는
-	 * 드래곤이 되살아난다.
+	 * <p>누수는 <b>살아 있는 동안 이미 다 주었다</b>({@code leak} 한 곳). 끝나는 자리에서 한 번 더
+	 * 얹으면 <b>부순 팀에게 벌을 주는 것</b>이 되고, 전투가 끝나는 자리라면 죽는 드래곤이
+	 * 되살아난다.
 	 */
 	@Test
 	void 비우는_길은_회복을_주지_않는다() {
 		String bytes = classBytes();
 		int heals = bytes.split("heal", -1).length - 1;
 		assertTrue(heals > 0, "회복하는 길이 아예 없다");
-		assertTrue(bytes.contains("drain"), "회복은 그 창을 도는 자리 하나에만 있어야 한다");
-		assertTrue(bytes.contains("healStep"), "총량을 나눠 주는 식이 없다");
+		assertTrue(bytes.contains("leak"), "누수는 그 한 자리에만 있어야 한다");
+		assertTrue(bytes.contains("leakPerTick"), "틱마다 주는 식이 없다");
+		assertFalse(bytes.contains("healTotal"), "총량을 굳혀 들고 있으면 부순 뒤에도 흐른다");
 	}
 
 	/** 다섯 자리가 전부 배선됐다. 하나라도 빠지면 다음 판에 남는다. */
@@ -562,21 +754,32 @@ class DragonLastStandObjectsTest {
 	/**
 	 * ⚠⚠ <b>연결선 여섯 줄을 더한 뒤에도 한 틱 예산 아래다.</b>
 	 *
-	 * <p>파도는 패턴·번개와 <b>같은 틱에 함께</b> 돈다. 흰 선과 타이머 바는 디스플레이 개체라
-	 * 0점이고, 떨어지는 줄기·박히는 빛·부서지는 빛은 개수를 세는 형태라 꾸러미 한 장씩이다.
+	 * <p>파도는 패턴·번개와 <b>같은 틱에 함께</b> 돈다. 흰 선은 디스플레이 개체라 0점이고, 떨어지는
+	 * 줄기·박히는 빛·부서지는 빛·반짝임은 개수를 세는 형태라 꾸러미 한 장씩이다.
 	 * <b>연결선만 점을 쓴다</b> — 줄 하나에 찍는 점 수가 거리와 무관하게 고정이라 그 몫이 값에서
 	 * 바로 나온다.
+	 *
+	 * <p>⚠⚠ <b>31 → 37 로 올랐다.</b> 한 틱 점수가 아니라 <b>겹침</b>이 바뀌었다 — 옛 회복은 타이머가
+	 * 끝난 뒤에만 돌아 세우는 동작과 절대로 겹치지 않았고(그 구간에는 반짝임이 없었다) 지금은 선이
+	 * 상시라 <b>반짝임과 같은 틱에</b> 온다. 박히는 틱이 전부 10의 배수라 그 만남이 <b>우연이
+	 * 아니다.</b>
 	 */
 	@Test
 	void 늘어난_점이_예산_아래다() {
-		assertEquals(31, DragonLastStandObjects.worstCasePointsPerTick(),
-				"연결선 여섯 줄을 두 틱에 나눈 몫 30 + 드래곤 머리 위 하트 꾸러미 한 장");
+		assertEquals(37, DragonLastStandObjects.worstCasePointsPerTick(),
+				"연결선 여섯 줄을 두 틱에 나눈 몫 30 + 서 있는 것마다 반짝임 6 + 하트 한 장 1");
 		assertTrue(DragonLastStandObjects.BEAM_STRIDE <= TrialEndRain.MARK_MAX_STRIDE,
 				"먼지 수명 8틱에서 나온 상한은 한 곳에만 적혀 있어야 한다 — 넘기면 선이 안 닫힌다");
 		int worst = DragonLastStandPatterns.worstCasePointsPerTick()
 				+ DragonLastStandObjects.worstCasePointsPerTick();
-		assertEquals(387, worst,
-				"패턴 356 + 파도 31 이다. 연결선을 늘린 사람도, 패턴을 늘린 사람도 여기서 멈춘다");
+		// ⚠ 패턴 쪽은 356 이 아니라 360 이다 — 그쪽이 띄움 기둥 넷을 더했고 그쪽 시험이 360 을
+		// 못박고 있다(DragonLastStandPatternsTest). 둘이 같은 수를 보므로 어느 쪽이 움직여도
+		// 양쪽 시험이 함께 멈춘다.
+		assertEquals(397, worst,
+				"패턴 360 + 파도 37 이다. 연결선을 늘린 사람도, 패턴을 늘린 사람도 여기서 멈춘다");
+		assertTrue(TrialLandingShock.MAX_POINTS_PER_TICK - worst >= 20,
+				"예산까지 " + (TrialLandingShock.MAX_POINTS_PER_TICK - worst)
+						+ "점뿐이다 — 다음 사람이 쓸 몫이 남아 있어야 한다");
 		assertTrue(worst < TrialLandingShock.MAX_POINTS_PER_TICK,
 				"한 틱에 " + worst + "점이라 예산 " + TrialLandingShock.MAX_POINTS_PER_TICK
 						+ "을 넘는다 — 선의 점 수나 개수를 올린 사람은 여기서 멈출 것");
@@ -622,6 +825,26 @@ class DragonLastStandObjectsTest {
 			}
 		}
 		return fail(nested + " 에 빛 칸이 없다");
+	}
+
+	/**
+	 * 그 이름의 칸이나 함수를 이 클래스가 들고 있는가.
+	 *
+	 * <p>타이머가 있던 자리의 값과 식이 <b>되살아나지 않았는지</b> 묻는 데 쓴다 — 하나라도 돌아오면
+	 * 「부술 때까지」가 그 자리에서 거짓이 된다.
+	 */
+	private static boolean declares(String name) {
+		for (Field field : DragonLastStandObjects.class.getDeclaredFields()) {
+			if (field.getName().equals(name)) {
+				return true;
+			}
+		}
+		for (Method method : DragonLastStandObjects.class.getDeclaredMethods()) {
+			if (method.getName().equals(name)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static Class<?> nestedOf(String nested) {

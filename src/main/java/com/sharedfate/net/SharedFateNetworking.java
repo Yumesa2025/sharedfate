@@ -230,7 +230,32 @@ public final class SharedFateNetworking {
 	//     ⚠ <b>증강을 처음 고를 때 뜨는 채팅 한 줄은 그대로다</b>(PerkRuinSurvey.announce).
 	//     사람이 따로 요청한 것이고, 나중에 다시 읽을 수 있는 자리는 채팅뿐이다. 없어진 것은
 	//     설명 뒤 괄호 하나이고, 그 자리를 목록 오른쪽 두 줄이 대신한다.
-	public static final int PROTOCOL_VERSION = 35;
+	// 36: 엔드에 처음 들어서면 <b>「시련을 시작합니다」 입장 수락창</b>이 뜬다
+	//     (TrialEntranceOfferPayload · TrialEntranceClosePayload · TrialEntranceAcceptC2SPayload,
+	//     셋 다 신설).
+	//
+	//     사람이 정한 것 — 「첫 엔더로 입장하면 한명이라도 엔더에 입장하면 정지하고 (시련중이면)
+	//     시련을 시작합니다. 라고 수락창이 뜨고 리더가 확인 을 누루면 버튼은 확인만있지만, 엔더로
+	//     진입 엔더 중앙으로 보내 그 기반암 단상있는곳으로 … 그러고 연출보게 하면됨」. 확인한 뒤
+	//     중앙으로 보낼 대상을 따로 물었을 때 「팀 전원」이라고 답했다(2026-10-01).
+	//
+	//     묶음이 셋 늘었을 뿐 기존 형식은 한 바이트도 안 바뀌었다. 그래도 번호를 올리는 것은
+	//     위 ★ 규칙 때문이고, 여기서는 그 규칙이 말하는 「조용히 덜 동작하는」 정도가 아니다 —
+	//     ⚠⚠ **이 패킷을 모르는 클라이언트는 엔드에 들어간 채로 60초 동안 붙들려 있고 아무
+	//     화면도 보지 못한다.** 붙들기는 서버가 하는 일이라 그대로 걸리고, 창이 안 뜨므로 확인을
+	//     누를 길도 없다. 리더가 그 클라이언트면 팀 전원이 제한시간을 다 쓴 뒤에야 전투가
+	//     시작된다. 악수 단계에서 걸러내는 것이 유일한 답이다.
+	//
+	//     C2S 가 하나 늘어난 것도 번호를 올릴 이유다. 「확인」은 **리더만** 누를 수 있고 그
+	//     판단은 서버에만 있는데(TrialEntranceGate.mayConfirm), 보낼 수 없는 클라이언트에게는
+	//     그 사실이 「단추를 눌렀는데 아무 일도 안 일어난다」로 보인다 — 34번이 증강 제안 패킷을
+	//     두고 적어 둔 것과 같은 모양이다.
+	//
+	//     30·31·32·33·34·35 와 마찬가지로 시련은 브랜치 `feature/dragon-trials` 안에만 있고,
+	//     이 번호가 배포판으로 나가는 것은 시련을 실제로 내보내기로 정한 뒤다.
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다. 양쪽을 다 끄고 바꿀 것(안 그러면
+	//     ZipException).
+	public static final int PROTOCOL_VERSION = 36;
 
 	private SharedFateNetworking() {
 	}
@@ -247,6 +272,12 @@ public final class SharedFateNetworking {
 				TrialRoulettePayload.TYPE, TrialRoulettePayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				TrialHotbarLockPayload.TYPE, TrialHotbarLockPayload.CODEC);
+		// 엔드 입장 수락창. 띄우는 것과 닫는 것을 갈라 둔 까닭은 TrialEntranceClosePayload 에
+		// 적어 두었다 — 리더가 1초 만에 누르면 나머지 사람의 창을 닫는 길이 서버뿐이다.
+		PayloadTypeRegistry.clientboundPlay().register(
+				TrialEntranceOfferPayload.TYPE, TrialEntranceOfferPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(
+				TrialEntranceClosePayload.TYPE, TrialEntranceClosePayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(PerkSyncPayload.TYPE, PerkSyncPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				PerkCloseOfferPayload.TYPE, PerkCloseOfferPayload.CODEC);
@@ -269,6 +300,8 @@ public final class SharedFateNetworking {
 				PerkRerollC2SPayload.TYPE, PerkRerollC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(
 				PerkVoteC2SPayload.TYPE, PerkVoteC2SPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(
+				TrialEntranceAcceptC2SPayload.TYPE, TrialEntranceAcceptC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(DoubleJumpPayload.TYPE, DoubleJumpPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(
 				ClientVersionPayload.TYPE, ClientVersionPayload.CODEC);
@@ -292,6 +325,13 @@ public final class SharedFateNetworking {
 		ServerPlayNetworking.registerGlobalReceiver(PerkVoteC2SPayload.TYPE,
 				(payload, context) -> PerkChoiceSession.castVote(
 						context.player(), payload.milestone(), payload.target()));
+		// 엔드 입장 수락창의 「확인」. 누를 수 있는 사람인지는 서버가 팀 명단에서 다시 본다 —
+		// 클라이언트가 보내는 것은 「눌렀다」와 「어느 창에서」뿐이다
+		// (TrialEntranceAcceptC2SPayload). 전투를 여는 일은 여기서 하지 않고 다음 틱의
+		// DragonTrialManager 가 한다(TrialEntranceGate.accept 설명).
+		ServerPlayNetworking.registerGlobalReceiver(TrialEntranceAcceptC2SPayload.TYPE,
+				(payload, context) -> com.sharedfate.sync.TrialEntranceGate.accept(
+						context.player(), payload.openedTick()));
 		// 공중 점프 요청. 세기도 가능 여부도 전부 서버가 다시 따진다.
 		ServerPlayNetworking.registerGlobalReceiver(DoubleJumpPayload.TYPE,
 				(payload, context) -> PerkClientRules.onDoubleJumpRequest(context.player()));

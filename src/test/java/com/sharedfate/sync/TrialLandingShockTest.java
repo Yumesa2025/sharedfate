@@ -583,6 +583,118 @@ class TrialLandingShockTest {
 				"낙하 거리를 지우고 있다 — 사람을 띄우기 시작했다는 뜻이다");
 	}
 
+	/**
+	 * ⚠⚠ <b>착지 {@code 160}틱 동안 드래곤이 쌓아 둔 세로를 배달하지 않는다.</b> <b>이것이 이
+	 * 저장소가 재어 둔 가장 나쁜 경우다.</b>
+	 *
+	 * <p>사람 말: <b>「드래곤 밀치는 패턴떄 점프하면 하늘로 날라가버림」</b>(2026-10-04).
+	 *
+	 * <p>이 카드는 세로를 <b>읽어서 그대로 돌려놓고</b> {@code syncVelocity} 를 켰다. 그 세로는
+	 * <b>우리가 쓴 값이 아니다</b> — 바닐라 {@code EnderDragon.knockBack} 이 날개 상자
+	 * ({@code inflate(4,2,4).move(0,-2,0)}) 안의 사람에게 매 틱 세로 {@code +0.2} 를 더한다.
+	 * ⚠ {@code isSitting()} 조건은 <u>피해</u>에만 붙어 있어 <b>미는 것은 조건 없이 돈다.</b>
+	 * 바닐라는 그 값을 {@code needsSync} 로만 내보내 본인에게 안 보내지만
+	 * {@code syncVelocity} 는 보내고, 보내는 것이 <b>그 순간의 {@code getDeltaMovement()}
+	 * 통째로</b>다.
+	 *
+	 * <h2>⚠⚠ 왜 이 카드가 가장 나쁜가 — <b>160틱이 한 틱도 안 끊긴다</b></h2>
+	 *
+	 * <p>이 카드가 터지는 창이 곧 착지이고 {@code DragonPerch.HOLD_TICKS} 가 드래곤을 포디움에
+	 * <b>160틱</b> 붙박아 둔다 — 머리를 때리는 사람이 최후의 저항과 <b>같은 기하</b>에 선다.
+	 * 그리고 쌓임을 끊는 것은 {@code wasHurtRecently()}(= {@code hurtTime > 0})인데
+	 * {@code EnderDragonPerchRangedImmunityMixin} 이 {@code hurt} 를 HEAD 에서
+	 * {@code setReturnValue(false)} 로 끊어 <b>{@code hurtTime} 이 아예 안 올라간다.</b> 곧
+	 * <b>원거리로만 때리는 팀에게는 160틱이 통째로 쌓인다</b> — 우리 기능 둘이 서로를 악화시키는
+	 * 자리다.
+	 */
+	@Test
+	void 착지_160틱_동안_쌓인_세로를_배달하지_않는다() {
+		// ① 자름이 실제로 배선돼 있다. 순수 함수 시험은 함수를 안 부르면 아무것도 못 잡는다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("syncedVertical"),
+				"세로를 읽은 그대로 내려보내고 있다 — 남이 쌓아 둔 값이 그 한 줄로 배달된다");
+		assertTrue(bytes.contains("com/sharedfate/sync/TrialVelocity"),
+				"자름을 이 파일에 따로 적으면 두 벌이 되어 언젠가 한쪽만 고쳐진다");
+		assertTrue(bytes.contains("getKnownMovement"),
+				"천장이 없다 — deltaMovement 만 보면 남이 쌓아 둔 값과 사람 몫을 가를 수 없다");
+		assertFalse(bytes.contains("knockBack"),
+				"이 카드가 바닐라 넉백에 손대면 안 된다 — 착지의 날개 밀치기는 바닐라 동작이다");
+
+		// ② 160틱을 틱마다 굴린다. 가만히 선 사람이라 클라이언트가 보고하는 세로가 0 이다.
+		double dragonPush = 0.20000000298023224;
+		double server = 0.0;
+		double worstShipped = 0.0;
+		for (int tick = 0; tick < DragonPerch.HOLD_TICKS; tick++) {
+			server = (server + dragonPush - DragonLastStandPatterns.LIFT_GRAVITY)
+					* DragonLastStandPatterns.LIFT_DRAG;
+			worstShipped = Math.max(worstShipped, TrialVelocity.syncedVertical(server, 0.0));
+		}
+		assertEquals(160, DragonPerch.HOLD_TICKS,
+				"착지가 붙박아 두는 시간이 달라졌으면 위 설명도 고칠 것");
+		assertEquals(5.648, server, 0.001,
+				"고치기 전에 내려가던 수다 — 쌓이는 식은 (v + 0.2 − 0.08) × 0.98 이다");
+		assertEquals(109.3, DragonLastStandPatterns.liftApex(server), 0.1,
+				"그 속도의 도달 높이가 109칸이다 — 「하늘로 날라가버림」이 그것이다");
+
+		// ③ 고친 뒤에는 한 톨도 안 나간다. 서 있는 사람은 올라가고 있지 않으므로 천장이 0 이다.
+		assertEquals(0.0, worstShipped, 1.0E-12,
+				"올라가고 있지 않은 사람에게 올라가는 속도를 보내면 그것이 곧 「하늘로 날아간다」다");
+
+		// ④ ⚠ 26.3 에는 「속도 패킷이 3.9 에서 잘린다」가 없다. LpVec3.ABS_MAX_VALUE 가
+		//   1.7179869183E10 이라 쌓인 값이 한 톨도 안 깎이고 내려간다.
+		assertEquals(0.0, TrialVelocity.syncedVertical(1.0E9, 0.0), 1.0E-12,
+				"패킷이 알아서 잘라 줄 것을 기대하면 안 된다 — 26.3 은 자르지 않는다");
+	}
+
+	/**
+	 * ⚠⚠ <b>정상 플레이어는 비트 단위로 무변화다.</b>
+	 *
+	 * <p>이 카드의 회피가 <b>뛰어넘기</b>({@link #창은_점프_한_번보다_짧다})라 더 날카롭다 —
+	 * 세로를 자르는 것이 점프를 깎으면 <b>이 카드의 정답이 사라진다.</b> 그리고 떨어지는 사람을
+	 * 더 세게 떨어뜨리면 그것이 새 낙사 장치다.
+	 *
+	 * <p>∆ 이 아니라 {@code 0.0} 오차로 잰다 — 「거의 같다」가 아니라 <b>같은 비트</b>여야 한다.
+	 */
+	@Test
+	void 스스로_뛴_사람과_떨어지는_사람은_비트_단위로_안_달라진다() {
+		// ① 바닐라 점프. 처음 0.42 로 25틱을 굴린다. 스스로 올라가는 속도가 곧 제 천장이다.
+		double rise = 0.42;
+		for (int tick = 0; tick < 25; tick++) {
+			assertEquals(rise, TrialVelocity.syncedVertical(rise, rise), 0.0,
+					tick + "틱째 점프 세로가 달라졌다 — 뛰어넘기가 손해가 된다");
+			rise = (rise - DragonLastStandPatterns.LIFT_GRAVITY)
+					* DragonLastStandPatterns.LIFT_DRAG;
+		}
+
+		// ② 떨어지는 중. 클라이언트가 무엇을 보고했든 받은 값이 그대로 나간다.
+		for (double client : new double[] {-9.0, -1.0, -0.0784, 0.0, 0.42, 1.0, 1.0E9}) {
+			for (double fall = -5.0; fall <= 0.0; fall += 0.001) {
+				assertEquals(fall, TrialVelocity.syncedVertical(fall, client), 0.0,
+						"떨어지는 중인 사람의 세로가 달라졌다 — 그 한 줄이 새 낙사 장치가 된다");
+			}
+		}
+	}
+
+	/**
+	 * ⚠ <b>세로를 자르는 것이 수평 천장을 한 톨도 안 건드렸다.</b>
+	 *
+	 * <p>{@link #미는_속도는_공중_모델로_잡는다} 가 카드 값 하나로 재는 성질을 <b>거리마다</b>
+	 * 굴려 못박는다 — {@link TrialLandingShock#pushVelocity} 는 <b>공중 모델</b>이라 사람이 떠
+	 * 있어도 적힌 거리를 <b>넘을 수 없다.</b> 곧 쌓인 세로가 배달돼 사람이 들렸더라도
+	 * {@link TrialLandingShock#outwardLimit} 과 {@link TrialLandingShock#groundedReach} 가 잡아 둔
+	 * 거리는 무너지지 않았고, 세로를 자르는 것은 <b>「하늘로 솟는 것」을 막는 일</b>이다. 둘을
+	 * 섞어 적으면 다음 사람이 한쪽을 고치고 다른 쪽이 고쳐졌다고 믿는다.
+	 */
+	@Test
+	void 세로를_잘라도_수평_천장의_성질이_그대로다() {
+		for (double distance = 0.0; distance <= KNOCKBACK * 3.0; distance += 0.25) {
+			double travel = TrialLandingShock.pushVelocity(distance)
+					/ (1.0 - TrialLandingShock.AIR_DRAG);
+			assertEquals(distance, travel, 1.0E-9,
+					"떠 있는 채로 끝까지 밀려도 적힌 거리에서 멈춰야 한다: " + distance);
+		}
+	}
+
 	// ------------------------------------------------------------------ 전원을 때린다
 
 	/**

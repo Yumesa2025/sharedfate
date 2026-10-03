@@ -2,7 +2,12 @@ package com.sharedfate.sync;
 
 import com.sharedfate.TestBootstrap;
 import net.minecraft.util.Mth;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.levelgen.feature.EndPodiumFeature;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.AfterEach;
@@ -12,10 +17,14 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -41,6 +50,17 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code EndPodiumFeature.PODIUM_PILLAR_HEIGHT}(= 4)만큼 내렸고, <b>반구의 기하 원점</b>
  * ({@code domeOriginY})은 그대로다. 여기서 못박는 것이 그 둘이 <b>서로 따로</b>라는 사실이다 —
  * 원점을 함께 내리면 눈에 보이는 반구가 네 칸 내려앉는다.
+ *
+ * <h2>2026-10-04 — 물도 부순다</h2>
+ *
+ * <p>사람 말이 <b>「주위블럭 부수는거에서 물은 안부수는데 물도 부수게」</b> 였다. 원인은 태그도
+ * 하이트맵도 아니라 <b>{@code Level.removeBlock} 이 유체를 일부러 남기는 메서드</b>라는 것이었고,
+ * 그 바닐라 사실을 {@link #물은_removeBlock_으로_한_칸도_안_없어진다} 가 <b>값으로</b> 붙든다.
+ *
+ * <p>이 묶음에서 가장 중요한 것은 <b>성능이 그대로라는 시험</b>
+ * ({@link #물을_찾으려고_하이트맵_거름망을_버리지_않았다})이다. 유체를 찾으려고
+ * {@code TrialDryWorld} 처럼 하이트맵을 버리면 <b>2천 열을 매 초 깊게 훑는다</b> — 그럴 필요가
+ * 없는 까닭(물은 공기가 아니다)과 늘지 않은 조회 횟수를 함께 못박아 두었다.
  */
 class DragonLastStandDomeTest {
 
@@ -297,17 +317,237 @@ class DragonLastStandDomeTest {
 		assertTrue(immune.contains("\"minecraft:obsidian\""));
 		assertTrue(immune.contains("\"minecraft:iron_bars\""), "기둥 위 쇠창살 우리다");
 
+		String transparent = readTag("dragon_transparent");
+
 		// ⚠ 포디움 벽 횃불은 지켜지지 않는다 — 바닥을 내려 범위에 들어왔는데 두 태그 어디에도
 		// 없다. 연출뿐이라 그대로 두기로 했고, 그 판단을 Dome 클래스 설명에 적어 두었다.
 		assertFalse(immune.contains("\"minecraft:wall_torch\""),
 				"횃불이 태그에 들어왔다 — Dome 클래스 설명의 「지켜지지 않는 것」을 고칠 것");
-		assertFalse(readTag("dragon_transparent").contains("wall_torch"),
+		assertFalse(transparent.contains("wall_torch"),
 				"횃불이 DRAGON_TRANSPARENT 에 들어왔다 — 같은 문단을 고칠 것");
+
+		// ⚠⚠ 2026-10-04 — 「물이 안 부서진다」가 태그 탓이 아니라는 근거다. 이것이 깨지면
+		// breakable 이 물에 거짓을 돌려주게 되고, 그 순간 물 작업이 통째로 무효가 된다.
+		assertFalse(immune.contains("\"minecraft:water\""),
+				"물이 DRAGON_IMMUNE 에 들어왔다 — clear 가 불리지 않아 물이 다시 안 부서진다");
+		assertFalse(immune.contains("\"minecraft:lava\""),
+				"용암이 DRAGON_IMMUNE 에 들어왔다 — 「용암은 같은 원인으로 남아 있다」가 거짓이 된다");
+		assertFalse(transparent.contains("water"),
+				"물이 DRAGON_TRANSPARENT 에 들어왔다 — breakable 이 물에 거짓을 돌려준다");
+		assertEquals(2, transparent.split("minecraft:", -1).length - 1,
+				"dragon_transparent 는 light·#fire 두 줄뿐이다 — 늘어나면 Dome 설명을 다시 읽을 것");
 
 		// 사람이 쌓는 블록은 여기 없다. 그것이 이 규칙이 있는 이유다.
 		assertFalse(immune.contains("\"minecraft:cobblestone\""),
 				"사람이 발판으로 쓰는 블록이 목록에 들어오면 「블록으로 패턴 피할수잇으니」가 남는다");
 		assertFalse(immune.contains("\"minecraft:oak_planks\""));
+	}
+
+	// ------------------------------------------------------------------ ⚠ 물 (2026-10-04)
+
+	/**
+	 * ⚠⚠ <b>물이 안 부서졌던 진짜 원인.</b> 사람 말이
+	 * <b>「주위블럭 부수는거에서 물은 안부수는데 물도 부수게」</b> 였다.
+	 *
+	 * <p>원인은 태그도 하이트맵도 아니라 <b>{@code Level.removeBlock} 자신</b>이다. 그 메서드는
+	 * {@code setBlock(pos, getFluidState(pos).createLegacyBlock(), 3)} 이라 <b>유체를 일부러
+	 * 남긴다</b> — 물 칸에서는 <b>넣는 값이 들어 있던 값과 같은 객체</b>가 되고,
+	 * {@code LevelChunk.setBlockState} 가 {@code 옛 값 == 새 값} 이면 그 자리에서 되돌아가므로
+	 * <b>아무 일도 일어나지 않는다.</b>
+	 *
+	 * <p>여기서 그 바닐라 사실을 <b>값으로</b> 붙든다. 판이 올라 {@code removeBlock} 이 공기를
+	 * 넣도록 바뀌면 이 시험이 먼저 깨지고, 그때는 {@code clear} 의 물 갈래를 지워도 된다.
+	 *
+	 * <p>⚠ <b>{@code breakable(물)} 을 여기서 굴려 볼 수 없다.</b> 그 함수가 태그를 묻고 시험
+	 * 환경에는 bind 가 없어 {@code IllegalStateException: Tags not bound} 로 터진다(실제로 걸렸다 —
+	 * {@link #섬과_포털과_기둥이_태그로_지켜진다} 가 같은 까닭을 적어 두었다). <b>물이 두 태그
+	 * 어디에도 없다</b>는 것은 그쪽이 태그 파일을 읽어 못박는다. 같은 까닭으로
+	 * {@code DragonLastStandDome.holdsWater} 도 {@code FluidTags.WATER} 가 아니라 유체 객체를
+	 * 비교한다.
+	 */
+	@Test
+	void 물은_removeBlock_으로_한_칸도_안_없어진다() {
+		BlockState water = Blocks.WATER.defaultBlockState();
+		assertSame(water, water.getFluidState().createLegacyBlock(),
+				"removeBlock 이 넣는 값이 수원과 같은 객체다 — 그래서 아무 일도 안 일어났다");
+		BlockState flowing = water.setValue(LiquidBlock.LEVEL, 3);
+		assertNotEquals(water, flowing, "LEVEL 3 은 다른 상태라야 한다");
+		assertSame(flowing, flowing.getFluidState().createLegacyBlock(),
+				"흐르는 물도 LEVEL 왕복이 정확해 같은 객체가 나온다 — 수원만의 문제가 아니었다");
+
+		// waterlogged 는 더 나빴다. 블록만 빠지고 물이 남아 그 물이 영영 안 없어졌다.
+		BlockState loggedSlab = Blocks.OAK_SLAB.defaultBlockState()
+				.setValue(BlockStateProperties.WATERLOGGED, Boolean.TRUE);
+		assertSame(water, loggedSlab.getFluidState().createLegacyBlock(),
+				"waterlogged 칸에 removeBlock 을 쓰면 그 자리에 물이 남는다 — clear 가 그래서 "
+						+ "칸을 통째로 공기로 바꾼다");
+
+		// 서리눈은 유체가 아니라 전부터 부서지고 있었다. 사람이 가리킨 「물」에 안 섞여 있다.
+		assertSame(Blocks.AIR.defaultBlockState(),
+				Blocks.POWDER_SNOW.defaultBlockState().getFluidState().createLegacyBlock(),
+				"서리눈이 유체가 되면 그것도 안 부서지기 시작한다");
+		// ⚠ 용암은 물과 똑같이 남는다. 사람에게 물을 것 — 범위를 우리가 넓히지 않았다.
+		BlockState lava = Blocks.LAVA.defaultBlockState();
+		assertSame(lava, lava.getFluidState().createLegacyBlock(),
+				"용암이 같은 원인으로 남아 있다는 근거다 — 사람이 「용암도」라고 하면 holdsWater 를 "
+						+ "「유체면 참」으로 고치면 된다");
+	}
+
+	/**
+	 * ⚠ <b>물만 없앤다.</b> 사람이 말한 것은 「물」이고 <b>용암은 그대로 둔다.</b>
+	 *
+	 * <p>{@code holdsWater} 가 붙드는 것이 셋이다 — <b>수원 · 흐르는 물 · 남의 블록 안에 잠긴
+	 * 물.</b> ⚠ {@code Fluids.WATER} 는 <b>수원뿐</b>이고 흐르는 물은 {@code Fluids.FLOWING_WATER}
+	 * 라는 다른 객체라서, 한 줄만 적으면 <b>수원만 지우고 퍼진 물은 그대로 남는다.</b>
+	 */
+	@Test
+	void 물만_없애고_용암은_그대로_둔다() {
+		assertTrue(DragonLastStandDome.holdsWater(Blocks.WATER.defaultBlockState()),
+				"수원");
+		assertTrue(DragonLastStandDome.holdsWater(
+						Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 3)),
+				"흐르는 물 — Fluids.WATER 한 줄만 적으면 여기서 샌다(FLOWING_WATER 는 다른 객체다)");
+		assertTrue(DragonLastStandDome.holdsWater(Blocks.OAK_SLAB.defaultBlockState()
+						.setValue(BlockStateProperties.WATERLOGGED, Boolean.TRUE)),
+				"남의 블록 안에 잠긴 물 — waterlogged 성질을 따로 묻지 않아도 걸려야 한다");
+		assertFalse(DragonLastStandDome.holdsWater(Blocks.OAK_SLAB.defaultBlockState()),
+				"물을 안 머금은 같은 블록은 전과 같은 removeBlock 길이라야 한다");
+
+		// ⚠ 여기서부터는 「안 걸려야」 한다. 범위를 우리가 넓히지 않았다.
+		assertFalse(DragonLastStandDome.holdsWater(Blocks.LAVA.defaultBlockState()),
+				"용암을 함께 없애는 것은 사람이 말하지 않았다 — 넓히려면 사람에게 물을 것");
+		assertFalse(DragonLastStandDome.holdsWater(
+						Blocks.LAVA.defaultBlockState().setValue(LiquidBlock.LEVEL, 3)),
+				"흐르는 용암도 범위 밖이다");
+		assertFalse(DragonLastStandDome.holdsWater(Blocks.POWDER_SNOW.defaultBlockState()),
+				"서리눈은 유체가 아니라 전부터 removeBlock 으로 부서지고 있었다");
+		assertFalse(DragonLastStandDome.holdsWater(Blocks.AIR.defaultBlockState()));
+		assertFalse(DragonLastStandDome.holdsWater(Blocks.COBBLESTONE.defaultBlockState()));
+		assertFalse(DragonLastStandDome.holdsWater(Blocks.END_STONE.defaultBlockState()),
+				"섬 돌이 물로 읽히면 섬이 UPDATE_CLIENTS 로 지워진다 — 두 겹이 한꺼번에 죽는다");
+
+		// 26.3 의 물 유체가 둘뿐임을 태그 파일에서 확인한다. 셋째가 생기면 holdsWater 가 샌다.
+		String water = read("/data/minecraft/tags/fluid/water.json");
+		assertTrue(water.contains("\"minecraft:water\""));
+		assertTrue(water.contains("\"minecraft:flowing_water\""));
+		assertEquals(2, water.split("minecraft:", -1).length - 1,
+				"물 유체가 둘보다 많아졌다 — holdsWater 에 줄을 더할 것");
+	}
+
+	/**
+	 * ⚠⚠ <b>지운 물이 다시 차지 않는다.</b> 다시 차면 사람 눈에는 그것도 「안 부서진다」다.
+	 *
+	 * <p>붙드는 것은 깃발 하나다 — {@code Block.UPDATE_CLIENTS} <b>하나뿐</b>이고
+	 * {@code UPDATE_NEIGHBORS} 가 <b>없다.</b> 이웃을 깨우면 아직 안 지운 옆칸 물과 반구 밖
+	 * 수원이 흐를 예약을 쌓고 그것이 다음 틱에 터져 물이 되돌아온다. 깨우지 않으면 예약이 하나도
+	 * 생기지 않으므로 <b>천장에 걸려 남은 물까지 그 자리에 가만히 있다.</b>
+	 *
+	 * <p>{@code TrialDryWorld.dryUpSection} 이 <b>같은 값을 같은 근거로</b> 쓴다.
+	 */
+	@Test
+	void 지운_물이_다시_차지_않는다() {
+		assertEquals(Block.UPDATE_CLIENTS, DragonLastStandDome.WATER_CLEAR_FLAGS,
+				"TrialDryWorld 가 고른 답과 같은 깃발이라야 한다");
+		assertEquals(0, DragonLastStandDome.WATER_CLEAR_FLAGS & Block.UPDATE_NEIGHBORS,
+				"이웃을 깨우면 옆칸 물과 반구 밖 수원이 흐를 예약을 쌓아 다음 틱에 되돌아온다");
+		assertNotEquals(Block.UPDATE_ALL, DragonLastStandDome.WATER_CLEAR_FLAGS,
+				"UPDATE_ALL 은 UPDATE_NEIGHBORS 를 품는다 — 그 한 비트가 「다시 찬다」다");
+		assertNotEquals(0, DragonLastStandDome.WATER_CLEAR_FLAGS & Block.UPDATE_CLIENTS,
+				"클라이언트에 안 보내면 화면에만 물이 남는다 — 그것도 사람 눈에는 「안 부서진다」다");
+
+		String bytes = classBytes();
+		assertTrue(bytes.contains("setBlock"),
+				"물 갈래가 사라졌다 — removeBlock 은 물 칸에 아무 일도 못 한다");
+		assertTrue(bytes.contains("getFluidState"),
+				"유체를 가려내는 줄이 없으면 용암까지 공기가 되거나 물이 다시 안 부서진다");
+	}
+
+	/**
+	 * ⚠⚠ <b>물을 찾으려고 거름망을 버리지 않았다 — 맨손 아레나 비용이 전과 똑같다.</b>
+	 *
+	 * <p>{@code TrialDryWorld} 는 유체를 찾으려고 하이트맵을 포기하고 구획의 유체 개수
+	 * ({@code hasFluid()})에 기댔다. <b>여기서 같은 길을 가면 2천 열을 매 초 깊게 훑는다.</b>
+	 * 그럴 필요가 없는 근거가 둘이고 이 시험이 그 둘을 함께 못박는다.
+	 *
+	 * <ol>
+	 *   <li><b>물은 공기가 아니다.</b> {@code WORLD_SURFACE} 의 판별식 {@code NOT_AIR} 이
+	 *       바이트코드에서 {@code state -> !state.isAir()} 한 줄이라, 물이 든 열은 하이트맵이 그
+	 *       물의 맨 위를 돌려주어 <b>거름망을 통과한다</b>. {@code hasOnlyAir()} 도 같은
+	 *       {@code isAir()} 를 센다</li>
+	 *   <li><b>조회 횟수가 한 번도 늘지 않았다.</b> 열 1961 · 구획 32 — 2026-10-04 <b>이전과 같은
+	 *       수</b>다</li>
+	 * </ol>
+	 */
+	@Test
+	void 물을_찾으려고_하이트맵_거름망을_버리지_않았다() {
+		// ① 물이 공기가 아니라는 사실. 이것이 거짓이면 물만 있는 열이 통째로 걸러진다.
+		assertFalse(Blocks.WATER.defaultBlockState().isAir(),
+				"물이 공기로 읽히면 WORLD_SURFACE 가 물을 못 보고 물만 있는 열이 걸러진다");
+		assertFalse(Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 3).isAir(),
+				"흐르는 물도 공기가 아니라야 한다");
+		assertFalse(Blocks.OAK_SLAB.defaultBlockState()
+						.setValue(BlockStateProperties.WATERLOGGED, Boolean.TRUE).isAir(),
+				"잠긴 물은 블록 자신이 하이트맵에 잡히므로 더 확실하다");
+		assertTrue(Blocks.AIR.defaultBlockState().isAir(), "공기는 공기여야 한다");
+
+		// ② 맨손 아레나 비용이 전과 같은 수다. 물 작업 전후로 한 번도 늘지 않았다.
+		assertEquals(1961, DragonLastStandDome.columnProbesPerSweep(0.5, 0.5),
+				"열 조회가 늘었다 — 물 때문에 거름망을 버렸다는 뜻이다");
+		assertEquals(32, DragonLastStandDome.sectionProbesPerSweep(0.5, 0.5, 68),
+				"구획 조회가 늘었다 — hasFluid 를 끼워 넣었거나 범위를 넓혔다는 뜻이다");
+
+		// ③ 거름망을 TrialDryWorld 쪽으로 갈아 끼우지 않았다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("WORLD_SURFACE"), "하이트맵 거름망이 사라졌다");
+		assertTrue(bytes.contains("hasOnlyAir"), "빈 구획 건너뛰기가 사라졌다");
+		assertFalse(bytes.contains("hasFluid"),
+				"구획의 유체 개수로 갈아 끼우면 물이 든 구획마다 4096칸을 매 초 읽는다 — "
+						+ "하이트맵이 물을 보므로 그럴 이유가 없다");
+	}
+
+	/**
+	 * ⚠ <b>{@code mobGriefing} 을 끄면 함께 꺼진다.</b> 끄면 반구도 꺼지는 것이 <b>일부러 고른
+	 * 것</b>이다 — 우리만 무시하면 「드래곤은 안 부수는데 반구는 부순다」가 되고 그 어긋남은 로그
+	 * 어디에도 안 남는다.
+	 *
+	 * <p>관문은 {@code sweep()} 의 첫 줄 하나다. 그러니 <b>블록을 쓰는 메서드가 모두
+	 * {@code private}</b> 이어야 그 관문이 유일한 문이 된다 — 밖에서 {@code sweepColumn} 이나
+	 * {@code clear} 를 직접 부를 수 있으면 게임룰을 건너뛰고 블록이 지워진다.
+	 *
+	 * <p>⚠ 2026-10-04 에 물 갈래({@code clear})가 늘었으므로 그것도 함께 못박는다.
+	 */
+	@Test
+	void mobGriefing_을_끄면_함께_꺼진다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("MOB_GRIEFING"),
+				"게임룰을 안 보면 「드래곤은 안 부수는데 반구는 부순다」가 된다");
+		assertTrue(bytes.contains("GameRules"), "게임룰 자체를 안 읽는다");
+
+		for (String hidden : new String[] {"sweepChunk", "sweepColumn", "clear", "puff"}) {
+			assertTrue(isPrivate(hidden), hidden
+					+ " 이 private 이 아니다 — 게임룰 관문을 건너뛰고 블록을 지우는 길이 열렸다");
+		}
+	}
+
+	/**
+	 * 「메마른 세계」와 싸우지 않는다.
+	 *
+	 * <p>그 카드는 <b>최후의 저항에서도 금지만은 이어지는 단 하나뿐인 예외</b>다
+	 * ({@code TrialDryWorld.holdBanDuringLastStand}). 그 카드가 걸린 판에서는 엔드에 물을 놓을 수
+	 * 없으므로 <b>반구가 만날 물이 아예 없다</b> — 둘이 같은 칸을 두고 다툴 일이 없다.
+	 *
+	 * <p>⚠ 그 금지가 새면 그 카드가 걸린 판에서도 물이 놓이고, 그때 두 코드가 같은 칸을 만진다.
+	 * 그래도 다투지 않는 근거는 <b>깃발이 같다</b>는 것이다.
+	 */
+	@Test
+	void 메마른_세계와_싸우지_않는다() {
+		assertTrue(TrialDryWorld.placesFluid(Items.WATER_BUCKET),
+				"물 양동이를 안 막으면 그 카드가 걸린 판에서도 물이 놓인다");
+		assertTrue(TrialDryWorld.placesFluid(Items.POWDER_SNOW_BUCKET));
+		assertFalse(TrialDryWorld.placesFluid(Items.BUCKET), "빈 양동이는 아무것도 놓지 않는다");
+
+		assertEquals(Block.UPDATE_CLIENTS, DragonLastStandDome.WATER_CLEAR_FLAGS,
+				"TrialDryWorld.dryUpSection 과 같은 깃발이라야 둘이 같은 칸에서 다르게 굴지 않는다");
 	}
 
 	// ------------------------------------------------------------------ ⚠ 성능
@@ -386,11 +626,18 @@ class DragonLastStandDomeTest {
 	 * {@code PerkBlockBreaks} 가 같은 판단을 같은 근거로 적어 두었다.
 	 *
 	 * <p>그리고 드롭이 없어야 한다 — 사람이 <b>「아니 파괴」</b>라고 정했다.
+	 *
+	 * <p>⚠ <b>2026-10-04 부터 길이 둘이다.</b> 물 칸만 {@code setBlock} 으로 공기를 넣고(까닭은
+	 * {@link #물은_removeBlock_으로_한_칸도_안_없어진다}) 나머지는 전과 같이
+	 * {@code removeBlock} 이다. <b>둘 다 드롭을 만들지 않는다</b> — 드롭은 {@code dropResources}
+	 * 를 부르는 {@code destroyBlock} 의 몫이고 그 이름이 여기 없다.
 	 */
 	@Test
 	void 드롭_없이_removeBlock_으로_지운다() {
 		String bytes = classBytes();
-		assertTrue(bytes.contains("removeBlock"), "블록을 지우는 줄이 없다");
+		assertTrue(bytes.contains("removeBlock"), "유체가 없는 블록을 지우는 줄이 없다");
+		assertTrue(bytes.contains("setBlock"),
+				"물 갈래가 없다 — removeBlock 은 물 칸에 아무 일도 못 한다");
 		assertFalse(bytes.contains("destroyBlock"),
 				"destroyBlock 을 쓰면 증강의 채굴 효과가 딸려 돈다");
 		assertFalse(bytes.contains("dropResources"), "드롭 없음이 사람이 정한 것이다");
@@ -438,6 +685,19 @@ class DragonLastStandDomeTest {
 
 	private static String classBytes() {
 		return read("/com/sharedfate/sync/DragonLastStandDome.class");
+	}
+
+	/**
+	 * 이 메서드가 {@code private} 인가. 밖에서 부를 수 있으면 {@code mobGriefing} 관문을 건너뛰고
+	 * 블록을 지우는 길이 열린다 — {@link #mobGriefing_을_끄면_함께_꺼진다} 를 볼 것.
+	 */
+	private static boolean isPrivate(String name) {
+		for (Method method : DragonLastStandDome.class.getDeclaredMethods()) {
+			if (method.getName().equals(name)) {
+				return Modifier.isPrivate(method.getModifiers());
+			}
+		}
+		return fail(name + " 메서드를 찾지 못했다 — 이름이 바뀌었으면 이 시험도 함께 고칠 것");
 	}
 
 	/**
