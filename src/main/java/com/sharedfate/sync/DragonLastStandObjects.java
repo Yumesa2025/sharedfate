@@ -306,7 +306,9 @@ import java.util.List;
  *   <li><b>줄 하나에 찍는 점 수를 거리와 무관하게 고정</b>했다({@value #BEAM_POINTS}) — 멀면
  *       간격이 벌어질 뿐이라 <b>예산이 값에서 바로 나온다</b></li>
  *   <li><b>{@value #BEAM_STRIDE}틱에 나눠 그린다</b>({@link #BEAM_STRIDE}) — 61점이 31점이 된다.
- *       패턴 쪽이 272 → 356 으로 오르면서 남은 몫이 84점뿐이라 그 절반도 쓰지 않는 쪽을 골랐다</li>
+ *       패턴 쪽이 272 → 356 으로 오르면서 남은 몫이 84점뿐이라 그 절반도 쓰지 않는 쪽을 골랐다.
+ *       ⚠ <b>2026-10-04</b> 에 패턴 쪽이 띄움 기둥 넷을 더해 <b>360</b> 이 되어 남은 몫은
+ *       <b>80점</b>이다 — 나눠 그리는 판단은 그래서 더 맞는 쪽이 되었다</li>
  * </ul>
  *
  * <p>⚠⚠ <b>선이 상시가 되면서 몫이 31 → 37 로 늘었다.</b> 한 틱 점수는
@@ -326,7 +328,10 @@ import java.util.List;
  * 10 + 5 + 2 + 1 = 18점이고, 전부 연결되는 130틱의 37 가 어느 틱보다 크다.
  *
  * <p>시험이 {@link #worstCasePointsPerTick} 을 못박고 패턴 몫과의 <b>합</b>을
- * {@code TrialLandingShock.MAX_POINTS_PER_TICK}(440)과 견준다 — 356 + 37 다.
+ * {@code TrialLandingShock.MAX_POINTS_PER_TICK}(440)과 견준다 — <b>360 + 37 = 397</b> 이다.
+ * ⚠ <b>2026-10-04</b>: 옛 서술은 「356 + 37」이었다. 패턴 쪽이 <b>띄움 기둥 넷</b>을 더해
+ * 356 → <b>360</b> 이 되었고({@code DragonLastStandPatternsTest} 가 360 을 못박는다) 그래서 합이
+ * 393 이 아니라 <b>397</b> 이다 — 예산까지 남은 몫은 <b>43점</b>이다.
  *
  * <h2>⚠⚠ 일곱 자리에서 지운다 — {@code DragonLastStandConePanel} 을 그대로 따른다</h2>
  *
@@ -578,7 +583,9 @@ public final class DragonLastStandObjects {
 	 *
 	 * <p>⚠ <b>예산 때문이다.</b> 패턴 쪽이 벽 연출을 얻으면서 최악이 <b>272 → 356</b> 으로 올라
 	 * 예산({@code TrialLandingShock.MAX_POINTS_PER_TICK} = 440)에 84점만 남았다
-	 * ({@code DragonLastStandPatterns} 클래스 설명). 여섯 줄을 매 틱 다 그리면 61점이라 그 몫의
+	 * ({@code DragonLastStandPatterns} 클래스 설명). ⚠ <b>2026-10-04</b> 에 띄움 기둥 넷이
+	 * 더해져 패턴 쪽은 <b>360</b>, 남은 몫은 <b>80점</b>이다 — 2 를 고른 까닭은 그대로 선다.
+	 * 여섯 줄을 매 틱 다 그리면 61점이라 그 몫의
 	 * 대부분을 혼자 먹는다 — 나눠 그리면 <b>31점</b>이고, 다음 패턴을 늘릴 사람에게 남는 몫이
 	 * 두 배가 된다.
 	 *

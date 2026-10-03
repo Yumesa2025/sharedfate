@@ -272,19 +272,87 @@ class TrialLandingShockTest {
 		}
 	}
 
+	/**
+	 * ⚠ <b>2026-10-04 에 「{@code getFightOrigin} 을 여기서 부른다」가 거짓이 됐다.</b> 셈을
+	 * {@link TrialPodium} 한 벌로 모았기 때문이고, 그 사실은
+	 * {@link #단상_계산이_한_벌이다()} 가 따로 지킨다. 여기 남는 것은 <b>「드래곤을 옮기거나
+	 * 바꾸지 않는다」</b>뿐이다 — 셈이 어디 있든 이 카드가 지켜야 하는 성질은 그것이다.
+	 */
 	@Test
 	void 드래곤에게서는_좌표만_읽는다() {
 		String bytes = classBytes();
-		assertTrue(bytes.contains("getFightOrigin"),
-				"착지 지점을 포탈에서 찾지 않으면 중앙을 (0,0) 으로 박게 된다");
-		assertTrue(bytes.contains("getPodiumLocation"),
-				"바닐라가 착지 목표로 삼는 그 점을 쓰지 않으면 판정이 바닐라와 어긋난다");
 		// 이름만 본다. 상수 풀은 이름과 서술자를 따로 담으므로 「이름(서술자)」을 이어 붙여
 		// 찾으면 언제나 통과한다 — 그러면 시험이 아무것도 안 지킨다.
 		for (String moves : new String[] {"setPos", "addFreshEntity", "setHealth",
 				"getSubEntities", "syncPosition"}) {
 			assertFalse(bytes.contains(moves), moves + " — 드래곤을 옮기거나 바꾸고 있다");
 		}
+		assertTrue(bytes.contains("position"), "드래곤 좌표를 읽지 않으면 착지를 알 길이 없다");
+	}
+
+	/**
+	 * ⚠⚠ <b>단상 계산이 한 벌이다.</b> 2026-10-04 에 모았다 — 그 전에는 <b>세 벌</b>이었다.
+	 *
+	 * <pre>
+	 * Vec3.atBottomCenterOf(end.getHeightmapPos(MOTION_BLOCKING_NO_LEAVES,
+	 *         EnderDragonFight.getPodiumLocation(dragon.getFightOrigin())))
+	 * </pre>
+	 *
+	 * <p>이 식이 {@code TrialPodium.locate} · {@code DragonLastStand.podium}(비공개) ·
+	 * {@code TrialLandingShock.podiumOf}(비공개) 셋에 그대로 적혀 있었다. 앞의 둘이
+	 * {@code private} 이라 밖에서 부를 수 없어 입장 수락창이 <b>세 번째로 같은 식을 적게 된</b>
+	 * 것이 {@code TrialPodium} 이 태어난 까닭이다.
+	 *
+	 * <p><b>셋을 글자 단위로 대조한 결과 셈은 완전히 같았고</b>, 다른 것은 <b>「드래곤이 없을 때」
+	 * 하나뿐</b>이었다. 그래서 <b>셈만 합치고 문은 쓰는 쪽에 남겼다.</b>
+	 *
+	 * <p>⚠ 세는 방법. 셈을 부르는 자리는 바이트코드에 남으므로 <b>상수 풀로 센다</b> —
+	 * 바닐라 세 이름이 {@code TrialPodium} 에는 있고 쓰는 쪽 둘에는 <b>없어야</b> 한다. 한쪽에
+	 * 다시 나타나면 누가 식을 베껴 적은 것이다.
+	 */
+	@Test
+	void 단상_계산이_한_벌이다() {
+		String[] vanilla = {"getPodiumLocation", "getFightOrigin", "getHeightmapPos"};
+
+		String owner = read("/com/sharedfate/sync/TrialPodium.class");
+		for (String name : vanilla) {
+			assertTrue(owner.contains(name),
+					"TrialPodium 이 " + name + " 을 안 쓴다 — 단상 자리를 숫자로 지어내는 것이다");
+		}
+
+		for (String user : new String[] {"TrialLandingShock", "DragonLastStand"}) {
+			String bytes = read("/com/sharedfate/sync/" + user + ".class");
+			assertTrue(bytes.contains("com/sharedfate/sync/TrialPodium"),
+					user + " 가 TrialPodium 을 안 지난다 — 셈이 두 벌로 갈라졌다");
+			for (String name : vanilla) {
+				assertFalse(bytes.contains(name),
+						user + " 가 " + name + " 을 제 손으로 부른다 — 같은 셈이 두 벌이 됐고,"
+								+ " 하이트맵 종류를 바꾸는 날 한쪽만 고쳐진다");
+			}
+		}
+	}
+
+	/**
+	 * ⚠⚠ <b>합치면서 옮기지 <u>않은</u> 문이 하나 있다 — 「드래곤이 죽어 가는 중」.</b>
+	 *
+	 * <p>{@code TrialPodium.locate} 는 드래곤이 없으면 {@code BlockPos.ZERO} 를 원점으로 써
+	 * <b>언제나 좌표를 돌려준다</b>(수락창은 「어디로 모을까」를 묻는 자리라 기본값이 맞다).
+	 * 여기는 반대로 <b>「방금 앉았는가」를 묻는 자리</b>라 <b>{@code null} 을 돌려야</b> 한다 —
+	 * 그러지 않으면 <b>죽는 연출 중에 좌표가 멈춘 것이 착지로 읽혀</b> 고리가 한 벌 더 터진다.
+	 *
+	 * <p>{@code dragon == null} 은 부르는 쪽이 한 번 더 보지만 {@code isDeadOrDying()} 은
+	 * <b>이 파일밖에 없다.</b> 그 한 줄이 「같은 것으로 보이는데 다른 것」이었고, 그것을 합치는
+	 * 것이 이 저장소에서 가장 비싼 사고다.
+	 */
+	@Test
+	void 죽어_가는_드래곤을_가르는_문은_여기_남았다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("isDeadOrDying"),
+				"죽는 연출 중에 멈춘 좌표가 착지로 읽힌다 — 고리가 한 벌 더 터진다");
+		assertTrue(bytes.contains("isAlive"), "죽은 드래곤의 자리에도 고리를 놓게 된다");
+		assertFalse(read("/com/sharedfate/sync/TrialPodium.class").contains("isDeadOrDying"),
+				"그 문을 TrialPodium 으로 끌어왔다 — 수락창은 기본값이 있어야 하고, 한 함수가"
+						+ " 「기본값을 돌려라」와 「null 을 돌려라」를 동시에 할 수는 없다");
 	}
 
 	@Test
@@ -973,6 +1041,30 @@ class TrialLandingShockTest {
 	}
 
 	/**
+	 * ⚠⚠ <b>오브젝트 파도는 점을 쓴다.</b> {@code DragonLastStand.tick} 에
+	 * <b>「이 파도가 매 틱 점을 한 개도 쓰지 않는다」</b>라고 적혀 있었고 <b>거짓이었다</b>(연결선이
+	 * 먼지로 긋는 것이라 여섯 줄을 두 틱에 나눠도 점이 남는다). 2026-10-04 에 그 주석을 고쳤고,
+	 * 여기가 <b>고친 주석이 코드와 맞는지</b>를 묻는 자리다.
+	 *
+	 * <p>⚠ <b>수를 세 번째로 적지 않는다.</b> 최악 397(패턴 360 + 파도 37)은
+	 * {@code DragonLastStandPatternsTest} 와 {@code DragonLastStandObjectsTest} 가 <b>둘 다</b>
+	 * 못박고 있어 한쪽이 올리면 함께 멈춘다 — 일부러 만든 목 좁은 자리라 여기서 같은 수를 또
+	 * 적으면 고칠 곳이 셋이 된다. 여기서 묻는 것은 <b>「0 이 아니다」와 「합이 예산 안이다」</b>
+	 * 둘뿐이다.
+	 */
+	@Test
+	void 파도_몫이_예산에_함께_들어간다() {
+		int wave = DragonLastStandObjects.worstCasePointsPerTick();
+		assertTrue(wave > 0,
+				"파도 몫이 0 이다 — 「점을 한 개도 쓰지 않는다」가 되살아났다. 연결선이 먼지라"
+						+ " 그 말은 연결선이 들어간 날부터 거짓이다");
+		int worst = DragonLastStandPatterns.worstCasePointsPerTick() + wave;
+		assertTrue(worst <= TrialLandingShock.MAX_POINTS_PER_TICK,
+				"패턴과 파도를 합쳐 한 틱 " + worst + "점이라 예산 "
+						+ TrialLandingShock.MAX_POINTS_PER_TICK + "을 넘는다 — 둘은 같은 틱에 돈다");
+	}
+
+	/**
 	 * 고리 하나만 날 때는 <b>예전과 똑같이</b> 400점을 쓴다.
 	 *
 	 * <p>예산을 나누는 장치가 혼자 나는 고리까지 깎으면, 고리를 셋으로 늘린 값이 첫 2초의
@@ -1213,10 +1305,19 @@ class TrialLandingShockTest {
 
 	/** 컴파일된 우리 클래스의 바이트. 상수 풀에 무엇이 들어 있는지를 문자열로 뒤진다. */
 	private static String classBytes() {
-		try (InputStream in = TrialLandingShock.class
-				.getResourceAsStream("/com/sharedfate/sync/TrialLandingShock.class")) {
+		return read("/com/sharedfate/sync/TrialLandingShock.class");
+	}
+
+	/**
+	 * 아무 클래스 파일이나 상수 풀을 문자열로 읽는다.
+	 *
+	 * <p>단상 계산이 한 벌인지를 보려면 <b>이 파일만으로는 모자라다</b> — 셈을 들고 있는 쪽과
+	 * 쓰는 쪽 둘을 함께 봐야 「두 벌이 아니다」를 말할 수 있다.
+	 */
+	private static String read(String path) {
+		try (InputStream in = TrialLandingShock.class.getResourceAsStream(path)) {
 			if (in == null) {
-				return fail("TrialLandingShock 의 클래스 파일을 찾지 못했다");
+				return fail(path + " 의 클래스 파일을 찾지 못했다");
 			}
 			return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
 		} catch (IOException failed) {

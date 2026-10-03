@@ -65,7 +65,7 @@ import java.util.List;
  * 공중 종착 <b>127.9칸/틱</b>. 실제 로그에 남은 것은
  * {@code moved too quickly! 14.108, 6.485, 24.602} 다.
  *
- * <p>그래서 <b>뿌리에서 끊는다.</b> {@code DragonLastStandPatterns.syncedVertical} 이 내려보내는
+ * <p>그래서 <b>뿌리에서 끊는다.</b> {@code TrialVelocity.syncedVertical} 이 내려보내는
  * 세로를 사람이 실제로 올라간 만큼으로 자르고 있지만, 그것은 <b>세로 하나만</b> 막는
  * 보험이다 — 수평을 <b>읽어서 돌려놓는</b> 쪽({@code liftCross}·{@code pullSuck})은 그 보험이
  * 닿지 않는다. 여기서 끊으면 <b>세로와 수평이 한 번에 닫히고</b> 그쪽은 「남이 쌓아 둔 값을

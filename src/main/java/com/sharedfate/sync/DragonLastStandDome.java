@@ -117,9 +117,11 @@ import net.minecraft.world.phys.Vec3;
  * 발화하므로, 그 길로 지우면 <b>증강의 블록 파괴 효과(메아리 채굴 · 같은 종류 채굴)가 딸려
  * 돈다.</b> 반구가 부순 블록이 사람의 채굴로 읽히는 순간 경험치·드롭·연쇄가 전부 얹힌다.
  *
- * <h2>⚠⚠ 물은 {@code removeBlock} 으로 <b>한 칸도 안 없어진다</b> — 2026-10-04</h2>
+ * <h2>⚠⚠ 물도 용암도 {@code removeBlock} 으로 <b>한 칸도 안 없어진다</b> — 2026-10-04</h2>
  *
- * <p>사람 말: <b>「주위블럭 부수는거에서 물은 안부수는데 물도 부수게」</b>.
+ * <p>사람 말이 <b>둘</b>이다 — <b>「주위블럭 부수는거에서 물은 안부수는데 물도 부수게」</b> 뒤에
+ * 같은 날 <b>「전부 고쳐」</b>. 두 걸음으로 온 경위는 아래 <b>「물을 먼저 고치고 같은 날 용암까지
+ * 넓혔다」</b>에 적어 두었다. 원인은 <b>둘이 한 글자도 다르지 않다.</b>
  *
  * <p><b>원인은 태그도 하이트맵도 아니었다.</b> 의심한 넷을 26.3 에서 하나씩 확인했고 걸린 것은
  * <b>다섯째</b>, 곧 <b>지우는 줄 자신</b>이다. 넷을 지운 근거를 남겨 둔다 — 다시 조사하지 말 것.
@@ -127,11 +129,11 @@ import net.minecraft.world.phys.Vec3;
  * <ol>
  *   <li><b>태그가 아니다.</b> 26.3 태그 파일을 둘 다 다시 열었다. {@code dragon_transparent} 는
  *       {@code light}·{@code #fire} 두 줄이고 {@code dragon_immune} 열아홉 줄에 <b>{@code water}
- *       도 {@code lava} 도 없다.</b> 곧 {@link #breakable} 은 처음부터 물에 <b>참</b>을 돌려주고
- *       있었다(시험이 태그 파일을 읽어 못박는다)</li>
+ *       도 {@code lava} 도 없다.</b> 곧 {@link #breakable} 은 처음부터 <b>물에도 용암에도</b>
+ *       {@code 참} 을 돌려주고 있었다(시험이 태그 파일을 읽어 못박는다)</li>
  *   <li><b>하이트맵도 아니다.</b> {@code Heightmap.Types.WORLD_SURFACE} 의 판별식
  *       {@code NOT_AIR} 을 바이트코드에서 풀었더니 {@code state -> !state.isAir()} 한 줄이고
- *       <b>물은 공기가 아니다.</b> 곧 물이 든 열은 하이트맵이 그 물의 맨 위를 돌려주어
+ *       <b>물도 용암도 공기가 아니다.</b> 곧 유체가 든 열은 하이트맵이 그 유체의 맨 위를 돌려주어
  *       <b>거름망을 통과한다</b> — 자세한 것은 위 「성능」에 적어 두었다</li>
  *   <li><b>다시 차는 것도 아니었다</b> — 애초에 한 번도 지워지지 않았으므로 다시 찰 일이 없었다.
  *       ⚠ 다만 <b>고친 뒤에는 그것이 진짜 원인이 된다.</b> 아래 「다시 차지 않게 하는 법」</li>
@@ -154,59 +156,110 @@ import net.minecraft.world.phys.Vec3;
  * 나온다({@code FlowingFluid.getLegacyLevel} 과 {@code LiquidBlock} 의 {@code stateCache} 를 둘 다
  * 풀어 확인했다).
  *
+ * <p>⚠ <b>용암은 「같은 원인」이 아니라 <u>똑같은 줄</u>이다.</b> {@code removeBlock} 은 유체
+ * 종류를 묻지 않으므로 위 두 줄이 용암 칸에서도 글자 그대로 돈다 — {@code getFluidState} 가 용암이고
+ * {@code LavaFluid.createLegacyBlock} 이 {@code Blocks.LAVA} 를 같은 {@code LEVEL} 로 되돌려
+ * <b>넣는 값이 들어 있던 값과 같은 객체</b>가 되고, {@code LevelChunk.setBlockState} 가 같은 자리에서
+ * 되돌아간다. 퍼진 용암도 같다({@code LiquidBlock.stateCache} 가 {@code LEVEL} 0 에
+ * {@code FlowingFluid.getSource}, 1~8 에 {@code getFlowing} 을 담는 것을 26.3 바이트코드에서
+ * 확인했고 그 셈에 유체 종류가 안 들어간다). 그래서 <b>물을 고친 자리 한 줄을 넓히는 것으로
+ * 끝났다</b> — 새 길을 만들지 않았다.
+ *
  * <p>⚠ 그런데도 옛 코드는 {@code removeBlock} 이 돌려주는 값을 <b>보지 않고</b>
  * {@code broken++} 하고 먼지까지 피웠다. 곧 물 한 웅덩이가 <b>매 훑기마다 천장
  * {@value #MAX_BREAKS_PER_SWEEP} 을 말없이 먹어</b> 그 뒤에 올 진짜 발판이 살아남는 길이었다.
  * 지금은 {@link #clear} 가 <b>실제로 없어졌는지</b>를 돌려주고 {@link #sweepColumn} 이 그 값만
  * 센다.
  *
- * <h2>물만 없앤다 — 용암은 그대로 두었다</h2>
+ * <h2>⚠ 물을 먼저 고치고 같은 날 용암까지 넓혔다 — <b>두 걸음</b>이다</h2>
  *
- * <p>사람이 말한 것은 <b>「물」</b>이다. ⚠ <b>용암은 똑같은 원인으로 그대로 남아 있다</b>(같은
- * {@code removeBlock} 두 줄이다). 범위를 우리가 넓히지 않았다 — <b>넓힐지는 사람에게 물을
- * 것</b>이고, 넓히는 길은 {@link #holdsWater} 를 「유체면 참」으로 고치는 한 줄이다.
+ * <p>경위를 지우지 않고 두 걸음으로 남긴다. 이 저장소는 <b>왜 범위가 늘었는지</b>를 남긴다.
  *
- * <p>⚠ 용암 칸에서는 {@code removeBlock} 을 <b>부르지도 않는다</b>({@link #clear} 가 먼저 거짓을
- * 돌려준다). 불러도 위에 적은 대로 아무 일이 안 일어나는데 천장만 먹기 때문이다 — 곧 <b>용암에
- * 대해 눈에 보이는 동작은 전과 똑같고</b> 달라진 것은 「없앴다고 세지 않는다」뿐이다.
+ * <ol>
+ *   <li><b>첫 걸음 — 2026-10-04, 물만.</b> 사람 말이 <b>「주위블럭 부수는거에서 물은 안부수는데
+ *       물도 부수게」</b> 였다. 말한 것이 <b>「물」</b>뿐이라 <b>범위를 우리가 넓히지 않고 용암은
+ *       그대로 두었다</b>. 그때 이 자리에는 「넓힐지는 사람에게 물을 것이고, 넓히는 길은
+ *       {@code holdsWater} 를 유체까지 보게 고치는 한 줄이다」라고 적어 두었다</li>
+ *   <li><b>둘째 걸음 — 같은 날, 사람이 「전부 고쳐」.</b> <b>물었고 답이 왔다.</b> 그래서 그
+ *       한 줄을 실제로 넓혔다 — {@code holdsWater} 를 <b>{@link #holdsFluid} 로 이름까지 고쳐</b>
+ *       용암 두 객체를 함께 보게 했다. ⚠ <b>이름을 함께 고친 것이 요점</b>이다. 「물만」이 거짓이
+ *       된 뒤에도 {@code holdsWater} 라는 이름이 남아 있으면 다음 사람이 그 이름을 믿고 용암
+ *       갈래를 다시 찾는다</li>
+ * </ol>
+ *
+ * <p>⚠ <b>그래서 「용암은 그대로 둔다」라고 적혀 있던 자리가 전부 거짓이 되었다.</b> 이 문단과
+ * {@link #clear} · {@link #holdsFluid} · {@link #sweep} 의 {@code @return} 을 함께 고쳤고,
+ * 시험 {@code 물만_없애고_용암은_그대로_둔다} 는 <b>뜻을 뒤집어</b>
+ * {@code 물과_용암을_함께_없앤다} 가 되었다.
+ *
+ * <p>⚠ <b>깃발은 물과 같은 {@link #FLUID_CLEAR_FLAGS} 하나</b>다. <b>용암도 흐르기</b> 때문이다 —
+ * {@code LavaFluid} 가 {@code FlowingFluid} 를 물려받고 {@code getFlowing()} 이
+ * {@code Fluids.FLOWING_LAVA} 를 돌려주는 것을 26.3 바이트코드에서 확인했다. 곧 「이웃을 깨우면
+ * 예약이 쌓여 되돌아온다」가 용암에도 글자 그대로 참이고, 근거가 같으므로 값도 같다.
+ *
+ * <p>⚠ <b>물도 용암도 아닌 유체 칸은 아직 건드리지 않는다</b>({@link #clear} 가 거짓을 돌려준다).
+ * 26.3 바닐라 유체는 {@code EMPTY}·물 둘·용암 둘로 <b>다섯뿐</b>이라 실제로 닿지 않는 갈래지만,
+ * 남의 모드가 유체를 더하면 <b>{@code createLegacyBlock} 왕복이 정확한지를 우리가 모른다</b> —
+ * 모르는 것을 지우려 들면 천장만 말없이 먹는다. 그 갈래를 남겨 두는 까닭이 그것이다.
  *
  * <p>서리눈은 <b>전부터 부서지고 있었다.</b> {@code PowderSnowBlock} 은 유체가 아니라
  * ({@code getFluidState} 가 {@link Fluids#EMPTY}) {@code removeBlock} 이 공기를 넣는다 — 사람이
- * 가리킨 「물」에 서리눈이 섞여 있지 않다는 증거이고, 시험이 값으로 못박는다.
+ * 가리킨 「물」에도 「전부」에도 서리눈이 섞여 있지 않다는 증거이고, 시험이 값으로 못박는다.
+ * <b>건드리지 않았다.</b>
  *
  * <h2>⚠ 다시 차지 않게 하는 법 — {@code TrialDryWorld} 와 같은 답을 골랐다</h2>
  *
- * <p>물 칸을 공기로 바꿀 때 <b>{@code Block.UPDATE_CLIENTS} 하나만</b> 준다
- * ({@link #WATER_CLEAR_FLAGS}). {@code UPDATE_NEIGHBORS} 를 함께 주면 지운 자리의 이웃이 깨어나
- * <b>흐를 예약을 쌓고</b> 그것이 다음 틱에 터져 물이 되돌아온다 — 사람 눈에는 그것도
+ * <p>유체가 든 칸을 공기로 바꿀 때 <b>{@code Block.UPDATE_CLIENTS} 하나만</b> 준다
+ * ({@link #FLUID_CLEAR_FLAGS}). {@code UPDATE_NEIGHBORS} 를 함께 주면 지운 자리의 이웃이 깨어나
+ * <b>흐를 예약을 쌓고</b> 그것이 다음 틱에 터져 유체가 되돌아온다 — 사람 눈에는 그것도
  * 「안 부서진다」다. 이웃을 깨우지 않으면 <b>예약이 하나도 생기지 않으므로</b> 반구 밖 수원도
- * 훑기 바닥 아래 수원도 스스로 흘러들지 않는다. 천장에 걸려 남은 물도 그 자리에 가만히 있다가
+ * 훑기 바닥 아래 수원도 스스로 흘러들지 않는다. 천장에 걸려 남은 유체도 그 자리에 가만히 있다가
  * 다음 훑기에 없어진다.
+ *
+ * <p>⚠ <b>용암에도 같은 근거가 그대로 선다.</b> 용암이 「흐르지 않는 것」이면 깃발을 다시 생각할
+ * 자리였는데 <b>용암도 흐른다</b> — {@code LavaFluid} 가 {@code FlowingFluid} 를 물려받고
+ * {@code getFlowing()} 이 {@code Fluids.FLOWING_LAVA} 를 돌려준다(26.3 바이트코드에서 확인했다).
+ * 다른 것은 {@code LavaFluid.getTickDelay} 가 <b>30틱</b>(네더는 10틱)이라는 것뿐이고
+ * (26.3 바이트코드에서 확인했다 — 물은 5틱이다) <b>예약을 쌓는다는 사실은 같다.</b> 되돌아오는
+ * 것이 느릴 뿐 안 돌아오는 것이 아니다. 그래서 2026-10-04 에 용암까지 넓히면서 이 값을
+ * <b>한 비트도 고치지 않았다.</b>
  *
  * <p>{@code TrialDryWorld.dryUpSection} 이 <b>같은 값을 같은 근거로</b> 쓴다 — 「이웃 갱신을
  * 돌리면 아직 지우지 않은 옆칸 물이 그 자리로 흐르려고 예약을 쌓는다 … 물이 많은 판에서는 그
  * 헛일이 곧 한 틱의 정지다」. 그쪽을 읽고 같은 답을 골랐다.
  *
- * <p>⚠ <b>이웃 갱신을 빼는 것은 물 칸뿐이다.</b> 유체가 없는 블록은 전과 똑같이
+ * <p>⚠ <b>이웃 갱신을 빼는 것은 유체가 든 칸뿐이다.</b> 유체가 없는 블록은 전과 똑같이
  * {@code removeBlock}({@code UPDATE_ALL}) 을 지난다 — 거기서 이웃을 안 깨우면 지붕 밑 모래가
  * 안 떨어지고 횃불이 허공에 남는다. <b>두 갈래를 한 줄로 합치지 말 것.</b>
  *
  * <p>⚠ <b>남는 구멍 하나.</b> {@code DRAGON_IMMUNE} 블록 안에 잠긴 물은 {@link #breakable} 이
  * 먼저 거짓을 돌려주므로 살아남는다. 반경 {@value #RADIUS} 안의 그런 블록은 포디움 기반암과 엔드
  * 포털뿐이고 <b>둘 다 {@code waterlogged} 성질이 없다</b>(26.3 에서 확인했다) — 곧 실제로는 닿지
- * 않는 구멍이다.
+ * 않는 구멍이다. <b>용암 쪽에는 이 구멍이 아예 없다</b> — 바닐라에 「용암에 잠긴 블록」이라는
+ * 성질이 없어({@code BlockStateProperties} 에 {@code WATERLOGGED} 하나뿐이다) 용암은 언제나
+ * {@code LiquidBlock} 으로 홀로 서 있다.
  *
  * <h2>「메마른 세계」와 싸우지 않는다</h2>
  *
  * <p>{@code TrialDryWorld} 는 <b>최후의 저항에서도 금지만은 이어지는 단 하나뿐인 예외</b>다
  * ({@code TrialDryWorld.holdBanDuringLastStand} 를 {@code DragonLastStand} 가 매 틱 부른다). 그
- * 카드가 걸린 판에서는 ① 카드가 터질 때 엔드의 물이 한 번 전부 증발하고 ② 그 뒤로 <b>엔드에 물을
- * 놓을 수 없다</b>({@code TrialDryWorld.placesFluid} 가 양동이 열두 개를 가린다). 곧 <b>반구가
- * 만날 물이 아예 없다</b> — 둘이 같은 칸을 두고 다툴 일이 없다.
+ * 카드가 걸린 판에서는 ① 카드가 터질 때 엔드의 유체가 한 번 전부 증발하고 ② 그 뒤로 <b>엔드에
+ * 유체를 놓을 수 없다</b>({@code TrialDryWorld.placesFluid} 가 양동이 열두 개를 가린다). 곧
+ * <b>반구가 만날 유체가 아예 없다</b> — 둘이 같은 칸을 두고 다툴 일이 없다.
  *
- * <p>카드가 안 걸린 판에서는 반구만 돈다. 되돌리는 쪽도 안 부딪친다 — <b>둘 다 지운 물을
+ * <p>⚠ <b>2026-10-04 에 용암까지 넓히면서 그쪽을 다시 읽었고, 겹침이 늘지 않았다.</b> 그쪽은
+ * 처음부터 <b>물과 용암을 함께</b> 지운다 — {@code TrialDryWorld.withoutFluid} 가 유체 종류를
+ * 묻지 않고 {@code LiquidBlock} 이면 공기로 바꾸고, {@code placesFluid} 의 열두 개에
+ * {@code lava_bucket} 이 들어 있다. 곧 <b>그 카드가 걸린 판에서 용암이 없는 것도 전부터 참</b>
+ * 이었고 우리가 넓힌 쪽이 그쪽을 따라간 꼴이다.
+ *
+ * <p>카드가 안 걸린 판에서는 반구만 돈다. 되돌리는 쪽도 안 부딪친다 — <b>둘 다 지운 유체를
  * 되살리지 않는다</b>({@link #clearState} 와 {@code TrialDryWorld.clearState} 가 같은 판단을 같은
  * 근거로 적어 두었다). 쓰는 깃발까지 같은 {@code UPDATE_CLIENTS} 다.
+ *
+ * <p>⚠ <b>갈라지는 것 하나.</b> 그쪽은 {@code waterlogged} 블록을 <b>살리고 물만</b> 뺀다(「통째로
+ * 지우면 그 위에 선 사람이 떨어진다」) 반면 여기는 <b>블록과 유체를 함께</b> 없앤다. 같은 사실의
+ * 다른 결론이고 까닭은 {@link #holdsFluid} 에 적어 두었다.
  *
  * <h2>게임룰 — {@code mobGriefing} 을 존중한다</h2>
  *
@@ -254,23 +307,28 @@ import net.minecraft.world.phys.Vec3;
  * 하나</b>만 알려 주므로 거름망이 되지 못한다. 그래서 그쪽은 구획의 유체 개수
  * ({@code LevelChunkSection.hasFluid()})에 기댈 수밖에 없었다.
  *
- * <p>⚠⚠ <b>2026-10-04 에 물까지 부수게 하면서도 여기는 하이트맵을 그대로 두었다.</b> 그래도 되는
- * 근거가 둘이고, <b>그 둘이 이 작업의 열쇠</b>다 — 거름망을 {@code hasFluid()} 로 갈아 끼우려는
- * 사람은 여기를 먼저 읽을 것.
+ * <p>⚠⚠ <b>2026-10-04 에 물까지, 같은 날 용암까지 부수게 하면서도 여기는 하이트맵을 그대로
+ * 두었다.</b> 그래도 되는 근거가 둘이고, <b>그 둘이 이 작업의 열쇠</b>다 — 거름망을
+ * {@code hasFluid()} 로 갈아 끼우려는 사람은 여기를 먼저 읽을 것.
  *
  * <ol>
- *   <li><b>물은 하이트맵에 걸린다.</b> {@code WORLD_SURFACE} 의 판별식 {@code NOT_AIR} 이
- *       바이트코드에서 {@code state -> !state.isAir()} 한 줄이고 <b>물은 공기가 아니다.</b> 곧
- *       물이 든 열은 {@code top} 이 그 물의 맨 위로 올라가 <b>거름망을 통과한다</b>. 위 ①의
+ *   <li><b>유체는 하이트맵에 걸린다.</b> {@code WORLD_SURFACE} 의 판별식 {@code NOT_AIR} 이
+ *       바이트코드에서 {@code state -> !state.isAir()} 한 줄이고 <b>물도 용암도 공기가 아니다.</b>
+ *       곧 유체가 든 열은 {@code top} 이 그 유체의 맨 위로 올라가 <b>거름망을 통과한다</b>. 위 ①의
  *       {@code hasOnlyAir()} 도 같은 {@code isAir()} 를 세므로 함께 통과한다</li>
  *   <li><b>통과한 열은 바닥까지 전부 읽는다.</b> {@link #sweepColumn} 이 {@code top} 에서
- *       {@link #sweepFloorY} 까지 내려가므로 지붕 아래 가려진 물도 {@code waterlogged} 계단도
+ *       {@link #sweepFloorY} 까지 내려가므로 지붕 아래 가려진 유체도 {@code waterlogged} 계단도
  *       <b>그 한 열 안에서 다 만난다.</b> 그쪽처럼 「열 밖」을 볼 일이 없는 것은 반구가 <b>섬
  *       표면 위</b>만 보기 때문이다</li>
  * </ol>
  *
- * <p>곧 <b>물을 찾으려고 거름망을 버릴 필요가 없었고, 맨손 아레나의 조회 횟수가 한 번도 늘지
+ * <p>곧 <b>유체를 찾으려고 거름망을 버릴 필요가 없었고, 맨손 아레나의 조회 횟수가 한 번도 늘지
  * 않았다</b>(열 1961 · 구획 32 그대로). 시험이 그 두 수와 {@code isAir()} 사실을 함께 못박는다.
+ *
+ * <p>⚠ <b>용암을 넓히면서도 그 두 수가 안 늘었다는 것을 적어 둔다.</b> 넓힌 자리가
+ * {@link #holdsFluid} 한 곳이고 그 함수는 <b>이미 통과한 열 안에서 이미 읽어 둔
+ * {@code BlockState} 에 유체 종류를 한 번 더 묻는 것</b>뿐이다 — 열도 구획도 더 열지 않으므로
+ * 1961 과 32 가 그대로다. 시험이 그 두 수를 못박으니 <b>늘면 먼저 깨진다.</b>
  *
  * <p>{@code WORLD_SURFACE} 를 고른 근거. 26.3 {@code Heightmap.Types.WORLD_SURFACE} 는 판별식이
  * {@code NOT_AIR} 이고 {@code Usage.CLIENT} 라 <b>월드생성 뒤에도 살아 있으며</b>,
@@ -332,21 +390,28 @@ public final class DragonLastStandDome {
 	static final int MAX_BREAKS_PER_SWEEP = 256;
 
 	/**
-	 * ⚠ <b>물 칸을 공기로 바꿀 때 주는 깃발.</b> {@code Block.UPDATE_CLIENTS} <b>하나뿐</b>이고,
-	 * <b>빠져 있는 {@code UPDATE_NEIGHBORS} 가 이 값의 요점</b>이다.
+	 * ⚠ <b>유체가 든 칸을 공기로 바꿀 때 주는 깃발.</b> {@code Block.UPDATE_CLIENTS}
+	 * <b>하나뿐</b>이고, <b>빠져 있는 {@code UPDATE_NEIGHBORS} 가 이 값의 요점</b>이다.
 	 *
-	 * <p>이웃을 깨우면 아직 안 지운 옆칸 물과 반구 밖 수원이 <b>흐를 예약을 쌓고</b> 다음 틱에
+	 * <p>이웃을 깨우면 아직 안 지운 옆칸 유체와 반구 밖 수원이 <b>흐를 예약을 쌓고</b> 다음 틱에
 	 * 되돌아온다 — 사람 눈에는 그것도 「안 부서진다」다. 깨우지 않으면 예약이 하나도 생기지
-	 * 않으므로 <b>한 번 지운 물은 스스로 돌아오지 않는다.</b>
+	 * 않으므로 <b>한 번 지운 유체는 스스로 돌아오지 않는다.</b>
 	 *
 	 * <p>{@code TrialDryWorld.dryUpSection} 이 <b>같은 값을 같은 근거로</b> 쓴다 — 그쪽 주석을
 	 * 읽고 고른 답이다. 자세한 것은 클래스 설명의 「다시 차지 않게 하는 법」에 있다.
+	 *
+	 * <p>⚠ <b>2026-10-04 에 용암까지 넓히면서 이 값을 한 비트도 고치지 않았다.</b> 옛 이름이
+	 * {@code WATER_CLEAR_FLAGS} 였고 <b>값만 그대로 두고 이름을 고쳤다</b> — 근거가 물과 같기
+	 * 때문이다. <b>용암도 흐른다</b>({@code LavaFluid} 가 {@code FlowingFluid} 를 물려받고
+	 * {@code getFlowing()} 이 {@code Fluids.FLOWING_LAVA} 를 돌려주는 것을 26.3 바이트코드에서
+	 * 확인했다). 다른 것은 {@code getTickDelay} 가 30틱(물은 5틱)이라는 것뿐이고 <b>예약을 쌓는다는
+	 * 사실은 같다</b> — 되돌아오는 것이 느릴 뿐 안 돌아오는 것이 아니다.
 	 *
 	 * <p>⚠ <b>유체가 없는 블록에는 이 깃발을 쓰지 않는다.</b> 그쪽은 전과 같이
 	 * {@code removeBlock}({@code UPDATE_ALL}) 을 지난다 — 거기서 이웃을 안 깨우면 지붕 밑 모래가
 	 * 안 떨어지고 횃불이 허공에 남는다.
 	 */
-	static final int WATER_CLEAR_FLAGS = Block.UPDATE_CLIENTS;
+	static final int FLUID_CLEAR_FLAGS = Block.UPDATE_CLIENTS;
 
 	/**
 	 * ⚠ <b>훑기 바닥을 기하 원점에서 내리는 칸 수. 바닐라 상수를 그대로 참조한다.</b>
@@ -403,8 +468,9 @@ public final class DragonLastStandDome {
 	 *
 	 * @return 실제로 부순 블록 수. 시험과 로그가 들여다보는 값이다.
 	 *         ⚠ <b>2026-10-04 부터 「실제로」가 진짜다</b> — {@link #clear} 가 월드에서 없어진
-	 *         칸만 참을 돌려주므로 <b>건드리지 않은 용암은 여기 안 들어간다</b>(전에는 물까지
-	 *         세고 있었고, 그것이 천장을 말없이 먹던 길이다)
+	 *         칸만 참을 돌려준다(전에는 {@code removeBlock} 이 아무 일도 못 한 물 칸까지 세고
+	 *         있었고, 그것이 천장을 말없이 먹던 길이다). ⚠ <b>같은 날 용암이 이 수에 들어왔다</b> —
+	 *         사람이 「전부 고쳐」라고 해서 넓혔으니 이제 용암 한 칸도 센 값이다
 	 */
 	static int sweep(ServerLevel end, Vec3 center) {
 		if (!end.getGameRules().get(GameRules.MOB_GRIEFING)) {
@@ -457,12 +523,13 @@ public final class DragonLastStandDome {
 	 * 바닥이 구획 경계에 맞는 판</b>과 <b>섬 바깥 청크</b>에서는 256열을 한 번에 건너뛰기 때문이고,
 	 * 값이 세 번의 비교뿐이라 잃는 것이 없다.
 	 *
-	 * <p>⚠ <b>물도 여기서 걸러지지 않는다</b>(곧 통과한다). {@code hasOnlyAir()} 가 세는 것은
-	 * {@code isAir()} 가 거짓인 칸의 수이고 <b>물은 공기가 아니다</b> — 2026-10-04 에 물까지 부수게
-	 * 하면서 이 줄을 한 글자도 고치지 않은 까닭이다. {@code TrialDryWorld} 처럼
-	 * {@code hasFluid()} 로 갈아 끼우면 <b>물이 없는 판에서도 섬 돌 때문에 참이 되는 지금과 달리</b>
-	 * 거름망이 하나 더 붙는 것처럼 보이지만, 실제로 일하는 것은 열마다의 하이트맵이고 그쪽도 물을
-	 * 보므로 <b>얻는 것 없이 조회만 늘어난다.</b>
+	 * <p>⚠ <b>물도 용암도 여기서 걸러지지 않는다</b>(곧 통과한다). {@code hasOnlyAir()} 가 세는 것은
+	 * {@code isAir()} 가 거짓인 칸의 수이고 <b>유체는 공기가 아니다</b> — 2026-10-04 에 물까지, 같은
+	 * 날 용암까지 부수게 하면서 이 줄을 한 글자도 고치지 않은 까닭이다. {@code TrialDryWorld} 처럼
+	 * {@code hasFluid()} 로 갈아 끼우면 <b>유체가 없는 판에서도 섬 돌 때문에 참이 되는 지금과
+	 * 달리</b> 거름망이 하나 더 붙는 것처럼 보이지만, 실제로 일하는 것은 열마다의 하이트맵이고
+	 * 그쪽도 유체를 보므로 <b>얻는 것 없이 조회만 늘어난다.</b> 시험이 {@code hasFluid} 라는 이름이
+	 * 이 클래스에 없음을 바이트에서 못박는다.
 	 */
 	private static boolean holdsBlocksAbove(LevelChunk chunk, int sweepFloor, int ceiling) {
 		int minSectionY = sweepFloor >> 4;
@@ -567,8 +634,8 @@ public final class DragonLastStandDome {
 			//
 			// ⚠ 2026-10-04 — 실제로 없어졌는지를 돌려받아 그 값만 센다. 전에는 removeBlock 을
 			//   부르고 무조건 셌는데, 그 메서드가 유체를 일부러 남기므로 물 한 웅덩이가 매
-			//   훑기마다 천장 256을 말없이 먹고 있었다(클래스 설명의 「물은 removeBlock 으로 한
-			//   칸도 안 없어진다」).
+			//   훑기마다 천장 256을 말없이 먹고 있었다(클래스 설명의 「물도 용암도 removeBlock
+			//   으로 한 칸도 안 없어진다」).
 			if (!clear(end, at, state)) {
 				continue;
 			}
@@ -588,61 +655,98 @@ public final class DragonLastStandDome {
 	 * 이 칸을 <b>드롭 없이</b> 비운다. <b>실제로 없어졌으면 참.</b>
 	 *
 	 * <p>갈래가 셋인 것은 <b>{@code removeBlock} 이 유체를 일부러 남기는 메서드</b>이기 때문이다 —
-	 * 바이트코드와 까닭은 클래스 설명의 「물은 {@code removeBlock} 으로 한 칸도 안 없어진다」에
-	 * 있다. <b>그 셋을 한 줄로 합치지 말 것.</b>
+	 * 바이트코드와 까닭은 클래스 설명의 「물도 용암도 {@code removeBlock} 으로 한 칸도 안
+	 * 없어진다」에 있다. <b>그 셋을 한 줄로 합치지 말 것.</b>
 	 *
 	 * <ul>
-	 *   <li><b>물이 든 칸</b>({@link #holdsWater}) — 칸을 통째로 공기로 바꾼다. 깃발은
-	 *       {@link #WATER_CLEAR_FLAGS} 이고 <b>이웃을 깨우지 않는 것이 「다시 차지 않는다」의
+	 *   <li><b>물이나 용암이 든 칸</b>({@link #holdsFluid}) — 칸을 통째로 공기로 바꾼다. 깃발은
+	 *       {@link #FLUID_CLEAR_FLAGS} 이고 <b>이웃을 깨우지 않는 것이 「다시 차지 않는다」의
 	 *       전부</b>다. {@code waterlogged} 계단이면 <b>블록과 물이 함께</b> 없어진다 — 블록만
 	 *       빼면 {@code removeBlock} 이 그 자리에 물을 남기고, 그 물은 다음 훑기부터 <b>영영 안
 	 *       없어진다</b>(그것이 전에 실제로 일어나던 일이다)</li>
-	 *   <li><b>물이 아닌 유체</b>(용암) — <b>건드리지 않고 거짓을 돌려준다.</b> 사람이 말한 것은
-	 *       「물」이고 범위를 우리가 넓히지 않는다. 거짓이라 천장도 안 먹는다</li>
+	 *   <li><b>물도 용암도 아닌 유체</b> — <b>건드리지 않고 거짓을 돌려준다.</b> 26.3 바닐라에는
+	 *       그런 유체가 없어 <b>닿지 않는 갈래</b>이고(유체가 {@code EMPTY} · 물 둘 · 용암 둘로
+	 *       다섯뿐이다), 남의 모드가 더한 유체는 {@code createLegacyBlock} 왕복이 정확한지를
+	 *       우리가 모르므로 건드리지 않는다. 거짓이라 천장도 안 먹는다</li>
 	 *   <li><b>그 밖</b> — 전과 똑같이 {@code removeBlock(pos, false)} 다. {@code false} 가
 	 *       <b>드롭 없음</b>이고 사람이 <b>「아니 파괴」</b>라고 정한 것이 그것이다. 서리눈도 이
 	 *       갈래이고 <b>전부터 부서지고 있었다</b></li>
 	 * </ul>
 	 *
+	 * <p>⚠ <b>2026-10-04 에 첫 갈래가 두 걸음으로 넓어졌다.</b> 그날 먼저 <b>물만</b> 들어왔고
+	 * (사람 말 「물은 안부수는데 물도 부수게」) 같은 날 사람이 <b>「전부 고쳐」</b>라고 해서
+	 * <b>용암이 첫 갈래로 옮겨 왔다</b> — 전에는 둘째 갈래에 「용암. 사람이 말하지 않았으므로
+	 * 그대로 둔다」라고 적혀 있었다. 경위는 클래스 설명의 「물을 먼저 고치고 같은 날 용암까지
+	 * 넓혔다」에 두 걸음으로 남겨 두었다.
+	 *
 	 * <p>⚠ {@code setBlock} 도 드롭을 만들지 않는다 — 드롭은 {@code dropResources} 를 부르는
 	 * {@code destroyBlock} 의 몫이고 우리는 그 길을 지나지 않는다(시험이 이름으로 못박는다).
 	 */
 	private static boolean clear(ServerLevel end, BlockPos at, BlockState state) {
-		if (holdsWater(state)) {
-			return end.setBlock(at, Blocks.AIR.defaultBlockState(), WATER_CLEAR_FLAGS);
+		if (holdsFluid(state)) {
+			return end.setBlock(at, Blocks.AIR.defaultBlockState(), FLUID_CLEAR_FLAGS);
 		}
 		if (!state.getFluidState().isEmpty()) {
-			// 용암. 사람이 말하지 않았으므로 그대로 둔다 — 넓힐지는 사람에게 묻는다.
+			// 물도 용암도 아닌 유체. 26.3 바닐라에는 없다 — 남의 모드가 더한 것이라면
+			// createLegacyBlock 왕복이 정확한지를 우리가 모르므로 건드리지 않는다.
 			return false;
 		}
 		return end.removeBlock(at, false);
 	}
 
 	/**
-	 * 이 칸에 <b>물</b>이 들어 있는가. <b>수원 · 흐르는 물 · 남의 블록 안에 잠긴 물</b> 셋 다
-	 * 참이다.
+	 * 이 칸에 <b>물이나 용암</b>이 들어 있는가. <b>수원 · 흐르는 것 · 남의 블록 안에 잠긴 물</b>
+	 * 셋 다 참이다.
 	 *
-	 * <p>⚠ <b>{@code FluidTags.WATER} 를 쓰지 않는다.</b> 태그 물음은 <b>bind 된 뒤</b>에만 답하고
-	 * 시험 환경에는 살아 있는 서버도 데이터팩도 없어 그 자리에서 터진다 — 같은 까닭이
+	 * <h2>⚠ 2026-10-04 — 「물」에서 「물과 용암」으로 넓혔고 <b>이름도 함께 고쳤다</b></h2>
+	 *
+	 * <p>옛 이름이 <b>{@code holdsWater}</b> 였다. 같은 날 두 걸음을 걸었다 — ① 사람 말
+	 * <b>「주위블럭 부수는거에서 물은 안부수는데 물도 부수게」</b> 로 물만 넣었고, ② 같은 날 사람이
+	 * <b>「전부 고쳐」</b>라고 해서 용암 두 줄을 더했다. ⚠ <b>그때 이름을 함께 고친 것이
+	 * 요점</b>이다. {@code holdsWater} 라는 이름은 ②를 거친 뒤에 <b>거짓</b>이고, 거짓인 이름은
+	 * 다음 사람에게 「용암 갈래가 어딘가 따로 있겠지」라고 읽힌다. 경위는 클래스 설명의 「물을 먼저
+	 * 고치고 같은 날 용암까지 넓혔다」에 있다.
+	 *
+	 * <p>⚠ <b>{@code hasFluid} 라고 부르면 안 된다.</b> {@code LevelChunkSection.hasFluid()} 는
+	 * 이 클래스가 <b>일부러 쓰지 않는</b> 거름망이고(클래스 설명의 「성능」), 시험이 클래스 바이트에
+	 * 그 이름이 <b>없음</b>을 못박아 성능을 지킨다 — 이 메서드를 그 이름으로 바꾸면 시험이 깨진다.
+	 *
+	 * <p>⚠ <b>{@code FluidTags.WATER}·{@code FluidTags.LAVA} 를 쓰지 않는다.</b> 태그 물음은
+	 * <b>bind 된 뒤</b>에만 답하고 시험 환경에는 살아 있는 서버도 데이터팩도 없어 그 자리에서
+	 * {@code IllegalStateException: Tags not bound} 로 터진다(실제로 걸렸다) — 같은 까닭이
 	 * {@code DragonLastStandDomeTest} 의 태그 시험에 이미 적혀 있다. 그래서 유체 종류를
 	 * <b>객체로</b> 비교한다.
 	 *
-	 * <p>⚠ <b>두 줄인 것이 맞다.</b> {@code Fluids.WATER} 는 <b>수원뿐</b>이고 흐르는 물은
-	 * {@code Fluids.FLOWING_WATER} 라는 <b>다른 객체</b>다({@code LiquidBlock} 의
-	 * {@code stateCache} 가 {@code LEVEL} 0 에 앞의 것, 1~8 에 뒤의 것을 담는 것을 26.3
-	 * 바이트코드에서 확인했다). <b>한 줄만 적으면 수원만 지우고 퍼진 물은 그대로 남는다.</b>
-	 * 26.3 의 {@code data/minecraft/tags/fluid/water.json} 이 <b>그 둘뿐</b>임을 파일에서 확인했고,
-	 * 시험이 그 파일을 읽어 셋째 줄이 생기는 날 먼저 깨진다.
+	 * <p>⚠ <b>네 줄인 것이 맞다 — 유체마다 수원과 흐르는 것이 <u>다른 객체</u>다.</b>
+	 * {@code Fluids.WATER}·{@code Fluids.LAVA} 는 <b>수원뿐</b>이고 퍼진 쪽은
+	 * {@code Fluids.FLOWING_WATER}·{@code Fluids.FLOWING_LAVA} 라는 다른 객체다.
+	 * {@code Fluids} 의 {@code <clinit>} 에서 넷이 각각 {@code new} 로 만들어지는 것을 26.3
+	 * 바이트코드에서 확인했고({@code LavaFluid$Source} 와 {@code LavaFluid$Flowing} 이 서로 다른
+	 * 클래스다), {@code LiquidBlock} 의 {@code stateCache} 가 {@code LEVEL} 0 에
+	 * {@code getSource()}, 1~8 에 {@code getFlowing()} 을 담는 것도 함께 확인했다.
+	 * <b>유체마다 한 줄만 적으면 수원만 지우고 퍼진 것은 그대로 남는다.</b>
+	 *
+	 * <p>26.3 의 {@code data/minecraft/tags/fluid/water.json} 과
+	 * {@code tags/fluid/lava.json} 이 <b>각각 그 둘뿐</b>임을 파일에서 확인했고(용암 쪽이
+	 * {@code minecraft:lava}·{@code minecraft:flowing_lava} 두 줄이다), 시험이 <b>두 파일을 함께
+	 * 읽어</b> 어느 쪽에든 셋째 줄이 생기는 날 먼저 깨진다.
 	 *
 	 * <p>{@code waterlogged} 가 함께 걸리는 것은 그 블록의 {@code getFluidState} 가
 	 * {@code Fluids.WATER} 를 돌려주기 때문이다 — <b>우리가 {@code waterlogged} 성질을 따로 묻지
 	 * 않는 것</b>이 요점이다. {@code TrialDryWorld.withoutFluid} 는 그 블록을 <b>살려야</b> 해서
 	 * 따로 물었고(「통째로 지우면 그 위에 선 사람이 떨어진다」), 여기는 그 블록도 부술 것이라 그럴
-	 * 이유가 없다 — <b>같은 사실의 다른 결론이다.</b>
+	 * 이유가 없다 — <b>같은 사실의 다른 결론이다.</b> ⚠ 용암 쪽에는 이 갈래가 아예 없다 —
+	 * 26.3 {@code BlockStateProperties} 에 {@code WATERLOGGED} 하나뿐이고 「용암에 잠긴 블록」이라는
+	 * 성질이 없다(확인했다).
+	 *
+	 * <p>⚠ <b>성능은 한 번도 안 늘었다.</b> 이 함수는 {@link #sweepColumn} 이 <b>이미 읽어 둔</b>
+	 * {@code BlockState} 에 유체 종류를 묻는 것뿐이라, 용암 두 줄을 더해도 열·구획 조회가 늘지
+	 * 않는다(맨손 아레나 1961 + 32 그대로, 시험이 못박는다).
 	 */
-	static boolean holdsWater(BlockState state) {
+	static boolean holdsFluid(BlockState state) {
 		Fluid fluid = state.getFluidState().getType();
-		return fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER;
+		return fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER
+				|| fluid == Fluids.LAVA || fluid == Fluids.FLOWING_LAVA;
 	}
 
 	/**
@@ -798,13 +902,21 @@ public final class DragonLastStandDome {
 	 * 클래스 설명의 표를 볼 것. 우리 목록을 따로 적으면 판이 올라 바닐라가 한 줄 더할 때
 	 * 우리만 뒤처진다.
 	 *
-	 * <p>⚠ <b>물은 이 셋을 전부 통과해 참이 된다.</b> 26.3 태그 파일을 둘 다 다시 읽었고
-	 * {@code water} 도 {@code lava} 도 어느 쪽에도 없다 — 곧 <b>2026-10-04 의 「물이 안 부서진다」는
-	 * 이 함수의 탓이 아니었다.</b> 걸린 자리는 {@link #clear} 이고 근거는 클래스 설명에 있다.
+	 * <p>⚠ <b>물도 용암도 이 셋을 전부 통과해 참이 된다.</b> 26.3 태그 파일을 둘 다 다시 읽었고
+	 * {@code water} 도 {@code lava} 도 어느 쪽에도 없다 — 곧 <b>2026-10-04 의 「물이 안 부서진다」와
+	 * 「용암도 안 부서진다」가 둘 다 이 함수의 탓이 아니었다.</b> 걸린 자리는 {@link #clear} 이고
+	 * 근거는 클래스 설명에 있다. <b>그래서 용암까지 넓히면서 이 함수를 한 글자도 고치지 않았다.</b>
 	 *
 	 * <p>⚠ 반대로 이 함수가 거짓을 돌려주면 {@link #clear} 가 불리지 않으므로 <b>{@code
 	 * DRAGON_IMMUNE} 블록 안에 잠긴 물은 살아남는다.</b> 반경 {@value #RADIUS} 안에 그런 블록이
 	 * 없다는 근거는 클래스 설명의 「남는 구멍 하나」에 적어 두었다.
+	 *
+	 * <p>⚠⚠ <b>이 순서가 섬 바닥과 출구 포털을 지킨다.</b> {@link #sweepColumn} 이 이 함수를
+	 * <b>{@link #clear} 보다 먼저</b> 묻는다 — 곧 {@code end_stone}·{@code bedrock}·
+	 * {@code end_portal} 은 유체 갈래에 <b>닿지도 않는다.</b> 2026-10-04 에 유체 갈래가 두 번
+	 * 넓어졌지만 <b>이 관문 뒤에서만 넓어졌다</b>(시험이 그 셋이 유체로 읽히지 않는다는 것도 함께
+	 * 못박는다). <b>두 물음의 순서를 바꾸지 말 것</b> — 바꾸면 {@code FLUID_CLEAR_FLAGS} 가
+	 * {@code DRAGON_IMMUNE} 을 지나 섬에 닿는다.
 	 */
 	static boolean breakable(BlockState state) {
 		return !state.isAir()

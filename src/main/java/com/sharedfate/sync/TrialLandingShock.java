@@ -1,6 +1,5 @@
 package com.sharedfate.sync;
 
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
@@ -9,8 +8,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
-import net.minecraft.world.level.dimension.end.EnderDragonFight;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -610,14 +607,35 @@ public final class TrialLandingShock {
 	 * <p>26.3 {@code DragonLandingPhase} 가 착지 목표를 만드는 식을 그대로 쓴다. 중앙을
 	 * {@code (0, ?, 0)} 으로 박지 않는 것은 {@code fightOrigin} 이 원점이 아닌 판이 있기
 	 * 때문이고, 좌표 하나를 읽는 것뿐이라 드래곤의 상태는 아무것도 건드리지 않는다.
+	 *
+	 * <p>⚠⚠ <b>셈은 2026-10-04 에 {@link TrialPodium#locate} 한 벌로 모았다.</b> 전에는 세 벌이었다
+	 * — 여기, {@code DragonLastStand.podium}, 그리고 {@link TrialPodium}. 앞의 둘이
+	 * {@code private} 이라 밖에서 부를 수 없어 입장 수락창이 <b>세 번째로 같은 식을 적게 된</b>
+	 * 것이 {@code TrialPodium} 이 태어난 까닭이다. 셋을 글자 단위로 대조한 결과 <b>셈은 완전히
+	 * 같았고 다른 것은 「드래곤이 없을 때」 하나뿐</b>이었다.
+	 *
+	 * <p>⚠⚠ <b>그 하나가 이 함수에 남아 있는 세 줄이다 — 옮기지 않았다.</b>
+	 *
+	 * <ul>
+	 *   <li>{@code TrialPodium.locate} 는 드래곤이 없으면 {@code BlockPos.ZERO} 를 원점으로 써
+	 *       <b>언제나 좌표를 돌려준다</b>(그쪽 클래스 설명에 26.3
+	 *       {@code EnderDragonFight.END_PODIUM_LOCATION} 이 정확히 그 값인 근거가 있다).
+	 *       수락창은 「어디로 모을까」를 묻는 자리라 그 기본값이 맞다</li>
+	 *   <li>여기는 <b>「방금 앉았는가」를 묻는 자리</b>라 반대다. 드래곤이 없거나 죽어 가면
+	 *       {@code null} 을 돌려 {@link #watchLanding} 이 기록을 놓게 해야 한다 — 그러지 않으면
+	 *       <b>죽는 연출 중에 좌표가 멈춘 것이 착지로 읽혀</b> 고리가 한 벌 더 터진다.
+	 *       {@code dragon == null} 은 부르는 쪽이 한 번 더 보지만
+	 *       {@code isDeadOrDying()} 은 <b>여기밖에 없다</b></li>
+	 * </ul>
+	 *
+	 * <p>곧 <b>셈은 합치고 문은 남긴 것</b>이다. 「같은 것으로 보이는데 다른 것」을 합치는 것이
+	 * 이 저장소에서 가장 비싼 사고라, 다른 쪽을 지우지 않고 다른 까닭을 여기 적어 둔다.
 	 */
 	private static @Nullable Vec3 podiumOf(ServerLevel end, @Nullable EnderDragon dragon) {
 		if (dragon == null || !dragon.isAlive() || dragon.isDeadOrDying()) {
 			return null;
 		}
-		BlockPos podium = EnderDragonFight.getPodiumLocation(dragon.getFightOrigin());
-		return Vec3.atBottomCenterOf(
-				end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, podium));
+		return TrialPodium.locate(end, dragon);
 	}
 
 	/**

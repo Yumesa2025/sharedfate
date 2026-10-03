@@ -4,7 +4,6 @@ import com.sharedfate.SharedFateMod;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundHurtAnimationPacket;
@@ -20,8 +19,6 @@ import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.monster.Enderman;
-import net.minecraft.world.level.dimension.end.EnderDragonFight;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -53,8 +50,9 @@ import java.util.UUID;
  *   <tr><td>{@link DragonLastStandObjects}</td><td><b>오브젝트 파도</b> — 체력 25%·10% 에 두 번만.
  *       뽑히지 않고 패턴과 <b>함께</b> 돈다</td></tr>
  *   <tr><td>{@link DragonLastStandConePanel}</td><td>부채꼴의 <b>빨간 투명 면</b>(디스플레이 개체)</td></tr>
- *   <tr><td>{@link DragonLastStandLights}</td><td><b>신호기 빛과 타이머 바</b>(디스플레이 개체).
- *       진입 연출과 오브젝트 파도가 함께 쓴다</td></tr>
+ *   <tr><td>{@link DragonLastStandLights}</td><td><b>신호기 빛</b>(디스플레이 개체).
+ *       진입 연출의 보라 기둥 넷과 오브젝트 파도의 흰 선이 함께 쓴다. ⚠ 전에는 <b>타이머 바</b>도
+ *       여기 있었는데 2026-10-04 에 파도가 타이머를 버리면서 함께 지웠다</td></tr>
  *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대(월드 보더) — <b>혼자 도는 시계</b></td></tr>
  *   <tr><td>{@link DragonLastStandDome}</td><td><b>반구 블록 파괴</b> — 뽑히지 않고 1초마다 도는
  *       상시 규칙. 블록을 만지는 것은 <b>이 파일 하나뿐</b>이다</td></tr>
@@ -943,8 +941,16 @@ public final class DragonLastStand {
 			return standing;
 		}
 		// 오브젝트 파도. 뽑히지 않고 드래곤 체력 25%·10% 에 두 번만 열린다 — 사람이 정했다.
-		// advance 앞인 것은 파도가 패턴을 멈추지 않기 때문이고, 그래도 예산이 안 바뀌는 것은
-		// 이 파도가 매 틱 점을 한 개도 쓰지 않기 때문이다(그쪽 클래스 설명의 「점 예산」).
+		// advance 앞인 것은 파도가 패턴을 멈추지 않기 때문이다.
+		//
+		// ⚠⚠ 「이 파도는 점을 한 개도 쓰지 않는다」가 전에 여기 적혀 있었다. 거짓이다 —
+		// 연결선이 들어가면서 파도가 한 틱 37점을 쓴다(DragonLastStandObjects.worstCasePointsPerTick).
+		// 흰 선은 디스플레이 개체라 0점이고 박히는 빛·반짝임은 꾸러미 한 장씩이지만, 연결선만은
+		// 먼지로 긋는 것이라 여섯 줄을 두 틱에 나눠도 30점이고 반짝임 6 + 하트 1 이 같은 틱에
+		// 겹친다. 곧 이 한 줄이 「파도가 패턴과 같은 틱에 돈다」이자 「예산을 둘이 나눠 쓴다」다 —
+		// 최악이 패턴 360 + 파도 37 = 397 / 예산 440 이고 여유가 43점뿐이다.
+		// DragonLastStandPatternsTest 와 DragonLastStandObjectsTest 가 그 합을 둘 다 못박으므로
+		// 한쪽을 올리면 양쪽 시험이 함께 멈춘다. 일부러 만든 목 좁은 자리다.
 		DragonLastStandObjects.tick(end, dragon, members == null ? List.of() : members,
 				stand.anchor, stand.clockBase, now);
 		advance(end, dragon, members == null ? List.of() : members, stand, now);
@@ -1088,11 +1094,25 @@ public final class DragonLastStand {
 	 * {@code Vec3.atBottomCenterOf(level.getHeightmapPos(MOTION_BLOCKING_NO_LEAVES,
 	 * EnderDragonFight.getPodiumLocation(fightOrigin)))} 을 쓴다. 우리 좌표를 따로 지어내면
 	 * 「기둥에 앉은 드래곤」과 다른 자리에 앉아 사람이 배워 둔 거리감이 어긋난다.
+	 *
+	 * <p>⚠⚠ <b>셈은 2026-10-04 에 {@link TrialPodium#locate} 한 벌로 모았다.</b> 전에는 그 셈이
+	 * 세 벌이었다 — 여기, {@code TrialLandingShock.podiumOf}, 그리고 {@link TrialPodium}. 앞의 둘이
+	 * {@code private} 이라 밖에서 부를 수 없어 수락창이 <b>세 번째로 같은 식을 적게 된</b> 것이
+	 * {@code TrialPodium} 이 태어난 까닭이고, 이제 셋이 그 한 줄을 지난다. 하이트맵 종류를 바꾸는
+	 * 날에 고칠 곳이 한 군데다.
+	 *
+	 * <p>⚠ <b>이 껍데기를 지우고 호출 자리에서 바로 부르지 않은 까닭이 있다.</b>
+	 * {@code DragonLastStandDome.baselineY}(지금 이름은 {@code domeOriginY})의 javadoc 이
+	 * <b>「{@code DragonLastStand.podium} 이 하이트맵을 쓰는 것이 바닐라 착지 목표와 같은
+	 * 계산이다」</b>를 반구 기준 높이의 근거로 들고 있다. 이름이 사라지면 그 문장이 가리킬 곳을
+	 * 잃는다 — 한 줄 껍데기로 남겨 두면 문장도 셈도 함께 참이다.
+	 *
+	 * @param dragon <b>살아 있는 드래곤.</b> {@code null} 을 넘기는 갈래가 이 파일에 없다 —
+	 *               {@link #enter} 와 {@link #resume} 둘 다 드래곤을 찾은 뒤에 부른다.
+	 *               {@code TrialLandingShock} 쪽은 그 갈래가 있어 거기만 문을 하나 더 들고 있다
 	 */
 	private static Vec3 podium(ServerLevel end, EnderDragon dragon) {
-		BlockPos podium = EnderDragonFight.getPodiumLocation(dragon.getFightOrigin());
-		return Vec3.atBottomCenterOf(
-				end.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, podium));
+		return TrialPodium.locate(end, dragon);
 	}
 
 	/**
@@ -1449,7 +1469,8 @@ public final class DragonLastStand {
 		// 반구의 훑기 시계. 월드를 만지지 않는다 — 부순 블록은 되돌리지 않는다(그쪽 설명).
 		DragonLastStandDome.clearState();
 		// ⚠ 개체를 들고 있는 셋이다. 진입 연출의 보라색 신호기 · 오브젝트 파도의 오브젝트와
-		// 흰 선 · 타이머 바 — 전부 개체라 남으면 다음 판에 뜬다. 월드를 만지지 않는 것은
+		// 흰 선 — 전부 개체라 남으면 다음 판에 뜬다(타이머 바도 여기 있었는데 2026-10-04 에
+		// 파도가 타이머를 버리면서 함께 사라졌다). 월드를 만지지 않는 것은
 		// 그쪽들이 개체를 들고 있기 때문이고, 그것이 UUID 만 적어 두지 않은 유일한 이유다.
 		// ⚠ 파도를 여기서 닫아도 「못 부순 몫」의 회복은 주지 않는다(그쪽 clearState 설명).
 		DragonLastStandEntry.clearState();

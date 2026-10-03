@@ -17,7 +17,11 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,12 +30,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * 「최후의 저항」의 <b>신호기 빛과 타이머 바</b>.
+ * 「최후의 저항」의 <b>신호기 빛</b>.
  *
  * <p>⚠ {@code runClient} 가 이 환경에서 죽어 <b>눈으로 확인할 수 없다</b>
  * ({@code DragonLastStandConePanelTest} 의 같은 경고). 그래서 <b>행렬을 직접 굴려</b> 상자의
  * 귀퉁이가 어디에 놓이는지 잰다 — 「기둥이 밑바닥에서 위로 자라는가」와 「바가 왼쪽 끝을 두고
  * 줄어드는가」를 물을 수 있는 유일한 길이다.
+ *
+ * <p>⚠⚠ <b>바를 세우는 코드는 2026-10-04 에 지웠다 — 기하학만 남았다.</b> 오브젝트 파도가
+ * 타이머를 버리면서 가로로 줄어드는 바가 가리킬 것이 없어졌고, 그것이 이 파일의 유일한
+ * 바였다(까닭과 되살리는 길은 {@code DragonLastStandLights.barShape} 의 javadoc). 그래서 아래
+ * 바 시험 셋은 <b>더 이상 돌고 있는 연출을 지키는 것이 아니라</b>, 다시 넣으려는 사람에게
+ * 「어려웠던 두 판단」(왼쪽 끝 못박기 · 채움을 더 깊게)을 그대로 넘기는 자리다.
+ * {@link #세우는_길이_기둥_하나뿐이다()} 와 {@link #지운_바_메서드를_아무도_안_부른다()} 가
+ * 그 사실을 못박는다.
  */
 class DragonLastStandLightsTest {
 
@@ -63,13 +75,16 @@ class DragonLastStandLightsTest {
 		assertEquals(width / 2.0, high.z(), 1.0E-4);
 	}
 
-	// ------------------------------------------------------------------ 타이머 바
+	// ------------------------------------------------------------------ 바 — 세우는 코드는 없고 셈만 남았다
 
 	/**
 	 * ⚠⚠ <b>바는 왼쪽 끝을 두고 오른쪽만 들어온다.</b>
 	 *
 	 * <p>가운데를 기준으로 양쪽이 함께 줄면 「줄어드는 막대」가 아니라 「작아지는 막대」로 읽혀
 	 * 남은 양을 가늠할 수 없다. 여러 비율에서 왼쪽 끝이 <b>한 자리에 못박혀 있는지</b> 본다.
+	 *
+	 * <p>⚠ <b>이 판단이 {@code barShape} 를 지우지 않은 까닭이다.</b> 세우는 세 줄은 다시 적기
+	 * 쉽지만 이것은 한 번 틀리면 눈으로밖에 못 잡고, 이 환경에서는 그 눈이 없다.
 	 */
 	@Test
 	void 바가_왼쪽_끝을_두고_줄어든다() {
@@ -218,7 +233,78 @@ class DragonLastStandLightsTest {
 				"진입 연출이 신호기 빛을 제 손으로 만들고 있다");
 		assertTrue(read("/com/sharedfate/sync/DragonLastStandObjects.class")
 						.contains("com/sharedfate/sync/DragonLastStandLights"),
-				"오브젝트 파도가 흰 선과 바를 제 손으로 만들고 있다");
+				"오브젝트 파도가 흰 신호기 선을 제 손으로 만들고 있다");
+	}
+
+	// ------------------------------------------------------------------ 지운 것 셋
+
+	/**
+	 * ⚠⚠ <b>세우는 메서드 셋을 2026-10-04 에 지웠고, 아무도 안 부른다.</b>
+	 *
+	 * <p>{@code raiseBarBack} · {@code raiseBarFill} · {@code reshapeBarFill}. 오브젝트 파도가
+	 * <b>타이머를 버리면서</b>(「시간 안에 부숴라」 → 「살아 있는 동안 초당 0.5% 상시 회복」)
+	 * 가로로 줄어드는 바가 가리킬 것이 없어졌다 — <b>그 바는 「남은 시간」으로만 읽힌다.</b>
+	 *
+	 * <p>⚠ <b>선언한 자리와 부르는 자리를 함께 본다.</b> 이름을 지워도 쓰는 쪽에 남아 있으면
+	 * 컴파일이 깨지므로 그쪽은 사실 못 어긴다. 그런데도 양쪽을 다 보는 것은 <b>누가 같은 이름으로
+	 * 되살렸을 때</b>를 잡으려는 것이다 — 그때는 컴파일이 통과한다.
+	 *
+	 * <p>다시 넣으려는 사람은 {@code DragonLastStandObjectsTest.바가_하나도_없다} 의 설명을 먼저
+	 * 읽을 것. <b>말하는 수단 셋</b>(연결선 · 소리 · 드래곤 보스바)이 이미 하는 말을 두 번 하게
+	 * 된다는 판단이 거기 적혀 있다.
+	 */
+	@Test
+	void 지운_바_메서드를_아무도_안_부른다() {
+		String[] gone = {"raiseBarBack", "raiseBarFill", "reshapeBarFill"};
+		for (String name : gone) {
+			for (Method method : DragonLastStandLights.class.getDeclaredMethods()) {
+				assertFalse(method.getName().equals(name),
+						name + " 이 되살아났다 — 셀 시간이 없으므로 줄어드는 바는 가리킬 수가 없다");
+			}
+		}
+		// 쓰던 쪽 둘. 한쪽만 보면 반드시 샌다.
+		for (String user : new String[] {"DragonLastStandObjects", "DragonLastStandEntry"}) {
+			String bytes = read("/com/sharedfate/sync/" + user + ".class");
+			for (String name : gone) {
+				assertFalse(bytes.contains(name), user + " 가 " + name + " 을 부른다");
+			}
+		}
+	}
+
+	/**
+	 * ⚠ <b>이 파일이 세우는 것은 빛기둥 하나뿐이다.</b> 클래스 설명이 그렇게 적혀 있고, 그 문장이
+	 * 코드와 맞는지를 반사로 센다.
+	 *
+	 * <p>바를 세우는 셋이 사라져 {@code raise*} 는 {@code raisePillar} 하나다. 거꾸로
+	 * <b>{@code barShape} 와 네 값은 남아 있어야 한다</b> — 그것이 「되살리는 길을 남겼다」의
+	 * 전부이고, 함께 지우면 javadoc 이 가리킬 곳을 잃는다.
+	 */
+	@Test
+	void 세우는_길이_기둥_하나뿐이다() {
+		List<String> raisers = new ArrayList<>();
+		List<String> methods = new ArrayList<>();
+		for (Method method : DragonLastStandLights.class.getDeclaredMethods()) {
+			methods.add(method.getName());
+			if (method.getName().startsWith("raise")) {
+				raisers.add(method.getName());
+			}
+		}
+		// 「raise」는 셋이 함께 쓰던 비공개 몸통이고 「raisePillar」가 남은 하나뿐인 입구다.
+		assertEquals(List.of("raise", "raisePillar"), raisers.stream().sorted().toList(),
+				"세우는 길이 둘 이상이다 — 바가 되살아났거나 새 연출이 들어왔다");
+
+		// 기하학은 남아 있다. 어려웠던 것은 세우는 세 줄이 아니라 그 함수의 두 판단이다.
+		assertTrue(methods.contains("barShape"),
+				"barShape 가 사라졌다 — 되살리는 길과 이 파일의 javadoc 이 함께 끊긴다");
+		List<String> fields = new ArrayList<>();
+		for (Field field : DragonLastStandLights.class.getDeclaredFields()) {
+			fields.add(field.getName());
+		}
+		for (String value : new String[] {"BAR_BACK_THICKNESS", "BAR_FILL_THICKNESS",
+				"BAR_BACK_DEPTH", "BAR_FILL_DEPTH"}) {
+			assertTrue(fields.contains(value),
+					value + " 가 사라졌다 — 네 값이 함께 있어야 바가 테로 읽힌다");
+		}
 	}
 
 	// ------------------------------------------------------------------ 도우미
