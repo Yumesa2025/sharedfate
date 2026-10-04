@@ -116,7 +116,7 @@ public class TrialRouletteScreen extends Screen {
 	 * <p>{@link TrialRoulette#advance} 가 서버에서 하는 일과 같다.
 	 */
 	private int soundedFrame = -1;
-	/** 멈춤 소리를 이미 냈는지. 멈춘 뒤 60틱 내내 울리면 안 된다. */
+	/** 멈춤 소리를 이미 냈는지. 멈춘 뒤 붙잡아 두는 시간 내내 울리면 안 된다. */
 	private boolean revealSounded;
 
 	// 아래는 init() 이 화면 크기에 맞춰 다시 재는 값들이다.
@@ -143,7 +143,7 @@ public class TrialRouletteScreen extends Screen {
 	 * 이 패킷으로 화면을 열어도 되는가.
 	 *
 	 * <p>후보가 하나도 없으면 열지 않는다. 서버가 그런 패킷을 만들지 않지만 <b>패킷은 밖에서
-	 * 오는 값</b>이라 믿을 수 없고, 빈 룰렛이 열리면 이름도 설명도 없는 판이 4초 동안 떠 있다가
+	 * 오는 값</b>이라 믿을 수 없고, 빈 룰렛이 열리면 이름도 설명도 없는 판이 십수 초 동안 떠 있다가
 	 * 사라진다 — 고장으로 읽힌다.
 	 */
 	public static boolean shouldOpen(@Nullable TrialRoulettePayload payload) {

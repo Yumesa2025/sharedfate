@@ -18,14 +18,15 @@ package com.sharedfate.sync;
  *
  * <p>⚠⚠ <b>이 저장소는 같은 값이 두 벌이 되는 것을 반복해서 겪었다</b>(단상 계산 세 벌 · 먼지
  * 크기 두 벌 · {@code CRIT} 상수 두 벌). 그래서 자르는 식은 <b>한 벌</b>이고, 부르는 자리가
- * 넷이어도 숫자가 적힌 곳은 여기 하나뿐이다. {@code TrialVelocityTest} 가 <b>다른 어느 파일도 제
+ * 여럿이어도 숫자가 적힌 곳은 여기 하나뿐이다. {@code TrialVelocityTest} 가 <b>다른 어느 파일도 제
  * {@code syncedVertical} 을 선언하지 않는다</b>는 것과 <b>이 파일이 칸을 하나도 들지 않는다</b>
  * (= 천장을 베껴 적지 않았다)는 것을 못박는다.
  *
  * <h2>왜 {@code TrialRisks} 가 아닌가</h2>
  *
  * <p>{@code TrialRisks} 는 「위험 계산이 모이는 자리」이긴 하지만 카드를 <b>돌리는</b> 실행기이고,
- * 이 규약을 지켜야 하는 자리는 그쪽 말고 <b>셋이 더</b> 있다(패턴 둘 · 카드 둘). 「한 위험의
+ * 이 규약을 지켜야 하는 자리는 그쪽 말고 <b>셋</b>이 있다(패턴 하나 · 카드 둘 — 공허 흡입은
+ * 2026-10-04 저녁에 빠졌다, {@link #syncedVertical} 을 볼 것). 「한 위험의
  * 계산」이 아니라 <b>속도를 내려 보내는 모든 자리의 규약</b>이라, 이름으로 찾을 수 있는 자리에
  * 따로 둔다. {@code TrialWarning}(소리·고리 점 같은 연출 도구)에 두는 것은 더 멀다.
  *
@@ -157,10 +158,21 @@ public final class TrialVelocity {
 	 * 바닐라 동작을 하나도 바꾸지 않고, 정상 플레이어에게는 <b>비트 단위로 무변화</b>다
 	 * (스스로 뛴 사람·떨어지는 사람 둘 다 받은 값이 그대로 나간다).
 	 *
-	 * <p>지나는 자리 <b>넷</b> — {@code DragonLastStandPatterns.shove}(날개 번치) ·
-	 * {@code DragonLastStandPatterns.pullSuck}(공허 흡입) · {@code TrialEnderStorm.push}(엔더폭풍) ·
-	 * {@code TrialLandingShock.push}(착지 충격). ⚠ <b>속도를 내려 보내는 자리를 새로 만들면 이
-	 * 목록에 더해야 한다.</b>
+	 * <p>지나는 자리 <b>셋</b> — {@code DragonLastStandPatterns.shove}(날개 번치) ·
+	 * {@code TrialEnderStorm.push}(엔더폭풍) · {@code TrialLandingShock.push}(착지 충격). ⚠ <b>속도를
+	 * 내려 보내는 자리를 새로 만들면 이 목록에 더해야 한다.</b>
+	 *
+	 * <p>⚠ {@code DragonLastStandPatterns.pullSuck}(공허 흡입)은 2026-10-04 저녁에 <b>이 목록에서 빠졌다.</b>
+	 * 매 틱 {@code syncVelocity} 로 서버의 속도를 덮어쓰던 것이 사람이 달려서 쌓은 속도를 매 틱 지우고
+	 * 있었고(받는 쪽 {@code Entity.lerpMotion} = {@code setDeltaMovement}), 지금은 바닐라 폭발의
+	 * {@code playerKnockback} 으로 <b>수평 한 벌을 더하게</b> 보낸다. 서버의 {@code deltaMovement} 를
+	 * 아예 안 보내므로 남이 쌓아 둔 세로가 섞일 길이 없다 — 자를 것이 없어서 빠진 것이지 빠뜨린 것이
+	 * 아니다.
+	 *
+	 * <p>⚠ <b>이 함수가 「스스로 뛴 사람은 비트 단위로 무변화」를 지키는 것은 서버가 그 점프를 따라
+	 * 할 때뿐이다.</b> {@code motionY} 는 서버가 굴린 세로이고 사람의 세로가 아니다 — 26.3
+	 * {@code ServerGamePacketListenerImpl.handleMovePlayer} 가 「땅에서 떨어지며 올라갔다」를 보면
+	 * 서버쪽에서도 {@code jumpFromGround} 를 불러 비슷한 포물선을 굴리지만 한 박자 늦다.
 	 *
 	 * <p>월드 없이 답이 정해지는 계산이라 시험이 쌓이는 과정을 틱마다 직접 굴려 본다.
 	 *

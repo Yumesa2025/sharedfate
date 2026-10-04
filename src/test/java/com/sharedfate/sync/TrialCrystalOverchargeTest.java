@@ -37,10 +37,13 @@ class TrialCrystalOverchargeTest {
 	 * 값이다.</b>
 	 *
 	 * <p>1 에서 3 으로 올린 값이다 — 사람이 실제로 플레이하고 「딜이 너무 낮다」고 했다. 다 맞아도
-	 * 10(무장 기준 1.3)이라 <b>크리스탈을 우선할 이유가 안 됐다.</b> 카드의 위협은 여전히 피해가
+	 * 10(무장 기준 1.16)이라 <b>크리스탈을 우선할 이유가 안 됐다.</b> 카드의 위협은 여전히 피해가
 	 * 아니라 「크리스탈로 끌려가는 것」이지만, 무시해도 되는 값이면 끌려가지 않는다.
+	 *
+	 * <p>2026-10-04 에 사람이 다시 「딜이 약하다」고 해서 <b>「발당 6 (×2)」</b>로 올렸다. 3 은
+	 * 무장 기준 열 발 다 맞아도 3.97 이었다.
 	 */
-	private static final float DPS = 3.0F;
+	private static final float DPS = 6.0F;
 
 	// ------------------------------------------------------------------ 카드에 적힌 무게
 
@@ -50,25 +53,86 @@ class TrialCrystalOverchargeTest {
 		assertEquals(FUSE, risk.fuseTicks(), "도화선 15초");
 		assertEquals(BEAM, risk.beamTicks(), "볼리 10초");
 		assertEquals(REST, risk.restTicks(), "쉼 20초");
-		assertEquals(DPS, risk.damagePerSecond(), "발당 3");
+		assertEquals(DPS, risk.damagePerSecond(), "발당 6");
 	}
 
 	/**
-	 * <b>발수 × 발당 피해 = 빔이던 때의 곱과 같다.</b>
+	 * <b>발당 6 · 열 발 · 합계 60.</b>
 	 *
-	 * <p>벌의 모양만 바뀌었다 — 「초당 3 × 10초 = 30」이 「발당 3 × 10발 = 30」이 됐다. 이 곱이
-	 * 달라지면 연출을 바꾸면서 <b>난이도까지 바꾼 것</b>이고, 그것은 사람이 시킨 일이 아니다.
+	 * <p>빔이던 때 「초당 3 × 10초 = 30」이 「발당 3 × 10발 = 30」이 됐고, 2026-10-04 에 사람이
+	 * 「딜이 약하다」 → 「발당 6 (×2)」라고 해서 카드 칸을 6 으로 올렸다. 발수는 그대로 열이다.
+	 * 발당 피해가 카드 칸과 따로 놀면 {@code worstCaseTickDamage} 가 거짓이 되므로, 한 발이 카드
+	 * 칸 그대로인지를 함께 붙잡는다.
 	 */
 	@Test
-	void 구체는_열_발이고_합계가_빔이던_때와_같다() {
+	void 구체는_열_발이고_발당_6_합계_60_이다() {
 		TrialCatalog.Risk.CrystalOvercharge risk = card();
 
 		assertEquals(10, TrialCrystalOvercharge.volleyShots(BEAM, TrialCrystalOvercharge.SECOND_TICKS),
 				"10초 볼리는 초에 한 발씩 열 발이다");
-		assertEquals(DPS, TrialCrystalOvercharge.orbDamage(risk),
-				"발당 피해는 카드에 적힌 값 그대로여야 한다 — 올리면 worstCaseTickDamage 가 거짓이 된다");
-		assertEquals(30.0F, TrialCrystalOvercharge.volleyTotalDamage(risk),
-				"10발 × 3 = 30. 빔이던 때의 「초당 3 × 10초」와 같은 곱이다");
+		assertEquals(6.0F, TrialCrystalOvercharge.orbDamage(risk),
+				"사람이 정한 값 — 2026-10-04 「발당 6 (×2)」");
+		assertEquals(risk.damagePerSecond(), TrialCrystalOvercharge.orbDamage(risk),
+				"발당 피해는 카드에 적힌 값 그대로여야 한다 — 따로 놀면 worstCaseTickDamage 가 거짓이 된다");
+		assertEquals(60.0F, TrialCrystalOvercharge.volleyTotalDamage(risk),
+				"10발 × 6 = 60");
+		assertEquals(TrialCrystalOvercharge.orbDamage(risk), TrialRisks.worstCaseTickDamage(risk),
+				"한 틱에 닿는 것은 한 발뿐이다 — 안전 시험이 보는 값이 실제 한 발과 같아야 한다");
+	}
+
+	/**
+	 * <b>무장 기준 실제 몫</b> — 「피해는 무장 기준」 원칙.
+	 *
+	 * <p>피해원이 {@code explosion(null, null)} 이라 하드 1.5배가 먼저 걸리고 방어구·보호가 듣는다.
+	 * 6 × 1.5 = 9 → 방어 2.61 → 보호 0.94. 열 발 다 맞아도 9.40 이라 <b>무장한 팀은 볼리 하나로
+	 * 죽지 않는다.</b> 이 값이 20 을 넘게 되면 「숨기」를 한 번도 못 한 볼리가 곧 전멸이다 —
+	 * 그때는 사람에게 다시 물을 것.
+	 */
+	@Test
+	void 발당_6_은_무장_기준_한_발_0_94_열_발_9_4_다() {
+		TrialCatalog.Risk.CrystalOvercharge risk = card();
+		float perShot = GearedDamage.afterGear(TrialCrystalOvercharge.orbDamage(risk),
+				GearedDamage.Source.EXPLOSION);
+		int shots = TrialCrystalOvercharge.volleyShots(risk.beamTicks(),
+				TrialCrystalOvercharge.SECOND_TICKS);
+
+		assertEquals(0.94F, perShot, 0.005F, "무장 기준 한 발");
+		assertEquals(9.40F, perShot * shots, 0.05F, "무장 기준 열 발 — 감쇠는 한 방마다 건다");
+		assertTrue(perShot * shots < GearedDamage.TEAM_HEALTH,
+				"무장하고도 볼리 하나에 팀이 지워진다 — 실제 " + perShot * shots);
+	}
+
+	/**
+	 * <b>카드 설명이 지금 동작을 말한다.</b>
+	 *
+	 * <p>설명이 빔이던 때의 「10초 동안 빔에 물려 초당 3씩」으로 남아 있었다. 숫자는 손으로 적지
+	 * 않고 카드 값과 실행기 상수에서 뽑아 견준다 — 값을 고치고 설명을 안 고치면 여기서 걸린다.
+	 */
+	@Test
+	void 카드_설명이_지금_동작을_말한다() {
+		TrialCatalog.Trial trial = TrialCatalog.byId("sharedfate:crystal_overcharge");
+		assertNotNull(trial);
+		TrialCatalog.Risk.CrystalOvercharge risk = card();
+		String text = trial.description();
+
+		int fuseSeconds = risk.fuseTicks() / TrialCrystalOvercharge.SECOND_TICKS;
+		int shots = TrialCrystalOvercharge.volleyShots(risk.beamTicks(),
+				TrialCrystalOvercharge.SECOND_TICKS);
+		// 발 간격은 SECOND_TICKS 틱이다. 20 은 게임의 「1초 = 20틱」이다.
+		int gapSeconds = TrialCrystalOvercharge.SECOND_TICKS / 20;
+		float damage = TrialCrystalOvercharge.orbDamage(risk);
+		String perShot = damage == Math.rint(damage) ? String.valueOf((int) damage)
+				: String.valueOf(damage);
+
+		assertTrue(text.contains(fuseSeconds + "초 안에"), "도화선 시간이 빠졌다: " + text);
+		assertTrue(text.contains("한 명"), "노리는 사람이 한 명이라는 것이 빠졌다: " + text);
+		assertTrue(text.contains(gapSeconds + "초마다"), "발 간격이 빠졌다: " + text);
+		assertTrue(text.contains(shots + "발"), "발수가 빠졌다: " + text);
+		assertTrue(text.contains("한 발에 " + perShot + "씩"), "발당 피해가 빠졌다: " + text);
+		assertTrue(text.contains("숨으면 막힙니다"), "대응(숨기)이 빠졌다: " + text);
+		assertFalse(text.contains("빔"), "빔은 2026-10-01 에 걷었다: " + text);
+		assertFalse(text.contains("초당"), "초당 피해가 아니라 발당 피해다: " + text);
+		assertEquals(2, text.split("\\. ").length, "다른 카드처럼 짧은 두 문장이어야 한다: " + text);
 	}
 
 	/**
@@ -76,11 +140,11 @@ class TrialCrystalOverchargeTest {
 	 *
 	 * <h2>⚠ 「합계가 20 미만」이 이 카드의 안전 근거가 아니다</h2>
 	 *
-	 * <p>합계는 <b>30</b> 으로 팀 체력 20 을 넘는다. 그래도 즉사 카드가 아닌 것은 <b>대응 수단이
+	 * <p>합계는 <b>60</b> 으로 팀 체력 20 을 넘는다. 그래도 즉사 카드가 아닌 것은 <b>대응 수단이
 	 * 회피가 아니라 「크리스탈 부수기」와 「블록 뒤에 숨기」</b>이기 때문이다. 숨으면 그 발은 아예
-	 * 나가지 않으므로 30 은 <b>열 발을 한 번도 안 가린 사람</b>의 값이다.
+	 * 나가지 않으므로 60 은 <b>열 발을 한 번도 안 가린 사람</b>의 값이다(무장 기준 9.40).
 	 *
-	 * <p>한 틱에 들어오는 것은 언제나 <b>한 발(3)</b>이고, 그것을 무장 기준으로 보는 것은
+	 * <p>한 틱에 들어오는 것은 언제나 <b>한 발(6)</b>이고, 그것을 무장 기준으로 보는 것은
 	 * {@code TrialRisksTest} 의 안전 시험이다 — 그쪽은 이 카드를
 	 * 「{@code damagePerSecond} × 1」로 센다.
 	 */
@@ -110,8 +174,8 @@ class TrialCrystalOverchargeTest {
 	/**
 	 * <b>이 시험이 이 파일에서 가장 중요하다.</b>
 	 *
-	 * <p>매 틱 던지면 10초에 200발이다. 팀 체력 20 의 <b>서른 배</b>이고, 카드 설명에는 「초당 3」이
-	 * 적혀 있다. 컴파일도 로그도 조용한 종류의 사고라 여기서 세어 둔다.
+	 * <p>매 틱 던지면 10초에 200발이다. 발당 6 이면 1200 — 팀 체력 20 의 <b>예순 배</b>이고, 카드
+	 * 설명에는 「1초마다 10발」이 적혀 있다. 컴파일도 로그도 조용한 종류의 사고라 여기서 세어 둔다.
 	 */
 	@Test
 	void 발은_초에_한_번씩_정확히_열_번_떠난다() {
@@ -469,11 +533,11 @@ class TrialCrystalOverchargeTest {
 	 * 방어구를 무시하는 피해 종류로 돌아가지 않는다.
 	 *
 	 * <p>26.3 에서 {@code magic} 과 {@code dragonBreath} 는 <b>{@code bypasses_armor} 태그에
-	 * 들어 있다.</b> 그것을 쓰면 카드에 적힌 「3」보다 실제로 더 아파지고, 방어구를 갖춰 온 팀이
-	 * 손해를 본다.
+	 * 들어 있다.</b> 그것을 쓰면 카드에 적힌 「6」보다 실제로 더 아파지고(무장 기준 한 발 0.94 가
+	 * 2.16 이 된다), 방어구를 갖춰 온 팀이 손해를 본다.
 	 *
 	 * <p>⚠ <b>「표적」을 따라가지 말 것.</b> 그 카드만 {@code magic} 을 써서 방어구를 지나가므로,
-	 * 거기 적힌 6 과 여기 적힌 3 은 <b>같은 자로 잰 값이 아니다.</b> 구체를 쓴다는 것만 같다.
+	 * 거기 적힌 6 과 여기 적힌 6 은 <b>같은 자로 잰 값이 아니다.</b> 구체를 쓴다는 것만 같다.
 	 */
 	@Test
 	void 방어구를_무시하는_피해로_때리지_않는다() {

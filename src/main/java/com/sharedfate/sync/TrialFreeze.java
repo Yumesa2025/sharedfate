@@ -59,16 +59,44 @@ import java.util.UUID;
  */
 public final class TrialFreeze {
 
-	/** 룰렛이 멈춘 뒤 결과를 읽을 시간. */
-	public static final int HOLD_TICKS = 60;
+	/**
+	 * 카드 설명을 읽는 시간에 <b>나중에 더한 몫</b>. <b>10초(200틱)</b>다.
+	 *
+	 * <p>사람 말(2026-10-04): <b>「시련 설명글 좀 더 유지. 10초 더」</b>. 설명글은 판이 멈춘
+	 * 뒤에야 뜨므로({@code TrialRouletteScreen} 의 「설명은 멈춘 뒤에만 연다」) 늘려야 하는 것은
+	 * 굴림이 아니라 <b>붙잡아 두는 시간</b>이고, 설명이 뜨는 화면이 둘이라 두 값에 똑같이 더한다 —
+	 * {@link #HOLD_TICKS}(룰렛)와 {@link #FIXED_HOLD_TICKS}(굴리지 않는 화면).
+	 *
+	 * <p>더한 몫을 따로 둔 것은 <b>원래 값의 근거가 지워지지 않게</b> 하려는 것이다.
+	 * {@link #FIXED_HOLD_TICKS} 의 「왜 100인가」 셈은 60 과 137 을 놓고 한 것이고, 숫자를 합쳐
+	 * 적으면 그 셈을 다시 읽을 수가 없다.
+	 *
+	 * <p>⚠ 이 시간 내내 <b>판이 얼어 있고 화면은 ESC 로 못 닫는다.</b> 늘어난 10초는 곧 「얼어
+	 * 있는 10초」다 — 드래곤도 카드도 멈춰 있고 피해도 막히므로({@link #blocksDamage}) 위험은
+	 * 없지만, 사람이 움직이지 못하는 시간도 그만큼 늘었다. 효과는 얼음이 풀린 뒤에야 쌓이므로
+	 * ({@code DragonTrialManager.applyFinishedTrial}) 설명이 떠 있는 동안 새 카드가 돌지 않는다.
+	 */
+	public static final int READ_EXTENSION_TICKS = 10 * 20;
+
+	/**
+	 * 룰렛이 멈춘 뒤 결과를 읽을 시간. 처음 잡은 60틱(3초)에 {@link #READ_EXTENSION_TICKS} 를
+	 * 더해 <b>13초</b>다.
+	 */
+	public static final int HOLD_TICKS = 60 + READ_EXTENSION_TICKS;
 
 	/**
 	 * 룰렛을 돌리지 않고 <b>정해진 카드 한 장</b>만 보여 줄 때 판을 멈추는 시간
-	 * ({@link TrialCatalog.Reveal#FIXED_SCREEN}). <b>5초</b>다.
+	 * ({@link TrialCatalog.Reveal#FIXED_SCREEN}). 처음 잡은 100틱(5초)에
+	 * {@link #READ_EXTENSION_TICKS} 를 더해 <b>15초</b>다.
+	 *
+	 * <p>⚠ 아래 셈은 <b>더하기 전의 값</b>(읽는 시간 60틱, 룰렛 전체 137틱)으로 한 것이다. 세 값에
+	 * 같은 200틱을 더했으므로 셈이 세운 순서는 그대로다 — 읽는 시간은 룰렛보다 길고
+	 * (300 &gt; 260) 전체는 룰렛보다 짧다(300 &lt; 337). 시험이 이 두 부등식과 {@link #MAX_TICKS}
+	 * 를 붙든다.
 	 *
 	 * <h2>왜 {@link #HOLD_TICKS} 를 그대로 쓰지 않는가</h2>
 	 *
-	 * <p>룰렛은 굴림 {@value TrialRoulette#TOTAL_TICKS} 틱 + 읽는 시간 {@value #HOLD_TICKS} 틱이고,
+	 * <p>룰렛은 굴림 {@value TrialRoulette#TOTAL_TICKS} 틱 + 읽는 시간 60틱이었고,
 	 * <b>실제로 읽는 것은 뒤쪽 60틱뿐</b>이다 — 설명은 멈춘 뒤에야 뜬다. 그런데 그 60틱은 사람
 	 * 눈이 <b>이미 4초 동안 그 판 위에 있던 뒤</b>의 60틱이다. 굴림이 빠지면 화면이 아무 예고
 	 * 없이 뜨고, 그 처음 얼마는 「무엇이 떴나」에 쓰인다 — {@link TrialWarning#TICKS_SIDESTEP}
@@ -77,7 +105,7 @@ public final class TrialFreeze {
 	 *
 	 * <h2>그렇다고 룰렛 전체 길이를 쓰지도 않는다</h2>
 	 *
-	 * <p>{@value TrialRoulette#TOTAL_TICKS} + {@value #HOLD_TICKS} = 137틱을 그대로 쓰면
+	 * <p>{@value TrialRoulette#TOTAL_TICKS} + 60 = 137틱을 그대로 쓰면
 	 * <b>아무것도 움직이지 않는 화면이 7초</b> 떠 있다. 룰렛의 7초가 견딜 만한 것은 그중 4초가
 	 * 돌고 있기 때문이고, 여기서는 그 4초가 없다.
 	 *
@@ -89,7 +117,7 @@ public final class TrialFreeze {
 	 * 한 곳만 고치면 된다. 화면이 쓰는 값은 {@code TrialRoulettePayload.holdTicks} 로 실려 나가고,
 	 * 그 값을 채우는 자리도 {@code DragonTrialManager} 한 곳이다.
 	 */
-	public static final int FIXED_HOLD_TICKS = 100;
+	public static final int FIXED_HOLD_TICKS = 100 + READ_EXTENSION_TICKS;
 
 	/**
 	 * 어떤 경우에도 이보다 오래 얼지 않는다.

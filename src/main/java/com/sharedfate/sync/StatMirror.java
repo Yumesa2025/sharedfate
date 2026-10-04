@@ -190,8 +190,44 @@ public final class StatMirror {
 		} finally {
 			SUPPRESSED_TEAMS.clear();
 			DAMAGE_CAPTURED_THIS_TICK.clear();
+			// 이번 바퀴가 꺼내 가지 못한 「완충」 기록은 버린다. 남으면 다음 진짜 피해를 엉뚱하게 가른다.
+			SpreadDamageManager.forgetAlertLedger();
 			DamageLedger.flushIfDue();
 		}
+	}
+
+	/**
+	 * 이 사람이 맞았다고 팀에게 피격 알림(「○○ 피격」)을 띄울 것인가. 월드를 보지 않는 순수 판정이다.
+	 *
+	 * <p>알림은 피해 사건이 아니라 <b>지난 바퀴보다 체력·흡수가 줄었는가</b>를 보고 뜬다. 「완충」이
+	 * 그 관측을 뒤집어 놓았다 — 처음 맞은 순간은 피해가 미뤄져 체력이 그대로라 알림이 없고,
+	 * 그 뒤 8초 동안 몫이 체력을 깎을 때마다 알림이 다시 떴다. 팀원 피격음
+	 * ({@link SharedHurtFeedback})이 겪은 것과 같은 거꾸로다.
+	 *
+	 * <p>그래서 판정은 {@link SharedHurtFeedback#shouldEcho} 하나를 같이 쓴다. 넘기는 「다룬
+	 * 피해」는 줄어든 양에서 <b>몫이 깎은 양을 뺀 것</b>이고, 「미룬 양」은 지난 바퀴 뒤로 완충이
+	 * 미뤄 간 양이다. 그래서 몫만 들어온 바퀴는 0 이라 안 뜨고, 처음 맞은 바퀴는 체력이 안 줄었어도
+	 * 미룬 양으로 뜬다. 피해량 자체는 알림 꾸러미에 없다({@code DamageAlertPayload} 는 이름과
+	 * 표시 시간뿐) — 「미뤄진 총량」을 따로 실어 보낼 칸이 없고, 이름이 뜨는 순간이 처음 맞은
+	 * 순간이면 그것으로 알림의 뜻이 선다.
+	 *
+	 * <p>완충이 없는 사람은 두 값이 늘 0 이라 예전 조건(체력 0.01 넘게 감소 또는 흡수 0.01 넘게
+	 * 소비)과 똑같이 판정된다.
+	 *
+	 * @param healthDelta        지난 바퀴 대비 체력 변화량. 음수면 줄었다
+	 * @param absorptionConsumed 피해로 소비된 흡수량
+	 * @param sliceLoss          그 사이 「완충」 몫이 깎은 체력·흡수({@link SpreadDamageManager#takeSliceLoss})
+	 * @param deferredAmount     그 사이 「완충」이 미뤄 간 양({@link SpreadDamageManager#takeDeferredAlert})
+	 */
+	static boolean shouldAlert(float healthDelta, float absorptionConsumed, float sliceLoss,
+			float deferredAmount) {
+		float lost = Math.max(0.0F, -healthDelta) + Math.max(0.0F, absorptionConsumed);
+		float beyondSlices = lost - Math.max(0.0F, sliceLoss);
+		boolean noticeable = sliceLoss > 0.0F
+				? beyondSlices > 0.01F
+				: healthDelta < -0.01F || absorptionConsumed > 0.01F;
+		return SharedHurtFeedback.shouldEcho(false, noticeable ? beyondSlices : 0.0F, deferredAmount,
+				false);
 	}
 
 	public static void syncPlayerNow(UUID teamId, TeamState state, ServerPlayer player) {
@@ -235,7 +271,10 @@ public final class StatMirror {
 			float consumedAbsorption = consumedAbsorption(
 					last.absorption(), player.getAbsorptionAmount(), player.getMaxAbsorption());
 			recordDamage(team, player, last);
-			if (damageAlert && (playerHealthDelta < -0.01F || consumedAbsorption > 0.01F)) {
+			// 「완충」 기록은 알림을 끈 팀에서도 꺼내 둔다. 남겨 두면 바퀴 끝에 어차피 버려진다.
+			float sliceLoss = SpreadDamageManager.takeSliceLoss(player.getUUID());
+			float deferred = SpreadDamageManager.takeDeferredAlert(player.getUUID());
+			if (damageAlert && shouldAlert(playerHealthDelta, consumedAbsorption, sliceLoss, deferred)) {
 				TeamBroadcaster.broadcastDamageAlert(online, player.getPlainTextName());
 			}
 			deltas.add(new PlayerDelta(

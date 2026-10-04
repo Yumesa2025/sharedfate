@@ -2,14 +2,17 @@ package com.sharedfate.sync;
 
 import com.sharedfate.SharedFateMod;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.particles.PowerParticleOption;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.random.WeightedList;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LightningBolt;
@@ -25,6 +28,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -177,12 +181,12 @@ import java.util.UUID;
  *       <td>{@link #slowStruck} — 상태이상을 안 걸고 <b>이동 속도를 직접 깎는다</b></td></tr>
  * </table>
  *
- * <p>⚠ <b>세로를 더하는 곳은 {@link #liftCross} 하나다.</b> 날개 퍼덕이기({@link #shove})와 공허
- * 흡입({@link #pullSuck})은 세로를 <b>읽어서 내려 보내기만</b> 한다 — 그 둘은 <b>미는</b> 패턴이라
- * 띄우면 마찰이 빠져 섬 밖으로 나간다({@link #AIRBORNE_PUSH_SCALE}). 십자는 <b>밀지 않으므로</b>
- * 그 사고가 성립하지 않는다.
+ * <p>⚠ <b>세로를 더하는 곳은 {@link #liftCross} 하나다.</b> 날개 퍼덕이기({@link #shove})는 세로를
+ * <b>읽어서 내려 보내기만</b> 하고, 공허 흡입({@link #pullSuck})은 2026-10-04 저녁부터 <b>세로를 아예
+ * 안 보낸다</b>(수평 한 벌을 더하게 보낸다) — 그 둘은 <b>미는</b> 패턴이라 띄우면 마찰이 빠져 섬 밖으로
+ * 나간다({@link #AIRBORNE_PUSH_SCALE}). 십자는 <b>밀지 않으므로</b> 그 사고가 성립하지 않는다.
  *
- * <p>⚠⚠ <b>「읽은 그대로」가 아니다 — {@link TrialVelocity#syncedVertical} 을 지난다.</b> 서버가 들고 있는
+ * <p>⚠⚠ <b>날개의 세로는 「읽은 그대로」가 아니다 — {@link TrialVelocity#syncedVertical} 을 지난다.</b> 서버가 들고 있는
  * {@code deltaMovement} 는 <b>우리 것이 아니고</b>, 최후의 저항에서는 바닐라 드래곤이 매 틱
  * 거기에 세로 {@code +0.2} 를 쌓아 둔다. 그 쌓인 값을 그대로 내려 보내면 사람이 하늘로 날아간다 —
  * 2026-10-04 에 사람이 본 것이 그것이다.
@@ -253,6 +257,17 @@ public final class DragonLastStandPatterns {
 	 * {@code 0.3 · ADD_MULTIPLIED_TOTAL} 이라 <b>1.3배</b>다(바이트코드로 확인했다).
 	 */
 	static final double SPRINT_MULTIPLIER = 1.3;
+	/**
+	 * 사람의 입력이 가속이 되기 전에 한 번 깎이는 몫. 26.3 {@code LocalPlayer.modifyInput} 이 움직임
+	 * 벡터에 {@code 0.98} 을 곱한다(바이트코드로 확인했다 — {@code LivingEntity.applyInput} 의 0.98 은
+	 * 사람에게는 안 걸린다. {@code LocalPlayer.applyInput} 이 자기 카메라일 때 그것을 부르지 않는다).
+	 *
+	 * <p>2026-10-04 저녁에 더했다. 전에는 이것을 빼고 셌으므로 걷기 종착이 0.2203 · 달리기가 0.2863
+	 * 이었는데, 실제는 <b>0.2159 · 0.2806칸/틱</b>(초당 4.32 · 5.61칸 — 위키에 적힌 바닐라 걷기·달리기
+	 * 속도와 같다)이다. 2% 차이라 결론을 바꾸지는 않았지만, 공허 흡입의 셈이 틀렸던 날 함께 찾은
+	 * 것이라 같이 고쳤다 — {@link #SUCK_SPRINT_RATIO} 를 볼 것.
+	 */
+	static final double INPUT_DAMPING = 0.98;
 	/**
 	 * 바닥 감쇠. <b>블록 마찰 0.6 × 0.91</b> 이다.
 	 *
@@ -589,8 +604,8 @@ public final class DragonLastStandPatterns {
 	 * 「빨려들어간다」가 말뿐이 된다. 0.85 가 그 둘 사이였고, 그때의 답이 이랬다 — 달리면 1초에
 	 * +0.86칸, 걸으면 −0.47칸(끌려든다), 가만히 −4.87칸.
 	 *
-	 * <p>지우지 말 것. {@link #SUCK_PULL_KEEP} 과 곱해 {@link #SUCK_SPRINT_RATIO} 가 되므로, 이 값이
-	 * 남아 있어야 「0.5525 라는 어정쩡한 수가 어디서 왔나」가 스스로 말해진다.
+	 * <p>⚠ <b>기록이다 — 2026-10-04 저녁부터 곱하지 않는다</b>({@link #SUCK_SPRINT_RATIO} 를 볼 것).
+	 * 지우지 말 것. 「0.85 → 0.5525 → 0.8」이 스스로 말해지려면 셋이 다 남아 있어야 한다.
 	 */
 	static final double SUCK_SPRINT_RATIO_FIRST = 0.85;
 	/**
@@ -599,54 +614,82 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>「대신」이 요점이다 — 당김을 줄이고 그 자리를 <b>불 결계</b>({@link #SUCK_FIRE_RADIUS})가
 	 * 메운다. 당김만 보면 이 패턴이 쉬워졌지만 원 안에 머무는 값이 새로 생겼다.
+	 *
+	 * <p>⚠⚠ <b>기록이다 — 2026-10-04 저녁부터 곱하지 않는다.</b> 사람이 「너무 세다」고 느낀 것이
+	 * <b>세기가 아니라 배달 버그</b>였다({@link #pullSuck}). 0.85 에서 사람이 겪은 것은 「달려도 초당
+	 * 2.27칸 끌려든다」였고 이 0.65 를 곱한 뒤에도 「달려도 초당 0.62칸 끌려든다」였다 — 어느 쪽도
+	 * 설계 표의 「달리면 벗어난다」가 아니었다. 깎은 뜻(「달려서는 벗어나게」)은 {@link #SUCK_SPRINT_RATIO}
+	 * 가 그대로 지키고, 불 결계는 그대로 둔다.
 	 */
 	static final double SUCK_PULL_KEEP = 0.65;
 	/**
-	 * 당기는 세기가 달리기 입력의 몇 배인가. <b>{@code 0.85 × 0.65 = 0.5525}</b> 다
-	 * (2026-10-04 전에는 0.85).
+	 * 당기는 세기가 달리기 입력의 몇 배인가. <b>0.8</b> 이다
+	 * (0.85 → 2026-10-04 낮 0.5525 → 같은 날 저녁 0.8).
+	 *
+	 * <h2>⚠⚠ 0.5525 의 표는 거짓이었다 — 배달이 셈과 다르게 움직였다</h2>
+	 *
+	 * <p>사람 말(0.5525 로 플레이한 뒤): <b>「빨아들이는 거 아직 너무 셈. 적어도 반대로 달려서 저항할 수
+	 * 있을 만큼」</b>. 표에는 「달리면 +2.56칸/초」가 적혀 있었다. 표의 식 {@code v' = (v + a − 당김) × 감쇠}
+	 * 는 <b>사람의 속도 {@code v} 가 틱을 넘어 남는다</b>는 가정 위에 있었는데, 옛 {@link #pullSuck} 은
+	 * 매 틱 {@code syncVelocity} 로 <b>서버의 속도를 사람에게 덮어썼다</b>(26.3 {@code Entity.lerpMotion}
+	 * 이 {@code setDeltaMovement} 다). 서버의 속도에는 사람 입력이 없으므로 사람이 달려서 쌓은 속도가
+	 * 매 틱 지워지고, 남는 것은 <b>그 틱의 입력 한 번(0.1274)</b> 대 <b>당김 천장 통째(0.1582)</b>였다 —
+	 * 달려도 초당 0.62칸 끌려들었다. 지금은 당김을 <b>더하는</b> 길로 보낸다({@link #pullSuck}).
+	 *
+	 * <h2>왜 0.8 인가 — 걷기 문턱과 1.0 사이에서 <b>달리기 쪽 여유를 크게</b></h2>
+	 *
+	 * <p>배달을 고치면 표의 식이 참이 된다. 그러면 0.5525 는 <b>걸어도 초당 1.22칸을 벗어나</b>
+	 * 「빨아들인다」가 걷는 사람에게 말뿐이 된다. 지키는 선은 둘이다 — <b>달리면 벗어난다</b>(1.0 미만)와
+	 * <b>걸으면 끌려든다</b>({@code 1 ÷ 1.3 = 0.769} 초과). 그 사이에서 사람이 먼저 말한 쪽(「적어도
+	 * 달려서 저항할 수 있을 만큼」)에 여유를 몰아 0.8 로 잡았다. 달리기와 걷기의 차이(초당 1.29칸)는
+	 * 이 값과 무관하므로 그 차이를 어디서 0 으로 가르느냐만 고른 것이다.
 	 *
 	 * <table border="1">
-	 *   <caption>이 값이 만드는 답 (달리기 = 0.2863칸/틱 · 걷기 = 0.2203칸/틱 · 당김 천장 = 0.1582칸/틱)</caption>
-	 *   <tr><th>사람이 하는 것</th><th>1초에 벌거나 잃는 거리</th><th>0.85 였을 때</th></tr>
-	 *   <tr><td><b>달려서 반대쪽으로</b></td><td><b>+2.56칸</b> — 벗어난다</td><td>+0.86칸</td></tr>
-	 *   <tr><td>걸어서 반대쪽으로</td><td><b>+1.24칸 — 이제 벗어난다</b></td><td>−0.47칸(끌려든다)</td></tr>
-	 *   <tr><td>가만히</td><td>−3.16칸 — 끌려든다</td><td>−4.87칸</td></tr>
+	 *   <caption>이 값이 만드는 답 — 실제로 배달되는 모델(당김을 더하고 사람의 속도가 남는다).
+	 *     달리기 종착 0.2806 · 걷기 종착 0.2159 · 당김 천장 0.2245 칸/틱</caption>
+	 *   <tr><th>사람이 하는 것</th><th>1초에 벌거나 잃는 거리</th><th>5초(흡입 전체)</th>
+	 *     <th>0.5525 때 사람이 실제로 겪은 것</th></tr>
+	 *   <tr><td><b>달려서 반대쪽으로</b></td><td><b>+1.12칸</b> — 벗어난다</td><td>+5.6칸</td>
+	 *     <td>−0.62칸(끌려들었다)</td></tr>
+	 *   <tr><td>걸어서 반대쪽으로</td><td><b>−0.17칸</b> — 천천히 끌려든다</td><td>−0.9칸</td>
+	 *     <td>−1.20칸</td></tr>
+	 *   <tr><td>가만히</td><td><b>−4.49칸</b> — 끌려든다</td><td>−22칸</td><td>−3.16칸</td></tr>
 	 * </table>
 	 *
-	 * <p>⚠⚠ <b>「달리기만 답이다」가 깨졌다 — 사람이 그것을 고른 것이다.</b> 0.65 를 곱하면 당김 천장
-	 * (0.158)이 <b>걷기 종착 속도(0.220) 아래로</b> 내려가 걸어도 벗어난다. 전에는 시험이
-	 * 「걸으면 끌려든다」를 붙들고 있었고, 지금은 거꾸로 「걸어도 벗어난다 · 가만히 있으면 끌려든다」를
-	 * 붙든다({@code DragonLastStandPatternsTest.흡입은_달리기보다_약하다}). 대신 머무는 값이 불 결계로
-	 * 생겼다 — 걸어서 반경 3 → 4 를 넘기는 데 0.8초라 결계 한 대(20틱 주기)를 맞을까 말까다.
+	 * <p>⚠ <b>가만히 선 사람은 0.5525 때보다 세게 끌린다</b>(−3.16 → −4.49). 가만히 선 사람에게는 지울
+	 * 속도가 처음부터 없어서 버그가 그 줄만은 바꾸지 않았기 때문이다 — 사람이 그 줄을 「세다」고 하면
+	 * 이 값을 내리되 <b>0.769 아래로 내리면 걸어도 벗어난다</b>는 것을 먼저 말할 것.
 	 *
-	 * <p>5초 동안 달리면 12.8칸을 벌고 걸으면 6.2칸을 번다. 예고 3초 동안은 손이 닿지 않으므로 검은
-	 * 원을 보고 곧바로 달린 사람이 3초에 17칸을 가는 것은 그대로다.
+	 * <p>달리며 뛰어도 같다 — 공중에서는 당김이 {@link #AIRBORNE_PUSH_SCALE} 만큼 줄고 사람의 공중
+	 * 입력(0.026)도 감쇠 0.91 에서 거의 같은 종착(0.289)에 닿아, 공중 한 토막의 순이동이 초당 +1.29칸
+	 * 이다. 뛰기의 앞쪽 덤(0.2)은 그 위에 얹힌다.
 	 *
 	 * <p>1.0 을 넘기면 어떤 사람도 벗어날 수 없어 「달리면 벗어난다」가 그 자리에서 거짓이 된다 —
-	 * {@code DragonLastStandPatternsTest} 가 그 선을 붙들고 있다.
+	 * {@code DragonLastStandPatternsTest} 가 그 선과 0.769 선을 함께 붙들고 있다.
 	 */
-	static final double SUCK_SPRINT_RATIO = SUCK_SPRINT_RATIO_FIRST * SUCK_PULL_KEEP;
+	static final double SUCK_SPRINT_RATIO = 0.8;
 
 	/**
-	 * 매 틱 속도에 <b>더하는</b> 값(칸/틱).
+	 * 매 틱 사람의 속도에 <b>더하는</b> 값(칸/틱). {@code 0.1 × 1.3 × 0.98 × 0.8 = 0.10192}.
 	 *
 	 * <p>사람의 입력 가속과 <b>같은 자리에서 같은 감쇠를 지나므로</b> 비율을 그대로 곱하면 된다 —
-	 * 둘 다 {@code v' = (v + a) × 감쇠} 의 {@code a} 다. 그래서 「달리기의 55.25%」가 상수 한 줄이다.
+	 * 둘 다 {@code v' = (v + a) × 감쇠} 의 {@code a} 다. ⚠ 이 말이 참인 것은 <b>당김이 사람의
+	 * 속도에 더해질 때뿐</b>이다 — 덮어쓰면 {@code v} 가 매 틱 지워져 식이 무너진다({@link #pullSuck}).
 	 */
-	static final double SUCK_STEP = WALK_INPUT * SPRINT_MULTIPLIER * SUCK_SPRINT_RATIO;
+	static final double SUCK_STEP = WALK_INPUT * SPRINT_MULTIPLIER * INPUT_DAMPING * SUCK_SPRINT_RATIO;
 
 	/**
 	 * ⚠⚠ <b>안쪽으로 갈 수 있는 가장 빠른 속도(칸/틱). 이 한 줄이 이 패턴의 안전장치다.</b>
 	 *
 	 * <h2>세로 성분을 어떻게 다뤘는가 — <b>한 톨도 건드리지 않는다</b></h2>
 	 *
-	 * <p>사람의 세로 속도에 <b>한 톨도 더하지 않는다</b>({@link #pullSuck} 의 {@code motion.y}).
-	 * 날개 퍼덕이기가 같은 짓을 하지만 <b>당기는 쪽에는 이유가 하나 더 있다.</b>
+	 * <p>사람의 세로 속도에 <b>한 톨도 더하지 않는다</b>({@link #pullSuck} 이 보내는 더할 값의
+	 * {@code y} 가 {@code 0}). 날개 퍼덕이기가 같은 짓을 하지만 <b>당기는 쪽에는 이유가 하나 더 있다.</b>
 	 *
-	 * <p>⚠ 다만 <b>읽은 값을 그대로 내려 보내지는 않는다</b> — {@link TrialVelocity#syncedVertical} 이
-	 * <b>올리는 쪽만</b> 자른다. 바닐라 드래곤이 서버쪽 세로에 매 틱 {@code +0.2} 를 쌓아 두고 이
-	 * 원의 중심이 바로 그 상자 한가운데이기 때문이다. <b>당기는 세기와는 무관하고</b> 스스로
-	 * 올라가는 사람에게는 아무것도 바꾸지 않는다.
+	 * <p>⚠ 2026-10-04 저녁부터는 <b>세로를 내려 보내는 일 자체가 없다.</b> 전에는 서버의
+	 * {@code deltaMovement} 통째를 덮어써 보냈으므로 세로를 {@link TrialVelocity#syncedVertical} 로
+	 * 잘라야 했는데, 지금은 <b>더할 수평 한 벌</b>만 보낸다 — 바닐라 드래곤이 서버쪽에 쌓아 둔 세로가
+	 * 섞일 길이 없고, 스스로 뛴 사람의 점프도 한 톨도 안 깎인다.
 	 *
 	 * <ul>
 	 *   <li><b>아래로 당기면 사람을 땅에 눌러 넣는다.</b> 바닐라 충돌이 블록 속으로는 못 넣지만,
@@ -668,21 +711,44 @@ public final class DragonLastStandPatterns {
 	 * {@link #SUCK_STEP} 을 그냥 매 틱 더하면 종착 속도가 {@code a × 0.91 / 0.09} 로 바닥의
 	 * <b>8.4배</b>가 되어 점프한 사람이 중심으로 날아간다. 얼음을 깔아도(마찰 0.98) 같은 일이다.
 	 *
-	 * <p>막는 길은 <b>결과 속도에 천장을 씌우는 것</b>이고, 값은 <b>바닥에서의 종착 속도</b>
-	 * ({@code a / (1 − 감쇠)})로 잡았다. 그러면
+	 * <p>막는 길이 둘이고 둘 다 {@link #suckImpulse} 에 있다.
 	 *
 	 * <ul>
-	 *   <li><b>바닥에서는 천장이 걸리지 않는다</b> — 그것이 바로 바닥의 평형점이라 값이 같다</li>
-	 *   <li><b>공중·얼음에서는 천장이 걸려</b> 바닥과 <b>똑같은</b> 세기가 된다. 점프해도 이득도
-	 *       손해도 없다</li>
-	 *   <li>렉으로 틱이 몰려도 누적되지 않는다. 천장이 <b>속도</b>에 걸리므로 몇 번을 연달아
-	 *       더해도 이 값을 넘지 못한다</li>
+	 *   <li><b>공중이면 한 번치를 {@link #AIRBORNE_PUSH_SCALE} 만큼 깎는다.</b> 날개 퍼덕이기와 같은
+	 *       비율 · 같은 어휘다. 그러면 공중 종착이 바닥 종착과 같아지고, 바깥으로 달리며 뛴 사람도
+	 *       바닥에서 달리는 사람과 거의 같은 답을 받는다 — 점프가 이득도 손해도 아니다</li>
+	 *   <li><b>결과 속도에 천장을 씌운다.</b> 값은 <b>바닥에서의 종착 속도</b>({@code a / (1 − 감쇠)})다.
+	 *       바닥에서는 그것이 평형점이라 걸리지 않고, 얼음처럼 감쇠가 다른 바닥에서는 걸려
+	 *       <b>이 값보다 빨리 안쪽으로 가게 만들지 않는다.</b></li>
 	 * </ul>
+	 *
+	 * <p>⚠⚠ <b>「결과 속도」는 서버의 {@code deltaMovement} 가 아니다.</b> 서버는 사람의 이동을 사람
+	 * 입력 없이 따로 굴리므로(26.3 {@code Player.getMoveSimulationType} =
+	 * {@code AUTHORITATIVE_SIDE_AND_SERVER}, 서버의 {@code xxa}·{@code zza} 는 0) 그 수는 우리가
+	 * 더한 당김의 메아리일 뿐이다 — 옛 {@link #pullSuck} 이 그것을 「사람의 속도」로 읽었다. 지금은
+	 * {@code getKnownMovement()}(사람이 지난 틱에 <b>실제로</b> 간 만큼)에 그 바닥의 감쇠를 곱해
+	 * 사람의 지금 속도로 삼는다. 한 박자 늦은 수지만 평형점은 늦음과 무관하다
+	 * ({@code DragonLastStandPatternsTest} 가 늦음 0 · 1 · 3 · 6틱으로 굴려 본다).
 	 *
 	 * <p>{@code TrialEnderStorm.pushVelocity} 가 「어긋나는 방향이 언제나 <b>덜 미는 쪽</b>이어야
 	 * 한다」라고 적어 둔 그 태도와 같다.
 	 */
 	static final double SUCK_MAX_INWARD = SUCK_STEP / (1.0 - GROUND_DRAG);
+
+	/**
+	 * 당김을 싣는 패킷의 「폭발 중심」을 사람 머리 위로 이만큼 띄운다(칸).
+	 *
+	 * <p>당김은 {@code ClientboundExplodePacket} 의 {@code playerKnockback} 으로 보낸다({@link #pullSuck}).
+	 * 그 패킷은 받는 쪽에서 <b>입자 하나</b>를 중심에 반드시 찍는다(26.3
+	 * {@code ClientPacketListener.handleExplosion} → {@code ClientLevel.addParticle}). 소리는
+	 * {@code playSound = false} 로 끄고 블록 조각은 빈 목록이라 안 나오지만 그 입자 하나는 끌 깃발이 없다.
+	 *
+	 * <p>26.3 {@code ClientLevel.doAddParticle} 이 카메라에서 <b>32칸</b>(제곱 1024) 넘는 입자를 버리므로
+	 * ({@code ParticleType.getOverrideLimiter()} 가 거짓인 종류만 — {@code ASH} 가 그렇다) 그보다 멀리
+	 * 두면 <b>아무것도 안 그려진다.</b> 64 는 그 두 배다. 이 패턴의 연출은 이미 점 예산 안에서 짜여
+	 * 있으니 매 틱 사람마다 입자를 하나씩 더하지 않는다.
+	 */
+	static final double SUCK_PACKET_HIDE_LIFT = 64.0;
 
 	/**
 	 * 검은 원을 채우는 색.
@@ -2638,9 +2704,44 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>닿는 거리 끝(20칸)에서 세기가 뚝 끊기는 것은 남아 있다. 지대가 마지막 반변 12 로 좁혀지면
 	 * 그 경계가 <b>지대 밖</b>이라 아무도 그 자리에 없고, 지대가 넓은 앞구간에서만 드러난다.
+	 *
+	 * <h2>⚠⚠ 당김을 <b>덮어쓰지 않고 더한다</b> (2026-10-04 저녁)</h2>
+	 *
+	 * <p>사람 말: <b>「빨아들이는 거 아직 너무 셈. 적어도 반대로 달려서 저항할 수 있을 만큼」</b>. 표에는
+	 * 「달리면 초당 +2.56칸」이 적혀 있었는데 사람은 달려도 끌려갔다. <b>값이 아니라 배달이 셈과 달랐다.</b>
+	 * 26.3 바이트코드로 따라간 길이다.
+	 *
+	 * <ol>
+	 *   <li>옛 줄은 서버쪽 {@code deltaMovement} 에 당김을 더하고 {@code syncVelocity} 를 켰다.
+	 *       {@code ServerEntity.sendChanges} 가 그 깃발을 보면 {@code ClientboundSetEntityMotionPacket}
+	 *       ({@code getDeltaMovement()} 통째)을 <b>본인에게도</b> 보낸다 — 매 틱이다</li>
+	 *   <li>받는 쪽 {@code ClientPacketListener.handleSetEntityMotion} → {@code Entity.lerpMotion} →
+	 *       {@code setDeltaMovement} 다. <b>더하지 않고 바꿔 끼운다</b></li>
+	 *   <li>서버의 {@code deltaMovement} 에는 <b>사람 입력이 없다.</b> 서버도 사람의 이동을 굴리지만
+	 *       ({@code AUTHORITATIVE_SIDE_AND_SERVER}) 서버쪽 {@code xxa}·{@code zza} 는 0 이고, 움직임 패킷은
+	 *       자리({@code setKnownMovement})만 넣고 속도는 안 넣는다. 그러니 서버의 그 수는 <b>우리가 더한
+	 *       당김의 메아리</b>뿐이고 매 틱 당김 천장(0.1582)에 붙어 있었다</li>
+	 *   <li>그래서 사람이 달려서 쌓은 속도가 <b>매 틱 지워졌다.</b> 한 틱에 남는 것은 그 틱의 입력 한 번
+	 *       (달리기 0.1274)뿐이고 그것이 0.1582 를 못 이겨 <b>달려도 초당 0.62칸 · 걸으면 1.20칸
+	 *       끌려들었다.</b> 가만히 선 사람(초당 3.16칸)만 표와 같았다 — 지울 속도가 없으니까</li>
+	 * </ol>
+	 *
+	 * <p>날개 퍼덕이기({@link #shove})는 같은 덮어쓰기를 <b>12틱에 한 번</b> 하므로 사이의 11틱 동안
+	 * 사람 입력이 살아 있다. 매 틱 덮어쓰는 것은 여기 하나였다.
+	 *
+	 * <p>그래서 바닐라가 <b>사람에게 넉백을 더할 때 쓰는 길</b>로 보낸다 — {@code ClientboundExplodePacket}
+	 * 의 {@code playerKnockback}. 받는 쪽이 {@code Entity.pushFromExplosion} → {@code push} 로
+	 * <b>지금 속도에 더한다</b>(26.3 바이트코드로 확인했다). 바닐라 폭발이 사람을 밀 때 쓰는 바로 그
+	 * 필드다. 소리는 {@code playSound = false} 에 빈 소리까지 겹쳐 끄고, 블록 조각은 빈 목록이라 안
+	 * 나오며, 남는 입자 하나는 {@link #SUCK_PACKET_HIDE_LIFT} 가 안 보이는 자리로 보낸다.
+	 *
+	 * <p>⚠ 덕분에 <b>서버의 {@code deltaMovement} 를 아예 안 건드린다.</b> {@code syncVelocity} 도 안 켜므로
+	 * 바닐라 드래곤이 서버쪽에 쌓아 둔 세로·수평이 배달될 길이 없고({@link TrialVelocity} 의 「지나는 자리」
+	 * 에서 이 메서드가 빠졌다), 사람의 점프도 한 톨도 안 깎인다.
 	 */
 	private static void pullSuck(ServerLevel end, List<ServerPlayer> members, Vec3 center,
 			int step) {
+		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
 		for (ServerPlayer member : members) {
 			if (member.isSpectator()) {
 				continue;
@@ -2654,23 +2755,17 @@ public final class DragonLastStandPatterns {
 			}
 			double outX = dx / from;
 			double outZ = dz / from;
-			Vec3 motion = member.getDeltaMovement();
-			double pull = suckStep(motion.x * outX + motion.z * outZ);
+			// 사람이 지난 틱에 실제로 간 만큼. 서버의 deltaMovement 는 사람 입력이 없는 서버 혼자의
+			// 수라 「사람의 속도」로 읽으면 안 된다 — 옛 줄이 그 수를 읽고 그 수로 덮어썼다.
+			Vec3 known = member.getKnownMovement();
+			double pull = suckImpulse(known.x * outX + known.z * outZ,
+					isAirborne(end, ground, member));
 			if (!(pull > 0.0)) {
 				continue;
 			}
-			// 세로를 위로 당기지 않는다. 당기면 사람이 들려 공중 감쇠에 들어가고 그때는 달려도
-			// 못 벗어난다 — SUCK_MAX_INWARD 를 볼 것.
-			// ⚠ 읽은 값을 그대로 돌려놓지도 않는다. 이 원은 드래곤 발밑이라 사람이 바닐라
-			// knockBack 상자 한가운데에 서는 자리이고, 쌓인 세로를 그대로 배달하면 날개
-			// 퍼덕이기와 똑같이 하늘로 간다 — TrialVelocity.syncedVertical 을 볼 것. 올리는 쪽만
-			// 자르므로 「세로를 안 건드린다」는 약속은 그대로다(스스로 올라가는 사람은 한 톨도 안
-			// 달라진다).
-			member.setDeltaMovement(motion.x - outX * pull,
-					TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
-					motion.z - outZ * pull);
-			// 켜지 않으면 서버 혼자 당긴 것이 되어 다음 틱에 제자리로 되돌아간다.
-			member.syncVelocity = true;
+			// 세로는 0 이다. 위로 당기면 사람이 들려 공중 감쇠에 들어가고 그때는 달려도 못
+			// 벗어난다 — SUCK_MAX_INWARD 를 볼 것.
+			sendPull(member, -outX * pull, -outZ * pull);
 			if (step % SUCK_BREATH_TICKS == 0) {
 				// 끌려가는 모습. 사람 발밑에서 흐르는 재다.
 				end.sendParticles(ParticleTypes.ASH, true, false,
@@ -2680,19 +2775,64 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
-	 * 이 틱에 실제로 더할 값(칸/틱). <b>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.</b>
+	 * 당김 한 번치를 그 사람의 <b>지금 속도에 더하게</b> 보낸다. 왜 이 패킷인지는 {@link #pullSuck} 에 있다.
+	 *
+	 * <p>⚠ {@code syncVelocity} 를 켜지 말 것. 켜면 {@code ServerEntity} 가 서버의 속도 통째로 같은
+	 * 사람의 속도를 다시 <b>덮어쓴다</b> — 고친 것이 그대로 되돌아간다.
+	 */
+	private static void sendPull(ServerPlayer member, double x, double z) {
+		if (member.connection == null) {
+			return;
+		}
+		member.connection.send(new ClientboundExplodePacket(
+				new Vec3(member.getX(), member.getY() + SUCK_PACKET_HIDE_LIFT, member.getZ()),
+				0.0F, 0, Optional.of(new Vec3(x, 0.0, z)), ParticleTypes.ASH,
+				Holder.direct(SoundEvents.EMPTY), WeightedList.of(), false));
+	}
+
+	/**
+	 * 이 틱에 그 사람에게 더할 값(칸/틱). <b>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.</b>
+	 *
+	 * <ul>
+	 *   <li><b>공중이면 한 번치를 {@link #AIRBORNE_PUSH_SCALE} 만큼 깎는다.</b> 감쇠 0.91 에서 같은 번치는
+	 *       바닥(0.546)의 다섯 배를 끌고 간다 — 날개 퍼덕이기가 같은 비율로 「점프하면 저 끝까지」를
+	 *       막는다</li>
+	 *   <li><b>천장은 결과 속도에 걸린다</b>({@link #suckStep} 과 같은 식). 사람의 지금 속도는
+	 *       {@code knownOutward × 그 바닥의 감쇠} 다 — 사람이 지난 틱에 간 거리(감쇠 전 속도)에 그 틱
+	 *       끝의 감쇠를 곱한 것이 이 틱이 시작할 때의 속도다</li>
+	 * </ul>
+	 *
+	 * <p>⚠ 깎는 것이 천장보다 <b>먼저</b>다. 거꾸로(천장을 씌운 뒤 깎기) 하면 공중에서 가만히 선 사람이
+	 * 천장의 바깥쪽 몫까지 깎여 바닥보다 약하게 끌린다 — 시험이 「공중 종착 == 바닥 종착」을 붙든다.
+	 *
+	 * @param knownOutward {@code getKnownMovement()} 의 <b>바깥쪽</b> 성분. 안쪽으로 가고 있으면 음수다
+	 * @param airborne     {@link #isAirborne} — 둘 중 하나라도 「떠 있다」면 참
+	 */
+	static double suckImpulse(double knownOutward, boolean airborne) {
+		double drag = airborne ? TrialEnderStorm.AIR_DRAG : GROUND_DRAG;
+		double step = airborne ? SUCK_STEP * AIRBORNE_PUSH_SCALE : SUCK_STEP;
+		return cappedPull(step, knownOutward * drag);
+	}
+
+	/**
+	 * 바닥 한 번치(칸/틱). <b>월드 없이 답이 정해지는 계산이라 시험이 직접 굴린다.</b>
 	 *
 	 * <p>천장은 <b>결과 속도</b>에 걸린다 — 안쪽 속도가 이미 {@link #SUCK_MAX_INWARD} 면 0 을
-	 * 돌려주고 그 사이면 천장까지만 더한다. 그래서 바닥·공중·얼음이 <b>같은 세기</b>가 된다.
+	 * 돌려주고 그 사이면 천장까지만 더한다.
 	 *
 	 * @param outwardSpeed 지금 속도의 <b>바깥쪽</b> 성분. 안쪽으로 가고 있으면 음수다
 	 */
 	static double suckStep(double outwardSpeed) {
+		return cappedPull(SUCK_STEP, outwardSpeed);
+	}
+
+	/** 천장을 씌운 한 번치. 식이 두 벌이 되지 않게 {@link #suckStep}·{@link #suckImpulse} 가 함께 부른다. */
+	private static double cappedPull(double step, double outwardSpeed) {
 		double room = SUCK_MAX_INWARD + outwardSpeed;
 		if (!(room > 0.0)) {
 			return 0.0;
 		}
-		return Math.min(SUCK_STEP, room);
+		return Math.min(step, room);
 	}
 
 	/**
@@ -3038,6 +3178,13 @@ public final class DragonLastStandPatterns {
 	 * 한 줄도 안 고쳤다</b> — 「들고 있던 가로 속도를 바꾸지 않는다」는 설계 약속을 그대로 두고
 	 * 구멍만 닫는 길이 그것이었기 때문이다. 못박은 시험:
 	 * {@code 띄워진_뒤_쌓인_수평을_안고_밀려도_섬_밖으로_못_나간다}.
+	 *
+	 * <p>⚠⚠ <b>2026-10-04 저녁에 {@link #pullSuck} 은 이 길을 떠났다</b> — 매 틱 덮어쓰는 배달이 사람의
+	 * 달리기를 지우고 있었다(그 메서드 설명). 같은 날 드러난 것 하나가 여기에도 걸린다: 서버의
+	 * 「들고 있던 가로」는 <b>사람의 가로가 아니다</b>(서버는 사람 입력 없이 이동을 굴린다). 그러니 이
+	 * 메서드가 그것을 「읽은 그대로」 보내면 받는 쪽에서는 <b>사람이 달리던 가로가 서버의 수(대개 0
+	 * 근처)로 바뀐다</b> — 띄워지는 순간 달리던 속도를 잃는다. 한 번뿐이라 흡입처럼 무너지지는 않고,
+	 * 고치지 않았다(사람이 본 문제가 아니다).
 	 *
 	 * <p>⚠ <b>그래도 「남이 쌓아 둔 값을 믿지 않는다」는 규약은 남는다.</b> 뿌리를 끊은 것은
 	 * <b>최후의 저항에서만</b>이고(일반 전투의 날개 밀치기는 바닐라 동작이라 끊으면 안 된다),

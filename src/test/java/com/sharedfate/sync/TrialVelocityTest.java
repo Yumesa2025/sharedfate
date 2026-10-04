@@ -108,7 +108,11 @@ class TrialVelocityTest {
 	}
 
 	/**
-	 * ⚠⚠ <b>속도를 내려 보내는 자리 넷(파일 셋)이 모두 자름을 지난다.</b>
+	 * ⚠⚠ <b>속도를 내려 보내는 자리 셋(파일 셋)이 모두 자름을 지난다.</b>
+	 *
+	 * <p>⚠ 공허 흡입({@code pullSuck})은 2026-10-04 저녁에 빠졌다. 서버의 속도를 덮어써 보내지 않고
+	 * 바닐라 폭발의 {@code playerKnockback} 으로 수평 한 벌을 <b>더하게</b> 보내므로 남이 쌓아 둔 세로가
+	 * 섞일 길이 없다 — {@code DragonLastStandPatternsTest.흡입은_속도를_덮어쓰지_않고_더하게_보낸다}.
 	 *
 	 * <p>순수 함수 시험은 함수가 맞는지만 보고, 그 함수를 <b>안 부르면</b> 아무것도 못 잡는다.
 	 * 2026-10-04 에 실제로 그랬다 — 날개 번치와 공허 흡입만 자름을 지나고 「엔더폭풍」·「착지
@@ -121,7 +125,7 @@ class TrialVelocityTest {
 	 */
 	@Test
 	void 속도를_내려보내는_자리_넷이_모두_자름을_지난다() {
-		// 자리는 넷이고 파일은 셋이다 — DragonLastStandPatterns 가 둘(날개 번치·공허 흡입)을 든다.
+		// 자리는 셋이고 파일도 셋이다 — DragonLastStandPatterns 는 날개 번치 하나를 든다.
 		for (String owner : new String[] {"DragonLastStandPatterns", "TrialEnderStorm",
 				"TrialLandingShock"}) {
 			String bytes = read("/com/sharedfate/sync/" + owner + ".class");

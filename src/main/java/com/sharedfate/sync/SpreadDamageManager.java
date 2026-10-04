@@ -58,9 +58,42 @@ import java.util.concurrent.ConcurrentHashMap;
  * ({@code damage_taken_from})이 미뤄 둔 몫을 다른 종류로 오해한다. 표시는 원래 피해원을 그대로
  * 들고 다시 넣을 수 있다.
  *
+ * <h2>난이도 배율과 방패는 처음 맞을 때 한 번만 — 가로채는 자리가 방패 바로 뒤인 까닭</h2>
+ * <p>26.3 바이트코드로 본 플레이어 피해의 순서는 이렇다.
+ *
+ * <pre>
+ *   ServerPlayer.hurtServer → Player.hurtServer
+ *       scalesWithDifficulty 면 난이도 배율(51~107행: 평화 0, 쉬움 min(x/2+1, x), 어려움 x*3/2)
+ *       → invokespecial Avatar.hurtServer(120행) — Avatar 에 선언이 없어 LivingEntity.hurtServer
+ *   LivingEntity.hurtServer
+ *       HEAD                         ← 증강·「난이도 상승」 배율({@code LivingEntityPerkDamageMixin})
+ *       79  applyItemBlocking(amount) ← 방패. 막은 양을 돌려주며 방패 내구도·밀쳐내기도 여기서
+ *       88  amount -= 막은 양          ← 「완충」은 <b>바로 여기</b>서 남은 양을 미뤄 간다
+ *       185 무적시간 판정, 그 뒤 actuallyHurt·막는 소리(onBlocked)·피격 연출
+ * </pre>
+ *
+ * <p>그래서 처음 맞을 때 미뤄 가는 양은 <b>난이도 배율이 이미 곱해진 뒤의 값</b>이다. 그런데
+ * 몫을 다시 넣는 {@link #deliver} 는 {@code victim.hurtServer} 를 불러 위 사슬을 처음부터 다시
+ * 탄다 — 예전에는 몫마다 난이도 배율이 또 곱해져서 어려움의 몹 피해가 1.5배가 아니라 2.25배가
+ * 됐다(쉬움은 몫이 2 를 넘으면 오히려 덜 들어갔다). 지금은 몫이
+ * {@code LivingEntity.hurtServer} 에 닿는 순간 {@link #sliceArrival} 이 {@code Player} 가 다시
+ * 곱한 값을 버리고 <b>넣으려던 몫 그대로</b>를 돌려준다. {@code Player} 의 갈래를 피할 길은
+ * 없으니(invokespecial 이다) 타고 내려온 뒤에 되돌리는 것이다.
+ *
+ * <p>방패도 같은 모양의 버그였다. 예전에는 HEAD 에서 피해를 0 으로 바꿔 넘겨서
+ * {@code applyItemBlocking} 이 막을 양이 없었다 — 완충을 가진 사람은 <b>처음 맞을 때 방패로
+ * 막지 못했고</b>, 거꾸로 나뉜 몫이 들어올 때 방패를 들고 있으면 <b>몫이 막혔다.</b> 사람 말은
+ * 「이미 나눠 피해받을 때 방패 올려도 막으면 안 돼」(2026-10-04)다. 지금은 방패가 원래 피해를
+ * 바닐라 그대로 먼저 막고(내구도·막는 소리도 그 한 번), 막고 <b>남은 양만</b> 미룬다. 다 막았으면
+ * 미룰 것도 없다. 몫은 {@link #ignoresShield} 가 방패 판정을 건너뛰게 한다.
+ *
+ * <p>평화 난이도에서는 {@code Player} 가 몹 피해를 0 으로 만들고 {@code LivingEntity} 에 닿기
+ * 전에 끝내므로 애초에 미뤄지지 않는다. 낙하처럼 배율을 안 타는 피해는 처음에도 몫에도 배율이
+ * 없다. 남은 어긋남 하나 — 몫이 남은 동안 난이도를 평화로 바꾸면, 마지막 피해원이 몹이었을 때
+ * 남은 몫은 {@code Player} 가 0 으로 만들어 들어가지 않는다.
+ *
  * <h2>무적시간을 흉내 낸다 — 여기를 빠뜨리면 피해가 몇 배가 된다</h2>
- * <p>가로채는 자리가 {@code hurtServer} 의 <b>맨 앞</b>이라, 바닐라가 「이 피해는 무적시간에
- * 막힌다」고 판단하기 <b>전</b>이다. 그대로 큐에 넣으면 좀비 셋에게 같은 틱에 맞았을 때 바닐라는
+ * <p>가로채는 자리가 바닐라가 「이 피해는 무적시간에 막힌다」고 판단하기(185행) <b>전</b>이다. 그대로 큐에 넣으면 좀비 셋에게 같은 틱에 맞았을 때 바닐라는
  * 한 대만 세는데 큐는 세 대를 전부 센다. 그래서 {@link #gate} 가 바닐라의 판정을 그대로
  * 흉내 내어, <b>바닐라가 실제로 넣었을 몫만</b> 큐에 넣는다. 26.2 의 규칙은 이렇다.
  *
@@ -96,14 +129,18 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <h2>알면서 받아들인 어긋남</h2>
  * <ul>
- *   <li>가로챈 피해는 {@code hurtServer} 에 0 으로 넘어가므로 그 호출이 {@code false} 를
+ *   <li>가로챈 피해는 방패 판정 뒤로 0 으로 넘어가므로 그 호출이 {@code false} 를
  *       돌려준다. 때린 몹 입장에서는 「맞지 않았다」라서 <b>넉백이 걸리지 않는다</b>. 0 대신
  *       아주 작은 값을 넘기면 넉백은 살릴 수 있지만, 그 값만큼 공유 체력과 흡수가 미세하게
  *       깎이고 장비 내구도가 한 번 더 닳는다. 미뤄 둔 피해는 <b>아직 도착하지 않은 것</b>이므로
  *       0 이 맞다고 보았다.</li>
  *   <li>피격 연출(붉은 번쩍임·화면 기울기·피격음·넉백)은 <b>처음 맞은 그 한 번만</b> 난다.
- *       나뉜 몫은 바닐라의 「쿨타임 안 추가 피해」 갈래로 넣어 체력만 조용히 깎는다.
- *       자세한 까닭은 {@link #deliver} 에 있다.</li>
+ *       나뉜 몫은 바닐라의 「쿨타임 안 추가 피해」 갈래로 넣어 체력만 조용히 깎고, 팀원에게
+ *       뿌리는 피격 연출({@link SharedHurtFeedback})도, 화면 왼쪽 아래의 피격 알림
+ *       ({@code StatMirror})도 몫에서는 나가지 않는다. 자세한 까닭은
+ *       {@link #deliver} 에 있다. 다만 체력이 줄었다는 꾸러미를 받은 클라이언트가 스스로
+ *       화면을 한 번 기울이는 것({@code LocalPlayer.hurtTo})은 서버가 막을 길이 없어 몫마다
+ *       남는다 — 소리는 나지 않는다.</li>
  *   <li>몫을 넣을 때마다 방어구 내구도가 한 번씩 닳는다. 나눈 횟수만큼 닳는다는 뜻이다. 몫을
  *       1초 간격으로만 넣는 이유가 여기에도 있다.</li>
  *   <li>몫마다 방어구 계산을 다시 지나므로, 한 번에 맞았을 때보다 방어구가 조금 더 많이
@@ -127,6 +164,50 @@ public final class SpreadDamageManager {
 	 */
 	private static final ThreadLocal<Boolean> DELIVERING = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
+	/**
+	 * 지금 돌고 있는 {@code hurtServer} 호출에서 미뤄 간 양. 키는 맞은 사람의 UUID 다.
+	 *
+	 * <p>미룬 피해는 {@code hurtServer} 에 0 으로 넘어가서, 같은 호출 꼬리의
+	 * {@code AFTER_DAMAGE} 가 「아무 피해도 없었다」로 본다. 팀원에게 피격 연출을 뿌리는
+	 * {@link SharedHurtFeedback} 이 그 0 을 그대로 믿으면 <b>처음 맞은 순간</b>에 팀원 화면에 아무것도
+	 * 안 뜬다. 그래서 「이번 0 은 사실 이만큼을 미룬 것이다」를 여기 적어 두고 그쪽이 꺼내 간다.
+	 *
+	 * <p>적는 곳은 {@link #capture}, 지우는 곳은 꺼낼 때({@link #takeDeferredHit})와 <b>다음
+	 * {@link #intercept} 맨 앞</b>이다. 호출이 꼬리까지 못 가고 끝나면(무적·즉시 취소) 꺼내 갈
+	 * 사람이 없어 표시가 남는데, 같은 사람의 다음 피해는 반드시 {@code intercept} 를 먼저 지나므로
+	 * 거기서 지워져 엉뚱한 피해로 새지 않는다.
+	 */
+	private static final Map<UUID, Float> DEFERRED_HITS = new ConcurrentHashMap<>();
+
+	/**
+	 * 지금 넣고 있는 몫이 <b>누구에게 얼마</b>인가. 몫을 넣는 중이 아니면 비어 있다.
+	 *
+	 * <p>{@link #DELIVERING} 은 「지금 몫을 넣는 중인가」만 알아서, 그 사이에 다른 엔티티가 맞는
+	 * 피해(가시 인챈트가 때린 쪽을 찌르는 것 따위)와 몫을 가르지 못한다. 난이도 배율을 되돌리고
+	 * 방패를 건너뛰는 일은 <b>몫을 받는 그 사람</b>에게만 해야 하므로 대상을 함께 든다.
+	 */
+	private static final ThreadLocal<SliceInFlight> IN_FLIGHT = new ThreadLocal<>();
+
+	/**
+	 * 피격 알림({@code StatMirror} 가 보내는 「○○ 피격」)이 다음에 볼 체력 감소 가운데 <b>몫이
+	 * 깎은 양</b>. 키는 몫을 받은 사람의 UUID 다.
+	 *
+	 * <p>알림은 피해 사건이 아니라 「지난 틱보다 체력이 줄었는가」를 보고 뜬다. 그래서 예전에는
+	 * 체력이 그대로인 처음 맞은 순간에는 안 뜨고, 체력이 실제로 깎이는 몫마다 떴다 — 팀원
+	 * 피격음({@link SharedHurtFeedback})과 똑같이 거꾸로였다. 몫이 깎은 만큼을 여기 적어 두면
+	 * 그쪽이 빼고 본다. 적는 곳은 {@link #deliver}, 꺼내는 곳은 {@link #takeSliceLoss}.
+	 */
+	private static final Map<UUID, Float> SLICE_LOSS = new ConcurrentHashMap<>();
+
+	/**
+	 * 피격 알림이 다음에 볼 동안 미뤄 간 양의 합. 키는 맞은 사람의 UUID 다.
+	 *
+	 * <p>{@link #DEFERRED_HITS} 와 적는 순간은 같지만({@link #noteDeferredHit}) 사는 길이가 다르다.
+	 * 그쪽은 같은 {@code hurtServer} 호출의 꼬리에서 꺼내 가고, 이쪽은 다음 {@code StatMirror}
+	 * 한 바퀴가 꺼내 간다. 꺼내 가지 못한 것은 그 바퀴 끝의 {@link #forgetAlertLedger} 가 버린다.
+	 */
+	private static final Map<UUID, Float> DEFERRED_FOR_ALERT = new ConcurrentHashMap<>();
+
 	private static boolean warned;
 	/** 사망 정리 쪽 경고는 따로 센다. 가로채기 경고와 원인이 다르다. */
 	private static boolean deathWarned;
@@ -139,14 +220,22 @@ public final class SpreadDamageManager {
 	/**
 	 * 지금 들어온 피해를 미뤄 둘 것인지 정한다.
 	 *
-	 * <p>{@link com.sharedfate.mixin.LivingEntityPerkDamageMixin} 이 {@code hurtServer} 진입
-	 * 시점에 부른다. 넘어오는 값은 증강 배율과 난이도 배율이 <b>이미 반영된</b> 피해량이다. 배율을
-	 * 미리 먹여 두어야 미뤄 둔 몫을 다시 넣을 때 배율을 두 번 곱하지 않는다.
+	 * <p>{@link com.sharedfate.mixin.LivingEntityPerkDamageMixin} 이 {@code hurtServer} 안에서
+	 * <b>방패 판정 바로 뒤</b>(88행, {@code amount -= 막은 양})에 부른다. 넘어오는 값은 바닐라 난이도
+	 * 배율({@code Player.hurtServer})·증강 배율·「난이도 상승」 배율이 <b>이미 반영되고</b>, 방패가
+	 * 막은 만큼이 <b>이미 빠진</b> 피해량이다. 배율을 미리 먹여 두어야 미뤄 둔 몫을 다시 넣을 때
+	 * 배율을 두 번 곱하지 않고(다시 곱해지는 바닐라 난이도 배율은 {@link #sliceArrival} 이
+	 * 되돌린다), 방패 뒤여야 처음 맞는 순간 방패가 바닐라처럼 막는다.
 	 *
 	 * @return 이번에 실제로 넣을 피해량. 미뤄 두었으면 0, 관여하지 않으면 {@code amount} 그대로
 	 */
 	public static float intercept(@Nullable Entity victim, @Nullable DamageSource source,
 			float amount) {
+		// 앞선 호출이 꼬리까지 못 가 남긴 「미룬 양」 표시를 새 호출마다 먼저 지운다. 몫을 넣는
+		// 중에도 지워야 하므로 아래 빠른 경로보다 앞이다.
+		if (victim != null) {
+			forgetDeferredHit(victim.getUUID());
+		}
 		if (!(amount > 0.0F) || !Float.isFinite(amount) || isDeliveringSlice()) {
 			return amount;
 		}
@@ -186,9 +275,9 @@ public final class SpreadDamageManager {
 		if (source != null && source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
 			return amount;
 		}
-		// 어차피 통째로 버려질 피해는 큐에 넣지 않는다. 버리는 판정은 같은 진입점의 @Inject 가
-		// 하는데 HEAD 에 붙은 두 주입의 순서는 정해져 있지 않아, 여기서 먼저 물어봐야 「버려질
-		// 피해가 4초 뒤에 되살아나는」 일이 없다.
+		// 어차피 통째로 버려질 피해는 큐에 넣지 않는다. 버리는 판정은 같은 진입점 HEAD 의 @Inject
+		// 가 한다. 가로채는 자리가 방패 뒤로 옮겨 와 HEAD 에서 취소된 피해는 여기까지 오지 않지만,
+		// 「버려질 피해가 4초 뒤에 되살아나는」 일은 한 번 더 막아 둔다.
 		if (discarded(player, source)) {
 			return amount;
 		}
@@ -213,7 +302,143 @@ public final class SpreadDamageManager {
 			ACTIVE.put(team.teamId(), spread);
 		}
 		spread.add(player, source, gate, slices);
+		noteDeferredHit(player.getUUID(), gate.accepted());
 		return 0.0F;
+	}
+
+	// ------------------------------------------------------------------ 미룬 피해의 피격 연출
+
+	/**
+	 * 이번 {@code hurtServer} 호출에서 이 사람의 피해를 이만큼 미뤘다고 적는다.
+	 *
+	 * <p>「미뤘다」를 아는 곳은 여기 하나고, 팀원 피격음({@link #takeDeferredHit})과 피격 알림
+	 * ({@link #takeDeferredAlert}) 둘 다 이 기록을 본다. 두 쪽 모두 「처음 맞은 순간에 한 번」을
+	 * 같은 판정({@code SharedHurtFeedback.shouldEcho})으로 가른다.
+	 */
+	static void noteDeferredHit(@Nullable UUID playerId, float accepted) {
+		if (playerId != null && accepted > 0.0F) {
+			DEFERRED_HITS.put(playerId, accepted);
+			DEFERRED_FOR_ALERT.merge(playerId, accepted, Float::sum);
+		}
+	}
+
+	// ------------------------------------------------------------------ 미룬 피해의 피격 알림
+
+	/**
+	 * 지난 {@code StatMirror} 한 바퀴 뒤로 이 사람의 피해를 얼마나 미뤘는지 꺼내고 지운다. 없으면 0.
+	 *
+	 * <p>처음 맞은 순간은 체력이 그대로라 알림이 체력만 보면 놓친다. 이 값이 0 보다 크면 체력이
+	 * 안 줄었어도 알린다 — 팀원 피격음이 {@link #takeDeferredHit} 를 보는 것과 같은 원리다.
+	 */
+	public static float takeDeferredAlert(@Nullable UUID playerId) {
+		return take(DEFERRED_FOR_ALERT, playerId);
+	}
+
+	/**
+	 * 지난 {@code StatMirror} 한 바퀴 뒤로 몫이 이 사람의 체력·흡수를 얼마나 깎았는지 꺼내고
+	 * 지운다. 없으면 0. 피격 알림은 체력 감소에서 이만큼을 빼고 본다.
+	 */
+	public static float takeSliceLoss(@Nullable UUID playerId) {
+		return take(SLICE_LOSS, playerId);
+	}
+
+	/**
+	 * 피격 알림 쪽 기록 중 꺼내 가지 않은 것을 버린다. {@code StatMirror} 한 바퀴 끝에 부른다.
+	 *
+	 * <p>그 바퀴가 보지 못한 사람(접속이 끊겼거나 팀이 이번 틱에 정리되는 중)의 기록이 남으면,
+	 * 다음에 그 사람이 진짜로 맞았을 때 엉뚱하게 빼거나 더하게 된다.
+	 */
+	public static void forgetAlertLedger() {
+		if (!SLICE_LOSS.isEmpty()) {
+			SLICE_LOSS.clear();
+		}
+		if (!DEFERRED_FOR_ALERT.isEmpty()) {
+			DEFERRED_FOR_ALERT.clear();
+		}
+	}
+
+	/** 몫 하나가 이 사람의 체력·흡수를 이만큼 깎았다고 적는다. */
+	static void noteSliceLoss(@Nullable UUID playerId, float lost) {
+		if (playerId != null && lost > 0.0F && Float.isFinite(lost)) {
+			SLICE_LOSS.merge(playerId, lost, Float::sum);
+		}
+	}
+
+	private static float take(Map<UUID, Float> ledger, @Nullable UUID playerId) {
+		if (playerId == null || ledger.isEmpty()) {
+			return 0.0F;
+		}
+		Float taken = ledger.remove(playerId);
+		return taken == null ? 0.0F : taken;
+	}
+
+	// ------------------------------------------------------------------ 나뉜 몫이 지나는 바닐라 갈래
+
+	/**
+	 * 몫이 {@code LivingEntity.hurtServer} 에 닿았을 때 그 피해량을 <b>넣으려던 몫 그대로</b>
+	 * 되돌린다. 몫이 아니면 받은 값 그대로다.
+	 *
+	 * <p>{@code LivingEntityPerkDamageMixin} 이 {@code hurtServer} HEAD 에서 부른다. 몫은
+	 * {@code ServerPlayer.hurtServer → Player.hurtServer} 를 지나 내려오는데, {@code Player} 가
+	 * 그 사이에 난이도 배율을 <b>또</b> 곱한다(26.3 51~107행). 미룬 양은 처음 맞을 때 이미 그
+	 * 배율이 곱해진 값이라, 그대로 두면 어려움에서 몹 피해가 원래의 1.5배가 아니라 2.25배가 된다.
+	 *
+	 * <p>되돌리는 것은 한 몫에 한 번, 몫을 받는 그 사람에게만이다. 같은 호출 안에서 다른 엔티티가
+	 * 맞거나(가시) 같은 사람이 한 번 더 맞는 피해는 원래 값 그대로 지나간다.
+	 *
+	 * @param self    지금 {@code hurtServer} 를 지나는 엔티티
+	 * @param arrived {@code Player} 의 난이도 갈래를 지나 도착한 값
+	 */
+	public static float sliceArrival(@Nullable Entity self, float arrived) {
+		if (!isDeliveringSlice()) {
+			return arrived;
+		}
+		SliceInFlight slice = IN_FLIGHT.get();
+		if (slice == null || slice.target != self || slice.arrived) {
+			return arrived;
+		}
+		slice.arrived = true;
+		return slice.amount;
+	}
+
+	/**
+	 * 이 엔티티의 방패 판정을 건너뛸 것인가. 미뤄 둔 몫을 그 사람에게 넣는 중일 때만 참이다.
+	 *
+	 * <p>{@code LivingEntityPerkDamageMixin} 이 {@code applyItemBlocking} HEAD 에서 부르고, 참이면
+	 * 「막은 양 0」으로 끝낸다. 사람 말 「이미 나눠 피해받을 때 방패 올려도 막으면 안 돼」
+	 * (2026-10-04) 그대로다 — 몫은 이미 맞은 피해를 나눠 넣는 것이다. 방패 내구도·밀쳐내기도
+	 * {@code applyItemBlocking} 안이라 함께 빠지고, 막는 소리({@code onBlocked})는 몫이 지나는
+	 * 「쿨타임 안」 갈래에서 원래 안 난다. 그래서 방패의 부수효과는 처음 맞은 그 한 번뿐이다.
+	 *
+	 * <p>몫이 하나도 없으면 첫 줄에서 곧바로 거짓이다.
+	 */
+	public static boolean ignoresShield(@Nullable Entity self) {
+		if (!isDeliveringSlice()) {
+			return false;
+		}
+		SliceInFlight slice = IN_FLIGHT.get();
+		return slice != null && slice.target == self;
+	}
+
+	/**
+	 * 이번 {@code hurtServer} 호출에서 이 사람의 피해를 얼마나 미뤘는지 꺼내고 지운다. 미루지
+	 * 않았으면 0.
+	 *
+	 * <p>{@link SharedHurtFeedback} 이 같은 호출 꼬리의 {@code AFTER_DAMAGE} 에서 부른다. 꺼내는
+	 * 순간 지우므로 한 번 미룬 피해에 팀원 연출이 두 번 나가는 일은 없다.
+	 */
+	public static float takeDeferredHit(@Nullable UUID playerId) {
+		if (playerId == null || DEFERRED_HITS.isEmpty()) {
+			return 0.0F;
+		}
+		Float taken = DEFERRED_HITS.remove(playerId);
+		return taken == null ? 0.0F : taken;
+	}
+
+	private static void forgetDeferredHit(UUID playerId) {
+		if (!DEFERRED_HITS.isEmpty()) {
+			DEFERRED_HITS.remove(playerId);
+		}
 	}
 
 	/**
@@ -463,6 +688,31 @@ public final class SpreadDamageManager {
 	 * 생기는 일이고, 그때를 위해 {@code hurtTime} 되돌리기와 {@code LivingEntityHurtSoundMixin}
 	 * 을 그대로 남겨 둔다(클라이언트 연출까지는 못 막는다).
 	 *
+	 * <h2>⚠ 바닐라 갈래만으로는 모자랐다 — 팀원에게 뿌리는 피격 연출</h2>
+	 * <p>126c004 에서 위 갈래로 바꾼 뒤에도 사람이 「아직도 여러 번 피격음이 난다」고 했다. 그
+	 * 판은 <b>둘이서</b> 했다. 소리는 바닐라가 아니라 이 저장소의 {@link SharedHurtFeedback} 에서
+	 * 나왔다. 그쪽은 {@code AFTER_DAMAGE} 에 붙어 맞은 사람을 뺀 팀원 전원에게
+	 * {@code ClientboundDamageEventPacket} 을 보내는데, Fabric 이 그 사건을
+	 * {@code hurtServer} <b>꼬리(TAIL)</b>에서 부르므로 연출 깃발과 상관없이 몫마다 돈다. 받은
+	 * 팀원 클라이언트는 {@code handleDamageEvent} 로 피격음·붉은 번쩍임·기울기를 낸다. 거꾸로
+	 * 처음 맞은 순간에는 피해가 0 으로 넘어가 그쪽이 건너뛰어서, <b>팀원에게는 맞은 순간엔 아무것도
+	 * 없고 그 뒤 8초 동안 매초 피격음이 났다.</b>
+	 *
+	 * <p>지금은 그쪽이 {@link #isDeliveringSlice()} 를 보고 몫을 건너뛰고, 처음 맞은 순간은
+	 * {@link #takeDeferredHit} 로 「미룬 양」을 알아 한 번 뿌린다. 판정은
+	 * {@code SharedHurtFeedback.shouldEcho} 한 곳이다. 이 저장소에서 피격 연출 꾸러미를 직접
+	 * 보내는 자리가 늘면 같은 판정을 지나야 한다 — {@code HurtFeedbackPathsTest} 가 그 자리를
+	 * 바이트코드로 세어 붙든다.
+	 *
+	 * <h2>몫은 {@code Player} 의 난이도 갈래와 방패를 다시 지난다</h2>
+	 * <p>{@code victim.hurtServer} 는 {@code Player.hurtServer} 부터 탄다. 거기서 난이도 배율이 다시
+	 * 곱해지고, {@code LivingEntity.hurtServer} 안에서는 방패 판정이 다시 돈다. 둘 다 처음 맞을 때
+	 * 이미 끝난 일이라, {@link #asSlice} 에 받는 사람과 몫을 함께 넘겨 {@link #sliceArrival}(배율을
+	 * 되돌림)과 {@link #ignoresShield}(방패를 건너뜀)가 그 사람에게만 듣게 한다. 까닭은 머리말
+	 * 「난이도 배율과 방패는 처음 맞을 때 한 번만」에 있다.
+	 *
+	 * <p>몫이 깎은 체력·흡수는 {@link #noteSliceLoss} 로 적어 피격 알림이 빼고 보게 한다.
+	 *
 	 * <p>쿨타임을 20 으로 채워 두므로 {@code LivingEntityPerkDamageMixin} 의 「호위」 낭비 방지
 	 * ({@code effectiveAmount})도 {@code lastHurt} = 0 을 보고 몫 전부를 실제 피해로 센다.
 	 * 쿨타임을 0 으로 두던 예전과 같은 값이다.
@@ -480,18 +730,44 @@ public final class SpreadDamageManager {
 		// 되돌린다. 쿨타임 안 갈래는 이 두 값을 건드리지 않는다.
 		int savedHurtTime = victim.hurtTime;
 		int savedHurtDuration = victim.hurtDuration;
-		DELIVERING.set(Boolean.TRUE);
+		// 피격 알림이 이 몫을 「새로 맞았다」로 읽지 않게, 몫이 깎은 양을 재어 둔다.
+		float before = victim.getHealth() + victim.getAbsorptionAmount();
 		try {
 			victim.damageCooldownTime = INVULNERABLE_TICKS;
 			access.sharedfate$setLastHurt(0.0F);
-			victim.hurtServer(level, actual, amount);
+			asSlice(victim, amount, () -> victim.hurtServer(level, actual, amount));
 		} finally {
-			DELIVERING.set(Boolean.FALSE);
 			victim.damageCooldownTime = saved;
 			access.sharedfate$setLastHurt(savedLastHurt);
 			victim.hurtTime = savedHurtTime;
 			victim.hurtDuration = savedHurtDuration;
+			noteSliceLoss(victim.getUUID(),
+					before - (victim.getHealth() + victim.getAbsorptionAmount()));
 		}
+	}
+
+	/**
+	 * 「몫을 넣는 중」 표시를 켠 채로 {@code body} 를 돌린다. 끝나면(터져도) 반드시 끈다.
+	 *
+	 * <p>표시를 켜는 자리는 여기 하나다. {@link #deliver} 도 시험도 이것을 지나므로, 시험이
+	 * 「몫을 넣는 중이면 팀원에게 피격 연출이 안 나간다」를 볼 때 생산 코드와 같은 표시를 본다.
+	 *
+	 * @param target 몫을 받는 사람. {@link #sliceArrival}·{@link #ignoresShield} 가 이 사람에게만 듣는다
+	 * @param amount 넣으려는 몫
+	 */
+	private static void asSlice(@Nullable Entity target, float amount, Runnable body) {
+		DELIVERING.set(Boolean.TRUE);
+		IN_FLIGHT.set(target == null ? null : new SliceInFlight(target, amount));
+		try {
+			body.run();
+		} finally {
+			DELIVERING.set(Boolean.FALSE);
+			IN_FLIGHT.remove();
+		}
+	}
+
+	private static void asSlice(Runnable body) {
+		asSlice(null, 0.0F, body);
 	}
 
 	/** 지금 미뤄 둔 몫을 다시 넣는 중인가. 큐가 하나도 없으면 첫 줄에서 곧바로 거짓이다. */
@@ -550,7 +826,11 @@ public final class SpreadDamageManager {
 	/** 서버가 멈출 때 미뤄 둔 몫을 모두 지운다. 다음 월드로 넘어가지 않게 한다. */
 	public static void reset() {
 		ACTIVE.clear();
+		DEFERRED_HITS.clear();
+		SLICE_LOSS.clear();
+		DEFERRED_FOR_ALERT.clear();
 		DELIVERING.remove();
+		IN_FLIGHT.remove();
 		warned = false;
 		deathWarned = false;
 	}
@@ -718,6 +998,24 @@ public final class SpreadDamageManager {
 		return spread == null ? 0.0F : spread.takeSlice();
 	}
 
+	/**
+	 * 시험이 「몫을 넣는 중」을 만들 때 쓴다. {@link #deliver} 가 쓰는 {@link #asSlice} 를 그대로
+	 * 지난다. {@code hurtServer} 는 살아 있는 플레이어가 있어야 불러 볼 수 있어, 그 자리에서
+	 * 돌았을 {@code AFTER_DAMAGE} 를 시험이 {@code body} 안에서 직접 부른다.
+	 */
+	static void asSliceForTesting(Runnable body) {
+		asSlice(body);
+	}
+
+	/**
+	 * 시험이 「이 사람에게 이 몫을 넣는 중」을 만들 때 쓴다. {@link #deliver} 가 부르는 그
+	 * {@link #asSlice} 를 그대로 지난다. {@code body} 안에서 시험이 {@code hurtServer} HEAD 의
+	 * {@link #sliceArrival} 과 {@code applyItemBlocking} HEAD 의 {@link #ignoresShield} 를 부른다.
+	 */
+	static void asSliceForTesting(Entity target, float amount, Runnable body) {
+		asSlice(target, amount, body);
+	}
+
 	/** 이 팀의 표가 아직 남아 있는가. {@link #forget} 과 {@link #clearPending} 을 가르는 값이다. */
 	static boolean trackedForTesting(UUID teamId) {
 		return ACTIVE.containsKey(teamId);
@@ -815,5 +1113,18 @@ public final class SpreadDamageManager {
 	private static final class Guard {
 		float lastAmount;
 		int invulnerableTicks;
+	}
+
+	/** 지금 넣고 있는 몫 하나. {@link #asSlice} 동안만 산다. */
+	private static final class SliceInFlight {
+		final Entity target;
+		final float amount;
+		/** 이 몫이 이미 {@code hurtServer} HEAD 에 닿아 원래 값으로 되돌려졌는가. 한 번만 되돌린다. */
+		boolean arrived;
+
+		SliceInFlight(Entity target, float amount) {
+			this.target = target;
+			this.amount = amount;
+		}
 	}
 }

@@ -92,7 +92,7 @@ class TrialRouletteScreenTest {
 		}
 	}
 
-	/** 멈춘 뒤에는 언제나 결과가 보인다. 붙잡아 두는 60틱 내내. */
+	/** 멈춘 뒤에는 언제나 결과가 보인다. 붙잡아 두는 시간 내내. */
 	@Test
 	void 멈춘_뒤에는_계속_결과가_보인다() {
 		Spin spin = new Spin(4, 2, SPIN, HOLD);
@@ -309,6 +309,44 @@ class TrialRouletteScreenTest {
 		assertTrue(FIXED_HOLD < SPIN + HOLD,
 				"아무것도 안 움직이는 화면이 룰렛보다 오래 멈춰 서면 안 된다");
 		assertTrue(FIXED_HOLD <= TrialFreeze.MAX_TICKS, "얼음 상한을 넘으면 잘려서 어긋난다");
+	}
+
+	/**
+	 * 설명글이 떠 있는 시간이 <b>전보다 정확히 10초 길다.</b>
+	 *
+	 * <p>사람 말(2026-10-04): 「시련 설명글 좀 더 유지. 10초 더」. 설명글은 멈춘 뒤에만 뜨므로
+	 * 늘어난 것은 붙잡아 두는 시간이고, 설명이 뜨는 화면 둘(룰렛 · 굴리지 않는 화면)이 같이
+	 * 늘었다. 앞 숫자(60 · 100)는 늘리기 전 값이라 일부러 여기 적어 둔다 — 서버 상수만 읽으면
+	 * 누가 더한 몫을 빼도 이 시험이 같이 따라가 조용히 통과한다.
+	 */
+	@Test
+	void 설명글_시간이_전보다_10초_길다() {
+		int tenSeconds = 10 * 20;
+		assertEquals(tenSeconds, TrialFreeze.READ_EXTENSION_TICKS);
+		assertEquals(60 + tenSeconds, HOLD, "룰렛의 설명글 시간이 3초 + 10초가 아니다");
+		assertEquals(100 + tenSeconds, FIXED_HOLD, "굴리지 않는 화면의 설명글 시간이 5초 + 10초가 아니다");
+		// 화면이 실제로 설명을 보여 주는 틱 수도 그만큼이다 — 굴림이 끝난 틱부터 닫히는 틱 전까지.
+		Spin roulette = new Spin(4, 1, SPIN, HOLD);
+		int shown = 0;
+		for (int tick = 0; tick < roulette.totalTicks(); tick++) {
+			if (roulette.revealed(tick)) {
+				shown++;
+			}
+		}
+		assertEquals(60 + tenSeconds, shown, "설명이 떠 있는 틱 수가 붙잡는 시간과 다르다");
+	}
+
+	/**
+	 * 늘어난 룰렛 전체가 얼음 상한 안이다.
+	 *
+	 * <p>{@code TrialFreeze.begin} 은 {@link TrialFreeze#MAX_TICKS} 로 잘라 얼리는데 화면은 패킷의
+	 * 값을 그대로 센다. 상한을 넘으면 <b>얼음이 먼저 풀려 설명이 떠 있는 화면 뒤에서 드래곤이
+	 * 움직인다</b> — ESC 도 막힌 화면이다. 읽는 시간을 늘릴 때 가장 먼저 부딪히는 벽이라 붙든다.
+	 */
+	@Test
+	void 늘어난_룰렛도_얼음_상한_안이다() {
+		assertTrue(SPIN + HOLD <= TrialFreeze.MAX_TICKS,
+				"룰렛 " + (SPIN + HOLD) + "틱이 얼음 상한 " + TrialFreeze.MAX_TICKS + "틱을 넘는다");
 	}
 
 	/**

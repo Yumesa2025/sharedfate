@@ -1255,74 +1255,176 @@ class DragonLastStandPatternsTest {
 	}
 
 	/**
-	 * ⚠⚠ <b>당김이 35% 줄었다</b> — 사람이 2026-10-04 에 <b>「빨아들이는 힘이 35프로 감소시키는
-	 * 대신」</b>이라고 했다. {@code 0.85 × 0.65 = 0.5525}.
+	 * ⚠⚠ <b>세기의 내력이 남아 있다</b> — 0.85 → 0.5525(사람이 「35프로 감소」) → <b>0.8</b>.
+	 *
+	 * <p>0.5525 에서 사람이 「아직 너무 셈. 적어도 반대로 달려서 저항할 수 있을 만큼」이라고 했고, 원인이
+	 * 값이 아니라 <b>배달</b>이었다({@link #덮어쓰는_배달은_달리기를_지웠다}). 배달을 고치면 0.5525 는 걸어도
+	 * 벗어나므로 걷기 문턱 위로 다시 잡았다. 옛 둘은 <b>기록</b>이고 곱하지 않는다.
 	 *
 	 * <p>옛 값과 새 값을 둘 다 적어 둔다. 한쪽만 적으면 다음에 「또 줄여라」를 들은 사람이 무엇의
 	 * 몇 %인지 알 수 없다.
 	 */
 	@Test
-	void 흡입_세기가_35퍼센트_줄었다() {
+	void 흡입_세기의_내력이_남아_있다() {
 		assertEquals(0.85, DragonLastStandPatterns.SUCK_SPRINT_RATIO_FIRST, 1.0E-12,
-				"처음 정한 「약간」이다 — 지우면 0.5525 가 어디서 왔는지 사라진다");
-		assertEquals(0.65, DragonLastStandPatterns.SUCK_PULL_KEEP, 1.0E-12, "35% 를 빼고 남는 몫이다");
-		assertEquals(0.5525, DragonLastStandPatterns.SUCK_SPRINT_RATIO, 1.0E-12, "0.85 × 0.65 다");
-		double before = DragonLastStandPatterns.WALK_INPUT * DragonLastStandPatterns.SPRINT_MULTIPLIER
-				* 0.85 / (1.0 - DragonLastStandPatterns.GROUND_DRAG);
-		assertEquals(before * 0.65, DragonLastStandPatterns.SUCK_MAX_INWARD, 1.0E-12,
-				"당기는 천장이 정확히 35% 줄지 않았다 — 「힘을 35% 줄인다」가 그 천장의 말이다");
-		assertEquals(0.1582, DragonLastStandPatterns.SUCK_MAX_INWARD, 0.0001);
+				"처음 정한 「약간」이다 — 기록이다");
+		assertEquals(0.65, DragonLastStandPatterns.SUCK_PULL_KEEP, 1.0E-12,
+				"사람이 깎은 35% 다 — 배달 버그 위에서 나온 말이라 지금은 곱하지 않는다");
+		assertEquals(0.8, DragonLastStandPatterns.SUCK_SPRINT_RATIO, 1.0E-12,
+				"값이 바뀌었으면 SUCK_SPRINT_RATIO 의 표와 흡입은_달리고_걷고_서는_데_따라_갈린다 를 함께 고칠 것");
+		assertEquals(0.98, DragonLastStandPatterns.INPUT_DAMPING, 1.0E-12,
+				"26.3 LocalPlayer.modifyInput 의 0.98 이다");
+		assertEquals(0.10192, DragonLastStandPatterns.SUCK_STEP, 1.0E-9, "0.1 × 1.3 × 0.98 × 0.8 이다");
+		assertEquals(0.2245, DragonLastStandPatterns.SUCK_MAX_INWARD, 0.0001);
 	}
 
 	/**
-	 * ⚠⚠ <b>달리면 벗어나고, 이제 걸어도 벗어나며, 가만있으면 끌려든다.</b>
+	 * ⚠⚠ <b>고치기 전에 사람이 겪은 것</b> — 덮어쓰는 배달이 달리기를 지웠다.
 	 *
-	 * <p>사람이 처음 정한 것이 <b>「반대쪽으로 달려서 도망가야지」</b>이고 전에는 이 시험이 「걸으면
-	 * 끌려든다」까지 붙들었다(달리기만 답). 2026-10-04 에 사람이 당김을 35% 깎으면서 당김 천장(0.158)이
-	 * <b>걷기 종착(0.220) 아래</b>로 내려갔다 — <b>「달리기만 답이다」가 깨졌고 사람이 고른 것이다.</b>
-	 * 그 자리를 불 결계가 메운다({@link #불_결계가_흡입_구간에만_다섯_번_때린다}).
+	 * <p>옛 {@code pullSuck} 은 서버의 {@code deltaMovement} 에 당김을 더하고 {@code syncVelocity} 를
+	 * 켰다. 받는 쪽은 {@code Entity.lerpMotion} = {@code setDeltaMovement} 라 <b>바꿔 끼우고</b>, 서버의 그
+	 * 수에는 사람 입력이 없어 매 틱 당김 천장에 붙어 있었다. 그러면 사람이 한 틱에 가는 거리는
+	 * 「그 틱의 입력 한 번 − 천장」이다.
 	 *
-	 * <p>여전히 지키는 선 둘 — <b>달리면 벗어난다</b>(1.0 을 넘기면 거짓) · <b>가만있으면 끌려든다</b>
-	 * (당김이 0 이면 「빨아들인다」가 말뿐이다).
+	 * <p>여기서 그 수를 0.5525 로 다시 굴려 <b>사람 말과 맞는지</b> 본다 — 달려도 끌려들었다. 이 시험이
+	 * 깨지면 26.3 의 배달 길이 바뀌었는지부터 볼 것.
 	 */
 	@Test
-	void 흡입은_달리기보다_약하다() {
-		assertTrue(DragonLastStandPatterns.SUCK_SPRINT_RATIO > 0.0
-						&& DragonLastStandPatterns.SUCK_SPRINT_RATIO < 1.0,
-				"1.0 을 넘기면 어떤 사람도 벗어날 수 없다 — 실제 "
-						+ DragonLastStandPatterns.SUCK_SPRINT_RATIO);
+	void 덮어쓰는_배달은_달리기를_지웠다() {
+		double oldStep = DragonLastStandPatterns.WALK_INPUT * DragonLastStandPatterns.SPRINT_MULTIPLIER
+				* DragonLastStandPatterns.SUCK_SPRINT_RATIO_FIRST * DragonLastStandPatterns.SUCK_PULL_KEEP;
+		double oldCap = oldStep / (1.0 - DragonLastStandPatterns.GROUND_DRAG);
+		assertEquals(0.1582, oldCap, 0.0001, "0.5525 의 당김 천장이다");
 
-		// 바닥에서 한 틱에 실제로 나아가는 거리는 「입력 가속 ÷ (1 − 감쇠)」다.
-		double sprint = DragonLastStandPatterns.WALK_INPUT
-				* DragonLastStandPatterns.SPRINT_MULTIPLIER
-				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
-		double walk = DragonLastStandPatterns.WALK_INPUT
-				/ (1.0 - DragonLastStandPatterns.GROUND_DRAG);
-		double pull = DragonLastStandPatterns.SUCK_MAX_INWARD;
+		// 서버쪽: 사람 입력 없이 바닥 감쇠만 받고, 우리가 매 틱 천장까지 더한다. 그 수가 보내진다.
+		double server = 0.0;
+		for (int tick = 0; tick < 200; tick++) {
+			server *= DragonLastStandPatterns.GROUND_DRAG;
+			double room = oldCap + server;
+			server -= Math.max(0.0, Math.min(oldStep, room));
+		}
+		assertEquals(-oldCap, server, 1.0E-9, "서버의 수가 매 틱 천장에 붙어 있다 — 그것이 그대로 덮어써진다");
 
-		assertTrue(pull < sprint, "달려도 못 벗어난다 — 당김 " + pull + " · 달리기 " + sprint);
-		assertTrue(pull < walk, "사람이 35% 깎은 뒤로는 걸어도 벗어나야 한다 — 당김 " + pull
-				+ " · 걷기 " + walk + ". 다시 「걸으면 끌려든다」가 됐다면 SUCK_SPRINT_RATIO 의 표도 고칠 것");
-		assertTrue(pull > 0.1, "가만있어도 거의 안 끌려가면 「빨아들인다」가 말뿐이다 — 당김 " + pull);
+		// 받는 쪽: 속도가 그 수로 바뀐 뒤 그 틱의 입력 한 번만 더해지고 움직인다.
+		double sprintInput = sprintInput();
+		double walkInput = DragonLastStandPatterns.WALK_INPUT * DragonLastStandPatterns.INPUT_DAMPING;
+		assertEquals(-0.62, (server + sprintInput) * 20.0, 0.01,
+				"달려도 1초에 0.62칸 끌려들었다 — 사람이 「반대로 달려도 못 버틴다」고 한 그것이다");
+		assertEquals(-1.20, (server + walkInput) * 20.0, 0.01, "걸으면 1초에 1.20칸 끌려들었다");
+		assertEquals(-3.16, server * 20.0, 0.01, "가만히 선 사람만 표와 같았다 — 지울 속도가 없었다");
+	}
 
-		// 1초(20틱)에 벌거나 잃는 거리. SUCK_SPRINT_RATIO 의 표가 이 수다.
-		assertEquals(2.56, (sprint - pull) * 20.0, 0.01, "달리면 1초에 2.56칸을 번다");
-		assertEquals(1.24, (walk - pull) * 20.0, 0.01, "걸으면 1초에 1.24칸을 번다");
-		assertEquals(-3.16, -pull * 20.0, 0.01, "가만있으면 1초에 3.16칸 끌려든다");
+	/**
+	 * ⚠⚠ <b>달리면 벗어나고, 걸으면 천천히 끌려들며, 가만있으면 끌려든다.</b> 실제로 배달되는 모델로
+	 * 굴린다.
+	 *
+	 * <p>모델: 받는 쪽이 당김을 <b>지금 속도에 더하고</b>({@code ClientboundExplodePacket} →
+	 * {@code Entity.push}) 그 틱의 입력을 더한 뒤 움직이고 감쇠를 곱한다. 서버는 사람이 지난 틱에
+	 * 실제로 간 거리({@code getKnownMovement()})로 천장을 잰다 — 그 수는 <b>늦게</b> 오므로 늦음을
+	 * 0 · 1 · 3 · 6틱으로 바꿔 가며 같은 답이 나오는지 본다.
+	 *
+	 * <p>지키는 선 셋 — <b>달리면 벗어난다</b> · <b>걸으면 끌려든다</b>(사람의 「적어도」 위에 메인이 정한
+	 * 목표) · <b>가만있으면 끌려든다</b>.
+	 */
+	@Test
+	void 흡입은_달리고_걷고_서는_데_따라_갈린다() {
+		double ratio = DragonLastStandPatterns.SUCK_SPRINT_RATIO;
+		assertTrue(ratio < 1.0, "1.0 을 넘기면 어떤 사람도 벗어날 수 없다 — 실제 " + ratio);
+		assertTrue(ratio > 1.0 / DragonLastStandPatterns.SPRINT_MULTIPLIER,
+				"걷기 문턱(1 ÷ 1.3 = 0.769) 아래면 걸어도 벗어난다 — 실제 " + ratio);
+
+		double walkInput = DragonLastStandPatterns.WALK_INPUT * DragonLastStandPatterns.INPUT_DAMPING;
+		for (int lag : new int[] {0, 1, 3, 6}) {
+			double sprint = suckedPerSecond(sprintInput(), false, lag);
+			double walk = suckedPerSecond(walkInput, false, lag);
+			double stand = suckedPerSecond(0.0, false, lag);
+			assertEquals(1.12, sprint, 0.01, "늦음 " + lag + "틱: 달리면 1초에 1.12칸을 번다");
+			assertEquals(-0.17, walk, 0.01, "늦음 " + lag + "틱: 걸으면 1초에 0.17칸 끌려든다");
+			assertEquals(-4.49, stand, 0.01, "늦음 " + lag + "틱: 가만있으면 1초에 4.49칸 끌려든다");
+		}
 
 		// 5초 동안 달려서 버는 거리. 반경 4 를 넘기려면 한 칸이면 되므로 넉넉하다.
-		double gained = (sprint - pull) * DragonLastStandPatterns.SUCK_PULL_TICKS;
-		assertTrue(gained > DragonLastStandPatterns.SUCK_RADIUS,
-				"5초를 달려도 반경 4 를 못 벗어난다 — 실제 " + gained + "칸");
-		assertEquals(12.8, gained, 0.1, "값이 크게 달라졌으면 SUCK_SPRINT_RATIO 의 표도 고칠 것");
+		double gained = suckedPerSecond(sprintInput(), false, 0)
+				* DragonLastStandPatterns.SUCK_PULL_TICKS / 20.0;
+		assertTrue(gained > 0.0, "5초를 달려도 못 번다 — 실제 " + gained + "칸");
+		assertEquals(5.6, gained, 0.1, "값이 크게 달라졌으면 SUCK_SPRINT_RATIO 의 표도 고칠 것");
+	}
+
+	/**
+	 * ⚠ <b>점프해도 당김이 세지지 않는다</b> — 공중에서는 한 번치가 {@code AIRBORNE_PUSH_SCALE} 만큼 준다.
+	 *
+	 * <p>깎지 않으면 감쇠 0.91 에서 같은 번치가 바닥의 다섯 배를 끌고 가 「뛰면 빨려 들어간다」가 된다.
+	 * 가만히 떠 있는 사람의 종착이 바닥과 같고, 바깥으로 달리며 떠 있는 사람(공중 입력 0.026)도
+	 * 바닥에서 달리는 사람과 비슷한 답을 받아야 한다.
+	 */
+	@Test
+	void 공중에서도_흡입_세기가_바닥과_같다() {
+		assertEquals(suckedPerSecond(0.0, false, 0), suckedPerSecond(0.0, true, 0), 0.01,
+				"가만히 떠 있는 사람이 바닥과 다르게 끌린다 — 깎는 순서(깎고 나서 천장)를 볼 것");
+		double airSprint = suckedPerSecond(0.026, true, 0);
+		assertEquals(1.29, airSprint, 0.01, "바깥으로 달리며 떠 있으면 1초에 1.29칸을 번다");
+		assertTrue(airSprint > 0.0, "떠 있는 동안 끌려들면 「달리며 뛰기」가 벌이 된다");
+		assertEquals(DragonLastStandPatterns.SUCK_STEP * DragonLastStandPatterns.AIRBORNE_PUSH_SCALE,
+				DragonLastStandPatterns.suckImpulse(0.0, true), 1.0E-12, "공중 한 번치가 바닥의 0.198배다");
+		assertEquals(DragonLastStandPatterns.SUCK_STEP, DragonLastStandPatterns.suckImpulse(0.3, false),
+				1.0E-12, "바깥으로 달리는 중이면 손을 다 쓴다");
+		assertEquals(0.0, DragonLastStandPatterns.suckImpulse(
+						-DragonLastStandPatterns.SUCK_MAX_INWARD / DragonLastStandPatterns.GROUND_DRAG, false),
+				1.0E-12, "이미 천장 속도로 끌려가는 중이면 한 톨도 더하지 않는다");
+	}
+
+	/**
+	 * ⚠⚠ <b>당김이 더하는 길로 나간다.</b> 순수 함수 시험은 배달 길을 못 본다 — 이 패턴이 고장 난
+	 * 자리가 바로 그 길이었다.
+	 */
+	@Test
+	void 흡입은_속도를_덮어쓰지_않고_더하게_보낸다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("net/minecraft/network/protocol/game/ClientboundExplodePacket"),
+				"당김이 더하는 길(폭발의 playerKnockback)로 안 나간다 — syncVelocity 로 돌아갔다면"
+						+ " 사람이 달려서 쌓은 속도가 매 틱 다시 지워진다");
+		assertTrue(DragonLastStandPatterns.SUCK_PACKET_HIDE_LIFT > 32.0,
+				"패킷이 찍는 입자 하나가 32칸 안이면 사람 눈앞에 매 틱 보인다");
+	}
+
+	/** 바닥 달리기 입력 가속(칸/틱). {@code 0.1 × 1.3 × 0.98}. */
+	private static double sprintInput() {
+		return DragonLastStandPatterns.WALK_INPUT * DragonLastStandPatterns.SPRINT_MULTIPLIER
+				* DragonLastStandPatterns.INPUT_DAMPING;
+	}
+
+	/**
+	 * 받는 쪽을 굴려 본 <b>바깥쪽 순이동</b>(칸/초). 끌려들면 음수다.
+	 *
+	 * <p>한 틱: 당김이 지금 속도에 더해지고 → 입력이 더해지고 → 그만큼 움직이고 → 감쇠를 곱한다.
+	 * 서버는 {@code lag} 틱 전에 사람이 간 거리를 보고 당김을 정한다.
+	 */
+	private static double suckedPerSecond(double input, boolean airborne, int lag) {
+		double drag = airborne ? TrialEnderStorm.AIR_DRAG : DragonLastStandPatterns.GROUND_DRAG;
+		double[] moved = new double[lag + 1];
+		double velocity = 0.0;
+		double sum = 0.0;
+		for (int tick = 0; tick < 400; tick++) {
+			double known = moved[0];
+			velocity -= DragonLastStandPatterns.suckImpulse(known, airborne);
+			double step = velocity + input;
+			velocity = step * drag;
+			System.arraycopy(moved, 1, moved, 0, lag);
+			moved[lag] = step;
+			if (tick >= 300) {
+				sum += step;
+			}
+		}
+		return sum / 100.0 * 20.0;
 	}
 
 	/**
 	 * ⚠⚠ <b>점프해도 얼음을 깔아도 당김이 세지지 않는다.</b>
 	 *
 	 * <p>천장이 없으면 공중 감쇠(0.91)에서 종착 속도가 바닥의 <b>8.4배</b>가 되어 점프한 사람이
-	 * 중심으로 날아간다. {@code suckStep} 이 결과 속도에 천장을 씌우는 것이 그것을 막는 유일한
-	 * 장치다 — 근거는 {@code SUCK_MAX_INWARD} 에 있다.
+	 * 중심으로 날아간다. {@code suckStep} 이 결과 속도에 천장을 씌우는 것이 그것을 막는 장치 하나이고
+	 * (다른 하나는 공중 비율 — {@link #공중에서도_흡입_세기가_바닥과_같다}), 근거는
+	 * {@code SUCK_MAX_INWARD} 에 있다.
 	 */
 	@Test
 	void 흡입_세기에_천장이_있다() {
@@ -1888,6 +1990,8 @@ class DragonLastStandPatternsTest {
 	 * {@code syncVelocity} 를 켠다 — 곧 바닐라 {@code EnderDragon.knockBack} 이 쌓아 둔 수평을
 	 * <b>본인에게 배달하면서 동시에 그 사람을 공중(감쇠 0.91)으로 띄우고 낙하 피해까지 면제</b>
 	 * 하는 자리였다. {@code shove} 는 수평을 <b>덮어쓰므로</b> 거기서는 세로로만 샜다.
+	 * ⚠ {@code pullSuck} 은 2026-10-04 저녁에 이 길을 떠났다 — 서버의 속도를 아예 안 보내고 수평 한 벌을
+	 * 더하게 보낸다({@link #흡입은_속도를_덮어쓰지_않고_더하게_보낸다}).
 	 *
 	 * <h2>⚠ 닫은 자리는 이 파일이 아니다 — <b>뿌리를 끊었다</b></h2>
 	 *
