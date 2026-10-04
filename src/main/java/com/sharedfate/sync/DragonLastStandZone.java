@@ -1,13 +1,9 @@
 package com.sharedfate.sync;
 
-import com.sharedfate.SharedFateMod;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.border.WorldBorder;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.phys.Vec3;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.List;
@@ -15,7 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 「최후의 저항」의 <b>안전지대</b>. 월드 보더로 그린다.
+ * 「최후의 저항」의 <b>안전지대</b>. <b>나갈 수 있는 원</b>이다 — 월드 보더를 쓰지 않는다.
  *
  * <h2>패턴이 아니라 혼자 도는 시계다</h2>
  *
@@ -24,59 +20,48 @@ import java.util.UUID;
  * {@link DragonLastStand} 는 이 파일에 매 틱 {@link #tick} 을 넘기기만 하고, 고르는 쪽은
  * {@link #clock} 이 돌려주는 답 두 개만 본다.
  *
- * <h2>왜 월드 보더인가</h2>
+ * <h2>⚠⚠ 2026-10-04 — 월드 보더를 버리고 「나갈 수 있는 원」으로 바꿨다</h2>
  *
- * <p>바닐라 보더의 파란 벽이 그대로 뜨고 축소 애니메이션도 공짜다. 우리가 파티클로 반경 42
- * 짜리 원을 그리면 한 틱에 수백 점이 나가는데({@code TrialLandingShock.MAX_POINTS_PER_TICK} 가
- * 440 이고 그것이 이미 꽉 찬 예산이다) 보더는 <b>점을 한 개도 쓰지 않는다.</b>
+ * <p>사람 말: <b>「안전지대가 사실상 보더라 나갈 수가 없어. 이거 좀 이상함」</b>. 고른 선택지가
+ * <b>「나갈 수 있는 원으로」</b>다 — 보더를 쓰지 않고 원(입자 벽)만 그린다. 밖으로 걸어 나갈 수 있고,
+ * 나가 있는 동안 피해를 받는다(배틀로얄 자기장 방식).
  *
- * <h3>26.3 에서 확인한 사실 — 보더는 차원마다 하나씩이다</h3>
+ * <p>전에는 엔드 월드 보더를 반경 42 → 32 → 22 → 12 로 줄였다. 바닐라 보더는 <b>안에 있는 사람이
+ * 밖으로 나가는 것을 막는 벽</b>이라(26.3 {@code Entity.collide} 가 「안이고 벽에서 2칸 안」이면
+ * 충돌 형상을 얹는다) 「밖」이 축소가 사람을 지나쳐 간 순간 말고는 생기지 않았다 — 밖 피해가
+ * 있으나 마나였고, 사람 눈에는 그냥 「갇혔다」였다.
  *
- * <p>바이트코드를 풀어 읽었다. {@code ServerLevel.getWorldBorder()} 가
- * {@code getDataStorage().computeIfAbsent(WorldBorder.TYPE)} 라, 보더는 <b>그 차원의
- * {@code SavedData}</b> 다. 그리고 {@code PlayerList.addWorldborderListener(ServerLevel)} ·
- * {@code PlayerList.sendLevelInfo(player, level)} 가 차원별로 붙고
- * {@code broadcastAll(packet, level.dimension())} 로 <b>그 차원 사람에게만</b> 나간다.
- *
- * <p>여기서 따라오는 것이 셋이다.
+ * <p>지금은 이렇게 나뉜다.
  *
  * <ul>
- *   <li><b>엔드 보더를 만져도 오버월드는 그대로다.</b> {@code PreStartRestrictions.applySpawnBorder}
- *       가 오버월드 보더를 스폰 50칸으로 조이는데, 그것과 부딪히지 않는다</li>
- *   <li><b>엔드에 있는 사람에게만 벽이 보인다.</b> 밖에 있는 팀원에게 파란 벽이 뜨는 일이 없다</li>
- *   <li>⚠ <b>보더는 월드 저장 파일에 남는다.</b> 「월드와 함께 사라진다」가 성립하지 않는다 —
- *       되돌리는 이야기는 아래 {@link #restore} 에 있다</li>
+ *   <li><b>판정</b> — {@link #outside}. 지대 중심에서 수평 거리가 {@link #radiusAt} 보다 크면 밖이다.
+ *       <b>원</b>이다 — 보더 시절의 「반변」·「내접원」 이야기가 전부 사라졌다</li>
+ *   <li><b>보이는 것</b> — {@link DragonLastStandZoneWall}. 같은 반경 둘레의 빨간 입자 기둥.
+ *       줄어드는 동안 실제 반경을 따라 움직인다</li>
+ *   <li><b>밖에 있는 사람의 되먹임</b> — 1초마다 그 사람에게만 <b>심장 박동</b>({@link #punish})</li>
  * </ul>
  *
- * <h3>⚠ 보더는 원이 아니라 <b>정사각형</b>이다</h3>
+ * <h3>보더를 되돌리는 안전장치를 두지 않았다 — 근거</h3>
  *
- * <p>그래서 문서의 「반경 12칸」은 <b>한 변의 절반</b>이다({@code size} = 24).
- * {@code PreStartRestrictions.lockDiameterBlocks} 가 「이 곱셈 하나가 가장 틀리기 쉬운
- * 자리」라고 적어 둔 그 곱셈이고, 여기서도 {@link #diameterOf} 한 곳에서만 곱한다.
+ * <p>보더를 만지던 코드(기억 → 줄이기 → 되돌리기)를 통째로 걷었다. 「이미 줄어든 보더가 저장된
+ * 월드」를 고쳐 주는 줄도 넣지 않았다. 근거가 넷이다.
  *
- * <p>모서리는 그만큼 멀다 — 반변 12 짜리 사각형의 모서리는 중앙에서 <b>17칸</b>이다. 「번개
- * 5개」가 반경 12 안에 들어가는지 셀 때는 <b>내접원(12)</b>으로 재야 안전하다.
- *
- * <h3>⚠ 벽은 <b>안에 있는 사람만</b> 막는다 — 그것이 넉백에 걸리는 천장 하나다</h3>
- *
- * <p>{@code Entity.collide} 와 {@code CollisionGetter.noCollision} 은 보더의 충돌 형상을
- * {@code WorldBorder.isInsideCloseToBorder(entity, box)} 가 참일 때만 얹는다. 그 물음은
- * <b>안에 있고 벽에서 2칸 안</b>일 때만 참이다. 곧
- *
- * <ul>
- *   <li>안에 있으면 벽이 밖으로 미는 것을 막는다 — 날개 퍼덕이기가 사람을 <b>지대 밖으로 밀어
- *       낼 수 없다.</b> 다만 <b>이것에 기대지 말 것</b>: 사각형이라 대각선 쪽 벽은 42×√2 = 59칸
- *       바깥이고, 그쪽으로는 벽이 아무것도 막지 않는다. 낙사를 막는 것은 여전히
- *       {@code TrialEnderStorm.pushDistance} 의 천장이다</li>
- *   <li>이미 밖에 있으면 벽이 없다 — 보더가 지나가 버린 사람이 벽에 갇히지 않고 되돌아올 수
- *       있다. 「밖에 있으면 초당 8」이 「피할 수 없는 죽음」이 아닌 근거가 이 한 줄이다</li>
- * </ul>
- *
- * <h2>보더 자체 피해는 끄고 우리 공식을 쓴다</h2>
- *
- * <p>26.3 {@code LivingEntity} 의 그 구간은 {@code damagePerBlock > 0} 일 때만 돈다. 그래서
- * {@link #apply} 가 {@code setDamagePerBlock(0)} 한 줄로 끈다. 켜 두면 밖으로 나간 거리에
- * 비례하는 바닐라 피해가 우리 초당 8 위에 겹쳐 얹힌다.
+ * <ol>
+ *   <li><b>배포된 적이 없다.</b> 보더를 만지던 코드는 {@code 89a843b} 에서 들어왔고 그 커밋을 품은
+ *       태그가 없다 — {@code feature/dragon-trials} 에만 있었다</li>
+ *   <li><b>그 코드를 실제로 돌린 월드 둘을 열어 봤다</b>(2026-10-04). 시험 서버
+ *       {@code C:\temp\sftrial\world} 와 개발용 {@code run/world} 의
+ *       {@code dimensions/minecraft/the_end/data/minecraft/world_border.dat} 가 둘 다 바닐라 기본값이다
+ *       (한 변 59,999,968 · 중심 0,0 · 칸당 피해 0.2)</li>
+ *   <li><b>남은 보더를 「우리 것」으로 가려낼 수 없다.</b> 고치려면 「중심이 포디움 근처이고 한 변이
+ *       84 이하이고 칸당 피해가 0」 같은 지문으로 짐작해 {@code Settings.DEFAULT} 로 덮어야 하는데,
+ *       그것은 옛 코드 스스로 금지한 일이다(운영자가 손으로 좁혀 둔 보더를 날린다). 이 파일이 다시
+ *       보더를 만지는 순간 「보더를 더는 건드리지 않는다」도 거짓이 된다</li>
+ *   <li><b>남아 있어도 손으로 한 줄이다.</b> 서버 콘솔에서
+ *       {@code execute in minecraft:the_end run worldborder set 59999968} — 옛 코드가 서버가 강제로
+ *       죽은 판에서 줄어든 보더를 「원래 값」으로 잘못 기억하는 구멍도 있었으므로(재기동하면 줄어든
+ *       보더를 기억했다가 그것으로 되돌렸다) 혹시 남았다면 이 한 줄이 맞는 답이다</li>
+ * </ol>
  *
  * <h2>⚠ 서버를 껐다 켜면 시계가 처음부터 다시 돈다</h2>
  *
@@ -87,7 +72,8 @@ import java.util.UUID;
  *
  * <p>대가는 운영자가 서버를 다시 켜면 115초가 되살아난다는 것이다. 막으려면 {@code beganAt} 을
  * {@code DragonTrialStore} 에 저장해야 하는데, 그러면 저장 파일의 모양이 바뀐다 — 필요해지면
- * 그때 하고, 지금은 이 문단이 그 사실의 유일한 기록이다.
+ * 그때 하고, 지금은 이 문단이 그 사실의 유일한 기록이다. 보더를 버린 뒤로는 <b>월드에 남는 것이
+ * 하나도 없으므로</b> 재시작이 남기는 것은 이 시계 하나뿐이다.
  */
 public final class DragonLastStandZone {
 
@@ -104,7 +90,7 @@ public final class DragonLastStandZone {
 	 * <ol>
 	 *   <li><b>진입하는 순간 밖에 있는 사람이 없다.</b> 섬 위든 기둥 꼭대기든 42 안이다.
 	 *       40 으로 잡으면 기둥에 올라가 있던 사람이 <b>진입 3초 무적이 풀리는 그 틱부터</b>
-	 *       초당 8 을 맞는다 — 화면도 자막도 없는 자리에서 그것은 「왜 아픈지 알 수 없는 피해」다</li>
+	 *       초당 8 을 맞는다</li>
 	 *   <li><b>첫 벽이 기둥 줄에 선다.</b> 사람이 「어디까지가 안인가」를 기둥으로 읽는다.
 	 *       반대로 44~45 로 잡으면 첫 벽이 통째로 허공 위에 서서 <b>첫 45초가 아무 일도 안 한다</b></li>
 	 *   <li><b>42 − 12 = 30 이 세 번에 정확히 10칸씩이다.</b> 걸음이 같아야 사람이 첫 축소
@@ -127,6 +113,11 @@ public final class DragonLastStandZone {
 	 * <p>한 걸음 10칸을 {@link #SHRINK_TICKS}(5초)에 좁히므로 <b>초당 2칸</b>이다. 걷는 속도가
 	 * 초당 4.3칸이라 <b>벽을 등지고 걸어도 따라잡히지 않는다</b> — 뛰어야만 살 수 있는 축소는
 	 * 「대응 불가」에 가깝다.
+	 *
+	 * <p>보더 시절에는 이 값이 정사각형의 <b>반변</b>이었다. 지금은 <b>원의 반경</b>이다 — 같은 숫자가
+	 * 모서리 방향으로 최대 17칸(반변 12 사각형의 모서리)까지 열어 주던 자리를 12 로 닫는다. 마지막
+	 * 지대 넓이가 576칸² → 452칸²(약 78%)로 줄었다. 상시 번개와 오브젝트 파도는 이미
+	 * <b>내접원(12)</b>으로 재 두었으므로 그쪽 셈은 그대로 맞다.
 	 */
 	static final double[] RADII = {START_RADIUS, 32.0, 22.0, 12.0};
 
@@ -177,7 +168,7 @@ public final class DragonLastStandZone {
 	 *
 	 * <p>초당 값이 적혀 있으므로 초에 한 번이다. 바닐라 피격 무적시간이 10틱이라 20틱은
 	 * <b>반드시 통과한다</b> — 더 촘촘하게 나누면(예: 10틱마다 절반) 무적시간에 먹혀 적힌
-	 * 값이 거짓이 된다.
+	 * 값이 거짓이 된다. 심장 박동도 같은 박자다.
 	 */
 	static final long OUTSIDE_TICK_INTERVAL = 20L;
 
@@ -209,52 +200,45 @@ public final class DragonLastStandZone {
 	 * <p><b>사람이 정한 값이다.</b> 날개 퍼덕이기가 사람을 미는데 유예가 없으면 밀린 그 자리에서
 	 * 밖 피해가 곧바로 겹친다.
 	 *
-	 * <p>⚠ 벽이 「안에 있는 사람」을 막으므로(클래스 설명) 넉백이 사람을 <b>지대 밖으로 밀어
-	 * 내는</b> 일은 사실 없다. 유예가 실제로 일하는 자리는 <b>이미 밖에 있는 사람이 또 밀릴
-	 * 때</b>와 <b>축소가 방금 지나가 버린 사람이 밀릴 때</b> 둘이다. 「밀려서 밖으로 나갔다」가
-	 * 아니라 「밀리는 동안은 안 아프다」로 읽을 것.
+	 * <p>보더 시절에는 벽이 안에 있는 사람을 막아 「밀려서 밖으로 나가는」 일이 거의 없었다. 원이 된
+	 * 뒤로는 <b>정말로 밀려 나간다</b> — 날개 퍼덕이기의 천장은 「섬 반경 32 안 · 땅이 이어진 데까지」
+	 * 라 마지막 지대(12)보다 한참 바깥까지 민다. 그래서 이 유예가 이제야 제 일을 한다.
+	 *
+	 * <p>⚠⚠ <b>2026-10-04 까지 이 유예는 한 번도 일하지 않았다.</b> {@link #noteShoved} 가 받은
+	 * 시각을 「이 시계의 원점」에서 잰다고 믿었는데 부르는 쪽({@code DragonLastStandPatterns.shove})이
+	 * 넘기는 것은 <b>패턴이 시작한 틱</b>이었다. 패턴은 시계가 돌고 최소 3초 뒤에 시작하므로 적힌 유예
+	 * 끝이 언제나 이미 지난 시각이었다. 지금은 <b>받은 {@code now} 로 절대 시각</b>을 적어 원점과
+	 * 무관하다 — {@code DragonLastStandZoneTest.넉백_유예가_패턴_시각과_무관하게_2초다} 가 그 경우를 붙든다.
 	 */
 	static final long SHOVE_GRACE_TICKS = 40L;
 
+	/**
+	 * 심장 박동의 크기. 1.0 이 바닐라 그대로다.
+	 *
+	 * <p>{@code entity.warden.heartbeat} 다 — 26.3 {@code sounds.json} 에서 {@code mob/warden/heartbeat_1~4}
+	 * 를 가리키고 <b>그 파일을 쓰는 다른 소리가 없다</b>(26.3 에셋 목록에서 ogg 넷을 확인했다). 이
+	 * 저장소가 쓰는 워든 소리 둘({@code WARDEN_SONIC_BOOM} · {@code WARDEN_DIG})과도 파일이 다르다.
+	 */
+	static final float HEARTBEAT_VOLUME = 1.0F;
+	/** 심장 박동의 음높이. 바닐라 그대로라 「심장 소리」로 바로 읽힌다. */
+	static final float HEARTBEAT_PITCH = 1.0F;
+
 	// ------------------------------------------------------------------ 상태
 
-	/**
-	 * ⚠ <b>진입 전의 보더.</b> 되돌릴 때 쓰는 유일한 근거다.
-	 *
-	 * <p>{@code WorldBorder.Settings.DEFAULT} 를 넣어 되돌리면 안 된다 —
-	 * {@code PreStartRestrictions.vanillaDefaultTarget} 이 「운영자가 손으로 정해 둔 보더를
-	 * 기억하지 못한다」고 스스로 적어 둔 그 함정이고, 그쪽은 오버월드라 그래도 넘겼지만 여기는
-	 * <b>엔드 보더를 우리가 처음으로 만지는 자리</b>라 넘길 이유가 없다.
-	 *
-	 * <p>{@code null} 이면 「우리가 아직 보더를 만지지 않았다」다. 되돌리는 쪽이 이 한 칸만
-	 * 보고 갈리므로 <b>만지기 전에 반드시 채우고, 되돌린 뒤에 반드시 비운다.</b>
-	 */
-	private static @Nullable WorldBorder.Settings remembered;
-
-	/** 지금 몰고 있는 최후의 저항이 시작한 틱. 바뀌면 처음부터 다시 세운다. */
+	/** 지금 몰고 있는 최후의 저항의 시계 원점. 바뀌면 처음부터 다시 세운다. */
 	private static long drivingSince = Long.MIN_VALUE;
 
-	/** 지금까지 실제로 시킨 축소 횟수. 틱을 건너뛰어도 빠짐없이 따라가게 한다. */
-	private static int orderedShrinks;
-
-	/** 사람마다의 넉백 유예가 끝나는 시각. */
+	/**
+	 * 사람마다의 넉백 유예가 끝나는 <b>절대 시각</b>(받은 {@code now} 의 틱).
+	 *
+	 * <p>시계 원점에서 잰 값을 적지 않는다 — 까닭은 {@link #SHOVE_GRACE_TICKS} 의 ⚠⚠.
+	 */
 	private static final Map<UUID, Long> SHOVE_GRACE = new HashMap<>();
 
 	private DragonLastStandZone() {
 	}
 
 	// ------------------------------------------------------------------ 월드 없이 도는 계산
-
-	/**
-	 * 반경(칸)을 보더 {@code size}(<b>한 변</b>)로 바꾼다.
-	 *
-	 * <p>⚠ 반경을 그대로 {@code setSize} 에 넘기면 지대가 <b>절반</b>이 된다.
-	 * {@code PreStartRestrictions.lockDiameterBlocks} 가 같은 곱셈을 같은 이유로 들고 있고,
-	 * {@code DragonLastStandZoneTest} 가 <b>두 곳의 답이 같은지</b>를 지킨다.
-	 */
-	static double diameterOf(double radius) {
-		return Math.max(0.0, radius) * 2.0;
-	}
 
 	/**
 	 * 걸음 {@code leg} 의 축소가 <b>시작</b>하는 시각(진입부터의 틱).
@@ -299,10 +283,12 @@ public final class DragonLastStandZone {
 	}
 
 	/**
-	 * 이 틱에 보이는 반경(칸). 축소 중이면 사이값이다.
+	 * 이 틱의 반경(칸). 축소 중이면 사이값이다.
 	 *
-	 * <p>판정에 쓰지 않는다 — 판정은 보더 자신에게 묻는다({@link #outside}). 이 함수는
-	 * <b>시험이 「정말 줄어들기만 하는가 · 끝값이 12 인가」를 물을 수 있게</b> 떼어 둔 것이다.
+	 * <p>⚠ <b>판정과 그림이 이 한 함수를 함께 본다.</b> 보더 시절에는 판정을 보더 자신에게 물어
+	 * 「보이는 벽과 아픈 자리가 어긋나지 않는다」를 지켰다. 이제 벽을 우리가 그리므로 같은 약속을
+	 * 「같은 함수」로 지킨다 — {@link #outside} 가 이 값으로 재고,
+	 * {@link DragonLastStandZoneWall#drawRadiusAt} 이 이 값(조금 앞선 시각)으로 그린다.
 	 */
 	static double radiusAt(long elapsed) {
 		if (elapsed < 0L) {
@@ -319,6 +305,16 @@ public final class DragonLastStandZone {
 			}
 		}
 		return RADII[RADII.length - 1];
+	}
+
+	/**
+	 * 지대 중심에서 {@code (dx, dz)} 만큼 떨어진 자리가 <b>밖</b>인가.
+	 *
+	 * <p><b>원</b>이다 — 수평 거리가 반경보다 크면 밖이고, 경계 위는 안이다. 세로는 보지 않는다
+	 * (공중에 떠 있어도 기둥 위에 있어도 같은 원이다 — 보더가 그랬던 것과 같다).
+	 */
+	static boolean outside(double dx, double dz, double radius) {
+		return dx * dx + dz * dz > radius * radius;
 	}
 
 	/**
@@ -342,18 +338,10 @@ public final class DragonLastStandZone {
 		return base + ESCALATION_PER_STEP * steps;
 	}
 
-	/**
-	 * 되돌릴 때 얹을 한 변의 길이.
-	 *
-	 * <p>기억해 둔 보더가 <b>움직이던 중</b>이었으면(운영자가 {@code /worldborder set X 30} 을
-	 * 돌려 둔 판) 그 애니메이션을 이어 주지 않고 <b>목표값에 세운다.</b> 이어 주려면 「몇 틱이
-	 * 남았는가」를 알아야 하는데 되돌리는 자리에는 시각이 없고, 중간 크기에 멈춰 세우는 것보다
-	 * 운영자가 적어 둔 목표가 그 사람의 뜻에 가깝다. 정지 상태였으면
-	 * {@code lerpTarget() == size()} 라 둘이 같은 값이다({@code StaticBorderExtent} 에서
-	 * 확인했다).
-	 */
-	static double restoredDiameter(WorldBorder.Settings settings) {
-		return settings.lerpTime() > 0L ? settings.lerpTarget() : settings.size();
+	/** 이 사람이 지금 넉백 유예 중인가. 받은 {@code now} 로 묻는다. */
+	static boolean inShoveGrace(UUID memberId, long now) {
+		Long until = SHOVE_GRACE.get(memberId);
+		return until != null && now < until;
 	}
 
 	// ------------------------------------------------------------------ 매 틱
@@ -361,89 +349,39 @@ public final class DragonLastStandZone {
 	/**
 	 * 매 틱. {@code DragonLastStand.tick} 이 붙박이 드래곤을 못박은 뒤에 부른다.
 	 *
+	 * <p>⚠ <b>월드에 쓰는 것이 하나도 없다.</b> 파티클과 소리와 피해뿐이라 저장 파일에 남는 것이 없고,
+	 * 그래서 되돌리는 줄(전에 있던 {@code restore} · {@code onServerStopping})도 없다.
+	 *
 	 * @param center  지대의 중심. 드래곤을 못박아 둔 자리다
-	 * @param beganAt 최후의 저항이 시작한 틱
+	 * @param beganAt 시계의 원점({@code Stand.clockBase}). 진입 연출 동안은 미래다
 	 */
 	static void tick(ServerLevel end, Vec3 center, List<ServerPlayer> members, long beganAt,
 			long now) {
-		WorldBorder border = end.getWorldBorder();
 		if (drivingSince == Long.MIN_VALUE) {
-			apply(end, border, center, beganAt);
+			drivingSince = beganAt;
+			SHOVE_GRACE.clear();
 		} else if (drivingSince != beganAt) {
-			// 남의 판이다. 보더도 드래곤도 차원에 하나뿐이라 두 판이 같은 벽을 서로 다른
-			// 시각으로 밀면 벽이 매 틱 처음 크기로 되돌아간다 — 먼저 든 판이 몰고 간다.
-			// 드래곤이 하나이므로 실제로 두 판이 동시에 열리는 서버는 singleTeamOnly 를 끈
-			// 서버뿐이고, 그때 늦게 든 팀은 지대 없이 싸운다.
+			// 남의 판이다. 드래곤이 차원에 하나라 중심도 하나뿐이고, 두 판이 같은 자리에 서로 다른
+			// 시각의 원을 그리면 원이 두 겹으로 뜬다 — 먼저 든 판이 몰고 간다. 실제로 두 판이 동시에
+			// 열리는 서버는 singleTeamOnly 를 끈 서버뿐이고, 그때 늦게 든 팀은 지대 없이 싸운다.
 			return;
 		}
 		long elapsed = now - beganAt;
+		// 진입 연출 동안(elapsed < 0)에도 원은 서 있다 — 사람이 「보더가 생기면서」라고 정한 순서다.
+		// 반경은 시작값 42 이고 밖 피해와 박동은 아래에서 막힌다.
+		DragonLastStandZoneWall.draw(end, center, elapsed, now);
 		if (elapsed < 0L) {
 			return;
 		}
-		// while 이다. 틱을 건너뛰어도(렉·시간 정지) 밀린 축소를 빠짐없이 따라간다 — if 로 두면
-		// 한 번 놓친 걸음이 영영 안 와 지대가 그 크기에 멈춘다.
-		while (orderedShrinks < LEG_END_TICKS.length
-				&& elapsed >= shrinkBeginsAt(orderedShrinks)) {
-			shrink(border, orderedShrinks++, elapsed, now);
-		}
 		if (elapsed % OUTSIDE_TICK_INTERVAL == 0L) {
-			punish(end, border, members, elapsed);
+			punish(end, center, members, elapsed, now);
 		}
 	}
 
 	/**
-	 * 보더를 우리 것으로 세운다. 진입한 틱과, 재시작 뒤 다시 세우는 틱에 한 번씩이다.
+	 * 밖에 있는 사람마다 심장 박동을 들려주고, <b>한 사람</b>에게 초당 값을 넣는다.
 	 *
-	 * <p>순서가 중요하다 — <b>기억이 먼저</b>다. 먼저 만지면 기억할 원래 값이 사라진다.
-	 */
-	private static void apply(ServerLevel end, WorldBorder border, Vec3 center, long beganAt) {
-		if (remembered == null) {
-			remembered = new WorldBorder.Settings(border);
-			SharedFateMod.LOGGER.info(
-					"[END] 엔드 월드 보더를 기억했습니다 — 한 변 {} · 중심 ({}, {}) · 칸당 피해 {}",
-					remembered.size(), remembered.centerX(), remembered.centerZ(),
-					remembered.damagePerBlock());
-		}
-		drivingSince = beganAt;
-		orderedShrinks = 0;
-		SHOVE_GRACE.clear();
-		// 중심은 드래곤을 못박아 둔 자리다. 카드 쪽 기하학(TrialRisks.arenaOffset ·
-		// TrialEnderStorm.pushDistance)은 중앙을 (0, 0) 으로 잡는데, 바닐라 엔드의 발판은
-		// atBottomCenterOf 때문에 (0.5, 0.5) 라 반 칸 어긋난다. 넉백 천장의 여유가 8칸이라
-		// 이 반 칸은 묻히고, 발판이 (0, 0) 이 아닌 판(fightOrigin 을 옮긴 월드)에서는 여기가
-		// 맞고 그쪽이 틀린다 — 지대는 드래곤을 중심으로 조여야 한다.
-		border.setCenter(center.x, center.z);
-		// 보더 자체 피해를 끈다. 켜 두면 바닐라가 「나간 거리 × 칸당 피해」를 우리 초당 8 위에
-		// 얹는다 — 26.3 LivingEntity 의 그 구간은 damagePerBlock > 0 일 때만 돈다.
-		border.setDamagePerBlock(0.0);
-		border.setSize(diameterOf(START_RADIUS));
-	}
-
-	/**
-	 * 한 걸음 좁힌다.
-	 *
-	 * <p>{@code lerpSizeBetween(지금, 목표, 남은 틱, 받은 틱)} 이다. 26.3 에서 그 셋째 인자가
-	 * <b>밀리초가 아니라 틱</b>인 것을 바이트코드로 확인했다 —
-	 * {@code MovingBorderExtent.update()} 가 {@code lerpProgress} 를 <b>1씩</b> 줄이고
-	 * {@code WorldBorderCommand.formatTicksToSeconds} 가 20 으로 나눈다.
-	 *
-	 * <p>남은 틱으로 넘기는 것은 밀려서 시작한 축소를 <b>제 시각에 끝내기</b> 위해서다. 0 이하면
-	 * 이미 끝났어야 하는 걸음이라 곧바로 세운다.
-	 */
-	private static void shrink(WorldBorder border, int leg, long elapsed, long now) {
-		double target = diameterOf(RADII[leg + 1]);
-		long remaining = SHRINK_TICKS - (elapsed - shrinkBeginsAt(leg));
-		if (remaining <= 0L) {
-			border.setSize(target);
-			return;
-		}
-		border.lerpSizeBetween(border.getSize(), target, remaining, now);
-	}
-
-	/**
-	 * 밖에 있는 사람 하나에게 초당 값을 넣는다.
-	 *
-	 * <h2>왜 <b>하나</b>인가</h2>
+	 * <h2>왜 피해는 <b>하나</b>인가</h2>
 	 *
 	 * <p>공유 체력에서 범위 피해는 팀원별로 그대로 합산된다({@code StatMirror.fold}). 밖에 있는
 	 * 사람 모두를 때리면 넷이 다 밖일 때 초당 32 라 무장하고도 6초에 전멸이고, 문서가
@@ -454,27 +392,46 @@ public final class DragonLastStandZone {
 	 * 값이 사람의 장비에 따라 틱마다 달라지고(감쇠는 한 방마다 걸린다), 「가장 멀리」는
 	 * 들쭉날쭉하지 않으면서 가장 잘못한 사람이 맞는다.
 	 *
+	 * <h2>심장 박동은 <b>밖에 있는 사람 모두</b>에게, <b>그 사람에게만</b></h2>
+	 *
+	 * <p>원이 된 뒤로는 「모르고 밖에 서 있는」 일이 생긴다 — 넉백에 밀려서, 축소가 지나가서, 뒤로
+	 * 걸으며 싸우다가. 맞는 사람은 피격 연출로 알지만 공유 체력이라 <b>깎이는 것은 팀 전체</b>이고,
+	 * 피해를 안 받은 나머지(유예 중이거나 더 멀리 나간 사람이 따로 있거나)는 제가 밖이라는 것을
+	 * 알 길이 없었다. 그래서 박동은 피해와 갈라 <b>「지금 밖이다」</b>만 말한다. 자막은 쓰지
+	 * 않는다(이 저장소의 규약 — 드래곤이 때리는 중에 지나가는 글자는 안 읽힌다).
+	 *
+	 * <p>{@code TrialWarning.playEach} 에 <b>그 사람 하나</b>만 넘긴다 — 안에 있는 팀원에게 박동이
+	 * 들리면 「내가 밖인가」가 흐려진다({@code TrialWarning.soundFor} 가 같은 판단).
+	 *
 	 * <p>피해원은 {@code lightningBolt()} 다. {@code DragonLastStandTest} 의
 	 * {@code 안전지대_밖은_초당_8이다} 가 그 피해원으로 셈을 해 두었으므로 여기를 바꾸면 그
 	 * 시험이 재는 값과 실제가 갈린다 — 무장 기준 초당 <b>0.81</b> 이고, 완전무장한 팀이 밖에서
-	 * 버틸 수 있는 시간이 약 25초다.
+	 * 버틸 수 있는 시간이 약 25초다. 이 피해원은 개체가 없어 <b>넉백이 없다</b> — 밖에서 맞아 더
+	 * 밖으로 밀리는 일이 없다.
 	 */
-	private static void punish(ServerLevel end, WorldBorder border, List<ServerPlayer> members,
-			long elapsed) {
+	private static void punish(ServerLevel end, Vec3 center, List<ServerPlayer> members,
+			long elapsed, long now) {
+		double radius = radiusAt(elapsed);
 		ServerPlayer worst = null;
-		double worstDistance = Double.MAX_VALUE;
+		double worstDistance = -1.0;
 		for (ServerPlayer member : members) {
-			if (member.isSpectator() || !outside(border, member)) {
+			if (member.isSpectator()) {
 				continue;
 			}
-			Long grace = SHOVE_GRACE.get(member.getUUID());
-			if (grace != null && elapsed < grace) {
+			double dx = member.getX() - center.x;
+			double dz = member.getZ() - center.z;
+			if (!outside(dx, dz, radius)) {
+				continue;
+			}
+			// 밖이다. 유예 중이어도 박동은 들린다 — 박동이 말하는 것은 「아프다」가 아니라 「밖이다」다.
+			TrialWarning.playEach(end, List.of(member), SoundEvents.WARDEN_HEARTBEAT,
+					HEARTBEAT_VOLUME, HEARTBEAT_PITCH);
+			if (inShoveGrace(member.getUUID(), now)) {
 				// 넉백 유예 중이다. 「밀리는 동안은 안 아프다」가 사람이 정한 것이다.
 				continue;
 			}
-			// 밖에서는 음수다(26.3 LivingEntity 가 같은 값으로 바닐라 피해를 잰다).
-			double distance = border.getDistanceToBorder(member.getX(), member.getZ());
-			if (distance < worstDistance) {
+			double distance = dx * dx + dz * dz;
+			if (distance > worstDistance) {
 				worstDistance = distance;
 				worst = member;
 			}
@@ -486,98 +443,31 @@ public final class DragonLastStandZone {
 	}
 
 	/**
-	 * 이 사람이 지대 밖인가.
+	 * 넉백으로 밀렸다. {@code DragonLastStandPatterns} 의 날개 퍼덕이기가 부른다.
 	 *
-	 * <p><b>보더 자신에게 묻는다.</b> 우리가 계산한 반경으로 재면 축소 애니메이션이 도는 동안
-	 * 눈에 보이는 벽과 아픈 자리가 어긋난다 — 「표식이 거짓말하지 않는다」가 이 저장소의
-	 * 약속이고, 여기서는 그 표식이 바닐라의 파란 벽이다.
-	 *
-	 * <p>세로는 보지 않는다. 보더는 원래부터 기둥이라 높이가 없다.
+	 * <p>⚠ {@code ignoredOrigin} 은 <b>쓰지 않는다.</b> 부르는 쪽이 패턴 시작 시각을 넘기는데, 그것을
+	 * 원점으로 쓰던 것이 2026-10-04 까지 유예를 통째로 죽여 두었다({@link #SHOVE_GRACE_TICKS} 의 ⚠⚠).
+	 * 인자를 지우면 남의 파일({@code DragonLastStandPatterns})을 고쳐야 해서 모양만 남겼다.
 	 */
-	private static boolean outside(WorldBorder border, ServerPlayer member) {
-		return !border.isWithinBounds(member.getX(), member.getZ());
+	static void noteShoved(UUID memberId, long ignoredOrigin, long now) {
+		SHOVE_GRACE.put(memberId, now + SHOVE_GRACE_TICKS);
 	}
 
-	/** 넉백으로 밀렸다. {@code DragonLastStandPatterns} 의 날개 퍼덕이기가 부른다. */
-	static void noteShoved(UUID memberId, long beganAt, long now) {
-		SHOVE_GRACE.put(memberId, now - beganAt + SHOVE_GRACE_TICKS);
-	}
-
-	// ------------------------------------------------------------------ 되돌리기
+	// ------------------------------------------------------------------ 비우기
 
 	/**
-	 * ⚠ <b>보더를 원래대로 되돌린다.</b> 월드가 살아 있어야 한다.
+	 * 전투가 닫히거나 월드가 바뀌거나 서버가 내려갈 때. 정적 상태만 비운다.
 	 *
-	 * <p>부르는 곳이 둘이다 — {@code DragonLastStand.onFightClosed}(드래곤이 사라진 틱)와
-	 * {@code DragonLastStand.onServerStopping}(저장 직전). {@code clearState} 에서는 부를 수
-	 * 없다: 그쪽은 {@code SERVER_STOPPED} 에서도 불려 레벨이 이미 닫혀 있다.
-	 *
-	 * <p>기억해 둔 것이 없으면 아무 일도 하지 않는다. 최후의 저항이 한 번도 안 열린 판에서
-	 * 보더를 바닐라 기본값으로 「고쳐 주는」 일이 없어야 한다.
-	 */
-	static void restore(@Nullable ServerLevel end) {
-		WorldBorder.Settings original = remembered;
-		if (original == null) {
-			forget();
-			return;
-		}
-		if (end == null) {
-			// 월드를 못 만진다. 기억은 그대로 들고 있는다 — 다음에 월드가 있는 자리에서 되돌린다.
-			return;
-		}
-		try {
-			WorldBorder border = end.getWorldBorder();
-			border.setCenter(original.centerX(), original.centerZ());
-			border.setDamagePerBlock(original.damagePerBlock());
-			border.setSafeZone(original.safeZone());
-			border.setWarningBlocks(original.warningBlocks());
-			border.setWarningTime(original.warningTime());
-			border.setSize(restoredDiameter(original));
-			if (original.lerpTime() > 0L) {
-				SharedFateMod.LOGGER.info(
-						"[END] 되돌린 보더가 움직이던 중이었습니다 — 애니메이션을 잇지 않고 목표 {} 에 세웠습니다",
-						original.lerpTarget());
-			}
-			SharedFateMod.LOGGER.info("[END] 엔드 월드 보더를 원래대로 되돌렸습니다 — 한 변 {} · 중심 ({}, {})",
-					restoredDiameter(original), original.centerX(), original.centerZ());
-		} catch (RuntimeException error) {
-			SharedFateMod.LOGGER.warn("엔드 월드 보더를 되돌리지 못했습니다.", error);
-		}
-		forget();
-	}
-
-	/**
-	 * 서버가 멈추기 직전. 저장보다 먼저 보더를 되돌린다.
-	 *
-	 * <p>{@code TrialFreeze.onServerStopping} 과 같은 자리에 같은 이유로 있다 —
-	 * {@code SERVER_STOPPED} 는 이미 늦다. 늦으면 <b>줄어든 보더가 저장 파일에 남아</b> 다음
-	 * 기동에 파란 벽이 그대로 뜬다.
-	 */
-	static void onServerStopping(@Nullable MinecraftServer server) {
-		restore(server == null ? null : server.getLevel(Level.END));
-	}
-
-	/**
-	 * 월드가 바뀌거나 서버가 내려갈 때. <b>기억만 버린다.</b>
-	 *
-	 * <p>월드를 만지지 않는다 — {@code DragonLastStand.clearState} 가 {@code SERVER_STOPPED}
-	 * 에서도 불린다. 보더를 되돌리는 것은 {@link #onServerStopping} 이 먼저 해 두었고,
-	 * 그 길을 못 지난 종료(강제 종료)에서는 다음 기동에 파란 벽이 남는다 — 그때는
-	 * {@code DragonLastStand.resume} 이 최후의 저항을 다시 세우므로 이 시계가 다시 몰고 간다.
+	 * <p>월드를 만지지 않는다 — 만질 것이 없다. {@code DragonLastStand.clearState} 가
+	 * {@code SERVER_STOPPED} 에서도 부르고, {@code DragonLastStand.onFightClosed} 도 부른다.
 	 */
 	static void clearState() {
-		forget();
-	}
-
-	private static void forget() {
-		remembered = null;
 		drivingSince = Long.MIN_VALUE;
-		orderedShrinks = 0;
 		SHOVE_GRACE.clear();
 	}
 
-	/** 시험이 들여다보는 곳. 지금 보더를 우리가 들고 있는가. */
-	static boolean holdsBorder() {
-		return remembered != null;
+	/** 시험이 들여다보는 곳. 지금 몰고 있는 판이 있는가. */
+	static boolean driving() {
+		return drivingSince != Long.MIN_VALUE;
 	}
 }

@@ -1,7 +1,6 @@
 package com.sharedfate.sync;
 
 import com.sharedfate.TestBootstrap;
-import net.minecraft.world.level.border.WorldBorder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,10 +20,15 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * 「최후의 저항」의 <b>안전지대</b>. 월드 없이 답이 정해지는 것만 여기서 굴린다.
  *
+ * <p>⚠ 2026-10-04 에 지대가 월드 보더를 버리고 <b>나갈 수 있는 원</b>이 됐다(사람 말 「안전지대가
+ * 사실상 보더라 나갈 수가 없어」). 보더를 되돌리던 시험들(정지한 보더 · 움직이던 보더 · 기본값 금지 ·
+ * 칸당 피해 끄기 · 반경을 지름으로 바꾸는 곱)은 붙들 대상이 사라져 지웠고, 대신 <b>보더를 만지지
+ * 않는다</b>를 바이트코드로 붙든다.
+ *
  * <p>⚠ {@code runClient} 가 이 환경에서 {@code 0xC0000005} 로 제목 화면에 닿기 전에 죽으므로
- * <b>파란 벽을 눈으로 확인할 수 없다.</b> 그래서 지대의 셈을 전부 순수 함수로 빼내 여기서
- * 붙든다 — 시간표 · 반경 · 밖 피해 · 되돌릴 값이 그것이고, 실제로 보더에 그 값이 들어가는지는
- * 서버를 띄워야 볼 수 있다.
+ * <b>빨간 입자 벽을 눈으로 확인할 수 없다.</b> 그래서 지대의 셈을 전부 순수 함수로 빼내 여기서
+ * 붙든다 — 시간표 · 반경 · 원 판정 · 밖 피해 · 유예가 그것이다. 벽의 점 수는
+ * {@code DragonLastStandZoneWallTest} 에 있다.
  */
 class DragonLastStandZoneTest {
 
@@ -66,16 +71,24 @@ class DragonLastStandZoneTest {
 		}
 	}
 
-	/** 반경을 지름으로 바꾸는 곱셈이 <b>이 저장소의 다른 한 곳과 답이 같다.</b> */
+	// ------------------------------------------------------------------ 원 판정
+
+	/**
+	 * ⚠⚠ <b>판정이 원이다.</b> 보더 시절의 정사각형이 아니다.
+	 *
+	 * <p>반경 12 원에서 (11, 11) 은 중앙에서 15.6칸이라 <b>밖</b>이다 — 반변 12 사각형이었다면 안이었다.
+	 * 그 자리가 원과 사각형을 가르는 시험이다.
+	 */
 	@Test
-	void 반경을_지름으로_바꾸는_곱이_한_가지다() {
-		for (int radius : new int[] {12, 22, 32, 42, 50}) {
-			assertEquals(PreStartRestrictions.lockDiameterBlocks(radius),
-					DragonLastStandZone.diameterOf(radius), 0.0001,
-					"PreStartRestrictions 와 답이 갈렸다 — 한쪽 지대가 절반이 된다");
-		}
-		assertEquals(24.0, DragonLastStandZone.diameterOf(12.0), 0.0001,
-				"반경 12 를 그대로 setSize 에 넘기면 지대가 반경 6 이 된다");
+	void 판정이_원이다() {
+		assertFalse(DragonLastStandZone.outside(0.0, 0.0, 12.0), "중앙이 밖이다");
+		assertFalse(DragonLastStandZone.outside(12.0, 0.0, 12.0), "경계 위는 안이다");
+		assertFalse(DragonLastStandZone.outside(0.0, -12.0, 12.0), "경계 위는 안이다");
+		assertTrue(DragonLastStandZone.outside(12.01, 0.0, 12.0), "경계 바로 밖이 안으로 읽혔다");
+		assertTrue(DragonLastStandZone.outside(11.0, 11.0, 12.0),
+				"사각형 모서리 쪽이 안으로 읽혔다 — 판정이 아직 「반변 안」이다");
+		assertTrue(DragonLastStandZone.outside(-8.5, 8.5, 12.0), "대각선 12.02칸이 안으로 읽혔다");
+		assertFalse(DragonLastStandZone.outside(-8.4, 8.4, 12.0), "대각선 11.88칸이 밖으로 읽혔다");
 	}
 
 	// ------------------------------------------------------------------ 시간표
@@ -101,6 +114,28 @@ class DragonLastStandZoneTest {
 					DragonLastStandZone.shrinkBeginsAt(leg));
 		}
 		assertEquals(800L, DragonLastStandZone.shrinkBeginsAt(0));
+	}
+
+	/**
+	 * 원 반경 시간표를 <b>틱 단위로</b> 못박는다. 판정과 벽이 이 한 함수를 함께 본다.
+	 *
+	 * <p>40초까지 42 · 40~45초에 32 로 · 85초까지 32 · 85~90초에 22 로 · 110초까지 22 ·
+	 * 110~115초에 12 로 · 그 뒤 12.
+	 */
+	@Test
+	void 반경_시간표() {
+		long[][] table = {
+				{-160L, 42}, {0L, 42}, {799L, 42}, {800L, 42}, {900L, 32}, {1699L, 32},
+				{1700L, 32}, {1800L, 22}, {2199L, 22}, {2200L, 22}, {2300L, 12}, {9999L, 12},
+		};
+		for (long[] row : table) {
+			assertEquals((double) row[1], DragonLastStandZone.radiusAt(row[0]), 1.0E-9,
+					row[0] + "틱의 반경");
+		}
+		// 축소 한가운데는 정확히 반이다(선형).
+		assertEquals(37.0, DragonLastStandZone.radiusAt(850L), 1.0E-9);
+		assertEquals(27.0, DragonLastStandZone.radiusAt(1750L), 1.0E-9);
+		assertEquals(17.0, DragonLastStandZone.radiusAt(2250L), 1.0E-9);
 	}
 
 	/** 반경이 <b>줄기만</b> 하고 끝값이 12 다. 되감긴 판에서도 시작값을 돌려준다. */
@@ -260,57 +295,6 @@ class DragonLastStandZoneTest {
 				"무적시간 10틱보다 좁으면 두 번째 몫이 조용히 사라져 적힌 값이 거짓이 된다");
 	}
 
-	/** 넉백 유예가 <b>2초</b>다. 사람이 정한 값이다. */
-	@Test
-	void 넉백_유예가_2초다() {
-		assertEquals(40L, DragonLastStandZone.SHOVE_GRACE_TICKS, "사람이 정한 값이다");
-	}
-
-	// ------------------------------------------------------------------ 되돌리기
-
-	/** 정지해 있던 보더는 그 크기로 되돌아간다. */
-	@Test
-	void 정지한_보더는_그_크기로_되돌아간다() {
-		WorldBorder.Settings still = new WorldBorder.Settings(
-				10.0, -20.0, 0.3, 4.0, 6, 14, 1234.0, 0L, 1234.0);
-		assertEquals(1234.0, DragonLastStandZone.restoredDiameter(still), 0.0001);
-	}
-
-	/** 움직이던 보더는 <b>목표</b>에 세운다. 중간 크기에 멈춰 세우는 것은 아무의 뜻도 아니다. */
-	@Test
-	void 움직이던_보더는_목표에_세운다() {
-		WorldBorder.Settings moving = new WorldBorder.Settings(
-				0.0, 0.0, 0.2, 5.0, 5, 15, 500.0, 600L, 200.0);
-		assertEquals(200.0, DragonLastStandZone.restoredDiameter(moving), 0.0001);
-	}
-
-	/** 바닐라 기본값을 <b>넣지 않는다.</b> 사람이 보더를 따로 만져 뒀을 수 있다. */
-	@Test
-	void 되돌릴_때_바닐라_기본값을_넣지_않는다() {
-		String bytes = classBytes();
-		assertFalse(bytes.contains("DEFAULT"),
-				"WorldBorder.Settings.DEFAULT 로 되돌리면 운영자가 좁혀 둔 보더가 날아간다");
-		assertTrue(bytes.contains("border/WorldBorder$Settings"),
-				"진입 전 값을 기억하지 않는다 — 되돌릴 근거가 없다");
-	}
-
-	/** 기억이 없으면 아무 일도 하지 않는다. 최후의 저항이 안 열린 판의 보더를 「고쳐 주면」 안 된다. */
-	@Test
-	void 만지지_않은_보더는_되돌리지도_않는다() {
-		assertFalse(DragonLastStandZone.holdsBorder());
-		// end 가 null 이어도 터지지 않는다. SERVER_STOPPING 에 엔드가 없는 판이 있을 수 있다.
-		DragonLastStandZone.restore(null);
-		DragonLastStandZone.onServerStopping(null);
-		assertFalse(DragonLastStandZone.holdsBorder());
-	}
-
-	/** 보더 자체 피해를 끈다. 켜 두면 바닐라 피해가 우리 초당 8 위에 얹힌다. */
-	@Test
-	void 보더_자체_피해를_끈다() {
-		assertTrue(classBytes().contains("setDamagePerBlock"),
-				"보더 피해를 끄지 않으면 「나간 거리 × 칸당 피해」가 우리 값 위에 겹친다");
-	}
-
 	/** 밖 피해는 {@code lightningBolt()} 다. 여기를 바꾸면 문서의 「초당 0.81」이 거짓이 된다. */
 	@Test
 	void 밖_피해원이_번개다() {
@@ -324,6 +308,82 @@ class DragonLastStandZoneTest {
 				"30초를 버티면 밖이 안전지대가 된다 — 실제 초당 " + geared);
 	}
 
+	// ------------------------------------------------------------------ 넉백 유예
+
+	/** 넉백 유예가 <b>2초</b>다. 사람이 정한 값이다. */
+	@Test
+	void 넉백_유예가_2초다() {
+		assertEquals(40L, DragonLastStandZone.SHOVE_GRACE_TICKS, "사람이 정한 값이다");
+	}
+
+	/**
+	 * ⚠⚠ <b>유예가 실제로 2초 동안 걸린다 — 부르는 쪽이 넘기는 시각과 무관하게.</b>
+	 *
+	 * <p>날개 퍼덕이기({@code DragonLastStandPatterns.shove})는 <b>패턴이 시작한 틱</b>을 넘긴다.
+	 * 2026-10-04 전에는 그 값을 시계 원점처럼 썼고, 패턴이 원점보다 최소 3초 뒤에 시작하므로 적힌
+	 * 유예 끝이 늘 이미 지난 시각이라 <b>유예가 한 번도 안 걸렸다.</b> 여기서는 원점(4,000)보다 한참
+	 * 뒤인 패턴 시작(5,000)을 넘겨도 2초가 그대로인지 본다.
+	 */
+	@Test
+	void 넉백_유예가_패턴_시각과_무관하게_2초다() {
+		UUID member = UUID.randomUUID();
+		long patternStart = 5_000L;
+		long shovedAt = 5_010L;
+		DragonLastStandZone.noteShoved(member, patternStart, shovedAt);
+		assertTrue(DragonLastStandZone.inShoveGrace(member, shovedAt), "밀린 그 틱에 유예가 없다");
+		assertTrue(DragonLastStandZone.inShoveGrace(member, shovedAt + 39L), "2초가 안 됐는데 끝났다");
+		assertFalse(DragonLastStandZone.inShoveGrace(member, shovedAt + 40L), "2초가 넘었는데 남았다");
+		assertFalse(DragonLastStandZone.inShoveGrace(UUID.randomUUID(), shovedAt),
+				"안 밀린 사람이 유예를 받았다");
+		// 다시 밀리면 그 틱부터 다시 2초다 — 날개 퍼덕이기는 0.6초마다 여덟 번 민다.
+		DragonLastStandZone.noteShoved(member, patternStart, shovedAt + 30L);
+		assertTrue(DragonLastStandZone.inShoveGrace(member, shovedAt + 69L));
+		assertFalse(DragonLastStandZone.inShoveGrace(member, shovedAt + 70L));
+	}
+
+	/** 유예는 {@code clearState} 로 비워진다. 정적이라 월드보다 오래 산다. */
+	@Test
+	void 유예가_비워진다() {
+		UUID member = UUID.randomUUID();
+		DragonLastStandZone.noteShoved(member, 0L, 100L);
+		DragonLastStandZone.clearState();
+		assertFalse(DragonLastStandZone.inShoveGrace(member, 101L));
+		assertFalse(DragonLastStandZone.driving());
+	}
+
+	// ------------------------------------------------------------------ 보더를 만지지 않는다
+
+	/**
+	 * ⚠⚠ <b>월드 보더를 건드리지 않는다.</b> 사람이 「나갈 수 있는 원으로」를 골랐다.
+	 *
+	 * <p>지대 · 벽 · 진입 연출 · 최후의 저항 어디에서도 {@code WorldBorder} 를 부르지 않는다. 오버월드
+	 * 스폰 보더({@code PreStartRestrictions})는 다른 기능이라 이 시험의 대상이 아니다.
+	 */
+	@Test
+	void 월드_보더를_건드리지_않는다() {
+		for (String path : new String[] {
+				"/com/sharedfate/sync/DragonLastStandZone.class",
+				"/com/sharedfate/sync/DragonLastStandZoneWall.class",
+				"/com/sharedfate/sync/DragonLastStandEntry.class",
+				"/com/sharedfate/sync/DragonLastStand.class",
+				"/com/sharedfate/sync/DragonLastStand$Stand.class"}) {
+			String bytes = read(path);
+			assertFalse(bytes.contains("border/WorldBorder"), path + " 가 WorldBorder 를 쓴다");
+			assertFalse(bytes.contains("getWorldBorder"), path + " 가 보더를 읽는다");
+			assertFalse(bytes.contains("lerpSizeBetween"), path + " 가 보더를 줄인다");
+		}
+	}
+
+	/** 밖에 있는 사람에게 <b>심장 박동</b>이 간다. 그 사람에게만 — {@code playEach} 로. */
+	@Test
+	void 밖에_있으면_심장_박동이_들린다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("WARDEN_HEARTBEAT"),
+				"밖에 있는 사람이 제가 밖인 줄 알 신호가 없다");
+		assertTrue(bytes.contains("playEach"), "소리가 playEach 를 안 쓰면 사람 수만큼 겹친다");
+		assertFalse(bytes.contains("playSound"), "자리에 놓는 소리는 근처 사람 모두에게 들린다");
+	}
+
 	/** 받은 {@code now} 를 쓴다. {@code getGameTime} 을 스스로 읽으면 얼어붙은 판에서 시계가 멈춘다. */
 	@Test
 	void 시간을_스스로_읽지_않는다() {
@@ -331,7 +391,7 @@ class DragonLastStandZoneTest {
 				"받은 now 를 쓸 것 — 그것이 이 저장소의 규약이다");
 	}
 
-	/** 자막을 쓰지 않는다. 신호는 소리와 바닥 표식(그리고 보더의 파란 벽)뿐이다. */
+	/** 자막을 쓰지 않는다. 신호는 소리와 입자 벽뿐이다. */
 	@Test
 	void 자막을_쓰지_않는다() {
 		String bytes = classBytes();
@@ -341,17 +401,26 @@ class DragonLastStandZoneTest {
 
 	// ------------------------------------------------------------------ 배선
 
-	/** {@code DragonLastStand} 가 이 시계를 실제로 몰고 되돌리는가. 빠지면 파란 벽이 남는다. */
+	/** {@code DragonLastStand} 가 이 시계를 실제로 몰고, 전투가 닫히면 비우는가. */
 	@Test
-	void 최후의_저항이_지대를_몰고_되돌린다() {
+	void 최후의_저항이_지대를_몰고_비운다() {
 		String bytes = read("/com/sharedfate/sync/DragonLastStand.class");
 		assertTrue(bytes.contains("com/sharedfate/sync/DragonLastStandZone"),
-				"DragonLastStand 가 안전지대를 부르지 않는다 — 보더가 아예 안 선다");
-		assertTrue(bytes.contains("onServerStopping"),
-				"SERVER_STOPPING 되돌림이 빠졌다 — 줄어든 보더가 저장 파일에 남는다");
+				"DragonLastStand 가 안전지대를 부르지 않는다 — 원이 아예 안 선다");
+		for (var method : DragonLastStandZone.class.getDeclaredMethods()) {
+			assertFalse(method.getName().equals("restore")
+							|| method.getName().equals("onServerStopping"),
+					"되돌릴 보더가 없는데 되돌리는 줄(" + method.getName() + ")이 남았다");
+		}
+		assertTrue(read("/com/sharedfate/sync/DragonLastStandZone.class")
+						.contains("com/sharedfate/sync/DragonLastStandZoneWall"),
+				"지대가 벽을 그리지 않는다 — 판정만 있고 보이는 것이 없다");
 	}
 
-	/** {@code SharedFateMod} 가 그 종료 훅을 실제로 등록하는가. */
+	/**
+	 * {@code SharedFateMod} 가 종료 훅을 여전히 등록하는가. 보더는 빠졌지만 빨간 면·신호기 같은
+	 * <b>개체</b>를 월드가 살아 있는 자리에서 거두는 일이 남았다.
+	 */
 	@Test
 	void 종료_훅이_등록되어_있다() {
 		String bytes = read("/com/sharedfate/SharedFateMod.class");
@@ -363,7 +432,7 @@ class DragonLastStandZoneTest {
 
 	// ------------------------------------------------------------------ 도우미
 
-	/** 지금 <b>정말로</b> 보더가 줄어드는 중인가. 시계의 넓은 답(미리 잠그는 몫)을 빼고 본다. */
+	/** 지금 <b>정말로</b> 줄어드는 중인가. 시계의 넓은 답(미리 잠그는 몫)을 빼고 본다. */
 	private static boolean actuallyShrinking(long elapsed) {
 		for (int leg = 0; leg < DragonLastStandZone.LEG_END_TICKS.length; leg++) {
 			if (elapsed >= DragonLastStandZone.shrinkBeginsAt(leg)

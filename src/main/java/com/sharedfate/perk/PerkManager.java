@@ -988,7 +988,8 @@ public final class PerkManager {
 		}
 		// 조건부 증강은 배율 조회에 플레이어 인자가 없어 대상을 따로 알려 줘야 한다.
 		ConditionalPerkManager.beginMultiplierLookup(player);
-		// 「불굴」의 체력 75% 초과 시 받는 피해 ×1.1 이 이 길로 들어온다.
+		// 「불굴」의 체력이 가득 찼을 때 받는 피해 ×1.1 이 이 길로 들어온다. 같은 증강의 이득
+		// (체력 절반 이하일 때 ×0.7)도 이 길이지만 대가 표시가 없어 건너뛰지 않는다.
 		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
 		// 「급소만 노려」의 주는 피해 ×0.95 처럼 배율로 적힌 공격력 감소가 이 길로 들어온다.
 		// 무기 3단계를 켠 팀에서는 그 한 줄만 곱하지 않는다. 받는 피해 쪽은 공격력과 무관하므로

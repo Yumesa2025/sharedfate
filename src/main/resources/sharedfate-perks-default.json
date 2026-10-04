@@ -1413,7 +1413,7 @@
       "id": "sharedfate:unbroken",
       "icon": "minecraft:enchanted_golden_apple",
       "name": "불굴",
-      "description": "체력이 절반 이하일 때 저항 III 을 얻습니다. 대신 체력이 가득 찼을 때 받는 피해가 ×1.1 이 됩니다.",
+      "description": "체력이 절반 이하일 때 받는 피해가 30% 감소합니다. 대신 체력이 가득 찼을 때 받는 피해가 ×1.1 이 됩니다.",
       "rarity": "gold",
       "set_types": [
         "defense"
@@ -1425,9 +1425,8 @@
           "threshold": 0.5,
           "when_true": [
             {
-              "type": "status_effect",
-              "effect": "minecraft:resistance",
-              "amplifier": 2
+              "type": "damage_taken",
+              "multiplier": 0.7
             }
           ]
         },

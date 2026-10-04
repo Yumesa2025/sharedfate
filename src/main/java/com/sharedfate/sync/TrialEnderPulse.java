@@ -31,11 +31,12 @@ import java.util.UUID;
  * 42칸({@code maxRadius})까지 퍼진다. 고리가 지나갈 때
  *
  * <ul>
- *   <li><b>바닥을 딛고 있으면</b> 구속 III 가 3초({@code rootTicks}) 붙는다</li>
+ *   <li><b>바닥을 딛고 있으면</b> 구속 III 가 3초({@code rootTicks}) 붙고 <b>중앙에서 바깥으로
+ *       밀린다</b>({@link #push})</li>
  *   <li><b>점프해 있으면 통과</b>한다 — 이 카드가 요구하는 행동이 그것 하나다</li>
  * </ul>
  *
- * <p><b>피해는 없다.</b> 이 카드가 빼앗는 것은 체력이 아니라 발이다.
+ * <p><b>피해는 없다.</b> 이 카드가 빼앗는 것은 체력이 아니라 발과 자리다.
  *
  * <h2>「점프해 있다」를 한 틱으로 묻지 않는다</h2>
  *
@@ -61,30 +62,38 @@ import java.util.UUID;
  * 사람 때문에 아직 고리가 오지 않은 사람도 미리 묶인다. 그것이 이 카드가 공유 체력 게임에서
  * 갖는 긴장이다 — 각자 제 순간에 뛰어야 하고, 한 사람의 실패가 팀 전체의 실패다.
  *
- * <h2>왜 규약 색을 쓰지 않고 엔더 입자를 쓰는가</h2>
+ * <h2>몸통은 규약의 파랑 — 「밀려난다」 (2026-10-04)</h2>
  *
- * <p>{@link TrialWarning.Colors} 의 넷(빨강=서 있으면 죽는다, 노랑=번개, 파랑=밀려난다,
- * 보라=너 하나를 노린다)은 어느 것도 이 카드의 뜻이 아니다. 여기에 다섯째 색을 더하면 그 순간
- * 규약이 규약이 아니게 되므로({@code Colors} 의 설명) <b>먼지 표식 자체를 쓰지 않는다.</b>
- * 규약은 먼지 고리의 규약이고, 엔더 입자는 그 바깥이라 색을 하나도 빌려 쓰지 않는다.
+ * <p>사람이 밀치기를 더한 뒤 <b>고리 색을 「파랑으로 바꾼다」</b>고 골랐다. 이제 이 카드는
+ * 「서 있으면 묶이고 밀려난다」라 {@link TrialWarning.Colors} 의 파랑({@code SHOVE},
+ * {@code 0x4AA3FF}) 뜻 그대로다. 색은 {@link #markColor} 가 고르고, 「착지 충격」·「엔더폭풍」·
+ * 날개 퍼덕이기가 쓰는 <b>같은 상수</b>다 — 숫자를 새로 적지 않는다.
  *
- * <p>고른 것은 두 가지다. <b>{@code CRIT} 이 앞머리, {@code PORTAL} 이 몸통</b>이다. 26.3 의
- * 클라이언트 입자를 뜯어 보고 갈랐다.
+ * <p>⚠ <b>전에는 반대였다.</b> 여기 「왜 규약 색을 쓰지 않고 엔더 입자를 쓰는가」가 적혀 있었다 —
+ * 규약의 네 색 어느 것도 이 카드의 뜻이 아니었고(<b>파랑은 「밀려난다」인데 이 카드에는 넉백이
+ * 없었다</b>), 다섯째 색을 만들 수는 없어서 먼지 표식 자체를 안 쓰고 몸통을 {@code PORTAL}(보라
+ * 엔더 입자)로 그렸다. 밀치기가 생기면서 그 근거가 사라졌고, 그대로 두면 <b>미는 고리가 「안
+ * 민다」는 색</b>으로 남는다.
+ *
+ * <p>그래서 「착지 충격」과 <b>같은 문법, 같은 뜻</b>이 됐다 — 앞머리는 흰 {@code CRIT} 벽, 몸통은
+ * 파랑 먼지. 두 카드 모두 「뛰면 통과, 서 있으면 밀려난다」라 같은 그림이 맞다. 다른 것은 맞은
+ * 뒤의 몫(이쪽은 구속, 그쪽은 피해)뿐이고 그것은 발밑 입자와 소리가 가른다({@link #root} 의 엔더
+ * 입자·순간이동 소리 대 그쪽의 바람 소리).
  *
  * <ul>
- *   <li>{@code PortalParticle} — 수명 <b>40~49틱</b>이고 {@code getQuadSize} 가 나이에 따라
- *       <b>0 에서 자란다.</b> 갓 찍은 점이 가장 작다는 뜻이라, 이것만으로 그리면 <b>앞머리가 가장
- *       흐리다.</b> 대신 남아서 커지므로 <b>지나간 자리</b>를 보라색으로 채운다 — 고리 안쪽은 이미
- *       지나간 땅이라 「지금 어디가 위험한가」를 흐리지 않고, 파동이 어디서 와서 어디로 가는지를
- *       알려 준다</li>
- *   <li>{@code CritParticle} — 수명이 {@code max(1, 6.0 / (굴림×0.8 + 0.6))} 이라 <b>4~10틱</b>
- *       이다. 카드 값에서 고리 속도가 틱당 {@code 42/80 = 0.525칸}이므로 자국이 2~5칸에서 끝나
- *       <b>앞머리가 선으로 남는다.</b> 흰 불티라 규약의 네 색 어디에도 닿지 않는다</li>
+ *   <li>{@code CritParticle}(앞머리) — 수명이 {@code max(1, 6.0 / (굴림×0.8 + 0.6))} 이라
+ *       <b>4~10틱</b>이다. 카드 값에서 고리 속도가 틱당 {@code 42/80 = 0.525칸}이므로 자국이
+ *       2~5칸에서 끝나 <b>앞머리가 선으로 남는다.</b> 흰 불티라 규약의 네 색 어디에도 닿지 않는다</li>
+ *   <li>파랑 먼지(몸통) — {@link TrialWarning#dust} 그대로(크기 1.0). 26.3 {@code DustParticleBase}
+ *       의 수명이 <b>8~40틱</b>이라 지나간 자국이 4~21칸 남는다. ⚠ {@code PORTAL}(40~49틱, 나이에
+ *       따라 자람)보다 짧아 지나간 자리가 덜 오래 칠해진다. 대신 수명 하한 8틱이 판정 창
+ *       {@link #JUMP_WINDOW_TICKS}(5틱)보다 길어 <b>판정이 내려지는 뒷자락까지는 반드시 파랑으로
+ *       덮여 있다</b> — 「착지 충격」의 {@code draw} 가 같은 근거를 적어 두었다</li>
  * </ul>
  *
- * <p>파랑 계열({@code ENCHANTED_HIT})을 쓰지 않은 이유를 남긴다. 대비는 그쪽이 낫지만
- * <b>파랑은 「밀려난다」로 이미 배워져 있고 이 카드에는 넉백이 없다.</b> 먼지가 아니니 규약 위반은
- * 아니어도, 색이 거짓말을 하면 규약을 지킨 보람이 없다.
+ * <p>크기를 「착지 충격」의 {@code WAKE_SCALE}(1.25)로 맞추지 않은 것은 그쪽이 <b>반경 75</b> 에서
+ * 「안 보인다」를 들어 키운 값이기 때문이다. 이 카드는 반경 42 이고 그 말을 듣지 않았다 — 날개
+ * 퍼덕이기가 쓰는 기본 1.0 그대로다.
  *
  * <h2>⚠ 앞머리는 바닥에 눕지 않고 세로로 선다 — 안 보인다는 말을 들은 자리다</h2>
  *
@@ -105,10 +114,74 @@ import java.util.UUID;
  * 「지금 위험한 줄」과 「이미 지나간 땅」이 갈린다 — 둘을 다 세우면 벽 두 겹이 되어 어느 것이
  * 앞머리인지 안 읽힌다.
  *
- * <h2>넉백을 주지 않는다</h2>
+ * <h2>⚠⚠ 바깥으로 민다 — 2026-10-04 사람이 더했다</h2>
  *
- * <p>엔드 중앙 섬은 사방이 허공이고 체력이 팀 공유라 <b>한 사람의 낙사가 팀 전체를 끝낸다.</b>
- * 이 카드는 아무것도 밀지 않는다 — 미는 코드를 한 줄도 두지 않는 것이 그 장치다.
+ * <p>사람 말: <b>「엔더 파동 구속과 밀치는 것도 있게」</b>. 세기는 사람이 <b>「강하게 · 약
+ * 12칸」</b>을 골랐다({@link #PUSH_GROUND_BLOCKS}).
+ *
+ * <p>전에는 여기 「넉백을 주지 않는다 — 미는 코드를 한 줄도 두지 않는 것이 그 장치다」가 적혀
+ * 있었다. 엔드 중앙 섬은 사방이 허공이고 체력이 팀 공유라 <b>한 사람의 낙사가 팀 전체를 끝내며
+ * 그것이 곧 월드 삭제</b>다. 사람이 그것을 알고 뒤집었으므로 <b>그 일을 이제 천장이 맡는다.</b>
+ *
+ * <p><b>새 셈은 하나도 없다.</b> 저장소에 이미 있는 셋을 그대로 잇는다.
+ *
+ * <ul>
+ *   <li><b>천장</b> — 「착지 충격」의 것 그대로다. {@code TrialLandingShock.outwardLimit}
+ *       ·{@code pushDistance} 가 목적지를 반경 34(섬 40 − {@code EDGE_MARGIN} 6) 안으로 자르고,
+ *       {@code TrialLandingShock.groundedReach} 가 미는 길을 0.5칸씩 짚어 <b>땅이 끊기기 전</b>에서
+ *       한 번 더 자른다</li>
+ *   <li><b>속도</b> — {@code TrialEnderStorm.pushVelocity}(공중 감쇠 모델). 세 카드가 같은 식이다</li>
+ *   <li><b>공중 보정</b> — 날개 퍼덕이기의 {@link #AIRBORNE_PUSH_SCALE} 와 「{@code onGround()}
+ *       하나로 묻지 않는다」({@link #airborne})</li>
+ * </ul>
+ *
+ * <h2>⚠⚠ 「바닥 12칸」은 이 섬에서 <b>한 번도 다 나오지 않는다</b> — 천장이 먼저 걸린다</h2>
+ *
+ * <p>위 속도 모델은 <b>「부탁한 거리 = 끝까지 떠 있을 때 가는 거리」</b>이고 바닥에 붙어 있으면
+ * 그 {@link #AIRBORNE_PUSH_SCALE}(0.198)배만 간다. 그래서 바닥 12칸을 가려면
+ * {@code 12 ÷ 0.198 = 60.5}칸을 부탁해야 하는데({@link #pushRequest}), 천장은 <b>부탁한 거리</b>를
+ * 자른다 — 중앙에서도 34칸이 한계라 <b>바닥 실제 거리는 {@code 0.198 × (34 − 중앙에서 거리)}</b>다.
+ *
+ * <table border="1">
+ *   <caption>바닥에서 맞았을 때 실제로 밀리는 거리 (평지, 구멍 없음)</caption>
+ *   <tr><th>중앙에서</th><th>0</th><th>10</th><th>20</th><th>30</th><th>34 이상</th></tr>
+ *   <tr><td>바닥 실제</td><td>6.74</td><td>4.76</td><td>2.78</td><td>0.79</td><td>0</td></tr>
+ *   <tr><td>맞고 곧바로 뛰면(최악)</td><td colspan="5">반경 34 에 멈춘다</td></tr>
+ * </table>
+ *
+ * <p><b>천장을 바닥 모델로 바꾸면(= 바닥 12칸을 실제로 내면) 안 되는 까닭이 이 카드에서 특히
+ * 크다.</b> 바닥 12칸을 맞추려면 처음 속도가 {@code 12 × 0.454 = 5.45칸/틱}이고, 그 속도로 <b>한
+ * 번 뛰면</b> 공중 12틱 동안 0.91 로만 줄어 <b>45칸 남짓</b>을 간다. 그런데 이 카드에서 맞는
+ * 사람은 거의 다 <b>「늦게 뛴 사람」</b>이다 — 맞은 바로 그 순간 스페이스를 누르고 있다. 「착지
+ * 충격」의 {@code pushVelocity} 가 「같은 16칸을 바닥 모델로 맞추면 한 틱이라도 떠 있는 순간 80칸」
+ * 이라며 막아 둔 그 길이 여기서는 <b>가장 흔한 길</b>이 된다.
+ *
+ * <p>그래서 「12」는 <b>바라는 값으로만</b> 남는다. 사람이 「약하다」고 하면 부탁을 더 올려도
+ * 소용이 없고(이미 천장이 문다), 올릴 수 있는 것은 천장뿐인데 그것은 낙사 여유를 깎는 일이다 —
+ * 그때는 이 표를 먼저 보여 줄 것.
+ *
+ * <h2>다른 카드의 밀치기와 겹칠 때</h2>
+ *
+ * <p>카드는 빠지지 않고 쌓이므로 이 카드(입장)는 「엔더폭풍」(크리스탈 전멸)·「착지 충격」(체력
+ * 80%)과 한 판에 함께 살아 있을 수 있다. 최후의 저항의 날개 퍼덕이기·십자 띄움과는 <b>안 겹친다</b>
+ * — 최후의 저항이 열리면 {@code DragonTrialManager} 가 카드를 통째로 멈춘다.
+ *
+ * <ul>
+ *   <li><b>같은 틱</b> — 셋 다 수평을 <b>덮어쓴다</b>(더하지 않는다). 같은 틱에 둘이 밀면
+ *       {@code TrialRisks} 가 늦게 돌린 쪽의 속도 <b>하나만</b> 내려가고, 둘 다 같은 자리에서
+ *       제 천장(32·34)을 쟀으므로 어느 쪽이 이겨도 반경 34 안이다. 「착지 충격」 고리와 이 고리가
+ *       한 사람을 같은 틱에 지나가도 마찬가지다</li>
+ *   <li><b>잇따른 틱</b> — 뒤에 민 쪽이 앞의 속도를 <b>교체</b>하고, 제 천장을 <b>그 순간의 자리</b>
+ *       에서 다시 잰다. 천장은 매번 「지금 자리에서 끝까지 떠 있어도 천장 안」을 약속하므로
+ *       누적되지 않는다(「엔더폭풍」 {@code pushDistance} 의 「몇 번을 연속으로 밀려도」와 같은 증명)</li>
+ *   <li>⚠ <b>남는 틈 하나 — 알고 둔다.</b> 서버가 아는 자리는 클라이언트가 보고한 자리라 한두 틱
+ *       늦다. 앞의 밀치기가 그 한두 틱 동안 옮긴 몫만큼, 뒤의 밀치기가 <b>옛 자리</b>에서 잰 천장을
+ *       지나친다. 이 카드가 앞이면 중앙에서 맞은 바닥 첫 두 틱이 {@code 3.06 + 1.67 ≈ 4.7}칸,
+ *       「엔더폭풍」(부탁 24)이 앞이면 {@code 2.16 + 1.18 ≈ 3.3}칸이다. 둘 다
+ *       {@code EDGE_MARGIN}(6) 안이라 반경 40 은 안 넘지만 <b>그 여유를 먹는다.</b> 「엔더폭풍」과
+ *       「착지 충격」 사이에 이미 있던 틈이고 이 카드가 새로 연 것이 아니다 — 막으려면 세 카드가 함께
+ *       「최근에 밀린 사람」을 나눠 들어야 하는데, 그것은 새 장치라 이번 작업에서 짓지 않았다</li>
+ * </ul>
  *
  * <h2>⚠ 고리는 지형을 탄다 — 그리는 것도 판정도 함께</h2>
  *
@@ -186,6 +259,9 @@ public final class TrialEnderPulse {
 	 * {@code scale} 이 1.0 이면 <b>8~40틱</b>이다({@code TrialWarning.markGround} 의 같은 계산).
 	 * 그은 선 자체는 그대로 맞다 — 240 × 40 = 9600 이라 여전히 만 점 언저리이고, 160 이면
 	 * 6400 이다.
+	 *
+	 * <p>⚠ 위 문단은 적힐 당시에는 <b>코드와 어긋나 있었다</b> — 몸통이 실제로는 {@code PORTAL}
+	 * 이었다. 2026-10-04 에 몸통이 파랑 먼지로 바뀌어({@link #markColor}) 이제야 코드와 맞는다.
 	 */
 	static final int WAKE_MAX_POINTS = 160;
 	/**
@@ -270,6 +346,70 @@ public final class TrialEnderPulse {
 	 */
 	static final double JUDGE_VERTICAL_REACH = 2.0;
 
+	// ------------------------------------------------------------------ 미는 값
+
+	/**
+	 * ⚠ 바닥을 딛고 맞은 사람이 <b>실제로</b> 밀리기를 바라는 거리(칸). <b>사람이 정한 값이다.</b>
+	 *
+	 * <p>사람 말: <b>「엔더 파동 구속과 밀치는 것도 있게」</b> → 세기는 <b>「강하게 · 약 12칸」</b>
+	 * (「착지 충격」16칸에 가깝게, 섬 끝에서 맞으면 위험하지만 공허로는 안 떨어지게 천장은 둔다).
+	 *
+	 * <p>⚠⚠ <b>이 값은 천장에 걸려 다 나오지 않는다.</b> 왜 그런지와 실제 거리 표는 클래스 설명의
+	 * 「「바닥 12칸」은 이 섬에서 한 번도 다 나오지 않는다」에 있다. 짧게: 부탁하는 거리가
+	 * {@link #pushRequest}(60.5칸)인데 천장이 그것을 반경 34 까지로 자르므로 바닥 실제는 중앙에서도
+	 * 6.74칸이다.
+	 *
+	 * <p>카드({@code TrialCatalog})에 칸을 두지 않고 여기 두는 것은 이번 작업이 그 파일을 못
+	 * 건드렸기 때문이다. 옮기게 되면 {@code Risk.LandingShock.knockback} 처럼 레코드에 칸을 하나
+	 * 더하고 여기서 받으면 된다 — 그때 <b>그 칸이 「바닥 실제」인지 「부탁하는 거리」인지</b>를
+	 * 이름으로 갈라 둘 것. 「착지 충격」의 16 은 <b>부탁하는 거리</b>라 바닥 실제는 3.17칸이다.
+	 */
+	static final double PUSH_GROUND_BLOCKS = 12.0;
+
+	/**
+	 * 바닥 감쇠. <b>블록 마찰 0.6 × 0.91</b> 이다. 「밀린 몸이 바닥에서 얼마나 가는가」의 근거다.
+	 *
+	 * <p>⚠ <b>같은 값이 {@code DragonLastStandPatterns.GROUND_DRAG} 에도 있다.</b> 그쪽을 부르지 않는
+	 * 것은 두 가지 때문이다 — ① 이 저장소의 화살표는 「천장은 카드가 만들고 패턴이 물려받는다」
+	 * ({@link TrialVelocity} 의 「왜 파일이 따로인가」)라 카드가 패턴 파일을 부르면 의존이 거꾸로
+	 * 흐르고, ② 지금 그 파일을 다른 사람이 쓰고 있어 한쪽으로 모으지 못했다. 옮길 방향은 <b>이 값과
+	 * {@link #AIRBORNE_PUSH_SCALE} 가 {@code TrialEnderStorm.AIR_DRAG} 옆으로 가고 패턴이 그것을
+	 * 빌리는 것</b>이다. 그때까지 {@code TrialEnderPulseTest} 가 <b>두 값이 같은지</b>를 지킨다
+	 * ({@link #EDGE_RISE_SPEED} 가 「착지 충격」과 같은 처지로 남아 있는 것과 같은 꼴이다).
+	 */
+	static final double GROUND_DRAG = 0.546;
+
+	/**
+	 * ⚠⚠ 공중에 떠 있는 사람을 밀 때 세기에 곱하는 값. 날개 퍼덕이기의
+	 * {@code DragonLastStandPatterns.AIRBORNE_PUSH_SCALE} 와 <b>같은 식</b>이다(0.198).
+	 *
+	 * <p>{@code TrialEnderStorm.pushVelocity} 의 속도는 바닥에서 부탁한 거리의 0.198배를 가고 공중에서는
+	 * <b>그대로</b>(5.045배) 간다. 이 비율을 공중일 때만 곱하면 공중 이동이 바닥 이동과 정확히 같아진다
+	 * — 사람 말 <b>「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든?」</b>을 막은 장치다.
+	 *
+	 * <h2>⚠ 이 카드에서는 「맞는 순간 이미 공중」이 거의 없다</h2>
+	 *
+	 * <p>판정 틱에 떠 있으면 그 틱이 곧바로 {@code LAST_AIRBORNE} 에 적혀 {@link #jumpedThrough} 가
+	 * 통과시킨다. 그래서 맞은 사람의 {@code onGround()} 는 거의 언제나 참이고, 이 비율이 실제로 걸리는
+	 * 것은 <b>하이트맵 쪽</b>이 잡는 경우뿐이다 — 개체 위에 서 있거나, 렉·거짓 보고로 깃발이 틀린 경우.
+	 * 그래도 빼지 않는다. 빠진 날 그 드문 경우가 <b>더 미는 쪽</b>으로 어긋나기 때문이다.
+	 *
+	 * <p>⚠⚠ <b>이 카드의 흔한 경우 — 「맞고 나서 뛴 사람」 — 는 이 비율이 아니라 천장이 막는다.</b>
+	 * 속도를 공중 감쇠로 잡으므로 맞은 뒤 끝까지 떠 있어도 부탁한 거리를 넘지 못하고, 그 거리는 이미
+	 * 천장 안이다. 그래서 「바닥 12칸」을 내려고 속도를 바닥 모델로 바꾸면 안 된다(클래스 설명).
+	 */
+	static final double AIRBORNE_PUSH_SCALE = (1.0 - TrialEnderStorm.AIR_DRAG) / (1.0 - GROUND_DRAG);
+
+	/**
+	 * 발이 그 자리 지표보다 이만큼 높으면 <b>떠 있는 것으로 본다</b>(칸).
+	 *
+	 * <p>{@code DragonLastStandPatterns.AIRBORNE_LIFT} 와 같은 값이고 같은 까닭이다(계단·반 블록 한
+	 * 칸). 따로 적은 까닭은 {@link #GROUND_DRAG} 와 같고, 같은지는 시험이 본다.
+	 */
+	static final double AIRBORNE_LIFT = 0.5;
+	/** 이보다 가까이 중앙에 겹쳐 있으면 「바깥쪽」이라는 방향이 없다. 그때는 밀지 않는다. */
+	private static final double PUSH_MIN_REACH = 1.0E-4;
+
 	// ------------------------------------------------------------------ 상태
 
 	/**
@@ -306,7 +446,9 @@ public final class TrialEnderPulse {
 	 * @param index   몇 번째 파동인가. 주기가 넘어갔는지 판단한다
 	 * @param crossed 이미 고리가 지나간 사람들. <b>이 집합은 고쳐 쓴다.</b> 고리가 한 사람을 두
 	 *                번 지나가지 않게 막는 것이 전부인데, 안 막으면 고리 끝에 붙어 바깥으로 달리는
-	 *                사람이 같은 파동에 두 번 묶인다
+	 *                사람이 같은 파동에 두 번 묶인다. ⚠ <b>밀치기가 생긴 뒤로는 이것이 「고리마다 한
+	 *                사람 한 번」의 장치다</b> — 우리가 바깥으로 민 사람은 아직 뒷자락이 안 온
+	 *                자리로 가므로, 이 명단이 없으면 몇 틱 뒤 같은 고리가 또 밀고 또 민다
 	 */
 	private record Pulse(long index, Set<UUID> crossed) {
 	}
@@ -433,11 +575,13 @@ public final class TrialEnderPulse {
 	 * 0.5칸씩 건너뛰므로 「반경과 거리가 같은가」로 물으면 대부분의 사람이 <b>그냥 건너뛰어진다.</b>
 	 * 구간으로 물으면 0 부터 {@code maxRadius} 까지 어느 거리든 정확히 한 번 덮인다.
 	 *
-	 * <p>피해는 없고 넉백도 없다. 여기서 사람에게 하는 일은 구속을 거는 것 하나뿐이다.
+	 * <p>피해는 없다. 걸린 사람에게 하는 일은 둘이다 — 구속({@link #root})과 바깥 밀치기
+	 * ({@link #push}). <b>둘 다 이 자리 한 곳에서만</b> 일어나고, 이 자리는 {@link #crossesNow} 가
+	 * 참인 틱에만 닿으므로 <b>고리마다 한 사람에게 한 번</b>이다.
 	 *
 	 * <p><b>거리만으로는 부족하다.</b> 고리가 지형을 타므로 같은 거리라도 내 발밑을 지나갔는지는
 	 * 높이를 봐야 안다({@link #atRingHeight}). 그 검사가 없으면 지붕 밑이나 굴 속에 선 사람이
-	 * <b>머리 위로 지나간 고리</b>에 묶인다.
+	 * <b>머리 위로 지나간 고리</b>에 묶이고 밀려난다.
 	 */
 	private static void judge(ServerLevel end, Ground ground, List<ServerPlayer> members,
 			Pulse pulse, int step, long now, TrialCatalog.Risk.EnderPulse risk) {
@@ -445,18 +589,10 @@ public final class TrialEnderPulse {
 		double inner = judgeRadius(step - 1, risk.travelTicks(), risk.maxRadius());
 		for (ServerPlayer member : members) {
 			UUID memberId = member.getUUID();
-			if (pulse.crossed().contains(memberId)) {
-				continue;
-			}
 			Vec3 at = member.position();
-			double distance = distanceFromCenter(at);
-			if (!(distance > inner) || !(distance <= outer)) {
+			if (!crossesNow(pulse.crossed(), memberId, distanceFromCenter(at), inner, outer)) {
 				continue;
 			}
-			// 지나간 것은 뛰었든 아니든 지나간 것이다. 안 적으면 고리 끝에 붙어 바깥으로 달리는
-			// 사람이 같은 파동에 다시 걸린다. 높이로 빠진 사람도 마찬가지로 적는다 — 고리는
-			// 그 사람의 칸을 이미 지나갔고, 안 적으면 지붕 밑에서 나오는 순간 다시 걸린다.
-			pulse.crossed().add(memberId);
 			if (!atRingHeight(at.y, ground.surfaceAt(end, at.x, at.z))) {
 				continue;
 			}
@@ -464,7 +600,207 @@ public final class TrialEnderPulse {
 				continue;
 			}
 			root(end, member, risk.rootTicks());
+			push(end, ground, member, risk.maxRadius());
 		}
+	}
+
+	/**
+	 * 이 사람이 <b>이번 틱에 처음으로</b> 고리 뒷자락에 닿았는가. 참이면 명단에 적는다.
+	 *
+	 * <p>지나간 것은 뛰었든 아니든 지나간 것이다. 안 적으면 고리 끝에 붙어 바깥으로 달리는 사람이
+	 * 같은 파동에 다시 걸린다. 높이로 빠진 사람도 마찬가지로 적는다 — 고리는 그 사람의 칸을 이미
+	 * 지나갔고, 안 적으면 지붕 밑에서 나오는 순간 다시 걸린다.
+	 *
+	 * <p>⚠ <b>밀치기가 생긴 뒤로 이 함수가 「고리마다 한 번」을 지킨다.</b> 밀린 사람은 바깥으로,
+	 * 곧 <b>뒷자락이 아직 안 온 자리로</b> 간다. 고리는 틱당 0.525칸이고 밀린 몸은 처음 몇 틱에
+	 * 그보다 훨씬 빨리 가므로, 명단이 없으면 몇 틱 뒤 같은 고리가 그 사람을 <b>또 밀고</b>, 그
+	 * 자리에서 또 민다 — 6장 「매 틱 {@code syncVelocity} 는 사람 입력을 지운다」의 그 꼴이 된다.
+	 * 적는 것이 <b>높이·점프 검사보다 먼저</b>인 것도 그래서다.
+	 *
+	 * <p>월드 없이 답이 정해지는 계산이라 시험이 밀린 사람을 고리와 함께 굴려 본다.
+	 *
+	 * @param crossed 이 고리의 명단. <b>고쳐 쓴다</b>
+	 */
+	static boolean crossesNow(Set<UUID> crossed, UUID memberId, double distance, double inner,
+			double outer) {
+		if (crossed.contains(memberId)) {
+			return false;
+		}
+		if (!(distance > inner) || !(distance <= outer)) {
+			return false;
+		}
+		crossed.add(memberId);
+		return true;
+	}
+
+	// ------------------------------------------------------------------ 밀치기
+
+	/**
+	 * ⚠⚠ 중앙에서 바깥으로 민다. <b>천장 둘을 지난 뒤에만</b> 민다.
+	 *
+	 * <p>사람 말: <b>「엔더 파동 구속과 밀치는 것도 있게」</b>. 「착지 충격」의 {@code push} 와
+	 * 날개 퍼덕이기의 {@code shove} 를 <b>그대로 따라 한 줄씩</b> 옮겼다 — 새 셈은 없다.
+	 *
+	 * <h2>세로로는 한 칸도 띄우지 않는다 — 「착지 충격」과 같은 결이다</h2>
+	 *
+	 * <p>띄우면 바닥 마찰(0.546)이 빠지고 공중 감쇠(0.91)만 남아 같은 속도가 <b>다섯 배</b>를 간다.
+	 * 이 카드의 천장은 「끝까지 떠 있어도 부탁한 거리까지」로 잡혀 있어 다섯 배가 되어도 섬 안이지만,
+	 * <b>띄우는 순간 모든 사람이 최악의 경우</b>가 된다 — 바닥 실제가 0.79~6.74칸이던 것이 언제나 반경
+	 * 34 까지가 된다. 덤으로 낙하 피해를 면제할 상태도 들지 않아도 된다. 「착지 충격」·「엔더폭풍」·
+	 * 날개 퍼덕이기가 모두 그렇고, 이 카드가 <b>「뛰면 통과」</b>인 것과도 맞물린다 — 우리가 띄워
+	 * 주면 「뛰어서 넘기」와 「맞아서 떴다」가 같은 그림이 된다.
+	 *
+	 * <p>그래서 세로는 덮어쓰지 않고 {@link TrialVelocity#syncedVertical} 로 <b>올리는 쪽만</b>
+	 * 자른다. ⚠ 「읽은 그대로」 돌려놓으면 안 된다 — 이 카드는 입장부터 끝까지 살아 있어 <b>착지
+	 * 160틱</b>과도 겹치고, 그동안 바닐라 {@code EnderDragon.knockBack} 이 날개 상자 안의 사람에게
+	 * 서버 혼자 매 틱 세로 +0.2 를 쌓아 둔다. 아래 {@code syncVelocity} 한 줄이 그 값을 통째로
+	 * 배달한다(6장 「서버가 혼자 쌓는 값을 배달할 수 있다」 — 「착지 충격」이 같은 날 막은 구멍이다).
+	 *
+	 * <h2>수평은 덮어쓴다 — 한 번만</h2>
+	 *
+	 * <p>더하면 달리던 사람이 들고 있던 속도가 얹혀 천장이 계산한 목적지를 지나친다. 덮어쓰면 그
+	 * 자리에서 서버가 혼자 쌓아 둔 수평 오염도 함께 사라진다.
+	 *
+	 * <p><b>한 번 보내는 것으로 충분하다.</b> 받는 쪽이 속도를 교체하고 그 뒤로는 사람의 바닐라
+	 * 물리가 마찰로 줄여 가므로, 다시 보낼 것이 없다. 매 틱 보내면 6장 「매 틱 {@code syncVelocity}
+	 * 는 사람 입력을 지운다」가 되는데, 이 자리는 {@link #crossesNow} 덕에 <b>고리마다 한 번</b>만
+	 * 닿는다(고리는 20초에 하나).
+	 *
+	 * <h2>⚠ 구속 III 와 함께 걸린다 — 의도된 조합이다</h2>
+	 *
+	 * <p>구속은 <b>이동 속도 특성</b>을 깎는다. 그 특성이 들어가는 자리는 사람이 누른 입력이 가속이
+	 * 되는 곳뿐이고, 우리가 실은 속도는 바닥 마찰로만 줄어든다 — 곧 <b>구속은 밀려나는 거리를 한
+	 * 칸도 줄이지 않고, 돌아오는 걸음만 줄인다.</b> 걷기 0.216칸/틱이 구속 III(−45%)에서 0.119칸/틱
+	 * (초당 2.4칸)라, 중앙에서 6.74칸 밀린 사람은 3초 묶여 있는 내내 걸어도 겨우 제자리다.
+	 * <b>「밀려나서 다시 붙는 데 오래 걸린다」가 이 카드의 새 대가</b>이고 사람이 고른 조합이다 —
+	 * 둘 중 하나를 「너무 세다」며 따로 깎지 말 것. 깎으려면 사람에게 이 조합을 먼저 보일 것.
+	 *
+	 * <p>⚠ <b>구속은 팀 전원에게 퍼지지만 밀치기는 안 퍼진다.</b> {@link EffectSync} 가 옮기는 것은
+	 * 상태이상이고 속도는 사람 하나의 것이다. 그래서 「한 명이 못 뛰면 넷이 다 묶인다」는 그대로이고,
+	 * 밀려나는 것은 못 뛴 그 사람뿐이다.
+	 *
+	 * <p>{@code syncVelocity} 를 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 제자리로 되돌아간다
+	 * ({@code TrialRisks.launch} 와 같은 이유).
+	 */
+	private static void push(ServerLevel end, Ground ground, ServerPlayer member,
+			double maxRadius) {
+		double x = member.getX();
+		double z = member.getZ();
+		double distance = pushReach(x, z, maxRadius,
+				(px, pz) -> ground.surfaceAt(end, px, pz) != NO_GROUND);
+		if (!(distance > 0.0)) {
+			// 천장 위이거나 밖이다, 또는 바로 앞이 허공이다. 한 칸도 안 민다 — 구속은 이미 걸렸다.
+			return;
+		}
+		// pushReach 가 0 보다 큰 값을 돌려줬다면 중앙에서 떨어져 있다는 뜻이라 나눗셈이 안전하다.
+		double from = TrialLandingShock.fromCenter(x, z);
+		boolean up = airborne(member.onGround(), member.getY(), ground.surfaceAt(end, x, z));
+		double speed = pushSpeed(distance, up);
+		Vec3 motion = member.getDeltaMovement();
+		// 수평은 덮어쓴다. ⚠ 세로는 「읽은 그대로」가 아니라 TrialVelocity.syncedVertical 을
+		// 지난다 — 착지 160틱 동안 바닐라가 쌓아 둔 세로를 그대로 배달하면 사람이 하늘로 간다.
+		// 스스로 뛴 사람·떨어지는 사람은 비트 단위로 안 달라진다.
+		member.setDeltaMovement(x / from * speed,
+				TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
+				z / from * speed);
+		member.syncVelocity = true;
+		// 밀렸다는 표시. 「착지 충격」·날개 퍼덕이기가 밀린 사람 자리에 남기는 것과 같은 바람
+		// 한 줌이다 — 같은 뜻이면 같은 그림이어야 사람이 하나만 배운다. 긴 형태라 멀리 선
+		// 팀원도 「저 사람이 밀렸다」를 본다.
+		end.sendParticles(ParticleTypes.GUST, true, false, x, member.getY() + 0.1, z, 1,
+				0.0, 0.0, 0.0, 0.0);
+	}
+
+	/**
+	 * ⚠⚠ 실제로 밀 거리(칸) — <b>천장 둘을 지난 값.</b> 이 함수가 이 카드를 섬 안에 붙든다.
+	 *
+	 * <p>「착지 충격」의 천장을 <b>그대로</b> 지난다.
+	 *
+	 * <ol>
+	 *   <li>{@code TrialLandingShock.pushDistance} 가 {@code outwardLimit}(반경 34)까지만 부탁을
+	 *       들어준다. 이미 그 밖에 선 사람은 <b>한 칸도</b> 안 민다 — 다른 카드가 먼저 데려다 놓은
+	 *       사람을 또 밀면 이 카드가 남의 사고를 완성시킨다</li>
+	 *   <li>{@code TrialLandingShock.groundedReach} 가 그 길을 0.5칸씩 짚어 <b>땅이 끊기기 전</b>에서
+	 *       멈춘다. 섬은 둥글지 않아 반경 34 안에도 허공이 있고, 사람이 파 놓은 구멍도 있다</li>
+	 * </ol>
+	 *
+	 * <p>이 카드의 고리 중심은 언제나 {@code (0, 0)} 이고 미는 방향이 그 중심에서 사람을 향하는
+	 * 반지름이라, 「착지 충격」의 반경 셈({@code fromCenter})이 <b>정확히</b> 맞는다 — 그쪽은 포탈
+	 * 꼭대기를 중심으로 밀면서 천장은 {@code (0, 0)} 에서 재는데, 이 카드에서는 두 중심이 같다.
+	 *
+	 * <p>월드를 묻지 않고 {@code GroundProbe} 를 받는다. <b>낙사를 막는 함수라 시험이 월드 없이
+	 * 섬 곳곳을 훑을 수 있어야</b> 한다 — 전멸하면 월드가 지워지는 게임이라 실제로 굴려 볼 수 없다.
+	 *
+	 * @param maxRadius 카드의 고리 반경. {@code outwardLimit} 이 받는 값이다
+	 * @return 밀 거리. 중앙에 정확히 겹쳐 있으면 「바깥쪽」이 없으므로 0
+	 */
+	static double pushReach(double x, double z, double maxRadius,
+			TrialLandingShock.GroundProbe probe) {
+		double from = TrialLandingShock.fromCenter(x, z);
+		if (!(from > PUSH_MIN_REACH)) {
+			// 중앙에 정확히 겹쳐 있다. 방향을 지어내지 않는다.
+			return 0.0;
+		}
+		double request = pushRequest();
+		double distance = TrialLandingShock.pushDistance(from, request,
+				TrialLandingShock.outwardLimit(maxRadius, request));
+		return TrialLandingShock.groundedReach(probe, x, z, x / from, z / from, distance);
+	}
+
+	/**
+	 * 천장에 걸리기 전 <b>부탁하는</b> 거리(칸). {@code 12 ÷ 0.198 = 60.5}.
+	 *
+	 * <p>{@code TrialEnderStorm.pushVelocity} 는 「부탁한 거리 = 끝까지 떠 있을 때 가는 거리」로
+	 * 속도를 잡고, 바닥에서는 그 {@link #AIRBORNE_PUSH_SCALE} 배만 간다. 그러니 <b>바닥 실제</b>
+	 * {@link #PUSH_GROUND_BLOCKS} 를 부탁하는 거리로 옮기는 길은 그 비율로 나누는 것 하나다 — 「착지
+	 * 충격」의 16 과 「엔더폭풍」의 24 가 바로 이 「부탁하는 거리」의 자로 적힌 값이다.
+	 *
+	 * <p>지금 섬에서는 이 값이 <b>언제나 천장에 진다</b>(천장 34 &lt; 60.5).
+	 */
+	static double pushRequest() {
+		return PUSH_GROUND_BLOCKS / AIRBORNE_PUSH_SCALE;
+	}
+
+	/**
+	 * 그 거리에 실을 <b>처음 속도</b>(칸/틱). <b>공중이면 바닥과 같은 거리만 가게 깎는다.</b>
+	 *
+	 * <p>날개 퍼덕이기의 {@code shoveSpeed} 와 <b>같은 식</b>이다. 그쪽을 부르지 않는 까닭은
+	 * {@link #GROUND_DRAG} 에 적었다.
+	 *
+	 * <p>천장에 걸러진 {@code distance} 를 받는다 — 이 함수가 하는 일은 세기뿐이고 안전은 앞의 둘이
+	 * 지킨다. 거꾸로도 참이다: 공중 판정이 틀려 1 을 곱하든 0.198 을 곱하든 사람은 천장 밖으로 안
+	 * 나간다. 틀렸을 때 잃는 것은 「점프가 이득도 손해도 아니다」 하나다.
+	 */
+	static double pushSpeed(double distance, boolean airborne) {
+		double speed = TrialEnderStorm.pushVelocity(distance);
+		return airborne ? speed * AIRBORNE_PUSH_SCALE : speed;
+	}
+
+	/**
+	 * 이 사람이 <b>떠 있는가.</b> 둘 중 하나만 참이어도 떠 있는 것으로 본다.
+	 *
+	 * <ul>
+	 *   <li>{@code onGround()} 가 거짓 — 가장 바로인데 <b>클라이언트가 보내 준 깃발</b>이다</li>
+	 *   <li>발이 그 자리 지표보다 {@link #AIRBORNE_LIFT} 칸 넘게 높다 — <b>서버만 아는 하이트맵</b>
+	 *       이라 거짓 보고로 뒤집을 수 없다</li>
+	 * </ul>
+	 *
+	 * <p>날개 퍼덕이기의 {@code isAirborne} 과 같은 규칙이다(4장 「점프 중 폭주」 — 「공중 판정을
+	 * {@code onGround()} 하나로 하지 않는다」). 「또는」인 것이 요점이다 — 땅에 선 사람을 공중으로
+	 * 잘못 보면 <b>조금 덜 밀리고</b> 그 반대는 <b>다섯 배</b>를 간다. 어긋나는 방향이 언제나 덜 미는
+	 * 쪽이어야 한다.
+	 *
+	 * <p>땅이 없으면({@link #NO_GROUND}) 허공 위다 — 그때도 떠 있는 것으로 본다. 월드를 받지 않고
+	 * 값을 받는 것은 시험이 묻게 하려는 것이다(그쪽 함수는 비공개라 시험이 못 묻는다).
+	 */
+	static boolean airborne(boolean onGround, double feetY, int surfaceY) {
+		if (!onGround) {
+			return true;
+		}
+		if (surfaceY == NO_GROUND) {
+			return true;
+		}
+		return feetY - surfaceY > AIRBORNE_LIFT;
 	}
 
 	/**
@@ -552,8 +888,11 @@ public final class TrialEnderPulse {
 	 * 고리를 바닥에 그린다.
 	 *
 	 * <p>두 벌을 <b>같은 반경</b>에 겹쳐 찍는다. {@code CRIT} 은 4~10틱만 살아 앞머리를 선으로
-	 * 남기고, {@code PORTAL} 은 40~49틱을 살며 자라서 지나간 자리를 채운다. 한 자리에서 나와
-	 * 수명이 갈리는 것이므로 둘의 위치를 따로 계산할 이유가 없다 — 까닭은 클래스 설명에 있다.
+	 * 남기고, 파랑 먼지는 8~40틱을 살며 지나간 자리를 채운다. 한 자리에서 나와 수명이 갈리는
+	 * 것이므로 둘의 위치를 따로 계산할 이유가 없다 — 까닭은 클래스 설명에 있다.
+	 *
+	 * <p>몸통은 2026-10-04 까지 {@code PORTAL}(보라 엔더 입자)이었다. 밀치기가 생겨 규약의 파랑
+	 * 「밀려난다」로 옮겼다({@link #markColor}).
 	 *
 	 * <p>반경이 0 인 출발 틱에는 그릴 것이 없다. 중앙 한 점에 400 발을 쏘아 봐야 덩어리 하나다.
 	 *
@@ -565,7 +904,24 @@ public final class TrialEnderPulse {
 			return;
 		}
 		ring(end, ground, ParticleTypes.CRIT, EDGE_RISE_SPEED, radius, edgePoints(radius));
-		ring(end, ground, ParticleTypes.PORTAL, 0.0, radius, wakePoints(radius));
+		ring(end, ground, TrialWarning.dust(markColor()), 0.0, radius, wakePoints(radius));
+	}
+
+	/**
+	 * 이 고리의 색. <b>파랑 — 「밀려난다」</b>.
+	 *
+	 * <p>{@code TrialRisks.markColor} 를 쓰지 않는 것은 그쪽이 {@code Impact} 에서 색을 끌어내는데
+	 * 이 위험에는 {@code Impact} 칸이 없기 때문이다 — 「착지 충격」·「엔더폭풍」의
+	 * {@code markColor} 와 같은 처지이고 같은 상수를 돌려준다.
+	 *
+	 * <p>함수로 나와 있는 것은 <b>시험이 물을 수 있게</b> 하려는 것이다. {@code Colors} 는
+	 * {@code static final int} 라 컴파일할 때 숫자로 녹아들어, 상수 풀을 뒤지는 방식으로는 「어느
+	 * 색을 골랐는가」를 확인할 길이 없다.
+	 */
+	static int markColor() {
+		// 파랑 = 밀려난다. 2026-10-04 에 밀치기가 생겨 이 카드의 뜻이 됐고, 사람이 「파랑으로
+		// 바꾼다」를 골랐다. 전에는 넉백이 없어 일부러 피하던 색이다(클래스 설명).
+		return TrialWarning.Colors.SHOVE;
 	}
 
 	/**

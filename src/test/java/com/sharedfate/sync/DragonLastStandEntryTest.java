@@ -153,7 +153,7 @@ class DragonLastStandEntryTest {
 	 * ⚠ 신호기가 <b>드래곤 몸 밖이고 첫 지대 안</b>이다.
 	 *
 	 * <p>앉은 드래곤의 상자가 가로 16칸이라 반이 8 이다. 그보다 안이면 빛이 날개에 묻히고,
-	 * 첫 보더(반변 42)를 넘으면 벽 밖에 선다.
+	 * 첫 지대(반경 42 의 원)를 넘으면 원 밖에 선다.
 	 */
 	@Test
 	void 신호기가_드래곤_몸_밖이고_지대_안이다() {
@@ -161,7 +161,7 @@ class DragonLastStandEntryTest {
 				"드래곤 몸(가로 16칸)의 반보다 밖이어야 빛이 보인다");
 		double corner = DragonLastStandEntry.BEACON_HALF_SIDE * Math.sqrt(2.0);
 		assertTrue(corner < DragonLastStandZone.START_RADIUS,
-				"모서리가 첫 보더 밖이다 — 실제 " + corner);
+				"모서리가 첫 지대 밖이다 — 실제 " + corner);
 		assertTrue(DragonLastStandEntry.BEACON_HEIGHT > 42.0,
 				"흑요석 기둥(42칸)보다 낮으면 「하늘로 뻗는다」가 안 된다");
 	}
@@ -176,30 +176,38 @@ class DragonLastStandEntryTest {
 		assertTrue(first < last);
 	}
 
-	// ------------------------------------------------------------------ 보더 밖 사람
+	// ------------------------------------------------------------------ 지대 밖 사람
 
 	/**
-	 * ⚠⚠ <b>안쪽 가장자리가 보더 <u>내접원</u> 안이다.</b>
+	 * ⚠⚠ <b>안쪽 가장자리가 어느 방향이든 시작 원 안이다.</b>
 	 *
-	 * <p>보더는 정사각형이라 모서리 방향으로 반변을 그대로 쓰면 중앙에서 59칸 — <b>허공</b>이다.
-	 * 내접원이면 어느 방향이든 사각형 안이고, 벽이 미는 2칸보다도 안쪽이다.
+	 * <p>2026-10-04 에 지대가 보더(정사각형)를 버리고 원이 됐다. 데려오는 자리가 원 안이고, 원
+	 * 경계(빨간 기둥)에서 {@code WALL_MARGIN} 칸 안쪽이라 도착한 사람이 기둥을 제 뒤에 둔다.
 	 */
 	@Test
-	void 데려오는_자리가_어느_방향이든_보더_안이다() {
+	void 데려오는_자리가_어느_방향이든_원_안이다() {
 		double edge = DragonLastStandEntry.innerEdge();
 		assertTrue(edge > 0.0);
 		assertEquals(DragonLastStandZone.START_RADIUS - DragonLastStandEntry.WALL_MARGIN, edge,
-				1.0E-9, "값에서 직접 나와야 보더 시작값을 고치는 사람이 여기를 안 고친다");
-		assertTrue(DragonLastStandEntry.WALL_MARGIN > 2.0,
-				"벽은 「안에 있고 2칸 안」인 사람을 민다 — 그보다 안쪽이어야 끼이지 않는다");
-		// 어느 각도로 잡아도 반변 안이다(내접원이라는 뜻).
+				1.0E-9, "값에서 직접 나와야 지대 시작값을 고치는 사람이 여기를 안 고친다");
+		assertTrue(DragonLastStandEntry.WALL_MARGIN > DragonLastStandZoneWall.POST_GAP,
+				"경계에서 기둥 간격보다 안쪽이어야 「내가 안인가」가 흔들리지 않는다");
 		for (int degrees = 0; degrees < 360; degrees++) {
 			double radians = Math.toRadians(degrees);
 			double x = Math.cos(radians) * edge;
 			double z = Math.sin(radians) * edge;
-			assertTrue(Math.max(Math.abs(x), Math.abs(z)) <= DragonLastStandZone.START_RADIUS,
-					degrees + "도 방향이 보더 밖이다");
+			assertFalse(DragonLastStandZone.outside(x, z, DragonLastStandZone.START_RADIUS),
+					degrees + "도 방향이 원 밖이다");
 		}
+	}
+
+	/** 「이미 안인가」를 지대와 <b>같은 원 판정</b>으로 묻는다. 정사각형 판정이 남으면 두 벌이 된다. */
+	@Test
+	void 데려오기_판정이_지대와_같은_원이다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("com/sharedfate/sync/DragonLastStandZone")
+						&& bytes.contains("outside"),
+				"DragonLastStandZone.outside 를 부르지 않는다 — 원 판정이 두 벌로 갈라진다");
 	}
 
 	/** 낙사를 막는 천장이 남의 함수 그대로다 — 다시 짜면 두 벌이 되어 한쪽만 고쳐진다. */

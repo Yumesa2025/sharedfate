@@ -505,8 +505,8 @@ class DragonLastStandTest {
 						+ DragonLastStandPatterns.SUCK_PULL_TICKS
 						+ DragonLastStandPatterns.SUCK_AFTERGLOW_TICKS,
 				DragonLastStand.Pattern.VOID_SUCTION.durationTicks());
-		assertEquals(180, DragonLastStand.Pattern.VOID_SUCTION.durationTicks(),
-				"예고 60 + 흡입 100 + 여운 20 이다");
+		assertEquals(160, DragonLastStand.Pattern.VOID_SUCTION.durationTicks(),
+				"예고 40 + 흡입 100 + 여운 20 이다");
 
 		assertEquals(DragonLastStandPatterns.crossDurationTicks(),
 				DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
@@ -527,7 +527,7 @@ class DragonLastStandTest {
 	/**
 	 * ⚠ <b>브레스 잠금의 미리 잠그는 길이는 브레스 길이여야 한다.</b>
 	 *
-	 * <p>흡입이 브레스보다 <b>길다</b>(180 대 100, 십자는 100 으로 같다). 그래서 「가장 긴 패턴」으로
+	 * <p>흡입이 브레스보다 <b>길다</b>(160 대 100, 십자는 100 으로 같다). 그래서 「가장 긴 패턴」으로
 	 * 잠금을 잡고 있었다면 여기서 어긋난다 — {@code DragonLastStandZone.shrinkLockoutLead} 가
 	 * 재는 것은 <b>브레스 한 판이 들어갈 자리</b>이고 새 패턴은 축소와 겹쳐도 되므로 그대로여야
 	 * 한다.

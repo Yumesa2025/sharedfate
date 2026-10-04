@@ -333,7 +333,11 @@ import java.util.List;
  * ⚠ <b>2026-10-04</b>: 옛 서술은 「356 + 37」이었다. 패턴 쪽이 <b>띄움 기둥 넷</b>을 더해
  * 356 → 360 이 되어 합이 397 이었다가, 같은 날 십자 예고를 바닥 판으로 바꿔 먼지 선과 흰 기둥
  * 벽을 걷으면서 360 → <b>322</b> 로 내려왔다({@code DragonLastStandPatternsTest} 가 322 를
- * 못박는다). 그래서 합이 <b>359</b> 이고 예산까지 남은 몫은 <b>81점</b>이다.
+ * 못박는다). 그래서 합이 <b>359</b> 이다.
+ * ⚠ <b>그 뒤 안전지대가 월드 보더를 버리고 빨간 입자 기둥이 되어</b>(2026-10-04) 그 벽의 한 틱 최대
+ * <b>39점</b>({@code DragonLastStandZoneWall.worstPointsPerTick})이 언제나 위에 얹힌다 — 패턴 322 + 파도
+ * 37 + 벽 39 = <b>398</b>. 아래 끝 400 까지 남은 몫이 81 에서 <b>2점</b>으로 줄었다
+ * ({@code DragonLastStandZoneWallTest} 가 세 값을 더해 400 이하를 붙든다).
  *
  * <h2>⚠⚠ 일곱 자리에서 지운다 — {@code DragonLastStandConePanel} 을 그대로 따른다</h2>
  *
@@ -439,7 +443,7 @@ public final class DragonLastStandObjects {
 	 *
 	 * <p>⚠⚠ <b>그래도 타이머가 없다는 사실은 그대로다.</b> 팀이 손을 놓으면 드래곤은 가득까지
 	 * 차고 이 페이즈는 <b>끝나지 않는다</b> — 사람이 「부술떄까지」라고 정한 것이 그 뜻이다. 판을
-	 * 끝내는 것은 안전지대의 벽 피해뿐이다({@code DragonLastStandZone} 의 115초 뒤 증가).
+	 * 끝내는 것은 안전지대의 밖 피해뿐이다({@code DragonLastStandZone} 의 115초 뒤 증가).
 	 */
 	static final float LEAK_FRACTION_PER_SECOND = 0.005F;
 
@@ -516,8 +520,10 @@ public final class DragonLastStandObjects {
 	/**
 	 * 오브젝트가 서는 고리의 반경(칸). <b>새 숫자를 만들지 않았다.</b>
 	 *
-	 * <p>안전지대의 <b>마지막 반경</b>에서 벽 여유({@code DragonLastStandEntry.WALL_MARGIN})만큼
-	 * 안쪽이다 — 12 − 3 = <b>9</b>. 이렇게 적어 두면 <b>「오브젝트가 지대 밖에 서지 않는다」가
+	 * <p>안전지대의 <b>마지막 반경</b>에서 경계 여유({@code DragonLastStandEntry.WALL_MARGIN})만큼
+	 * 안쪽이다 — 12 − 3 = <b>9</b>. 그 여유의 근거는 2026-10-04 에 보더 충돌(벽에 끼이지 않게)에서
+	 * 「빨간 입자 기둥 바로 위에 두지 않는다」로 바뀌었고 값은 그대로다 — 이 고리에도 같은 근거가
+	 * 맞는다(크리스탈이 경계 기둥에 붙어 서면 「안에 있는가」가 흐려진다). 이렇게 적어 두면 <b>「오브젝트가 지대 밖에 서지 않는다」가
 	 * 구조적으로 참</b>이고, 지대의 끝값을 고치는 사람이 여기를 따로 고칠 일이 없다
 	 * (상시 번개의 {@code LIGHTNING_FIELD_RADIUS} 가 같은 식으로 적혀 있다).
 	 *
@@ -650,10 +656,10 @@ public final class DragonLastStandObjects {
 	 * 돌므로 길이가 팀의 속도에 달려 있고, 심지가 짧으면 <b>부수지 못한 크리스탈이 공짜로
 	 * 사라진다</b> — 사람이 정한 「부술 때까지」가 그 자리에서 거짓이 된다.
 	 *
-	 * <p>✅ 그래서 <b>페이즈 쪽 시계를 기준으로 삼는다.</b> 안전지대의 축소가 끝나고 벽 피해가
+	 * <p>✅ 그래서 <b>페이즈 쪽 시계를 기준으로 삼는다.</b> 안전지대의 축소가 끝나고 밖 피해가
 	 * 오르기 시작하는 시각({@code DragonLastStandZone.escalationStartTicks()} = 2300틱 = 115초)에
 	 * 세우는 시간을 더한 <b>2390틱(약 2분)</b>이다. 크리스탈 하나를 115초 동안 못 부순 팀은
-	 * <b>이미 벽 피해로 죽어 있다</b> — 곧 이 심지가 실제로 타는 일이 없고, 그러면서도
+	 * <b>이미 밖 피해로 죽어 있다</b> — 곧 이 심지가 실제로 타는 일이 없고, 그러면서도
 	 * <b>값에서 직접 나오므로</b> 누가 페이즈 길이를 고치면 여기가 따라온다.
 	 */
 	static final int FUSE_TICKS = (int) DragonLastStandZone.escalationStartTicks()

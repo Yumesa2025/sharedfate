@@ -418,8 +418,13 @@ public final class TrialCatalog {
 		/**
 		 * 중앙에서 바닥 고리가 퍼져 나간다.
 		 *
-		 * <p>피해가 없다. 이 카드가 빼앗는 것은 체력이 아니라 <b>발</b>이다 — 고리가 지나가는 순간
-		 * 바닥을 딛고 있으면 잠시 못 움직인다. 점프하면 통과하므로 요구하는 행동이 하나뿐이다.
+		 * <p>피해가 없다. 이 카드가 빼앗는 것은 체력이 아니라 <b>발과 자리</b>다 — 고리가 지나가는
+		 * 순간 바닥을 딛고 있으면 잠시 못 움직이고 <b>중앙에서 바깥으로 밀려난다</b>. 점프하면 통과하므로
+		 * 요구하는 행동이 하나뿐이다.
+		 *
+		 * <p>밀치기는 2026-10-04 에 사람이 더했다(「엔더 파동 구속과 밀치는 것도 있게」). 미는 세기는
+		 * 이 레코드에 칸이 없고 실행기({@code TrialEnderPulse.PUSH_GROUND_BLOCKS})가 든다 — 섬 안에
+		 * 붙드는 천장도 그쪽에 있다.
 		 *
 		 * @param interval    고리가 새로 퍼지기 시작하는 간격(틱)
 		 * @param travelTicks 중앙에서 {@code maxRadius} 까지 퍼지는 데 걸리는 틱
@@ -763,7 +768,7 @@ public final class TrialCatalog {
 					POOL_HEALTH_50,
 					new Risk.CrystalRevive(10, 100, 0.0F)),
 			new Trial("sharedfate:ender_pulse", "엔더 파동",
-					"20초마다 중앙에서 바닥 고리가 퍼집니다. 지나갈 때 땅을 딛고 있으면 잠시 묶입니다.",
+					"20초마다 중앙에서 바닥 고리가 퍼집니다. 지나갈 때 땅을 딛고 있으면 바깥으로 밀려나고 잠시 묶입니다.",
 					POOL_ENTRY,
 					new Risk.EnderPulse(400, 80, 42.0, 60)),
 			new Trial("sharedfate:hotbar_lock", "굳는 손",

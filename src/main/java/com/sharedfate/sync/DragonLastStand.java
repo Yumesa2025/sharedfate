@@ -56,13 +56,15 @@ import java.util.UUID;
  *   <tr><td>{@link DragonLastStandLights}</td><td><b>신호기 빛</b>(디스플레이 개체).
  *       진입 연출의 보라 기둥 넷과 오브젝트 파도의 흰 선이 함께 쓴다. ⚠ 전에는 <b>타이머 바</b>도
  *       여기 있었는데 2026-10-04 에 파도가 타이머를 버리면서 함께 지웠다</td></tr>
- *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대(월드 보더) — <b>혼자 도는 시계</b></td></tr>
+ *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대 — <b>혼자 도는 시계</b>. 2026-10-04 부터
+ *       월드 보더가 아니라 <b>나갈 수 있는 원</b>이고 벽은 {@link DragonLastStandZoneWall} 의 빨간
+ *       입자 기둥이다(사람 말 「안전지대가 사실상 보더라 나갈 수가 없어」)</td></tr>
  *   <tr><td>{@link DragonLastStandDome}</td><td><b>반구 블록 파괴</b> — 뽑히지 않고 1초마다 도는
  *       상시 규칙. 블록을 만지는 것은 <b>이 파일 하나뿐</b>이다</td></tr>
  * </table>
  *
  * <p>「왜 브레스가 안 나오지」는 <b>여기</b>({@link #allowed}), 「왜 빗나가지」는 <b>패턴</b>,
- * 「왜 파란 벽이 남았지」는 <b>지대</b>, 「왜 내 발판이 없어졌지」는 <b>반구</b>, 「왜 아무 일도
+ * 「왜 나 혼자 심장 소리가 나지」는 <b>지대</b>(원 밖이다),「왜 내 발판이 없어졌지」는 <b>반구</b>, 「왜 아무 일도
  * 안 일어나지」는 <b>진입 연출</b>(8초 동안 시계가 서 있다), 「이 떠 있는 크리스탈은 무엇이지」는
  * <b>오브젝트 파도</b> 쪽이다.
  *
@@ -477,7 +479,7 @@ public final class DragonLastStand {
 		 * <p>새로 진입한 판에서는 <b>{@code beganAt + DragonLastStandEntry.LENGTH_TICKS}</b> 이고,
 		 * 재시작으로 되살린 판에서는 {@code beganAt} 이다. 사람이 <b>「그땐 시간 재지말고」</b>라고
 		 * 정한 것을 지키는 배선이 이 한 칸이다 — 연출이 도는 동안 두 시계의 {@code elapsed} 가
-		 * 음수라 <b>보더만 서 있고 축소도 밖 피해도 번개도 돌지 않는다.</b>
+		 * 음수라 <b>원만 서 있고 축소도 밖 피해도 번개도 돌지 않는다.</b>
 		 */
 		private final long clockBase;
 		/**
@@ -648,7 +650,7 @@ public final class DragonLastStand {
 		CONE_BREATH(DragonLastStandPatterns.CONE_WARN_TICKS
 				+ DragonLastStandPatterns.CONE_AFTERGLOW_TICKS),
 		/**
-		 * 공허 흡입 — <b>드래곤 발밑</b>에 검은 원 · 반경 <b>4칸</b> · <b>3초 예고 → 5초 빨아들임
+		 * 공허 흡입 — <b>드래곤 발밑</b>에 검은 원 · 반경 <b>4칸</b> · <b>2초 예고(2026-10-04 에 3초 → 2초) → 5초 빨아들임
 		 * → 터짐</b> · 피해 {@link #VOID_SUCTION_DAMAGE} · <b>잔류 없음</b> · 한 번에 <b>원 하나.</b>
 		 *
 		 * <p>⚠ <b>원은 드래곤에게 있다.</b> 사람이 <b>「흡입은 드래곤에 검은원이고 드래곤이
@@ -667,10 +669,15 @@ public final class DragonLastStand {
 		 * 그래서 <b>수평만</b> 당기고 결과 속도에 천장을 씌운다. 근거는
 		 * {@code DragonLastStandPatterns.SUCK_MAX_INWARD} 에 길게 적어 두었다.
 		 *
-		 * <p>⚠ <b>안전지대가 좁아지면 저절로 어려워진다.</b> 3단계 지대가 반변 12칸인데 중앙에서
-		 * 도망쳐야 하니 <b>예고 3초만 달려도 벽</b>이다(3초에 17칸). <b>이 긴장은 의도다.</b>
+		 * <p>⚠ <b>안전지대가 좁아지면 저절로 어려워진다.</b> 3단계 지대가 반경 12칸 원인데 중앙에서
+		 * 도망쳐야 한다. 예고 3초이던 때는 그것만 달려도 지대 끝을 넘었고(17칸), 예고가 2초가 된
+		 * 뒤로는 11칸이라 원 경계 바로 안쪽에서 멈춘다. ⚠ 2026-10-04 부터 지대는 <b>벽이 아니라 나갈
+		 * 수 있는 원</b>이다(사람 말 「안전지대가 사실상 보더라 나갈 수가 없어」) — 더 달려 원 밖으로
+		 * 나가도 되고, 그 값은 안전지대 밖 피해(초당 8, 팀에 한 사람 몫)다. 흡입 터짐을 맞느니 원 밖에서
+		 * 1~2초 버티는 길이 열린 것이다. <b>이 긴장은 의도다.</b>
 		 *
-		 * <p>길이는 <b>예고 60 + 흡입 100 + 터짐 1 + 여운 19 = 180틱</b>이다. 값에서 직접 더한다.
+		 * <p>길이는 <b>예고 40 + 흡입 100 + 터짐 1 + 여운 19 = 160틱</b>이다(예고 3초이던 때 180틱).
+		 * 값에서 직접 더한다.
 		 */
 		VOID_SUCTION(DragonLastStandPatterns.SUCK_WARN_TICKS
 				+ DragonLastStandPatterns.SUCK_PULL_TICKS
@@ -719,7 +726,7 @@ public final class DragonLastStand {
 	}
 
 	/**
-	 * 안전지대(월드 보더)가 지금 어디까지 왔는가.
+	 * 안전지대(나갈 수 있는 원)가 지금 어디까지 왔는가.
 	 *
 	 * <p>안전지대는 패턴이 아니라 <b>혼자 도는 시계</b>라 여기서 뽑히지 않는다. 그런데 브레스를
 	 * 고르는 규칙 둘이 그 시계를 본다 — 「축소 직후 3초 브레스 금지」와 「축소와 브레스 동시
@@ -741,9 +748,9 @@ public final class DragonLastStand {
 	/**
 	 * 지금 안전지대 시계. 진입부터의 틱만으로 답이 정해지는 순수 계산이다.
 	 *
-	 * <p>보더를 실제로 미는 것은 {@link DragonLastStandZone#tick} 이고 {@link #tick} 이 매 틱
-	 * 부른다. 되돌리는 것은 {@link #onFightClosed} 와 {@link #onServerStopping} 둘이다 —
-	 * {@link #clearState()} 에서는 월드를 만질 수 없어 기억만 버린다.
+	 * <p>원을 그리고 밖 피해를 넣는 것은 {@link DragonLastStandZone#tick} 이고 {@link #tick} 이 매
+	 * 틱 부른다. 월드에 남기는 것이 없으므로(2026-10-04 에 보더를 버렸다) 되돌릴 것도 없고,
+	 * {@link #onFightClosed} 와 {@link #clearState()} 가 정적 상태만 비운다.
 	 */
 	private static ZoneClock zoneClock(Stand stand, long now) {
 		return DragonLastStandZone.clock(stand.clockBase, now);
@@ -943,12 +950,13 @@ public final class DragonLastStand {
 		}
 
 		hold(end, dragon, stand, now);
-		// 안전지대. 패턴처럼 뽑히지 않고 진입과 동시에 시작해 저 혼자 돈다 — 보더를 세우고
+		// 안전지대. 패턴처럼 뽑히지 않고 진입과 동시에 시작해 저 혼자 돈다 — 원을 그리고
 		// 45초 → 45초 → 25초로 좁히고 밖에 있는 사람에게 초당 값을 넣는 것이 전부 저쪽에 있다.
-		// hold 뒤인 것은 중심이 「드래곤을 못박아 둔 자리」라서다.
+		// hold 뒤인 것은 중심이 「드래곤을 못박아 둔 자리」라서다. 2026-10-04 부터 월드 보더가
+		// 아니라 나갈 수 있는 원이다 — 사람이 「안전지대가 사실상 보더라 나갈 수가 없어」라고 했다.
 		//
 		// ⚠ 넘기는 것이 beganAt 이 아니라 stand.clockBase 다. 진입 연출이 도는 동안 저쪽의
-		// elapsed 가 음수라 「보더는 서지만 축소도 밖 피해도 돌지 않는」 상태가 된다 — 사람이
+		// elapsed 가 음수라 「원은 서지만 축소도 밖 피해도 돌지 않는」 상태가 된다 — 사람이
 		// 「보더가 생기면서 … 그땐 시간 재지말고」라고 정한 것이 그 한 줄이다.
 		DragonLastStandZone.tick(end, stand.anchor, members == null ? List.of() : members,
 				stand.clockBase, now);
@@ -1059,7 +1067,7 @@ public final class DragonLastStand {
 	 * 진입. <b>여기 적힌 순서가 그대로 문서의 표다.</b>
 	 *
 	 * <p>⚠ <b>이 메서드가 하는 것은 「한 틱에 끝나는 것」뿐이다.</b> 사람이 정한 진입 연출
-	 * (내려오기 · 보더 밖 사람 데려오기 · 보라색 신호기 넷 · 체력이 차오르는 것 · 터지는 소리 ·
+	 * (내려오기 · 지대 밖 사람 데려오기 ·보라색 신호기 넷 · 체력이 차오르는 것 · 터지는 소리 ·
 	 * 화면에 「최후의 저항」)은 <b>{@link DragonLastStandEntry} 가 8초에 걸쳐</b> 돌린다. 그리고
 	 * 그 8초 동안 <b>안전지대·번개·패턴·오브젝트 파도가 전부 서 있다</b> — 사람이 「그땐 시간
 	 * 재지말고」라고 정한 것이고, 그것을 지키는 배선은 {@code Stand.clockBase} 한 칸이다.
@@ -1418,10 +1426,8 @@ public final class DragonLastStand {
 	 *       그러니 이 시점에 이름을 덮어쓰면 보스바가 바닐라 글자로 돌아간다.
 	 *       {@code isAlive()} 가 거짓이라 {@code DragonTrialManager.findDragon} 으로는 못 찾으므로
 	 *       여기서 따로 훑는다</li>
-	 *   <li><b>안전지대를 되돌린다</b> — 월드 보더를 진입 전 값으로 세운다. 되돌리지 않으면 판이
-	 *       끝난 뒤에도 파란 벽이 남고, 그 벽은 <b>월드 저장 파일에 들어 있어</b> 서버를 껐다
-	 *       켜도 그대로다. 월드가 살아 있는 시점이라 여기서 할 수 있다 —
-	 *       {@link #clearState()} 는 {@code SERVER_STOPPED} 에서도 불려 못 한다</li>
+	 *   <li><b>안전지대를 내린다</b> — 원 그리기와 밖 피해가 멈춘다. 정적 상태뿐이다 — 2026-10-04 에
+	 *       월드 보더를 버린 뒤로 지대가 월드에 남기는 것이 없어 되돌릴 것도 없다</li>
 	 * </ul>
 	 */
 	public static void onFightClosed(@Nullable ServerLevel end, @Nullable ShareTeam team) {
@@ -1441,7 +1447,7 @@ public final class DragonLastStand {
 		DragonLastStandEntry.clearState();
 		DragonLastStandObjects.clearState();
 		DragonLastStandLights.drop();
-		DragonLastStandZone.restore(end);
+		DragonLastStandZone.clearState();
 		restoreBossBarName(end);
 		SharedFateMod.LOGGER.info("[END] 팀 '{}' 최후의 저항 종료 — 팀이 무적이 됩니다", team.name());
 	}
@@ -1523,12 +1529,11 @@ public final class DragonLastStand {
 	 *       사라진다({@code DragonLastStandPatterns.clearState} → {@code ConePanel.drop}) —
 	 *       그것은 파티클이 아니라 <b>개체</b>인데, 지울 수 있는 것은 그쪽이 <b>개체를 들고
 	 *       있기</b> 때문이다. 월드에서 찾아야 했다면 이 자리에서 막혔다</li>
-	 *   <li><b>{@link #onFightClosed} 가 되돌리는 것</b> — 보스바 이름과 <b>월드 보더</b>.
-	 *       드래곤이 사라진 틱이라 월드가 살아 있다</li>
-	 *   <li><b>{@link #onServerStopping} 이 되돌리는 것</b> — 전투가 끝나지 않은 채로 서버가
-	 *       내려갈 때의 <b>월드 보더</b>. 보더는 그 차원의 {@code SavedData} 라
-	 *       <b>월드 저장 파일에 남는다</b> — 「월드가 함께 사라진다」가 성립하지 않는 유일한
-	 *       되돌림이고, 여기서 할 수 없어 줄이 하나 더 필요했다</li>
+	 *   <li><b>{@link #onFightClosed} 가 되돌리는 것</b> — 보스바 이름. 드래곤이 사라진 틱이라
+	 *       월드가 살아 있다. ⚠ 전에는 <b>월드 보더</b>도 여기와 {@link #onServerStopping} 에서
+	 *       되돌렸다 — 2026-10-04 에 안전지대가 보더를 버리고 「나갈 수 있는 원」이 되면서
+	 *       (사람 말 「안전지대가 사실상 보더라 나갈 수가 없어」) 월드에 남는 것이 없어져 두 줄이
+	 *       함께 빠졌다</li>
 	 *   <li>⚠ <b>되돌릴 수 없는 것</b> — <b>반구가 부순 블록.</b> 되살리려면 「우리가 지운 것」을
 	 *       기억해야 하는데 그 기억은 서버 재시작 한 번으로 어긋나고, 어긋난 기억은 남의 건축
 	 *       위에 블록을 놓는다 — {@code TrialDryWorld} 의 증발과 같은 판단이고 근거는
@@ -1556,21 +1561,20 @@ public final class DragonLastStand {
 		DragonLastStandEntry.clearState();
 		DragonLastStandObjects.clearState();
 		DragonLastStandLights.drop();
-		// 월드를 만지지 않는다 — 기억만 버린다. 보더 자체는 onServerStopping 이 먼저 되돌려 두었다.
+		// 안전지대의 시계 주인과 넉백 유예. 정적 칸뿐이고 월드에 남긴 것이 없다(보더를 버렸다).
 		DragonLastStandZone.clearState();
 	}
 
 	/**
-	 * ⚠ 서버가 멈추기 직전. <b>월드 보더를 저장보다 먼저 되돌린다.</b>
+	 * 서버가 멈추기 직전. <b>월드가 살아 있는 자리에서 개체를 거둔다.</b>
 	 *
 	 * <p>{@code SharedFateMod} 가 {@code SERVER_STOPPING} 에 붙인다.
 	 * {@code TrialFreeze.onServerStopping} 이 같은 자리에 같은 이유로 있다 —
 	 * {@code SERVER_STOPPED} 는 레벨이 이미 닫혀 <b>이미 늦다.</b>
 	 *
-	 * <p>이 줄이 없으면 전투 도중에 서버를 내린 판에서 줄어든 보더가 <b>엔드 저장 파일에
-	 * 남는다.</b> 다음 기동에 최후의 저항이 {@link #resume} 으로 되살아나면 그 시계가 다시
-	 * 몰고 가지만, 그 사이에 팀 설정에서 드래곤 시련을 끄거나 팀을 해체하면 <b>아무도 되돌리지
-	 * 않는 파란 벽</b>이 남는다.
+	 * <p>⚠ 전에는 이 줄의 첫 일이 <b>줄어든 월드 보더를 저장보다 먼저 되돌리는 것</b>이었다. 2026-10-04 에
+	 * 안전지대가 보더를 버리고 「나갈 수 있는 원」이 되면서 그 일이 없어졌다 — 근거와 「혹시 남은
+	 * 보더」를 다루는 법은 {@link DragonLastStandZone} 의 「보더를 되돌리는 안전장치를 두지 않았다」.
 	 *
 	 * <p>부채꼴과 십자의 <b>빨간 면</b>도 여기서 거둔다. 그쪽은 개체라 <b>월드가 살아 있는 자리에서
 	 * 거두는 것이 가장 깔끔하다</b> — 다만 {@link DragonLastStandConePanel}·{@link DragonLastStandCrossPanel}
@@ -1578,7 +1582,6 @@ public final class DragonLastStand {
 	 * ({@code shouldBeSaved()}) 심지도 들고 있어서, 이 줄을 못 지나도 파일에 남지 않는다.
 	 */
 	public static void onServerStopping(@Nullable MinecraftServer server) {
-		DragonLastStandZone.onServerStopping(server);
 		DragonLastStandConePanel.drop();
 		DragonLastStandCrossPanel.drop();
 		// 진입 연출의 신호기와 오브젝트 파도의 개체들. 저장을 막아 두었으므로 이 줄을 못 지나도

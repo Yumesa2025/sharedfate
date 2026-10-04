@@ -460,13 +460,271 @@ class TrialEnderPulseTest {
 				"월드 시각을 직접 물으면 판이 멈춘 동안 고리가 얼어붙는다");
 	}
 
+	/**
+	 * ⚠⚠ 미는 자리는 <b>천장 둘을 지나고, 덮어쓰고, 띄우지 않는다.</b>
+	 *
+	 * <p>전에는 이 자리에 「아무도 밀지 않는다」가 있었다({@code setDeltaMovement} 가 바이트에 없음).
+	 * 2026-10-04 사람이 「엔더 파동 구속과 밀치는 것도 있게」라고 해서 뒤집었고, 그 대신 미는 줄이
+	 * 지나야 할 것을 이름으로 붙든다. <b>세로 자름</b>({@code syncVelocity}·{@code TrialVelocity}·
+	 * {@code getKnownMovement}·바닐라 {@code knockBack} 무손)은 속도를 내려 보내는 자리 전부를 한
+	 * 곳에서 보는 {@code TrialVelocityTest.속도를_내려보내는_자리_넷이_모두_자름을_지난다} 가 본다 —
+	 * 여기서 다시 보면 시험이 두 벌이 된다.
+	 */
 	@Test
-	void 아무도_밀지_않는다() throws IOException {
-		// 엔드 중앙 섬은 사방이 허공이고 체력이 팀 공유라 한 사람의 낙사가 팀 전체를 끝낸다.
+	void 미는_줄은_천장을_지나고_덮어쓴다() throws IOException {
 		String bytes = classBytes();
-		assertFalse(bytes.contains("setDeltaMovement"), "이 카드에는 넉백이 없다");
-		assertFalse(bytes.contains("knockback"), "이 카드에는 넉백이 없다");
+		assertTrue(bytes.contains("setDeltaMovement"), "밀치기가 사라졌다 — 사람이 시킨 것이다");
+		assertTrue(bytes.contains("outwardLimit") && bytes.contains("pushDistance"),
+				"「착지 충격」의 천장(반경 34)을 안 지난다 — 낙사 한 번이 월드 삭제다");
+		assertTrue(bytes.contains("groundedReach"),
+				"땅이 끊기기 전에서 멈추지 않는다 — 섬은 둥글지 않다");
+		assertFalse(bytes.contains("addDeltaMovement"),
+				"속도를 더하면 달리던 속도가 얹혀 천장이 계산한 목적지를 지나친다 — 덮어쓸 것");
+		assertFalse(bytes.contains("setIgnoreFallDamageFromCurrentImpulse"),
+				"띄우지 않는 카드라 낙하를 면제할 일이 없다 — 띄우게 됐다는 뜻이면 천장부터 다시 볼 것");
 		assertFalse(bytes.contains("hurtServer"), "이 카드에는 피해가 없다");
+	}
+
+	@Test
+	void 구속은_밀치기와_함께_그대로_걸린다() throws IOException {
+		// 밀치기를 더하면서 구속을 빼거나 바꾸지 않았다. 사람 말이 「구속과 밀치는 것도」다.
+		String bytes = classBytes();
+		assertTrue(bytes.contains("SLOWNESS"), "구속이 사라졌다");
+		assertTrue(bytes.contains("addEffect"), "구속을 안 건다");
+		assertEquals(2, TrialEnderPulse.ROOT_AMPLIFIER, "구속 III");
+		assertEquals(60, card().rootTicks(), "3초");
+	}
+
+	// ------------------------------------------------------------------ 밀치기의 세기와 천장
+
+	/** 그 처음 속도로 <b>바닥에 붙은</b> 몸이 끝까지 가는 거리. 감쇠 0.546 이다. */
+	private static double groundTravel(double speed) {
+		return speed / (1.0 - TrialEnderPulse.GROUND_DRAG);
+	}
+
+	/** 그 처음 속도로 <b>끝까지 떠 있는</b> 몸이 가는 거리. 감쇠 0.91 이다. */
+	private static double airTravel(double speed) {
+		return speed / (1.0 - TrialEnderStorm.AIR_DRAG);
+	}
+
+	/** 반경 {@code edge} 안이 전부 땅인 둥근 섬. */
+	private static TrialLandingShock.GroundProbe island(double edge) {
+		return (x, z) -> Math.sqrt(x * x + z * z) <= edge;
+	}
+
+	@Test
+	void 천장이_없다면_바닥에서_사람이_고른_12칸을_간다() {
+		// 사람이 고른 것은 「강하게 · 약 12칸」이고 그것은 바닥 실제 거리다. 부탁하는 거리는
+		// 그것을 공중 보정 비율로 나눈 60.5칸이고, 그 부탁이 바닥에서 정확히 12칸이 되어야 한다.
+		assertEquals(12.0, TrialEnderPulse.PUSH_GROUND_BLOCKS, 0.0, "사람이 정한 값이다");
+		assertEquals(60.533, TrialEnderPulse.pushRequest(), 1.0E-3);
+		assertEquals(12.0,
+				groundTravel(TrialEnderPulse.pushSpeed(TrialEnderPulse.pushRequest(), false)),
+				1.0E-9, "부탁하는 거리와 바닥 실제가 어긋났다 — 비율을 한쪽만 고쳤다");
+	}
+
+	/**
+	 * ⚠⚠ <b>바닥 12칸은 이 섬에서 다 안 나온다</b> — 천장이 먼저 문다. 실제 거리를 표로 못박는다.
+	 *
+	 * <p>사람이 「약하다」고 하면 이 표가 답이다. 부탁(60.5)을 올려도 한 칸도 안 늘고, 늘리려면
+	 * 천장(34)을 무르는 수밖에 없는데 그것은 낙사 여유를 깎는다.
+	 */
+	@Test
+	void 바닥에서_맞으면_실제로는_천장까지_남은_길의_오분의_일을_간다() {
+		double max = card().maxRadius();
+		TrialLandingShock.GroundProbe flat = island(1000.0);
+		double[][] table = {{0.001, 6.740}, {10.0, 4.758}, {20.0, 2.775}, {30.0, 0.793}};
+		for (double[] row : table) {
+			double reach = TrialEnderPulse.pushReach(row[0], 0.0, max, flat);
+			assertEquals(row[1], groundTravel(TrialEnderPulse.pushSpeed(reach, false)), 1.0E-3,
+					"중앙에서 " + row[0] + "칸에 선 사람이 바닥에서 밀리는 거리");
+		}
+		assertTrue(groundTravel(TrialEnderPulse.pushSpeed(
+						TrialEnderPulse.pushReach(0.001, 0.0, max, flat), false))
+						< TrialEnderPulse.PUSH_GROUND_BLOCKS,
+				"천장이 12칸보다 넉넉해졌다 — 천장을 무른 것인지 먼저 볼 것");
+	}
+
+	/**
+	 * ⚠⚠ <b>섬 끝에서 맞아도, 맞고 곧바로 뛰어도</b> 반경 34 를 못 넘는다.
+	 *
+	 * <p>이 카드에서 맞는 사람은 거의 다 「늦게 뛴 사람」이라 맞은 직후에 뜬다. 그래서 최악을
+	 * <b>끝까지 떠 있는 경우</b>로 센다 — 속도를 공중 감쇠로 잡았으므로 그때 가는 거리가 곧
+	 * {@code pushReach} 다. 고리가 닿는 반경 42 안을 각도·거리마다 훑는다.
+	 */
+	@Test
+	void 어디서_맞고_곧바로_뛰어도_반경_34_를_못_넘는다() {
+		double max = card().maxRadius();
+		double ceiling = TrialRisks.ARENA_RADIUS - TrialLandingShock.EDGE_MARGIN;
+		TrialLandingShock.GroundProbe flat = island(1000.0);
+		for (int spoke = 0; spoke < 36; spoke++) {
+			double angle = Math.PI * 2.0 * spoke / 36;
+			for (double r = 0.25; r <= max; r += 0.25) {
+				double x = Math.cos(angle) * r;
+				double z = Math.sin(angle) * r;
+				double reach = TrialEnderPulse.pushReach(x, z, max, flat);
+				double worst = airTravel(TrialEnderPulse.pushSpeed(reach, false));
+				// 천장 밖(34~42)에 이미 선 사람은 제자리에 남는 것이 답이다.
+				assertTrue(r + worst <= Math.max(ceiling, r) + 1.0E-9,
+						"중앙에서 " + r + "칸에 선 사람이 반경 " + (r + worst) + " 까지 간다");
+				if (r >= ceiling) {
+					assertEquals(0.0, reach, 0.0, "천장 밖에 선 사람을 또 밀었다");
+				}
+			}
+		}
+	}
+
+	@Test
+	void 땅이_끊기면_그_앞에서_멈춘다() {
+		double max = card().maxRadius();
+		// 섬이 반경 25 에서 끝나는 쪽 — 천장(34)보다 안쪽에 허공이 있다.
+		TrialLandingShock.GroundProbe small = island(25.0);
+		for (double r = 1.0; r <= 25.0; r += 0.5) {
+			double worst = airTravel(TrialEnderPulse.pushSpeed(
+					TrialEnderPulse.pushReach(r, 0.0, max, small), false));
+			assertTrue(r + worst <= 25.0 + 1.0E-9, r + "칸에서 맞아 허공(25칸 밖)으로 나갔다");
+		}
+		// 길 한가운데 폭 1 짜리 구멍(반경 20~21). 건너편에 땅이 있어도 건너가지 않는다.
+		TrialLandingShock.GroundProbe holed = (x, z) -> {
+			double d = Math.sqrt(x * x + z * z);
+			return d < 20.0 || d > 21.0;
+		};
+		double worst = airTravel(TrialEnderPulse.pushSpeed(
+				TrialEnderPulse.pushReach(15.0, 0.0, max, holed), false));
+		assertTrue(15.0 + worst < 20.0, "구멍 너머로 밀었다 — 밀려가는 몸은 구멍으로 떨어진다");
+	}
+
+	@Test
+	void 중앙에_정확히_겹쳐_있으면_방향을_지어내지_않는다() {
+		assertEquals(0.0,
+				TrialEnderPulse.pushReach(0.0, 0.0, card().maxRadius(), island(1000.0)), 0.0);
+	}
+
+	@Test
+	void 공중이면_바닥과_같은_거리만_간다() {
+		// 사람 말 「밀치는거 점프하는도중 밀쳐지면 저끝까지 날라가버리거든?」 — 같은 속도가 공중에서
+		// 다섯 배를 가는 것을 비율로 맞춘다. 점프가 이득도 손해도 아니어야 한다.
+		for (double d = 0.5; d <= 34.0; d += 0.5) {
+			assertEquals(groundTravel(TrialEnderPulse.pushSpeed(d, false)),
+					airTravel(TrialEnderPulse.pushSpeed(d, true)), 1.0E-9,
+					d + "칸 부탁에서 공중과 바닥이 갈렸다");
+		}
+		assertEquals(5.045,
+				airTravel(TrialEnderPulse.pushSpeed(10.0, false))
+						/ groundTravel(TrialEnderPulse.pushSpeed(10.0, false)),
+				1.0E-3, "보정이 없으면 공중이 다섯 배를 간다 — 이 비율이 막는 것");
+	}
+
+	@Test
+	void 공중_판정은_깃발_하나로_하지_않는다() {
+		int surface = 64;
+		assertFalse(TrialEnderPulse.airborne(true, 64.0, surface), "땅에 서 있다");
+		assertTrue(TrialEnderPulse.airborne(false, 64.0, surface), "깃발이 떠 있다고 하면 떠 있다");
+		// 깃발은 클라이언트가 보낸 것이다. 땅에 있다고 해도 하이트맵이 높으면 떠 있는 것으로 본다 —
+		// 틀리는 방향이 「덜 민다」여야 한다.
+		assertTrue(TrialEnderPulse.airborne(true, 64.6, surface), "하이트맵이 떠 있다고 한다");
+		assertFalse(TrialEnderPulse.airborne(true, 64.5, surface), "반 블록 한 칸은 땅이다");
+		assertTrue(TrialEnderPulse.airborne(true, 64.0, TrialEnderPulse.NO_GROUND),
+				"발밑이 허공이면 떠 있다");
+	}
+
+	/**
+	 * 날개 퍼덕이기와 <b>같은 값</b>이다.
+	 *
+	 * <p>값이 두 곳에 적혀 있는 것은 카드가 패턴 파일을 부르면 의존이 거꾸로 흐르고, 지금 그 파일을
+	 * 다른 사람이 쓰고 있어 한쪽으로 모으지 못했기 때문이다. 옮길 방향은 이 값들이
+	 * {@code TrialEnderStorm.AIR_DRAG} 옆으로 가고 패턴이 그것을 빌리는 것이고, 그때 이 시험은
+	 * 지워도 된다.
+	 */
+	@Test
+	void 공중_보정은_날개_퍼덕이기와_같은_값이다() {
+		assertEquals(DragonLastStandPatterns.GROUND_DRAG, TrialEnderPulse.GROUND_DRAG, 0.0,
+				"바닥 감쇠가 두 곳에서 갈렸다 — 한쪽만 고친 것이다");
+		assertEquals(DragonLastStandPatterns.AIRBORNE_PUSH_SCALE,
+				TrialEnderPulse.AIRBORNE_PUSH_SCALE, 0.0, "공중 보정이 두 곳에서 갈렸다");
+		assertEquals(DragonLastStandPatterns.AIRBORNE_LIFT, TrialEnderPulse.AIRBORNE_LIFT, 0.0,
+				"공중 판정의 높이가 두 곳에서 갈렸다");
+		assertEquals(TrialLandingShock.AIR_DRAG, TrialEnderStorm.AIR_DRAG, 0.0);
+	}
+
+	/**
+	 * ⚠ <b>고리마다 한 사람 한 번</b> 민다 — 밀린 사람을 고리와 함께 굴려 본다.
+	 *
+	 * <p>밀린 몸은 처음 몇 틱에 고리(틱당 0.525칸)보다 빨리 바깥으로 가서 <b>뒷자락이 아직 안 온
+	 * 자리</b>에 선다. 명단이 없으면 같은 고리가 그 사람을 또 만나 또 민다 — 6장 「매 틱
+	 * {@code syncVelocity} 는 사람 입력을 지운다」의 꼴이다. 그 사고가 실제로 일어나는 자리라는 것을
+	 * 명단 없이 굴린 쪽이 함께 보인다.
+	 */
+	@Test
+	void 밀린_사람은_같은_고리에_다시_걸리지_않는다() {
+		TrialCatalog.Risk.EnderPulse pulse = card();
+		int life = TrialEnderPulse.lifetime(pulse.interval(), pulse.travelTicks());
+		for (double start = 0.5; start <= 30.0; start += 0.5) {
+			assertEquals(1, hitsOnOneRing(pulse, life, start, true),
+					start + "칸에 선 사람이 한 고리에 여러 번 밀렸다");
+		}
+		assertTrue(hitsOnOneRing(pulse, life, 5.0, false) > 1,
+				"명단 없이도 한 번이라면 이 시험이 묻는 것이 없어졌다 — 고리 속도나 세기를 먼저 볼 것");
+	}
+
+	/** 한 고리가 지나가는 동안 그 사람을 몇 번 미는가. 맞은 뒤로는 바닥 마찰로 밀려간다. */
+	private static int hitsOnOneRing(TrialCatalog.Risk.EnderPulse pulse, int life, double start,
+			boolean keepRoster) {
+		java.util.UUID who = new java.util.UUID(0L, 1L);
+		java.util.Set<java.util.UUID> crossed = new java.util.HashSet<>();
+		TrialLandingShock.GroundProbe flat = island(1000.0);
+		double at = start;
+		double speed = 0.0;
+		int hits = 0;
+		for (int step = 0; step <= life; step++) {
+			double outer = TrialEnderPulse.judgeRadius(step, pulse.travelTicks(), pulse.maxRadius());
+			double inner = TrialEnderPulse.judgeRadius(step - 1, pulse.travelTicks(),
+					pulse.maxRadius());
+			if (!keepRoster) {
+				crossed.clear();
+			}
+			if (TrialEnderPulse.crossesNow(crossed, who, at, inner, outer)) {
+				hits++;
+				speed = TrialEnderPulse.pushSpeed(
+						TrialEnderPulse.pushReach(at, 0.0, pulse.maxRadius(), flat), false);
+			}
+			at += speed;
+			speed *= TrialEnderPulse.GROUND_DRAG;
+		}
+		return hits;
+	}
+
+	/**
+	 * 다른 카드의 밀치기가 <b>잇따라</b> 와도 천장 안이다 — 덮어쓰고, 매번 지금 자리에서 다시 잰다.
+	 *
+	 * <p>「착지 충격」(부탁 16 · 천장 34)·「엔더폭풍」(부탁 24 · 천장 32)과 이 카드가 한 사람을 차례로
+	 * 미는 여섯 순서를 모두 굴린다. 각각을 최악(끝까지 떠 있음)으로 센다. 서버가 아는 자리가 한두 틱
+	 * 늦어 생기는 틈은 이 시험 밖이다 — 클래스 설명 「다른 카드의 밀치기와 겹칠 때」에 수를 적었다.
+	 */
+	@Test
+	void 다른_카드가_이어_밀어도_천장_안이다() {
+		double max = card().maxRadius();
+		double ceiling = TrialRisks.ARENA_RADIUS - TrialLandingShock.EDGE_MARGIN;
+		TrialLandingShock.GroundProbe flat = island(1000.0);
+		java.util.function.DoubleUnaryOperator pulse = r -> r + airTravel(TrialEnderPulse.pushSpeed(
+				TrialEnderPulse.pushReach(r, 0.0, max, flat), false));
+		java.util.function.DoubleUnaryOperator shock = r -> r + TrialLandingShock.pushDistance(r,
+				16.0, TrialLandingShock.outwardLimit(75.0, 16.0));
+		java.util.function.DoubleUnaryOperator storm = r -> r + TrialEnderStorm.pushDistance(r, 0.0,
+				new Vec3(1.0, 0.0, 0.0), TrialEnderStorm.PUSH_BLOCKS * 3.0);
+		java.util.function.DoubleUnaryOperator[][] orders = {
+				{pulse, shock, storm}, {pulse, storm, shock}, {shock, pulse, storm},
+				{shock, storm, pulse}, {storm, pulse, shock}, {storm, shock, pulse}};
+		for (double r = 0.25; r <= max; r += 0.25) {
+			for (java.util.function.DoubleUnaryOperator[] order : orders) {
+				double at = r;
+				for (java.util.function.DoubleUnaryOperator push : order) {
+					at = push.applyAsDouble(at);
+				}
+				assertTrue(at <= Math.max(ceiling, r) + 1.0E-9,
+						r + "칸에서 차례로 밀려 반경 " + at + " 까지 갔다");
+			}
+		}
 	}
 
 	@Test
@@ -479,14 +737,28 @@ class TrialEnderPulseTest {
 		assertFalse(bytes.contains("shout"), "자막을 되살렸다");
 	}
 
+	/**
+	 * 몸통은 규약의 <b>파랑 — 「밀려난다」</b>다.
+	 *
+	 * <p>전에는 이 자리에 「규약 색을 새로 만들지 않는다」(먼지를 아예 안 쓴다)가 있었다. 넉백이 없어
+	 * 규약의 네 색 어느 것도 이 카드의 뜻이 아니었기 때문이다. 2026-10-04 밀치기가 생기고 사람이
+	 * 「파랑으로 바꾼다」를 골라, 이제는 「착지 충격」·「엔더폭풍」과 <b>같은 상수</b>를 쓰는지를 본다.
+	 */
 	@Test
-	void 규약_색을_새로_만들지_않는다() throws IOException {
-		// 색 규약은 먼지 고리의 규약이다. 여기에 다섯째 색을 더하면 그 순간 규약이 장식이 되므로
-		// 이 카드는 먼지 자체를 쓰지 않고 엔더 입자로 간다.
+	void 색은_규약에_있는_파랑이다() throws IOException {
+		assertEquals(TrialWarning.Colors.SHOVE, TrialEnderPulse.markColor(),
+				"이 카드는 「서 있으면 묶이고 밀려난다」라 파랑이 그 뜻 그대로다");
+		assertEquals(TrialLandingShock.markColor(), TrialEnderPulse.markColor(),
+				"같은 「밀려난다」 고리인데 색이 갈렸다 — 사람이 둘을 다른 것으로 배운다");
+		assertEquals(TrialEnderStorm.markColor(), TrialEnderPulse.markColor());
 		String bytes = classBytes();
-		assertFalse(bytes.contains("DustParticleOptions"), "먼지를 쓰면 색을 하나 고르게 된다");
-		assertFalse(bytes.contains("dust"), "TrialWarning.dust 를 부르면 색을 하나 고르게 된다");
-		assertFalse(bytes.contains("markColor"), "규약 색을 끌어다 쓰면 다섯째 색이 생긴다");
+		assertTrue(bytes.contains("markColor") && bytes.contains("dust"),
+				"몸통을 파랑 먼지로 그리지 않는다 — markColor 를 거쳐 TrialWarning.dust 로 그릴 것");
+		// 몸통이 옛 보라 엔더 입자로 돌아가지 않았는지. PORTAL 은 맞은 사람 발밑 연출(root)에도
+		// 쓰이므로 이름으로는 못 가른다 — 대신 먼지 생성자를 직접 부르지 않았는지(크기·색을
+		// 새로 고르지 않았는지)를 본다.
+		assertFalse(bytes.contains("DustParticleOptions"),
+				"먼지를 직접 만들면 크기·색을 이 파일이 새로 고르게 된다 — TrialWarning.dust 를 쓸 것");
 	}
 
 	private static String classBytes() throws IOException {

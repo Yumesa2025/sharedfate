@@ -22,7 +22,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * 여기서 다시 재면 <b>시험이 두 벌</b>이 되어 언젠가 한쪽만 고쳐진다 — 그래서 이 파일은
  * <b>식이 아니라 자리</b>를 지킨다.
  *
- * <p>카드별 성질은 {@code TrialEnderStormTest}·{@code TrialLandingShockTest} 가 각자 본다
+ * <p>카드별 성질은 {@code TrialEnderStormTest}·{@code TrialLandingShockTest}·{@code TrialEnderPulseTest}
+ * 가 각자 본다
  * (쌓인 세로를 배달하지 않는다 · 정상 플레이어는 비트 단위 무변화 · 수평 천장이 그대로다).
  */
 class TrialVelocityTest {
@@ -42,9 +43,9 @@ class TrialVelocityTest {
 		assertEquals(1, declared(TrialVelocity.class).size(),
 				"TrialVelocity 가 syncedVertical 을 하나만 선언해야 한다");
 
-		// 부르는 세 파일. 어느 하나도 제 사본을 가지면 안 된다.
+		// 부르는 네 파일. 어느 하나도 제 사본을 가지면 안 된다.
 		for (Class<?> other : new Class<?>[] {DragonLastStandPatterns.class, TrialEnderStorm.class,
-				TrialLandingShock.class}) {
+				TrialLandingShock.class, TrialEnderPulse.class}) {
 			assertTrue(declared(other).isEmpty(),
 					other.getSimpleName() + " 가 제 syncedVertical 을 선언했다 — 두 벌이 됐다는"
 							+ " 뜻이고, 다음에 고치는 사람은 한쪽만 고친다");
@@ -108,7 +109,9 @@ class TrialVelocityTest {
 	}
 
 	/**
-	 * ⚠⚠ <b>속도를 내려 보내는 자리 셋(파일 셋)이 모두 자름을 지난다.</b>
+	 * ⚠⚠ <b>속도를 내려 보내는 자리 넷(파일 넷)이 모두 자름을 지난다.</b>
+	 *
+	 * <p>2026-10-04 에 「엔더 파동」({@code TrialEnderPulse.push})이 밀치기를 얻어 넷째가 됐다.
 	 *
 	 * <p>⚠ 공허 흡입({@code pullSuck})은 2026-10-04 저녁에 빠졌다. 서버의 속도를 덮어써 보내지 않고
 	 * 바닐라 폭발의 {@code playerKnockback} 으로 수평 한 벌을 <b>더하게</b> 보내므로 남이 쌓아 둔 세로가
@@ -125,9 +128,9 @@ class TrialVelocityTest {
 	 */
 	@Test
 	void 속도를_내려보내는_자리_넷이_모두_자름을_지난다() {
-		// 자리는 셋이고 파일도 셋이다 — DragonLastStandPatterns 는 날개 번치 하나를 든다.
+		// 자리는 넷이고 파일도 넷이다 — DragonLastStandPatterns 는 날개 번치 하나를 든다.
 		for (String owner : new String[] {"DragonLastStandPatterns", "TrialEnderStorm",
-				"TrialLandingShock"}) {
+				"TrialLandingShock", "TrialEnderPulse"}) {
 			String bytes = read("/com/sharedfate/sync/" + owner + ".class");
 			assertTrue(bytes.contains("syncVelocity"),
 					owner + " 가 속도를 내려보내지 않는다 — 이 목록이 낡았는지 먼저 볼 것");

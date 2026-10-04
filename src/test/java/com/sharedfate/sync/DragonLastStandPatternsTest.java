@@ -1244,11 +1244,15 @@ class DragonLastStandPatternsTest {
 
 	// ------------------------------------------------------------------ ③ 공허 흡입
 
-	/** 사람이 정한 값 넷. 반경 4 · 예고 3초 · 흡입 5초 · 원 하나다. */
+	/**
+	 * 사람이 정한 값 넷. 반경 4 · 예고 2초 · 흡입 5초 · 원 하나다.
+	 *
+	 * <p>예고는 2026-10-04 에 3초 → 2초로 줄었다. 사람 말: 「공허 흡입 예고 2초로」.
+	 */
 	@Test
-	void 흡입은_반경_4에_3초_예고_5초_흡입이다() {
+	void 흡입은_반경_4에_2초_예고_5초_흡입이다() {
 		assertEquals(4.0, DragonLastStandPatterns.SUCK_RADIUS, 1.0E-9, "사람이 정한 값이다");
-		assertEquals(60, DragonLastStandPatterns.SUCK_WARN_TICKS, "3초다");
+		assertEquals(40, DragonLastStandPatterns.SUCK_WARN_TICKS, "2초다 — 2026-10-04 에 3초에서 줄었다");
 		assertEquals(100, DragonLastStandPatterns.SUCK_PULL_TICKS, "5초다");
 		assertTrue(DragonLastStandPatterns.SUCK_WARN_TICKS >= TrialWarning.TICKS_SIDESTEP,
 				"예고가 옆으로 비킬 시간(30틱)보다 짧으면 사후 통보다");
@@ -1524,7 +1528,9 @@ class DragonLastStandPatternsTest {
 				due.add(step);
 			}
 		}
-		assertEquals(java.util.List.of(60, 80, 100, 120, 140), due,
+		// 예고가 2초(40틱)라 흡입이 40 에 시작하고 터짐이 140 이다(예고 3초이던 때 60·…·140, 터짐 160).
+		assertEquals(140, burst, "예고 40 + 흡입 100 이다");
+		assertEquals(java.util.List.of(40, 60, 80, 100, 120), due,
 				"흡입이 시작하는 틱부터 1초마다 — 예고 중에는 보이기만 하고 안 아프다");
 		for (int step : due) {
 			assertTrue(step >= DragonLastStandPatterns.SUCK_WARN_TICKS, step + "틱은 예고 중이다");
@@ -1540,7 +1546,7 @@ class DragonLastStandPatternsTest {
 						> DragonLastStandPatterns.HURT_COOLDOWN_GUARD_TICKS,
 				"결계 주기가 10틱 이하면 두 번째 결계부터 차액 0 으로 막힌다");
 
-		// 주기를 고쳐도 조건이 지킨다 — 15틱이었다면 150틱 결계가 터짐 10틱 앞이라 빠져야 한다.
+		// 주기를 고쳐도 조건이 지킨다 — 15틱이었다면 130틱 결계가 터짐(140) 10틱 앞이라 빠져야 한다.
 		// (값을 바꿀 수 없으니 조건의 식을 그대로 다시 세어 본다.)
 		int last = -1;
 		for (int step = DragonLastStandPatterns.SUCK_WARN_TICKS; step < burst; step += 15) {
@@ -1548,7 +1554,7 @@ class DragonLastStandPatternsTest {
 				last = step;
 			}
 		}
-		assertEquals(135, last, "주기 15 라면 마지막 결계는 150 이 아니라 135 여야 한다");
+		assertEquals(115, last, "주기 15 라면 마지막 결계는 130 이 아니라 115 여야 한다");
 
 		// 배선 — 실제로 그 함수로 때리는가.
 		String bytes = classBytes();

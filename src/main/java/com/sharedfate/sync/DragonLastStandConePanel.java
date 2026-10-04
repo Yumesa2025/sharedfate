@@ -64,8 +64,8 @@ import java.util.List;
  * <h2>⚠⚠ 개체는 월드에 저장된다 — 그것을 <b>두 겹</b>으로 막는다</h2>
  *
  * <p>파티클과 달리 개체는 남는다. 남으면 <b>다음 판까지 빨간 판이 떠 있고</b>, 그것은 월드 저장
- * 파일에 들어가므로 「월드와 함께 사라진다」가 성립하지 않는다({@link DragonLastStandZone} 의
- * 월드 보더와 같은 종류의 빚이다).
+ * 파일에 들어가므로 「월드와 함께 사라진다」가 성립하지 않는다(안전지대가 2026-10-04 까지 쓰던
+ * 월드 보더와 같은 종류의 빚이다 — 지대는 보더를 버려 이제 그 빚이 없다).
  *
  * <ol>
  *   <li><b>저장을 아예 안 하게 만들었다</b>({@link Panel#shouldBeSaved()}). 26.3
@@ -94,7 +94,8 @@ import java.util.List;
  *   <li><b>전투가 끝날 때 · 드래곤이 죽을 때</b> — {@code DragonLastStand.onFightClosed} 가
  *       위의 {@code clearState()} 를 부른다</li>
  *   <li><b>서버가 멈추기 직전</b> — {@code DragonLastStand.onServerStopping}. 월드가 아직 살아
- *       있는 자리다({@code DragonLastStandZone.onServerStopping} 이 같은 자리에 같은 이유로 있다)</li>
+ *       있는 자리다({@code TrialFreeze.onServerStopping} 이 같은 자리에 같은 이유로 있다. 전에는
+ *       안전지대의 보더 되돌리기도 여기 있었는데 2026-10-04 에 보더를 버리며 빠졌다)</li>
  * </ul>
  *
  * <h2>90도 부채꼴은 사각형이 아니다 — 판 열여덟 장으로 <b>안쪽에서</b> 채운다</h2>

@@ -25,7 +25,8 @@ package com.sharedfate.sync;
  * <h2>왜 {@code TrialRisks} 가 아닌가</h2>
  *
  * <p>{@code TrialRisks} 는 「위험 계산이 모이는 자리」이긴 하지만 카드를 <b>돌리는</b> 실행기이고,
- * 이 규약을 지켜야 하는 자리는 그쪽 말고 <b>셋</b>이 있다(패턴 하나 · 카드 둘 — 공허 흡입은
+ * 이 규약을 지켜야 하는 자리는 그쪽 말고 <b>넷</b>이 있다(패턴 하나 · 카드 셋 — 「엔더 파동」이
+ * 2026-10-04 에 밀치기를 얻어 더해졌다. 공허 흡입은
  * 2026-10-04 저녁에 빠졌다, {@link #syncedVertical} 을 볼 것). 「한 위험의
  * 계산」이 아니라 <b>속도를 내려 보내는 모든 자리의 규약</b>이라, 이름으로 찾을 수 있는 자리에
  * 따로 둔다. {@code TrialWarning}(소리·고리 점 같은 연출 도구)에 두는 것은 더 멀다.
@@ -158,8 +159,9 @@ public final class TrialVelocity {
 	 * 바닐라 동작을 하나도 바꾸지 않고, 정상 플레이어에게는 <b>비트 단위로 무변화</b>다
 	 * (스스로 뛴 사람·떨어지는 사람 둘 다 받은 값이 그대로 나간다).
 	 *
-	 * <p>지나는 자리 <b>셋</b> — {@code DragonLastStandPatterns.shove}(날개 번치) ·
-	 * {@code TrialEnderStorm.push}(엔더폭풍) · {@code TrialLandingShock.push}(착지 충격). ⚠ <b>속도를
+	 * <p>지나는 자리 <b>넷</b> — {@code DragonLastStandPatterns.shove}(날개 번치) ·
+	 * {@code TrialEnderStorm.push}(엔더폭풍) · {@code TrialLandingShock.push}(착지 충격) ·
+	 * {@code TrialEnderPulse.push}(엔더 파동, 2026-10-04). ⚠ <b>속도를
 	 * 내려 보내는 자리를 새로 만들면 이 목록에 더해야 한다.</b>
 	 *
 	 * <p>⚠ {@code DragonLastStandPatterns.pullSuck}(공허 흡입)은 2026-10-04 저녁에 <b>이 목록에서 빠졌다.</b>
