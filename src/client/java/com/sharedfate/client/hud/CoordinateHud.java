@@ -108,6 +108,7 @@ public class CoordinateHud implements HudElement {
 		LocalPlayer player = client.player;
 		ClientLevel level = client.level;
 		Font font = client.font;
+		occupied = null;
 		if (player == null || level == null || font == null) {
 			return;
 		}
@@ -116,12 +117,16 @@ public class CoordinateHud implements HudElement {
 			return;
 		}
 
-		graphics.text(font, positionLine(player.getX(), player.getY(), player.getZ()),
-				MARGIN, POSITION_Y, POSITION_COLOR);
+		String position = positionLine(player.getX(), player.getY(), player.getZ());
+		graphics.text(font, position, MARGIN, POSITION_Y, POSITION_COLOR);
+		int right = MARGIN + font.width(position);
+		int bottom = POSITION_Y + LINE_HEIGHT;
 
 		String biome = BiomeNames.korean(currentBiomeId(level, player));
 		if (!biome.isEmpty()) {
 			graphics.text(font, biome, MARGIN, BIOME_Y, BIOME_COLOR);
+			right = Math.max(right, MARGIN + font.width(biome));
+			bottom = BIOME_Y + LINE_HEIGHT;
 		}
 
 		// 교환 시계는 세트 줄 바로 위에 선다. 선택 화면이 세트를 대신 그려 주더라도 이 줄은
@@ -130,13 +135,37 @@ public class CoordinateHud implements HudElement {
 		String swapTimer = ClientSwapTimer.line(level.getGameTime());
 		if (swapTimer != null) {
 			graphics.text(font, swapTimer, MARGIN, setsTop, SWAP_TIMER_COLOR);
+			right = Math.max(right, MARGIN + font.width(swapTimer));
 			setsTop += LINE_HEIGHT;
+			bottom = setsTop;
 		}
 
 		if (!setsShownByScreen(client)) {
-			renderSets(graphics, font, level.getGameTime(), setsTop);
+			TrialTimersLayout.Rect sets =
+					renderSets(graphics, font, level.getGameTime(), setsTop);
+			if (sets != null) {
+				right = Math.max(right, sets.right());
+				bottom = Math.max(bottom, sets.bottom());
+			}
 		}
+		occupied = new TrialTimersLayout.Rect(0, 0, right, bottom);
 	}
+
+	/**
+	 * 이 표시가 <b>지난 프레임에</b> 차지한 칸. 안 그렸으면 {@code null}.
+	 *
+	 * <p>드래곤 패턴 타이머의 시전 바({@link TrialTimersHud})가 좁은 화면에서 이 칸을 비켜 서려고
+	 * 읽는다. 426×240 에서 시전 바(230)의 왼쪽 끝이 98 인데 세트 줄이 그보다 넓을 수 있다. 줄 수와
+	 * 폭이 증강 · 바이옴 · 교환 시계로 그때그때 바뀌어 같은 셈을 밖에 한 벌 더 둘 수 없으므로, 그린
+	 * 자리를 그대로 알려 준다. 시전 바가 이 표시보다 먼저 그려지므로(보스바 뒤에 붙음) 한 프레임
+	 * 늦은 값이다.
+	 */
+	public static TrialTimersLayout.Rect occupied() {
+		return occupied;
+	}
+
+	/** {@link #occupied} 의 몸. 그리기 스레드에서만 쓰고 읽는다. */
+	private static TrialTimersLayout.Rect occupied;
 
 	/**
 	 * 지금 떠 있는 화면이 세트를 이미 또렷하게 그리고 있는가.
@@ -164,13 +193,15 @@ public class CoordinateHud implements HudElement {
 	 * 들고 있다.
 	 *
 	 * <p>세트가 하나도 없으면 구분선도 긋지 않는다.
+	 *
+	 * @return 그린 칸(구분선부터 마지막 줄까지). 안 그렸으면 {@code null}
 	 */
-	private static void renderSets(GuiGraphicsExtractor graphics, Font font, long gameTime,
-			int top) {
+	private static TrialTimersLayout.Rect renderSets(GuiGraphicsExtractor graphics, Font font,
+			long gameTime, int top) {
 		List<PerkSetLines.Line> lines =
 				ClientPerkSets.hudLines(PerkSetLines.MAX_HUD_LINES, gameTime);
 		if (lines.isEmpty()) {
-			return;
+			return null;
 		}
 
 		int separatorY = top + SEPARATOR_GAP;
@@ -183,6 +214,7 @@ public class CoordinateHud implements HudElement {
 					line.active() ? SET_ACTIVE_COLOR : SET_PROGRESS_COLOR);
 			y += LINE_HEIGHT;
 		}
+		return new TrialTimersLayout.Rect(MARGIN, separatorY, MARGIN + width, y);
 	}
 
 	/**

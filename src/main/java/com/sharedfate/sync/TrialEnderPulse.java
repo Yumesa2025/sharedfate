@@ -534,6 +534,33 @@ public final class TrialEnderPulse {
 		LAST_AIRBORNE.clear();
 	}
 
+	/**
+	 * 다음 파동 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도 쓰지 않는다.</b>
+	 *
+	 * <p>사건은 <b>고리가 중앙에서 출발하는 틱</b>이다({@link #tick} 의 {@code step == 0}, 받은 뒤 한
+	 * 주기부터). 실제로 발이 묶이는 것은 고리가 그 사람에게 닿는 틱이라 사람마다 다르다 — 중앙이면
+	 * 곧바로, 가장자리면 4초 뒤다. HUD 는 팀에 한 벌이라 모두에게 같은 출발 틱을 쓰고, 고리가 퍼지는
+	 * 4초({@code travelTicks})를 「진행 중」으로 보인다. 출발 전에 바닥에 깔리는 예고는 없다 — 퍼지는
+	 * 고리 자체가 예고다(그래서 예고 길이 0).
+	 *
+	 * @return 값이 잘못 적혀 실행기가 돌지 않는 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.EnderPulse risk) {
+		if (risk == null || risk.interval() <= 0 || risk.travelTicks() <= 0
+				|| !(risk.maxRadius() > 0.0)) {
+			return null;
+		}
+		int interval = risk.interval();
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		// 받은 직후 한 주기는 비어 있다(tick 의 elapsed < interval). 그 뒤로는 받은 틱에서 센 위상이다.
+		int step = (int) (elapsed % interval);
+		if (elapsed >= interval && step < risk.travelTicks()) {
+			return TrialTimers.Clock.active(risk.travelTicks() - step, risk.travelTicks());
+		}
+		return TrialTimers.Clock.countdown(interval - step, interval, 0);
+	}
+
 	// ------------------------------------------------------------------ 발 기록
 
 	/**

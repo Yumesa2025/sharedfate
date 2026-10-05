@@ -393,10 +393,13 @@ public final class DragonTrialManager {
 		// dragonHealthPerMember 를 무시한다고 적었지만, 0 으로 둔 서버에서는 그 팀도 전원
 		// 소환을 못 받는다. 이 경로는 시련 설정이 생기기 전부터 있던 것이라 그대로 두었다.
 		if (SharedFateMod.config.dragonHealthPerMember <= 0) {
+			// 전투가 없는 서버다. 패턴 타이머 HUD 를 받던 사람이 있었다면 한 번 지운다.
+			TrialTimers.publish(server, Map.of(), 0L);
 			return;
 		}
 		ServerLevel end = server.getLevel(Level.END);
 		if (end == null) {
+			TrialTimers.publish(server, Map.of(), 0L);
 			return;
 		}
 		long now = end.getGameTime();
@@ -408,6 +411,50 @@ public final class DragonTrialManager {
 		// 부르는 것은 「전투가 끝났는데 엔드로 끌려간다」가 된다.
 		recallStragglers(server, end, now);
 		tickSessions(server, end, now);
+		// ⚠ 세션을 다 돌린 <b>뒤</b>다. 실행기가 이번 틱에 터뜨리고 고른 것이 반영된 상태를 읽어야
+		// 「방금 터졌다」를 「0.0초」로 띄우지 않는다.
+		publishTimers(server, end, now);
+	}
+
+	/**
+	 * 패턴 타이머 HUD 를 모아 보낸다 — <b>엔드에 서 있고 세션이 열린 팀원</b>에게만.
+	 *
+	 * <p>사람 말(2026-10-05): 「와우 레이드에서 보스 스킬 시전 바, 몇 초 뒤에 오는지 패턴 바 같은 게
+	 * 오른쪽 상단에 있어서 몇 초 뒤에 패턴 오는지 알려 주는 건 어때?」. 무엇을 담고 언제 보내는지는
+	 * {@link TrialTimers} 에 있다. 여기는 <b>누구에게</b>만 정한다 — 팀원 목록을 만드는 길이
+	 * {@link #membersOf} 하나라서다(오버월드 원점에 선 사람이 엔드 HUD 를 받지 않는다).
+	 *
+	 * <p>시련을 끈 팀은 목록에 넣지 않는다 — 바닐라 드래곤전이라 띄울 것이 없다. 목록에서 빠진 사람
+	 * 가운데 전에 받은 사람에게는 {@link TrialTimers#publish} 가 지우는 묶음을 한 번 보낸다.
+	 */
+	private static void publishTimers(MinecraftServer server, ServerLevel end, long now) {
+		Map<ServerPlayer, com.sharedfate.net.TrialTimersPayload> audience = new HashMap<>();
+		if (!SESSIONS.isEmpty()) {
+			boolean frozen = TrialTimers.frozen(server);
+			EnderDragon dragon = findDragon(end);
+			float healthRatio = dragon == null || !(dragon.getMaxHealth() > 0.0F)
+					? Float.NaN
+					: dragon.getHealth() / dragon.getMaxHealth();
+			for (DragonTrialSession session : SESSIONS.values()) {
+				if (!session.trialsEnabled()) {
+					continue;
+				}
+				ShareTeam team = TeamManager.get(server).teamById(session.teamId());
+				if (team == null) {
+					continue;
+				}
+				List<ServerPlayer> members = membersOf(server, team, end);
+				if (members.isEmpty()) {
+					continue;
+				}
+				com.sharedfate.net.TrialTimersPayload payload =
+						TrialTimers.collect(session, frozen, healthRatio, now);
+				for (ServerPlayer member : members) {
+					audience.put(member, payload);
+				}
+			}
+		}
+		TrialTimers.publish(server, audience, now);
 	}
 
 	/**
@@ -1340,6 +1387,9 @@ public final class DragonTrialManager {
 		// ⚠ 여기는 SERVER_STOPPED 에서도 불려 월드를 만질 수 없다. 저쪽이 정적 상태만
 		// 버리는 까닭과, 나머지를 어디서 되돌리는지는 DragonLastStand.clearState 에 있다.
 		DragonLastStand.clearState();
+		// 패턴 타이머 HUD 의 「누구에게 보냈나」. 연결이 없을 수 있으므로 지우는 묶음은 안 보낸다 —
+		// 받는 쪽이 접속이 끊길 때 스스로 지운다.
+		TrialTimers.clearState();
 	}
 
 	/**

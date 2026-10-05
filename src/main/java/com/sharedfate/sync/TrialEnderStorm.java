@@ -551,6 +551,42 @@ public final class TrialEnderStorm {
 	}
 
 	/**
+	 * 지금 폭풍이 도는가, 아니면 다음 폭풍까지 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다.
+	 * <b>상태를 하나도 쓰지 않는다.</b>
+	 *
+	 * <p>{@link #tick} 과 같은 위상이다 — 받은 틱에서 센 {@code elapsed % cycle} 이 {@code travel}
+	 * 이하인 동안 소용돌이가 가장자리에서 중앙으로 오고, 그 뒤는 쉰다. 소용돌이가 닿는 틱은 사람의
+	 * 자리마다 다르므로 「다음 사건」 대신 <b>폭풍이 도는 동안을 「진행 중」</b>으로 보이고(남은 틱은
+	 * 중앙에 닿을 때까지), 쉬는 동안은 다음 폭풍이 출발할 때까지를 센다. 출발 전에 바닥에 깔리는
+	 * 예고는 없다 — 20초에 걸쳐 밀려오는 소용돌이가 예고다(그래서 예고 길이 0).
+	 *
+	 * @return 값이 잘못 적혀 실행기가 돌지 않는 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.EnderStorm risk) {
+		if (risk == null || risk.count() <= 0) {
+			return null;
+		}
+		double perTick = blocksPerTick(risk.speedPerSecond());
+		if (!(perTick > 0.0)) {
+			return null;
+		}
+		int travel = travelTicks(perTick);
+		int cycle = cycleTicks(travel, risk.restTicks());
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		if (elapsed <= 0L) {
+			// 받은 그 틱에는 아무것도 하지 않고 다음 틱에 출발한다(tick 의 첫 갈래).
+			return TrialTimers.Clock.countdown(1, 1, 0);
+		}
+		int step = (int) (elapsed % cycle);
+		if (step <= travel) {
+			// step 이 travel 을 넘는 틱에 사라진다 — 남은 틱은 그때까지다.
+			return TrialTimers.Clock.active(travel + 1 - step, travel + 1);
+		}
+		return TrialTimers.Clock.countdown(cycle - step, cycle - (travel + 1), 0);
+	}
+
+	/**
 	 * 지난 전투의 찌꺼기를 버린다. 매 틱 불리고 전투가 바뀐 그 틱에만 실제로 지운다.
 	 *
 	 * @param granted 카드를 받은 틱. 전투를 가르는 열쇠다

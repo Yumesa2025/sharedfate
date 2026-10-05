@@ -269,10 +269,20 @@ public final class TrialRisks {
 			List<TrialCatalog.Risk> risks = trial.risks();
 			for (int index = 0; index < risks.size(); index++) {
 				// 한 카드가 위험 둘을 걸 수 있으므로 카드 id 만으로는 열쇠가 겹친다.
-				active.add(new Active(id + '#' + index, id, risks.get(index)));
+				active.add(new Active(riskKey(id, index), id, risks.get(index)));
 			}
 		}
 		return active;
+	}
+
+	/**
+	 * 위험 하나의 열쇠 — 카드 id 와 카드 안 순번. 실행기들의 상태 맵이 이 열쇠로 잡힌다.
+	 *
+	 * <p>패턴 타이머 HUD({@link TrialTimers})가 줄 열쇠로 같은 값을 쓴다. 모양을 두 곳에 적으면 한쪽만
+	 * 바뀐 날 HUD 가 「종말의 비」의 상태를 못 찾는다.
+	 */
+	static String riskKey(String trialId, int index) {
+		return trialId + '#' + index;
 	}
 
 	/** 지금 도는 위험 중 가장 멀리 거슬러 올라가는 발자국. 발자국 기록은 이만큼만 남긴다. */
@@ -777,6 +787,64 @@ public final class TrialRisks {
 		}
 		long into = (Math.max(1L, elapsedSinceGrant(now, grantedTick)) - 1L) % interval;
 		return interval - 1 - (int) into;
+	}
+
+	/**
+	 * <b>아직 안 터진</b> 다음 발동까지 남은 틱 — 패턴 타이머 HUD 가 읽는 값이다. 언제나 1 이상.
+	 *
+	 * <p>{@link #remainingTicks} 와 둘이 다르다. ① 받은 그 틱(경과 0)에 {@link #remainingTicks} 는
+	 * {@code interval - 1} 을 주지만 실제 첫 발동은 {@code interval} 틱 뒤다({@link #firesAt}).
+	 * ② HUD 는 그 틱의 실행기가 <b>다 돈 뒤</b>에 읽으므로 남은 틱 0 은 「이미 터졌다」이고, 그때 다음
+	 * 발동은 한 주기 뒤다. 발동을 정하는 셈은 여기서 새로 짓지 않고 {@link #remainingTicks} 를 그대로
+	 * 부른다.
+	 */
+	static int ticksUntilFire(long now, long grantedTick, int interval) {
+		if (interval <= 0) {
+			return Integer.MAX_VALUE;
+		}
+		if (elapsedSinceGrant(now, grantedTick) <= 0L) {
+			return interval;
+		}
+		int remaining = remainingTicks(now, grantedTick, interval);
+		return remaining <= 0 ? interval : remaining;
+	}
+
+	/**
+	 * 바닥 표식이 깔리기 시작하는 남은 틱 — {@link #warn} 이 {@link TrialWarning.Stage#APPROACH} 를
+	 * 지나 고리를 그리기 시작하는 곳이다(지금 50).
+	 *
+	 * <p>숫자를 여기 따로 적지 않고 {@link TrialWarning#stageFor} 에서 거꾸로 센다. 층의 경계가 바뀌면
+	 * HUD 의 「예고 중」도 함께 따라간다.
+	 */
+	static int markLeadTicks() {
+		int lead = 0;
+		while (lead < 10_000) {
+			TrialWarning.Stage stage = TrialWarning.stageFor(lead + 1);
+			if (stage == null || stage == TrialWarning.Stage.APPROACH) {
+				return lead;
+			}
+			lead++;
+		}
+		return lead;
+	}
+
+	/**
+	 * 「자리 폭격」·「낙뢰」의 다음 발동 — 패턴 타이머 HUD 가 읽는다. <b>상태를 하나도 쓰지 않는다.</b>
+	 *
+	 * <p>사건은 <b>터지는 틱</b>({@link #firesAt})이다. 바닥 고리는 그보다 {@link #markLeadTicks}
+	 * 앞에 깔린다 — 주기가 그보다 짧으면 주기 내내다({@link #warn} 의 {@code interval - 1}).
+	 *
+	 * @return 값이 잘못 적혀 실행기가 돌지 않는 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock strikeClock(long granted, long now,
+			TrialCatalog.Risk.DelayedStrike strike) {
+		if (strike == null || strike.interval() <= 0 || strike.count() <= 0
+				|| !(strike.radius() > 0.0)) {
+			return null;
+		}
+		int interval = strike.interval();
+		return TrialTimers.Clock.countdown(ticksUntilFire(now, granted, interval), interval,
+				Math.min(markLeadTicks(), interval - 1));
 	}
 
 	/**

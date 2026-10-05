@@ -7,6 +7,7 @@ import com.sharedfate.client.hud.GameOverHud;
 import com.sharedfate.client.hud.HotbarHighlight;
 import com.sharedfate.client.hud.PerkProgressHud;
 import com.sharedfate.client.hud.TeamLevelHud;
+import com.sharedfate.client.hud.TrialTimersHud;
 import com.sharedfate.client.team.TeamScreen;
 import com.sharedfate.client.perk.ClientPerkFeatures;
 import com.sharedfate.client.perk.ClientPerkSets;
@@ -37,6 +38,7 @@ import com.sharedfate.net.TrialEntranceClosePayload;
 import com.sharedfate.net.TrialEntranceOfferPayload;
 import com.sharedfate.net.TrialHotbarLockPayload;
 import com.sharedfate.net.TrialRoulettePayload;
+import com.sharedfate.net.TrialTimersPayload;
 import com.sharedfate.net.WorldResetPayload;
 import com.sharedfate.perk.effect.HideHudEffect;
 import com.sharedfate.inventory.ExpandedInventoryManager;
@@ -178,6 +180,11 @@ public class SharedFateClient implements ClientModInitializer {
 					}
 					ClientHotbarLock.update(payload, context.client().level.getGameTime());
 				}));
+		// 드래곤 패턴 타이머 HUD. 받은 묶음을 통째로 바꿔 들고 틱마다 스스로 줄인다
+		// (ClientTrialTimers). TrialTimersHud 가 그리기 스레드에서 읽으므로 갱신도 클라이언트 본
+		// 스레드에서 한다. 서버는 canSend 를 먼저 묻기 때문에 이 등록이 있어야 보내기 시작한다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialTimersPayload.TYPE,
+				(payload, context) -> context.client().execute(() -> ClientTrialTimers.update(payload)));
 
 		// 접속하자마자 자기 판을 한 번 알린다. 서버는 로그에만 적는다 — 막는 일은 규약
 		// 번호가 하고, 이것은 「누가 어떤 클라이언트를 쓰는지」를 서버에서 볼 수 있게 하는
@@ -190,6 +197,9 @@ public class SharedFateClient implements ClientModInitializer {
 			// 남겨 두면 다음 서버의 첫 화면에 남의 판 붉은 칸이 뜬다. 낡으면 스스로 지우지만
 			// (STALE_TICKS 3초) 그 3초가 곧 다른 서버의 첫 3초다.
 			ClientHotbarLock.clear();
+			// 끊기는 길로는 서버가 「그만 그려라」를 못 보낸다. 남겨 두면 다음 서버의 첫 화면에 남의
+			// 드래곤 시계가 0 에 멈춘 채 떠 있다.
+			ClientTrialTimers.clear();
 			SelectedSlotReporter.reset();
 			DamageAlertHud.clear();
 			ExpandedInventoryManager.clearNegotiatedClientLayout();
@@ -208,6 +218,8 @@ public class SharedFateClient implements ClientModInitializer {
 			DamageAlertHud.tick();
 			GameOverClientDisplay.tick(client);
 			DoubleJumpHandler.tick(client);
+			// 얼어 있거나(frozen) 일시정지면 안 줄인다 — 서버의 실행기 시계도 그때 선다.
+			ClientTrialTimers.tick(client.isPaused());
 		});
 
 		HudElementRegistry.attachElementAfter(
@@ -239,6 +251,13 @@ public class SharedFateClient implements ClientModInitializer {
 		HudElementRegistry.addLast(
 				SharedFateMod.id("coordinates"),
 				new CoordinateHud());
+		// 드래곤 패턴 타이머 — 오른쪽 위 패널(상태이상 아이콘 바로 아래)과 가운데 위 시전 바(보스바들
+		// 바로 아래). 둘 다 그 바닐라 요소들의 자리에 기대어 서므로 보스바 바로 뒤에 붙인다. 자리를
+		// 정하는 셈은 TrialTimersLayout 에 있다.
+		HudElementRegistry.attachElementAfter(
+				VanillaHudElements.BOSS_BAR,
+				SharedFateMod.id("trial_timers"),
+				new TrialTimersHud());
 
 		// 「장님 거인」 처럼 HUD 를 가리는 증강. 바닐라 요소를 지우지 않고 "가려야 할 때만
 		// 건너뛰는" 껍데기로 감싼다. removeElement 는 되돌릴 수 없어 증강을 잃어도 영영

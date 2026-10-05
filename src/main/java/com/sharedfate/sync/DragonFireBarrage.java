@@ -658,6 +658,40 @@ public final class DragonFireBarrage {
 		plannedCycle = cycle;
 	}
 
+	/**
+	 * 다음 포격 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 읽기만 한다.</b>
+	 *
+	 * <p>사건은 <b>첫 원이 터지는 틱</b>이다({@link #tick} 의 {@code firesAt}). 원 열 개가
+	 * {@link #LEAD_TICKS} 앞에 한꺼번에 깔리므로 그것이 예고 길이다. 터지기 시작한 뒤
+	 * {@link #BARRAGE_TICKS} 동안은 「진행 중」이다 — 원이 0.4초마다 하나씩 터지는 그 사이에 「다음
+	 * 포격 40초」를 띄우면 지금 터지고 있는 줄을 HUD 가 모른 척하게 된다.
+	 *
+	 * <p>⚠ <b>건너뛴 주기를 본다.</b> 주기 판단은 예고 구간에 들어서는 틱에 한 번뿐이고
+	 * ({@link #plannedCycle}), 그때 못 놓으면(재시작 직후 남은 예고가 {@link #MIN_LEAD_TICKS} 보다
+	 * 짧았다 — 「예고를 절반만 내고 터지는」 길을 막은 자리) 그 주기는 통째로 안 온다. 주기만 다시
+	 * 세면 HUD 가 아무것도 안 올 「0.0초」를 띄우므로, 이미 판단했는데 놓인 포격이 없으면 다음
+	 * 주기로 넘긴다.
+	 *
+	 * @param granted 전투가 열린 틱({@link DragonTrialSession#startedTick()})
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now) {
+		// 다른 판의 기록이면 아직 이 판의 첫 틱이 안 돈 것이다. 주기만으로 센다.
+		boolean ours = plannedFight == granted;
+		Volley run = ours ? active : null;
+		if (run != null && run.started()) {
+			long offset = now - run.startedAt();
+			if (offset >= 0L && offset < BARRAGE_TICKS) {
+				return TrialTimers.Clock.active(BARRAGE_TICKS - offset, BARRAGE_TICKS);
+			}
+		}
+		int remaining = TrialRisks.ticksUntilFire(now, granted, PERIOD_TICKS);
+		long cycle = TrialRisks.strikeIndex(now, granted, PERIOD_TICKS);
+		boolean skipped = ours && remaining <= LEAD_TICKS && plannedCycle == cycle
+				&& (run == null || run.cycle() != cycle);
+		return TrialTimers.Clock.countdown(skipped ? remaining + PERIOD_TICKS : remaining,
+				skipped ? remaining + PERIOD_TICKS : PERIOD_TICKS, LEAD_TICKS);
+	}
+
 	// ------------------------------------------------------------------ 예고
 
 	/**

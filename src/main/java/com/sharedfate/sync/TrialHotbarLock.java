@@ -266,6 +266,25 @@ public final class TrialHotbarLock {
 		LOCKS.clear();
 	}
 
+	/**
+	 * 다음에 굳은 칸이 옮겨 가는 틱 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도
+	 * 쓰지 않는다.</b>
+	 *
+	 * <p>주기 번호({@link #tick} 의 {@code elapsed / interval})가 바뀌는 틱이 사건이다. 받은 그 틱에
+	 * 이미 한 번 굳으므로(주기 0) 다음은 한 주기 뒤다. 바닥에 그리는 예고가 없는 카드라 예고 길이 0.
+	 *
+	 * @return 값이 잘못 적혀 실행기가 돌지 않는 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.HotbarLock risk) {
+		if (risk == null || risk.interval() <= 0 || wanted(risk.slots()) <= 0) {
+			return null;
+		}
+		int interval = risk.interval();
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		return TrialTimers.Clock.countdown(interval - (elapsed % interval), interval, 0);
+	}
+
 	// ---------------------------------------------------- 막는 것은 둘 — 휘두르기와 쓰기
 
 	// 「쓰기」가 이벤트 셋인 것은 바닐라가 우클릭을 대상(허공·블록·엔티티)으로 갈라 두었기

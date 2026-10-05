@@ -510,6 +510,14 @@ public final class DragonLastStand {
 		private @Nullable Pattern previous;
 		/** 다음 패턴을 고를 시각. 쉬는 중이면 미래다. */
 		private long nextPatternAt;
+		/**
+		 * 지금 쉬기가 시작된 시각 — <b>패턴 타이머 HUD 만 읽는다.</b> 판의 흐름은 이 칸을 보지 않는다.
+		 *
+		 * <p>쉬는 시간이 2~4초 굴림이라({@link #restTicks}) 고른 값이 어디에도 남지 않는다. 시전 바가
+		 * 「쉬는 중」의 바를 채우려면 분모가 있어야 해서, 쉬기가 시작되는 틱만 적어 둔다. 첫 패턴 전은
+		 * 진입한 틱이다.
+		 */
+		private long restBegan;
 		/** 부채꼴 브레스를 다시 쓸 수 있는 시각. */
 		private long breathReadyAt = Long.MIN_VALUE;
 		/** 지금 돌고 있는 패턴. 없으면 쉬는 중이다. */
@@ -549,6 +557,7 @@ public final class DragonLastStand {
 			// 첫 패턴은 시계가 돌기 시작한 뒤 무적 3초가 지난 틱에 고른다 — 연출이 생기기 전과
 			// 같은 규칙이고 원점만 밀렸다.
 			this.nextPatternAt = this.clockBase + ENTRY_GRACE_TICKS;
+			this.restBegan = beganAt;
 			this.shakeUntil = beganAt + SHAKE_TICKS;
 		}
 
@@ -880,6 +889,7 @@ public final class DragonLastStand {
 			stand.previous = stand.running;
 			stand.running = null;
 			stand.nextPatternAt = now + restTicks(end.getRandom().nextDouble());
+			stand.restBegan = now;
 			return;
 		}
 		if (now < stand.nextPatternAt) {
@@ -1407,6 +1417,43 @@ public final class DragonLastStand {
 			// 진입 때와 달리 입자를 뿌리지 않는다. 1초마다 조용히 치우는 청소라 연출이 아니다.
 			enderman.discard();
 		}
+	}
+
+	// ------------------------------------------------------------------ 패턴 타이머 HUD 가 읽는 자리
+
+	/**
+	 * 한 팀의 최후의 저항을 <b>밖에서 읽은 것</b> — 패턴 타이머 HUD({@link TrialTimers})의 시전 바와
+	 * 오른쪽 위 줄이 이 값으로 그려진다. 사본이라 받은 쪽이 무엇을 해도 판은 흔들리지 않는다.
+	 *
+	 * @param shielded      진입 보호막이 서 있는가({@link DragonLastStandShield#shielded} 그대로 —
+	 *                      진입 연출부터 첫 패턴을 고르는 틱까지)
+	 * @param beganAt       진입한 틱
+	 * @param clockBase     시계의 원점(안전지대 · 상시 번개 · 오브젝트 파도가 본다)
+	 * @param nextPatternAt 다음 패턴을 고를 시각
+	 * @param restBegan     지금 쉬기가 시작된 시각(첫 패턴 전이면 진입한 틱)
+	 * @param running       지금 도는 패턴. 쉬는 중이면 {@code null}
+	 * @param runningUntil  지금 패턴이 끝나는 시각. 쉬는 중이면 뜻이 없다
+	 */
+	public record View(boolean shielded, long beganAt, long clockBase, long nextPatternAt,
+			long restBegan, @Nullable Pattern running, long runningUntil) {
+	}
+
+	/**
+	 * 이 팀의 최후의 저항 — <b>읽기만 한다.</b> 열려 있지 않으면 {@code null}.
+	 *
+	 * <p>{@link #tick} 이 그 틱에 다 돈 <b>뒤</b>에 불려야 「방금 고른 패턴」이 보인다
+	 * ({@code DragonTrialManager} 가 세션을 다 돌린 뒤 HUD 를 모은다).
+	 */
+	static @Nullable View view(@Nullable UUID teamId, long now) {
+		Stand stand = teamId == null ? null : STANDS.get(teamId);
+		if (stand == null) {
+			return null;
+		}
+		return new View(
+				DragonLastStandShield.shielded(stand.cinematicEntry, stand.beganAt,
+						stand.firstPatternAt, now),
+				stand.beganAt, stand.clockBase, stand.nextPatternAt, stand.restBegan,
+				stand.running, stand.runningUntil);
 	}
 
 	// ------------------------------------------------------------------ ④ 처치

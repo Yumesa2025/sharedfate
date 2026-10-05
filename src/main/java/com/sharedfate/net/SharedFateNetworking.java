@@ -255,7 +255,26 @@ public final class SharedFateNetworking {
 	//     이 번호가 배포판으로 나가는 것은 시련을 실제로 내보내기로 정한 뒤다.
 	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다. 양쪽을 다 끄고 바꿀 것(안 그러면
 	//     ZipException).
-	public static final int PROTOCOL_VERSION = 36;
+	// 37: 드래곤 <b>패턴 타이머 HUD</b>(TrialTimersPayload 신설).
+	//
+	//     사람이 정한 것(2026-10-05) — 「와우 레이드에서 보스 스킬 시전 바, 몇 초 뒤에 오는지 패턴
+	//     바 같은 게 오른쪽 상단에 있어서 몇 초 뒤에 패턴 오는지 알려 주는 건 어때?」. 예시 화면을
+	//     보고 「이대로 진행」했다. 오른쪽 위 「다가오는 패턴」 패널과 최후의 저항의 가운데 위 시전
+	//     바 둘이다.
+	//
+	//     묶음이 하나 늘었을 뿐 기존 형식은 한 바이트도 안 바뀌었다. 그래도 번호를 올리는 것은 위 ★
+	//     규칙 때문이다 — 이 묶음을 모르는 클라이언트는 HUD 가 <b>그냥 안 뜬다.</b> 판은 똑같이
+	//     돌므로 옆 사람 화면에는 「브레스 3.2초」가 떠 있는데 자기 화면에만 없고, 그것은 「모드가
+	//     안 맞는다」보다 알아채기 훨씬 어렵다.
+	//
+	//     서버는 canSend 를 먼저 묻는다(TrialTimers.publish). 클라이언트 쪽 수신 등록이 아직 없는
+	//     판에서도 서버가 묶음을 밀어 넣지 않는다.
+	//
+	//     30~36 과 마찬가지로 시련은 브랜치 `feature/dragon-trials` 안에만 있고, 이 번호가
+	//     배포판으로 나가는 것은 시련을 실제로 내보내기로 정한 뒤다.
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다. 양쪽을 다 끄고 바꿀 것(안 그러면
+	//     ZipException).
+	public static final int PROTOCOL_VERSION = 37;
 
 	private SharedFateNetworking() {
 	}
@@ -278,6 +297,9 @@ public final class SharedFateNetworking {
 				TrialEntranceOfferPayload.TYPE, TrialEntranceOfferPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				TrialEntranceClosePayload.TYPE, TrialEntranceClosePayload.CODEC);
+		// 드래곤 패턴 타이머 HUD. 무엇을 담고 언제 보내는지는 sync.TrialTimers 에 있다.
+		PayloadTypeRegistry.clientboundPlay().register(
+				TrialTimersPayload.TYPE, TrialTimersPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(PerkSyncPayload.TYPE, PerkSyncPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				PerkCloseOfferPayload.TYPE, PerkCloseOfferPayload.CODEC);

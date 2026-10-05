@@ -483,6 +483,55 @@ public final class TrialCrystalOvercharge {
 		owner = Long.MIN_VALUE;
 	}
 
+	/**
+	 * 다음 과충전 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 읽기만 한다.</b>
+	 *
+	 * <p>이 카드는 주기가 아니라 <b>걸음</b>으로 돌아서 받은 틱에서 셀 수 없다 — 크리스탈을 고른
+	 * 틱부터 도화선이 타고, 제때 부수면 그 자리에서 쉼으로 넘어간다. 그래서 정적 칸
+	 * ({@link #step} · {@link #stepStart} · {@link #charged})을 그대로 읽는다. 셈은
+	 * {@link #clockOf} 에 떼어 두어 시험이 월드 없이 굴린다.
+	 *
+	 * @return 아직 이 판에서 돈 적이 없거나, 달아오를 크리스탈이 하나도 없어 도화선이 서 있으면
+	 *         {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.CrystalOvercharge risk) {
+		if (risk == null || owner != granted) {
+			return null;
+		}
+		long inStep = Math.max(0L, TrialRisks.elapsedSinceGrant(now, granted) - stepStart);
+		return clockOf(step, charged != null, inStep, risk);
+	}
+
+	/**
+	 * {@link #clock} 의 셈. <b>월드를 모른다.</b>
+	 *
+	 * <ul>
+	 *   <li><b>도화선</b> — 사건은 <b>구체를 던지기 시작하는 틱</b>(「과충전까지」). 빛기둥과 붉은 고리가
+	 *       도화선 내내 서 있으므로 예고 길이가 도화선 전체다</li>
+	 *   <li><b>볼리</b> — 지금 벌어지는 중. 남은 틱은 던지기가 끝날 때까지다</li>
+	 *   <li><b>쉼</b> — 남은 쉼 + 도화선. ⚠ 쉼이 끝날 때 기둥에 크리스탈이 하나라도 있어야 성립한다 —
+	 *       없으면 도화선이 서서 기다리고, 그때는 이 줄이 사라진다(위 {@code null})</li>
+	 * </ul>
+	 *
+	 * @param chargedPresent 달아오른 크리스탈을 들고 있는가({@link #charged} 가 있는가)
+	 * @param inStep         지금 걸음이 시작되고 흐른 틱
+	 */
+	static @Nullable TrialTimers.Clock clockOf(Step current, boolean chargedPresent, long inStep,
+			TrialCatalog.Risk.CrystalOvercharge risk) {
+		int fuse = Math.max(0, risk.fuseTicks());
+		return switch (current) {
+			case FUSE -> chargedPresent
+					? TrialTimers.Clock.countdown(remainingFuse(inStep, fuse), fuse, fuse)
+					: null;
+			case VOLLEY -> TrialTimers.Clock.active(Math.max(0, risk.beamTicks()) - inStep,
+					Math.max(0, risk.beamTicks()));
+			case REST -> TrialTimers.Clock.countdown(
+					Math.max(0, risk.restTicks()) - inStep + fuse,
+					(long) Math.max(0, risk.restTicks()) + fuse, fuse);
+		};
+	}
+
 	// ------------------------------------------------------------------ 도화선
 
 	/**

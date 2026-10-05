@@ -1534,6 +1534,48 @@ public final class DragonLastStandPatterns {
 	}
 
 	/**
+	 * 다음 상시 번개가 <b>내리치는</b> 틱까지 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다.
+	 * <b>상태를 읽기만 한다.</b>
+	 *
+	 * <p>볼리 시각은 굴림 없이 {@link #LIGHTNING_PERIOD_TICKS} 마다지만, 자리를 못 얻은 볼리는 예고 없이
+	 * 건너뛰고 렉·멈춤 뒤에는 「지났다」로 내리치므로({@link #tickLightning}) 주기를 다시 세지 않고 정적
+	 * 칸({@code lightningOwner} · {@code lightningNextVolleyAt} · {@code lightningStrikeAt})을 그대로
+	 * 읽는다. 셈은 {@link #lightningClockOf} 에 떼어 두었다.
+	 *
+	 * @param clockBase 최후의 저항의 시계 원점({@code DragonLastStand} 의 {@code clockBase})
+	 */
+	static TrialTimers.Clock lightningClock(long clockBase, long now) {
+		return lightningClockOf(lightningOwner, lightningNextVolleyAt, lightningStrikeAt,
+				clockBase, now);
+	}
+
+	/**
+	 * {@link #lightningClock} 의 셈. <b>월드를 모른다.</b>
+	 *
+	 * <ul>
+	 *   <li>이 판의 첫 틱이 아직 안 돌았다({@code owner} 가 다르다) — 첫 볼리는 시계 원점 +
+	 *       {@link DragonLastStand#ENTRY_GRACE_TICKS} 에 열리고 그 {@link #LIGHTNING_WARN_TICKS} 뒤에
+	 *       내리친다(진입 연출 중이면 그만큼 더 멀다)</li>
+	 *   <li>볼리가 열려 있다 — 내리칠 시각이 칸에 있다. 노란 고리가 이미 깔려 있다</li>
+	 *   <li>볼리가 없다 — 다음 볼리를 열 시각 + 예고</li>
+	 * </ul>
+	 */
+	static TrialTimers.Clock lightningClockOf(long owner, long nextVolleyAt, long strikeAt,
+			long clockBase, long now) {
+		long strikesAt;
+		if (owner != clockBase) {
+			strikesAt = clockBase + DragonLastStand.ENTRY_GRACE_TICKS + LIGHTNING_WARN_TICKS;
+		} else if (strikeAt != Long.MIN_VALUE) {
+			strikesAt = strikeAt;
+		} else {
+			strikesAt = nextVolleyAt + LIGHTNING_WARN_TICKS;
+		}
+		long remaining = strikesAt - now;
+		return TrialTimers.Clock.countdown(remaining, Math.max(remaining, LIGHTNING_PERIOD_TICKS),
+				LIGHTNING_WARN_TICKS);
+	}
+
+	/**
 	 * 고른 패턴을 그린다. 시작 틱과 끝나는 틱 사이 <b>매 틱</b> 불린다.
 	 *
 	 * @param at 이 패턴이 시작한 틱

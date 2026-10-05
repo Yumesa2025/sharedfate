@@ -308,6 +308,57 @@ public final class TrialDragonFocus {
 		ORBS.clear();
 	}
 
+	/**
+	 * 다음 <b>구체 착탄</b> — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도 쓰지
+	 * 않는다.</b>
+	 *
+	 * <p>사건은 표적이 잡히는 틱이 아니라 <b>구체가 닿는 틱</b>이다 — 발사 위상({@link #shotIndexAt})
+	 * + {@link #flightTicks}. 표적 구간 10초 동안은 2초마다 한 발씩이라 그 사이 간격이 바의 분모가
+	 * 되고, 마지막 발 뒤에는 쉬는 시간을 지나 다음 주기의 첫 발까지가 분모다. 예고 길이는 구체가
+	 * 날아오는 시간이다 — 보라 궤적과 착탄 고리가 그동안 보인다.
+	 *
+	 * <p>발사를 정하는 셈({@link #phaseOf} · {@link #shotIndexAt} · {@link #flightTicks})을 그대로
+	 * 부른다. 이 주기와 앞뒤 주기의 발사 위상을 훑어 지금보다 뒤의 가장 이른 착탄을 고른다.
+	 *
+	 * @return 표적 시간이 없거나 발이 없어 실행기가 쏘지 않는 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.DragonFocus risk) {
+		if (risk == null) {
+			return null;
+		}
+		int flight = flightTicks(risk.markTicks(), risk.shots());
+		if (flight <= 0) {
+			return null;
+		}
+		int period = period(risk.markTicks(), risk.restTicks());
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		long cycleStart = elapsed - phaseOf(elapsed, risk.markTicks(), risk.restTicks());
+		long next = Long.MAX_VALUE;
+		// 받은 틱 앞에는 쏜 발이 없다. 앞선 착탄이 없으면 받은 틱이 분모의 시작이다.
+		long previous = 0L;
+		for (long base = cycleStart - period; base <= cycleStart + period; base += period) {
+			if (base < 0L) {
+				continue;
+			}
+			for (int phase = 0; phase < Math.min(risk.markTicks(), period); phase++) {
+				if (shotIndexAt(phase, risk.markTicks(), risk.shots()) < 0) {
+					continue;
+				}
+				long lands = base + phase + flight;
+				if (lands > elapsed) {
+					next = Math.min(next, lands);
+				} else {
+					previous = Math.max(previous, lands);
+				}
+			}
+		}
+		if (next == Long.MAX_VALUE) {
+			return null;
+		}
+		return TrialTimers.Clock.countdown(next - elapsed, next - previous, flight);
+	}
+
 	// ------------------------------------------------------------------ 구체 날리기
 
 	/**

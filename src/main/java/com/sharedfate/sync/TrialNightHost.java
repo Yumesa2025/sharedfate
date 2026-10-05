@@ -335,6 +335,29 @@ public final class TrialNightHost {
 		NIGHTS.clear();
 	}
 
+	/**
+	 * 적대가 풀릴 때까지 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도 쓰지
+	 * 않는다.</b>
+	 *
+	 * <p>한 번 터지고 끝나는 카드인데도 넣는 것은 <b>남은 지속시간이 곧 행동</b>이기 때문이다 — 20초
+	 * 동안 엔더맨에게 쫓기고, 그 뒤로는 저절로 가라앉는다({@link #calmAt}). 창이 열려 있는
+	 * 동안({@link #hostile})만 「진행 중」 줄이 되고 닫히면 사라진다. 풀리는 틱은 경과가
+	 * {@code hostileTicks} 를 넘는 첫 틱이다.
+	 *
+	 * @return 적대 창이 닫혀 있거나 값이 잘못 적힌 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.NightHost risk) {
+		if (risk == null || !usable(risk)) {
+			return null;
+		}
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		if (!hostile(elapsed, risk.hostileTicks())) {
+			return null;
+		}
+		return TrialTimers.Clock.active(risk.hostileTicks() + 1L - elapsed, risk.hostileTicks());
+	}
+
 	// ------------------------------------------------------------------ 적대로 만들기
 
 	/**

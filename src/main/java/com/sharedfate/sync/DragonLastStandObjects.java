@@ -1062,6 +1062,23 @@ public final class DragonLastStandObjects {
 		return wave != null;
 	}
 
+	/**
+	 * 지금 상태 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 읽기만 한다.</b>
+	 *
+	 * <p>이 판의 첫 틱이 아직 안 돌았으면(진입 연출 중 — {@link #tick} 이 연출 뒤부터 불린다) 문턱을
+	 * 하나도 안 쓴 것으로 답한다. 실제로 그 첫 틱이 {@link #clearState()} 로 앞 판의 것을 걷고
+	 * 0 부터 시작한다.
+	 *
+	 * @param clockBase 최후의 저항의 시계 원점
+	 */
+	static TrialTimers.ObjectsView view(long clockBase) {
+		if (owner != clockBase) {
+			return new TrialTimers.ObjectsView(0, false, 0, 0);
+		}
+		return new TrialTimers.ObjectsView(firedWaves, wave != null, liveCount(),
+				wave == null ? 0 : wave.slots.size());
+	}
+
 	/** 시험이 들여다보는 곳. 지금 몇 개가 서 있는가. */
 	static int liveCount() {
 		if (wave == null) {

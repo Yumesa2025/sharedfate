@@ -516,6 +516,35 @@ public final class TrialCrystalLink {
 		owner = Long.MIN_VALUE;
 	}
 
+	/**
+	 * 지금 서 있는 보호막이 걷힐 때까지 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를
+	 * 읽기만 한다.</b>
+	 *
+	 * <p>이 카드는 주기가 없다(팀이 크리스탈을 깨야 걸린다). 그래서 「다음 사건」은 없고, 보호막이
+	 * <b>서 있는 동안만</b> 「진행 중」 줄이 된다 — 30초가 끝나는 틱이 곧 「그 수정을 다시 쏠 수 있는
+	 * 틱」이라 사람이 쓸 수 있는 값이다. 남은 틱은 {@link #sustain} 이 보호막을 걷는 셈
+	 * ({@link #remainingShield}) 그대로다.
+	 *
+	 * @return 보호막이 서 있지 않으면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.CrystalLink risk) {
+		EndCrystal crystal = shielded;
+		if (risk == null || owner != granted || crystal == null || crystal.isRemoved()) {
+			return null;
+		}
+		return clockOf(TrialRisks.elapsedSinceGrant(now, granted), shieldEnds, risk.shieldTicks());
+	}
+
+	/** {@link #clock} 의 셈. <b>월드를 모른다.</b> 다 걷혔으면 {@code null}. */
+	static @Nullable TrialTimers.Clock clockOf(long elapsed, long endsAt, int shieldTicks) {
+		int remaining = remainingShield(elapsed, endsAt, shieldTicks);
+		if (remaining <= 0) {
+			return null;
+		}
+		return TrialTimers.Clock.active(remaining, shieldTicks);
+	}
+
 	// ------------------------------------------------------------------ 「부서졌다」를 거두는 자리
 
 	/**

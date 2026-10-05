@@ -4,6 +4,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.List;
@@ -339,6 +340,35 @@ public final class DragonLastStandZone {
 	}
 
 	/** 이 사람이 지금 넉백 유예 중인가. 받은 {@code now} 로 묻는다. */
+	/**
+	 * 다음 축소 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도 쓰지 않는다.</b>
+	 *
+	 * <p>{@link #radiusAt} 과 같은 구간을 훑는다. 축소가 시작되기 전이면 시작까지(「안전지대 → 32칸」),
+	 * 줄어드는 5초({@link #SHRINK_TICKS}) 동안은 다 줄 때까지(「축소 중」)다. 진입 연출 동안은 시계
+	 * 원점이 미래라 경과가 음수이고, 그만큼 첫 축소가 멀다 — 사람이 「그땐 시간 재지말고」라고 한
+	 * 것이 그대로 숫자에 실린다.
+	 *
+	 * @param clockBase 최후의 저항의 시계 원점
+	 * @return 마지막 축소(반경 12)까지 끝났으면 {@code null}
+	 */
+	static @Nullable TrialTimers.ZoneTimer timer(long clockBase, long now) {
+		long elapsed = now - clockBase;
+		for (int leg = 0; leg < LEG_END_TICKS.length; leg++) {
+			long begins = shrinkBeginsAt(leg);
+			long ends = LEG_END_TICKS[leg];
+			if (elapsed < begins) {
+				long from = leg == 0 ? 0L : LEG_END_TICKS[leg - 1];
+				long remaining = begins - elapsed;
+				return new TrialTimers.ZoneTimer(false, remaining, Math.max(remaining, begins - from),
+						RADII[leg + 1]);
+			}
+			if (elapsed < ends) {
+				return new TrialTimers.ZoneTimer(true, ends - elapsed, SHRINK_TICKS, RADII[leg + 1]);
+			}
+		}
+		return null;
+	}
+
 	static boolean inShoveGrace(UUID memberId, long now) {
 		Long until = SHOVE_GRACE.get(memberId);
 		return until != null && now < until;

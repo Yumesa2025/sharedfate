@@ -738,6 +738,29 @@ public final class TrialEndRain {
 		TrialEndRainPanel.dropAll();
 	}
 
+	/**
+	 * 비가 그칠 때까지 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도 쓰지
+	 * 않는다.</b>
+	 *
+	 * <p>볼리마다의 착탄 시각은 {@link Downpour#nextVolleyAt} 에 정확히 들어 있지만 <b>그것을 줄로
+	 * 띄우지 않는다.</b> 볼리 간격이 2~3초(굴림)이고 착탄 예고가 1.5초라 숫자가 2초마다 튀어
+	 * 읽히지 않고, 볼리 하나하나는 이미 바닥의 보라 판이 말한다. 사람이 쓸 수 있는 값은 「이 비가 언제
+	 * 그치는가」라서 비가 내리는 동안({@link #raining}, 30초)을 「진행 중」 줄로 보인다.
+	 *
+	 * @return 비가 내리지 않거나(받은 틱 · 이미 그침) 값이 잘못 적힌 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.EndRain risk) {
+		if (risk == null || !usable(risk)) {
+			return null;
+		}
+		long elapsed = TrialRisks.elapsedSinceGrant(now, granted);
+		if (!raining(elapsed, risk)) {
+			return null;
+		}
+		return TrialTimers.Clock.active(risk.durationTicks() + 1L - elapsed, risk.durationTicks());
+	}
+
 	// ------------------------------------------------------------------ 볼리 한 번
 
 	/**

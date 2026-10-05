@@ -190,6 +190,25 @@ public final class TrialFireball {
 		VOLLEYS.clear();
 	}
 
+	/**
+	 * 다음 착탄 — 패턴 타이머 HUD({@link TrialTimers})가 읽는다. <b>상태를 하나도 쓰지 않는다.</b>
+	 *
+	 * <p>사건은 <b>불덩이가 터지는 틱</b>이다({@link #tick} 의 {@code firesAt}). 궤적이 보이는 것은
+	 * 그 앞 {@link #traceWindow} 동안이라 그것이 예고 길이다 — 이 카드에는 바닥 고리보다 하늘의
+	 * 궤적이 먼저다.
+	 *
+	 * @return 값이 잘못 적혀 실행기가 돌지 않는 카드면 {@code null}
+	 */
+	static @Nullable TrialTimers.Clock clock(long granted, long now,
+			@Nullable TrialCatalog.Risk.TracedProjectile risk) {
+		if (risk == null || risk.interval() <= 0 || risk.count() <= 0 || !(risk.radius() > 0.0)) {
+			return null;
+		}
+		int interval = risk.interval();
+		return TrialTimers.Clock.countdown(TrialRisks.ticksUntilFire(now, granted, interval),
+				interval, traceWindow(interval, risk.traceTicks()));
+	}
+
 	// ------------------------------------------------------------------ 발사
 
 	/**
