@@ -170,12 +170,20 @@ public final class SpreadDamageManager {
 	 * <p>미룬 피해는 {@code hurtServer} 에 0 으로 넘어가서, 같은 호출 꼬리의
 	 * {@code AFTER_DAMAGE} 가 「아무 피해도 없었다」로 본다. 팀원에게 피격 연출을 뿌리는
 	 * {@link SharedHurtFeedback} 이 그 0 을 그대로 믿으면 <b>처음 맞은 순간</b>에 팀원 화면에 아무것도
-	 * 안 뜬다. 그래서 「이번 0 은 사실 이만큼을 미룬 것이다」를 여기 적어 두고 그쪽이 꺼내 간다.
+	 * 안 뜬다. 그래서 「이번 0 은 사실 이만큼을 미룬 것이다」를 여기 적어 두고 그쪽이 들여다본다.
 	 *
-	 * <p>적는 곳은 {@link #capture}, 지우는 곳은 꺼낼 때({@link #takeDeferredHit})와 <b>다음
-	 * {@link #intercept} 맨 앞</b>이다. 호출이 꼬리까지 못 가고 끝나면(무적·즉시 취소) 꺼내 갈
-	 * 사람이 없어 표시가 남는데, 같은 사람의 다음 피해는 반드시 {@code intercept} 를 먼저 지나므로
-	 * 거기서 지워져 엉뚱한 피해로 새지 않는다.
+	 * <p>적는 곳은 {@link #capture}, 지우는 곳은 <b>다음 {@link #intercept} 맨 앞</b>과
+	 * {@link #reset} 뿐이다. <b>읽는 쪽은 꺼내 가지 않는다</b>({@link #deferredHit}). 같은 꼬리에서
+	 * 이 값을 보는 소비자가 넷(팀원 피격음·{@code on_team_hurt}·{@code pass_on_hurt}, 그리고 그 판정을
+	 * 같이 쓰는 피격 알림)인데, 예전처럼 꺼내며 지우면 먼저 등록된 {@link SharedHurtFeedback} 이
+	 * 가져가 버려 뒤의 둘은 「아무 피해도 없었다」로 읽었다(2026-10-06 Orca 검토 F-verified 의 V7).
+	 *
+	 * <p>꺼내 가지 않아도 다음 사건으로 새지 않는다. 26.3 {@code hurtServer} 바이트코드에서 꼬리
+	 * ({@code AFTER_DAMAGE}, 637행 {@code ireturn} 앞)에 닿는 길은 전부 79행 방패 판정과 88행 저장
+	 * — {@code intercept} 가 붙은 자리 — 을 지난다. 그 앞의 {@code return} 은 10·19·41행뿐이고 88행
+	 * 뒤의 것(217행, 쿨타임에 버림)은 꼬리에 닿지 않는다. 그러니 같은 사람의 다음 {@code AFTER_DAMAGE}
+	 * 앞에는 반드시 {@code intercept} 맨 앞의 지우기가 있다. 호출이 꼬리까지 못 가고 끝난 경우(무적·
+	 * 즉시 취소)도 같은 이유로 거기서 지워진다.
 	 */
 	private static final Map<UUID, Float> DEFERRED_HITS = new ConcurrentHashMap<>();
 
@@ -311,9 +319,9 @@ public final class SpreadDamageManager {
 	/**
 	 * 이번 {@code hurtServer} 호출에서 이 사람의 피해를 이만큼 미뤘다고 적는다.
 	 *
-	 * <p>「미뤘다」를 아는 곳은 여기 하나고, 팀원 피격음({@link #takeDeferredHit})과 피격 알림
-	 * ({@link #takeDeferredAlert}) 둘 다 이 기록을 본다. 두 쪽 모두 「처음 맞은 순간에 한 번」을
-	 * 같은 판정({@code SharedHurtFeedback.shouldEcho})으로 가른다.
+	 * <p>「미뤘다」를 아는 곳은 여기 하나고, 같은 호출 꼬리의 {@code AFTER_DAMAGE} 소비자들
+	 * ({@link #deferredHit} → {@link #hurtTaken})과 피격 알림({@link #takeDeferredAlert})이 이 기록을
+	 * 본다. 모두 「처음 맞은 순간에 한 번」을 같은 판정({@link #hurtTaken})으로 가른다.
 	 */
 	static void noteDeferredHit(@Nullable UUID playerId, float accepted) {
 		if (playerId != null && accepted > 0.0F) {
@@ -328,7 +336,10 @@ public final class SpreadDamageManager {
 	 * 지난 {@code StatMirror} 한 바퀴 뒤로 이 사람의 피해를 얼마나 미뤘는지 꺼내고 지운다. 없으면 0.
 	 *
 	 * <p>처음 맞은 순간은 체력이 그대로라 알림이 체력만 보면 놓친다. 이 값이 0 보다 크면 체력이
-	 * 안 줄었어도 알린다 — 팀원 피격음이 {@link #takeDeferredHit} 를 보는 것과 같은 원리다.
+	 * 안 줄었어도 알린다 — 팀원 피격음이 {@link #deferredHit}(→ {@link #hurtTaken})를 보는 것과 같은
+	 * 원리다. ⚠ 그쪽은 2026-10-06 Orca 검토 F-verified 의 V7 로 「꺼내며 지움」(옛 이름
+	 * {@code takeDeferredHit})에서 「들여다보기」가 됐지만 이 값은 여전히 꺼내며 지운다 — 읽는 곳이
+	 * {@code StatMirror} 한 바퀴 하나뿐이라서다.
 	 */
 	public static float takeDeferredAlert(@Nullable UUID playerId) {
 		return take(DEFERRED_FOR_ALERT, playerId);
@@ -413,6 +424,20 @@ public final class SpreadDamageManager {
 	 * <p>몫이 하나도 없으면 첫 줄에서 곧바로 거짓이다.
 	 */
 	public static boolean ignoresShield(@Nullable Entity self) {
+		return receivingSlice(self);
+	}
+
+	/**
+	 * 이 엔티티가 지금 미뤄 둔 몫을 받는 중인가. 몫을 <b>그 사람에게</b> 넣는 중일 때만 참이다.
+	 *
+	 * <p>{@link #isDeliveringSlice} 는 「어디선가 몫을 넣는 중인가」만 안다. 몫이 처음 맞을 때 이미
+	 * 지난 일을 다시 하지 않게 하는 자리 — 방패({@link #ignoresShield}), 그리고
+	 * {@code LivingEntityPerkDamageMixin} HEAD 의 낙하 방패·공유 상태이상 중복·광역 중복 검사 — 는 몫을
+	 * 받는 그 사람에게만 들어야 하므로 이것을 본다.
+	 *
+	 * <p>몫이 하나도 없으면 첫 줄에서 곧바로 거짓이다.
+	 */
+	public static boolean receivingSlice(@Nullable Entity self) {
 		if (!isDeliveringSlice()) {
 			return false;
 		}
@@ -421,18 +446,61 @@ public final class SpreadDamageManager {
 	}
 
 	/**
-	 * 이번 {@code hurtServer} 호출에서 이 사람의 피해를 얼마나 미뤘는지 꺼내고 지운다. 미루지
-	 * 않았으면 0.
+	 * 이번 {@code hurtServer} 호출에서 이 사람의 피해를 얼마나 미뤘는지 <b>들여다본다</b>. 미루지
+	 * 않았으면 0. 지우지 않는다.
 	 *
-	 * <p>{@link SharedHurtFeedback} 이 같은 호출 꼬리의 {@code AFTER_DAMAGE} 에서 부른다. 꺼내는
-	 * 순간 지우므로 한 번 미룬 피해에 팀원 연출이 두 번 나가는 일은 없다.
+	 * <p>같은 호출 꼬리의 {@code AFTER_DAMAGE} 소비자들이 {@link #hurtTaken} 을 거쳐 본다. 소비자가
+	 * 여럿이라 꺼내며 지우면 안 된다 — 지우는 곳과 그래도 새지 않는 까닭은 {@link #DEFERRED_HITS}
+	 * 에 있다. 사건 하나에 소비자 하나가 한 번씩 불리므로 지우지 않아도 팀원 연출이 두 번 나가지
+	 * 않는다.
 	 */
-	public static float takeDeferredHit(@Nullable UUID playerId) {
+	public static float deferredHit(@Nullable UUID playerId) {
 		if (playerId == null || DEFERRED_HITS.isEmpty()) {
 			return 0.0F;
 		}
-		Float taken = DEFERRED_HITS.remove(playerId);
-		return taken == null ? 0.0F : taken;
+		Float deferred = DEFERRED_HITS.get(playerId);
+		return deferred == null ? 0.0F : deferred;
+	}
+
+	/**
+	 * {@code AFTER_DAMAGE} 의 {@code damageTaken} 을 「이 사건에서 이 사람이 얼마나 맞았는가」로 고쳐
+	 * 읽는다. 「완충」과 얽힌 두 갈래를 <b>한 곳에서</b> 가른다.
+	 *
+	 * <ul>
+	 *   <li><b>몫을 넣는 중이면 0</b> — 그 피해는 처음 맞을 때 이미 셌다. Fabric 은
+	 *       {@code AFTER_DAMAGE} 를 {@code hurtServer} 꼬리에서 부르므로 몫마다 또 온다.</li>
+	 *   <li><b>이번 호출에서 미룬 첫 피해면 미룬 양</b> — {@code damageTaken} 은 Fabric 이 넘기는
+	 *       지역변수 3번의 꼬리 값이라, 미룬 피해에서는 0 으로 온다.</li>
+	 *   <li>그 밖에는 {@code damageTaken} 그대로. 완충이 없는 팀은 언제나 이 갈래다.</li>
+	 * </ul>
+	 *
+	 * <p>쓰는 곳이 넷이다 — 팀원 피격음·피격 알림({@code SharedHurtFeedback.shouldEcho}),
+	 * {@code on_team_hurt}(동병상련·반격, {@code PerkTriggers}), {@code pass_on_hurt}
+	 * ({@code PerkHolderManager}). 예전에는 앞의 둘만 이 갈래를 알아 뒤의 둘이 <b>처음엔 안 돌고
+	 * 몫마다 돌았다</b> — 완충 + 동병상련이면 1초마다 오는 몫이 2초짜리 저항 II 를 다시 채워 약
+	 * 9초 내내 유지됐다(2026-10-06 Orca 검토 F-verified 의 V7). 문서 6장 「한쪽만 막으면 반드시
+	 * 샌다」 그대로라, 새 {@code AFTER_DAMAGE} 소비자도 이것을 지나야 한다.
+	 *
+	 * @param victim      맞은 엔티티
+	 * @param damageTaken Fabric 이 넘긴 {@code damageTaken}
+	 */
+	public static float hurtTaken(@Nullable Entity victim, float damageTaken) {
+		return hurtTaken(damageTaken, victim == null ? 0.0F : deferredHit(victim.getUUID()),
+				isDeliveringSlice());
+	}
+
+	/**
+	 * {@link #hurtTaken(Entity, float)} 의 순수 판정. 월드도 엔티티도 보지 않는다.
+	 *
+	 * @param damageTaken     Fabric 이 넘긴 {@code damageTaken}
+	 * @param deferredAmount  이번 호출에서 완충이 미룬 양. 미루지 않았으면 0
+	 * @param deliveringSlice 완충이 미뤄 둔 몫을 넣는 중인가. 참이면 <b>무조건</b> 0 이다
+	 */
+	public static float hurtTaken(float damageTaken, float deferredAmount, boolean deliveringSlice) {
+		if (deliveringSlice) {
+			return 0.0F;
+		}
+		return deferredAmount > 0.0F ? deferredAmount : damageTaken;
 	}
 
 	private static void forgetDeferredHit(UUID playerId) {
@@ -528,24 +596,42 @@ public final class SpreadDamageManager {
 	/**
 	 * 같은 진입점의 다른 처리가 이 피해를 통째로 버릴 것인가.
 	 *
-	 * <p>버릴 피해를 큐에 넣으면 「없던 피해가 4초 뒤에 생기는」 꼴이 된다. 네 판정 모두 첫 줄에서
+	 * <p>버릴 피해를 큐에 넣으면 「없던 피해가 4초 뒤에 생기는」 꼴이 된다. 다섯 판정 모두 첫 줄에서
 	 * 곧바로 빠져나가는 빠른 경로를 갖고 있어, 실제로 「완충」을 가진 팀의 피해에만 얹힌다.
+	 *
+	 * <p>시련 화면({@link TrialFreeze})은 HEAD 가 같은 판정으로 먼저 버리므로 여기까지 오지 않지만,
+	 * HEAD 의 다른 「통째로 버림」과 한 벌로 맞춰 둔다(2026-10-06 Orca 검토 F-verified 의 V6 에서
+	 * 이 목록에 그것만 빠져 있었다).
 	 */
 	private static boolean discarded(ServerPlayer victim, @Nullable DamageSource source) {
 		return PerkChoiceSession.blocksDamage(victim)
 				|| GameStartManager.blocksDamage(victim)
+				|| TrialFreeze.blocksDamage(victim)
 				|| PerkDamage.blocksFallDamage(victim, source)
 				|| SharedEffectDamage.isDuplicateEffectDamage(victim);
 	}
 
 	// ------------------------------------------------------------------ 진행
 
-	/** 미뤄 둔 몫이 있는 팀들을 한 틱씩 밀어 준다. */
+	/**
+	 * 미뤄 둔 몫이 있는 팀들을 한 틱씩 밀어 준다.
+	 *
+	 * <h2>판이 멈춘 동안은 기다린다 — 시련 화면도 그렇다</h2>
+	 * <p>증강 선택 중·게임 오버 카운트다운·시련 화면({@link TrialFreeze}, 룰렛과 정해진 카드 화면)
+	 * 동안에는 진행하지 않는다. 시간이 멈춰 있고 팀원은 창에 갇혀 있어 피할 수도 없다. 남은 몫은
+	 * <b>줄지 않고 그대로</b> 기다리고, 흉내 낸 무적시간({@link Guard})도 같이 멈춘다.
+	 *
+	 * <p>시련 화면이 이 목록에 빠져 있던 동안에는 몫이 <b>통째로 사라졌다</b>(2026-10-06 Orca 검토
+	 * F-verified 의 V6). 이 틱은 {@code END_SERVER_TICK} 이라 판이 얼어 있어도 돌고, 몫은
+	 * {@code takeSlice} 로 먼저 떼어 낸 뒤 {@code hurtServer} 로 들어가는데, 그 HEAD
+	 * ({@code LivingEntityPerkDamageMixin})가 {@code TrialFreeze.blocksDamage} 로 피해를 버린다.
+	 * 룰렛 337틱·카드 화면 300틱이면 8초짜리 몫이 전부 사라져, 룰렛이 「완충」의 대가를 지우는
+	 * 면제 장치가 됐다. 판 전체가 멈추는 일이라 {@code isActive()} 하나로 본다 — 증강 선택과 같은
+	 * 모양이다.
+	 */
 	public static void tick(@Nullable MinecraftServer server) {
-		// 증강 선택 중과 게임 오버 카운트다운 동안에는 진행하지 않는다. 시간이 멈춰 있고 팀원은
-		// 창에 갇혀 있어 피할 수도 없다. 남은 몫은 <b>줄지 않고 그대로</b> 기다린다.
 		if (server == null || ACTIVE.isEmpty() || PerkChoiceSession.isActive()
-				|| WorldResetCoordinator.countingDown()) {
+				|| WorldResetCoordinator.countingDown() || TrialFreeze.isActive()) {
 			return;
 		}
 		try {
@@ -699,9 +785,9 @@ public final class SpreadDamageManager {
 	 * 없고 그 뒤 8초 동안 매초 피격음이 났다.</b>
 	 *
 	 * <p>지금은 그쪽이 {@link #isDeliveringSlice()} 를 보고 몫을 건너뛰고, 처음 맞은 순간은
-	 * {@link #takeDeferredHit} 로 「미룬 양」을 알아 한 번 뿌린다. 판정은
-	 * {@code SharedHurtFeedback.shouldEcho} 한 곳이다. 이 저장소에서 피격 연출 꾸러미를 직접
-	 * 보내는 자리가 늘면 같은 판정을 지나야 한다 — {@code HurtFeedbackPathsTest} 가 그 자리를
+	 * {@link #deferredHit} 로 「미룬 양」을 알아 한 번 뿌린다. 판정은 {@link #hurtTaken} 한 곳이고
+	 * {@code on_team_hurt}·{@code pass_on_hurt} 도 같은 판정을 쓴다. 이 저장소에서 피격 연출 꾸러미를
+	 * 직접 보내는 자리가 늘면 같은 판정을 지나야 한다 — {@code HurtFeedbackPathsTest} 가 그 자리를
 	 * 바이트코드로 세어 붙든다.
 	 *
 	 * <h2>몫은 {@code Player} 의 난이도 갈래와 방패를 다시 지난다</h2>
@@ -713,9 +799,30 @@ public final class SpreadDamageManager {
 	 *
 	 * <p>몫이 깎은 체력·흡수는 {@link #noteSliceLoss} 로 적어 피격 알림이 빼고 보게 한다.
 	 *
-	 * <p>쿨타임을 20 으로 채워 두므로 {@code LivingEntityPerkDamageMixin} 의 「호위」 낭비 방지
-	 * ({@code effectiveAmount})도 {@code lastHurt} = 0 을 보고 몫 전부를 실제 피해로 센다.
-	 * 쿨타임을 0 으로 두던 예전과 같은 값이다.
+	 * <h2>HEAD 의 「통째로 버림」 검사도 다시 지난다 — 그중 처음 맞을 때의 것은 건너뛴다</h2>
+	 * <p>{@code LivingEntityPerkDamageMixin} HEAD 는 버릴 피해를 {@code false} 로 끝낸다. 몫은 이미
+	 * {@link Spread#takeSlice} 로 떼어 낸 뒤라 거기서 버려지면 <b>그대로 사라진다.</b> 그래서 몫을 받는
+	 * 사람({@link #receivingSlice})에게는 「판이 멈춤」(증강 선택·회차 시작 전·시련 화면)만 남기고,
+	 * 처음 맞을 때 이미 지난 셋을 건너뛴다(2026-10-06 Orca 검토 F-verified 의 V8).
+	 *
+	 * <ul>
+	 *   <li><b>버티는 방패의 낙하 면역</b> — 지금 방패를 들었는가를 본다. 떨어진 뒤 방패를 들면 남은
+	 *       낙하 몫이 통째로 버려지고 방패가 몫 × 10 만큼 닳았다. 사람 말 「이미 나눠 피해받을 때 방패
+	 *       올려도 막으면 안 돼」와 정면으로 어긋난다.</li>
+	 *   <li><b>광역 중복</b>({@code SharedAreaDamage}) — 열쇠가 (팀, 때린 개체, 피해 종류, 게임 시각)
+	 *       이고 몫은 그 틱의 개체 처리 뒤에 같은 게임 시각으로 들어간다. 같은 틱에 같은 몹이 팀원을
+	 *       때렸으면 몫이 「같은 공격의 둘째」로 버려졌다.</li>
+	 *   <li><b>공유 상태이상 중복</b> — 상태이상 틱 구간 안에서만 참이라 몫(서버 틱 끝)에서는 원래
+	 *       거짓이지만, 「처음 맞을 때의 판정」이라 같이 건너뛴다.</li>
+	 * </ul>
+	 *
+	 * <p>「호위」({@code damage_ward})는 <b>건너뛰지 않는다.</b> 쿨타임을 20 으로 채워 두므로
+	 * 낭비 방지({@code effectiveAmount})도 {@code lastHurt} = 0 을 보고 몫 전부를 실제 피해로
+	 * 세고, 호위가 돌아온 순간의 몫 하나를 막는다. 쿨타임을 0 으로 두던 예전과 같은 값이고 알고 둔
+	 * 동작이다(검토 F-verified V8 (c)).
+	 *
+	 * <p>판이 멈춘 동안은 {@link #tick} 이 몫을 아예 진행하지 않으므로 HEAD 의 멈춤 검사에 몫이
+	 * 걸리는 일은 회차 시작 전 무적뿐이다.
 	 */
 	private static void deliver(ServerPlayer victim, @Nullable DamageSource source, float amount) {
 		if (!(amount > 0.0F)) {

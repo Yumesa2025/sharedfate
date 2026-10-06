@@ -4,11 +4,13 @@ import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -243,6 +245,118 @@ class SpreadDamageFirstHitTargetTest {
 			}
 		}
 		assertTrue(forgets, "StatMirror.tick 이 꺼내 가지 못한 완충 기록을 버리지 않는다");
+	}
+
+	/**
+	 * <b>HEAD 의 버리기 검사.</b> 몫을 받는 사람이면 낙하 방패·공유 상태이상 중복·광역 중복을
+	 * 건너뛴다. 예전에는 몫이 이 셋을 다시 지나 버려졌고, 떼어 낸 몫은 그대로 사라졌다(2026-10-06
+	 * Orca 검토 F-verified 의 V8). 묻는 자리는 판이 멈춘 검사(증강 선택·회차 시작 전·시련 화면) 뒤,
+	 * 세 검사 앞이다. 「호위」({@code blocksMobDamage})는 몫에도 돌아야 하므로 그대로 있어야 한다.
+	 */
+	@Test
+	void HEAD_버리기_검사는_몫을_받는_사람에게_처음_맞을_때의_셋을_건너뛴다() throws IOException {
+		List<Handler> callers = handlersCalling("com/sharedfate/sync/TrialFreeze", "blocksDamage");
+		assertEquals(1, callers.size(), "시련 화면 무적을 보는 HEAD 처리기는 하나여야 한다: " + callers);
+		Handler head = callers.getFirst();
+		assertEquals(INJECT, head.annotation, head.toString());
+		assertEquals("HEAD", head.values.get("at.value"), head.toString());
+
+		List<String> calls = head.calls;
+		int frozen = calls.indexOf("com/sharedfate/sync/TrialFreeze.blocksDamage");
+		int slice = calls.indexOf(MANAGER + ".receivingSlice");
+		int fall = calls.indexOf("com/sharedfate/perk/PerkDamage.blocksFallDamage");
+		int effect = calls.indexOf("com/sharedfate/sync/SharedEffectDamage.isDuplicateEffectDamage");
+		int area = calls.indexOf("com/sharedfate/sync/SharedAreaDamage.isDuplicateAreaDamage");
+		int ward = calls.indexOf("com/sharedfate/perk/PerkDamage.blocksMobDamage");
+		assertTrue(slice >= 0, "HEAD 가 몫인지 묻지 않는다 — 몫이 낙하 방패·광역 중복에 버려진다: " + calls);
+		assertTrue(frozen < slice, "판이 멈춘 검사는 몫에도 그대로 돌아야 한다: " + calls);
+		assertTrue(fall > slice && effect > slice && area > slice,
+				"처음 맞을 때의 검사가 몫인지 묻기 전에 돈다: " + calls);
+		assertTrue(ward > area, "「호위」는 몫에도 맨 끝에서 돌아야 한다(알고 둔 동작): " + calls);
+	}
+
+	/**
+	 * <b>{@code AFTER_DAMAGE} 소비자 전부가 같은 「맞은 양」 판정을 지난다.</b> Fabric 의
+	 * {@code damageTaken} 은 완충이 미룬 첫 피해에서 0, 몫에서 몫 크기라, 그대로 믿는 소비자는
+	 * 「처음엔 안 돌고 몫마다 돈다」. 피격음·피격 알림만 고쳐지고 {@code on_team_hurt}·
+	 * {@code pass_on_hurt} 가 남아 있었다(2026-10-06 Orca 검토 F-verified 의 V7). 문서 6장 「한쪽만
+	 * 막으면 반드시 샌다」 — 그래서 {@code SharedFateMod} 가 등록하는 소비자 목록 자체를 읽어 붙든다.
+	 * 새 소비자가 생기면 여기가 빨개진다.
+	 */
+	@Test
+	void AFTER_DAMAGE_소비자는_모두_완충의_맞은_양_판정을_지난다() throws IOException {
+		List<String> consumers = afterDamageConsumers();
+		assertTrue(consumers.contains("com/sharedfate/perk/PerkTriggers.onDamage")
+						&& consumers.contains("com/sharedfate/perk/PerkHolderManager.onDamage")
+						&& consumers.contains("com/sharedfate/sync/SharedHurtFeedback.onDamage"),
+				"AFTER_DAMAGE 등록을 제대로 읽지 못했다: " + consumers);
+
+		List<String> missing = new ArrayList<>();
+		for (String consumer : consumers) {
+			if (EXEMPT_AFTER_DAMAGE.contains(consumer)) {
+				continue;
+			}
+			int dot = consumer.lastIndexOf('.');
+			if (!reaches(consumer.substring(0, dot), consumer.substring(dot + 1), 3)) {
+				missing.add(consumer);
+			}
+		}
+		assertEquals(List.of(), missing,
+				"이 소비자는 완충 몫마다 돌고 처음 맞은 순간엔 안 돈다 — SpreadDamageManager.hurtTaken 을 지날 것");
+	}
+
+	/**
+	 * 판정을 안 지나도 되는 소비자. 이유를 함께 적는다.
+	 *
+	 * <p>{@code PerkLifesteal} — <b>때린 쪽</b>의 증강이다. 맞는 쪽이 완충을 가진 플레이어인 것은
+	 * 다른 팀을 때리는 PvP 뿐이다. 그때도 같은 어긋남(처음 0, 몫마다 흡혈)이 있지만 W1 범위 밖이라
+	 * 남겨 두었다(build/review/fix-W1-perks.md).
+	 */
+	private static final List<String> EXEMPT_AFTER_DAMAGE = List.of(
+			"com/sharedfate/perk/PerkLifesteal.onDamage");
+
+	/** {@code SharedFateMod} 가 {@code AFTER_DAMAGE} 에 등록하는 메서드 참조들. */
+	private static List<String> afterDamageConsumers() throws IOException {
+		List<String> found = new ArrayList<>();
+		ClassNode node = new ClassNode();
+		new ClassReader(bytesOf("com/sharedfate/SharedFateMod")).accept(node, ClassReader.SKIP_FRAMES);
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof InvokeDynamicInsnNode indy
+						&& indy.desc.endsWith("ServerLivingEntityEvents$AfterDamage;")
+						&& indy.bsmArgs.length > 1 && indy.bsmArgs[1] instanceof Handle target) {
+					found.add(target.getOwner() + "." + target.getName());
+				}
+			}
+		}
+		return found;
+	}
+
+	/** 이 메서드가 (같은 클래스 안의 도우미를 몇 단계 거쳐서라도) {@code hurtTaken} 을 부르는가. */
+	private static boolean reaches(String owner, String name, int depth) throws IOException {
+		if (depth < 0) {
+			return false;
+		}
+		ClassNode node = new ClassNode();
+		new ClassReader(bytesOf(owner)).accept(node, ClassReader.SKIP_FRAMES);
+		for (MethodNode method : node.methods) {
+			if (!method.name.equals(name)) {
+				continue;
+			}
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call)) {
+					continue;
+				}
+				if (call.owner.equals(MANAGER) && call.name.equals("hurtTaken")) {
+					return true;
+				}
+				if (call.owner.equals(owner) && !call.name.equals(name)
+						&& reaches(owner, call.name, depth - 1)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	// ------------------------------------------------------------------ 도우미

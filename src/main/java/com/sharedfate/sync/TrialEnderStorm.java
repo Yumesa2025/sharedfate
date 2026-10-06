@@ -53,7 +53,10 @@ import java.util.UUID;
  *   <li><b>미는 자리에 천장을 건다.</b> {@link #pushDistance} 가 <b>목적지가 섬 안</b>인
  *       거리까지만 돌려준다. 어떤 세기를 넣어도, 몇 번을 연속으로 밀려도, 밀리는 도중의 어느
  *       점도 {@link #pushLimitRadius} 안이다. 산수는 값을 고치는 사람이 안 볼 수 있지만 이
- *       함수는 못 피한다. <b>지우면 이 카드는 그날로 전멸 카드다</b></li>
+ *       함수는 못 피한다. <b>지우면 이 카드는 그날로 전멸 카드다</b>. 다만 이 천장은 반경만 알아서
+	 *       <b>길에 허공이 있는지는 모른다</b> — 그래서 {@link #groundedPushDistance} 가 그 뒤에
+	 *       {@link TrialLandingShock#groundedReach} 로 길을 한 번 더 짚는다(2026-10-06 Orca 검토
+	 *       F-verified 의 V4 — 다른 밀치기 셋은 이미 둘을 다 지났는데 이 카드만 앞의 하나였다)</li>
  *   <li><b>방향을 사람에게서 구하지 않는다.</b> {@link #push} 가 쓰는 벡터는 <b>소용돌이가
  *       나아가는 방향의 반대</b>({@code +outward}) 하나뿐이고, 사람의 좌표는 한 번도 들어가지
  *       않는다. 「사람과 소용돌이의 상대 위치」로 방향을 잡으면 소용돌이보다 안쪽에 선 사람이
@@ -528,9 +531,12 @@ public final class TrialEnderStorm {
 		}
 
 		double distance = distanceAt(step, perTick);
+		// 지표 조회기는 한 틱에 하나다. 소용돌이 둘과 밀리는 사람들이 한 청크 기억을 나눠 쓴다.
+		TrialEnderPulse.Ground ground = new TrialEnderPulse.Ground();
 		for (int vortex = 0; vortex < count; vortex++) {
 			Vec3 outward = outwardOf(run.baseAngle(), vortex, count);
-			sweep(end, present, run.swept().get(vortex), run.shoved(), outward, distance, now, risk);
+			sweep(end, ground, present, run.swept().get(vortex), run.shoved(), outward, distance,
+					now, risk);
 		}
 		warn(end, present, run, distance, perTick, count);
 	}
@@ -625,9 +631,9 @@ public final class TrialEnderStorm {
 	 *       다시 민다. 사람이 「닿아 있는 동안 계속 밀쳐지게」 하라고 정한 그 동작이다</li>
 	 * </ul>
 	 */
-	private static void sweep(ServerLevel end, List<ServerPlayer> present, Set<UUID> swept,
-			Map<UUID, Long> shoved, Vec3 outward, double distance, long now,
-			TrialCatalog.Risk.EnderStorm risk) {
+	private static void sweep(ServerLevel end, TrialEnderPulse.Ground ground,
+			List<ServerPlayer> present, Set<UUID> swept, Map<UUID, Long> shoved, Vec3 outward,
+			double distance, long now, TrialCatalog.Risk.EnderStorm risk) {
 		Vec3 center = onGround(end, outward.scale(distance));
 		draw(end, center, distance);
 		for (ServerPlayer member : present) {
@@ -643,7 +649,7 @@ public final class TrialEnderStorm {
 				continue;
 			}
 			shoved.put(memberId, now);
-			shove(end, member, outward, risk.knockback());
+			shove(end, ground, member, outward, risk.knockback());
 		}
 	}
 
@@ -702,8 +708,9 @@ public final class TrialEnderStorm {
 	 * <p>점 몇 개는 예산 밖이 아니다. {@link #MAX_POINTS_PER_TICK} 은 <b>바닥 표식</b> 예산이고
 	 * ({@link #markPoints} 가 세는 값), 이쪽은 밀린 사람에게만 나가므로 팀 인원만큼이 상한이다.
 	 */
-	private static void shove(ServerLevel end, ServerPlayer member, Vec3 outward, double knockback) {
-		if (!push(member, outward, knockback)) {
+	private static void shove(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
+			Vec3 outward, double knockback) {
+		if (!push(end, ground, member, outward, knockback)) {
 			return;
 		}
 		Vec3 at = member.position();
@@ -724,6 +731,10 @@ public final class TrialEnderStorm {
 	 * <p><b>사람의 좌표가 방향 계산에 한 번도 들어가지 않는다.</b> 「사람과 소용돌이의 상대
 	 * 위치」로 잡으면 같은 소용돌이가 사람마다 다른 쪽으로 밀어 예측이 안 되고, 소용돌이 안쪽에
 	 * 선 사람은 중앙을 가로질러 반대편으로 날아간다.
+	 *
+	 * <p>⚠ <b>천장이 둘이다</b> — {@link #groundedPushDistance} 가 {@link #pushDistance} 뒤에
+	 * {@link TrialLandingShock#groundedReach} 로 길의 땅을 한 번 더 확인한다(2026-10-06 Orca 검토
+	 * F-verified 의 V4). 전에는 앞의 하나뿐이라 반경 32 안의 허공 홈으로 밀 수 있었다.
 	 *
 	 * <p>속도를 <b>더하지 않고 덮어쓴다</b>({@code setDeltaMovement}). 더하면 이미 들고 있던
 	 * 수평 속도가 얹혀 천장이 계산한 목적지를 넘는다.
@@ -752,10 +763,13 @@ public final class TrialEnderStorm {
 	 *
 	 * @return 실제로 밀었으면 {@code true}. 천장에 걸려 한 칸도 못 밀면 {@code false}
 	 */
-	private static boolean push(ServerPlayer member, Vec3 outward, double knockback) {
+	private static boolean push(ServerLevel end, TrialEnderPulse.Ground ground, ServerPlayer member,
+			Vec3 outward, double knockback) {
 		Vec3 away = shoveDirection(outward);
-		double distance = pushDistance(member.getX(), member.getZ(), away,
-				PUSH_BLOCKS * Math.max(0.0, knockback));
+		// 천장 둘을 모두 지난 거리다 — 반경 천장(pushDistance) 뒤에 길의 땅 확인(groundedReach).
+		double distance = groundedPushDistance(member.getX(), member.getZ(), away,
+				PUSH_BLOCKS * Math.max(0.0, knockback),
+				(x, z) -> ground.surfaceAt(end, x, z) != TrialEnderPulse.NO_GROUND);
 		if (!(distance > 0.0)) {
 			return false;
 		}
@@ -1145,6 +1159,32 @@ public final class TrialEnderStorm {
 		// outside < 0 이라 판별식은 반드시 양수고, 큰 근은 반드시 0 보다 크다.
 		double reach = Math.sqrt(along * along - outside) - along;
 		return Math.min(wanted, Math.max(0.0, reach));
+	}
+
+	/**
+	 * ⚠⚠ 실제로 밀 거리 — <b>천장 둘을 지난 값.</b> {@link #pushDistance} 가 반경으로 자른 거리를
+	 * {@link TrialLandingShock#groundedReach} 가 한 번 더 <b>땅이 끊기기 전</b>에서 자른다.
+	 *
+	 * <p>반경 천장은 중앙에서 잰 거리만 안다. 그런데 중앙 섬은 둥글지 않아 반경 32 안에도 빈 곳이
+	 * 있고({@code TrialRisks.pickSpot} 의 설명) 사람이 파 놓은 구멍도 있다. 그런 자리로 밀면
+	 * 천장을 지켰는데도 낙사다. 「착지 충격」·「엔더 파동」·날개 퍼덕이기는 이미 두 천장을 다
+	 * 지나는데 <b>이 카드만 앞의 하나였다</b> — 5장 「넉백에는 천장이 있습니다」의 두 원칙 가운데
+	 * 뒤의 것이 빠져 있었다(2026-10-06 Orca 검토 F-verified 의 V4).
+	 *
+	 * <p>월드를 묻지 않고 {@code probe} 를 받는다. <b>낙사를 막는 함수라 시험이 월드 없이 섬 곳곳을
+	 * 훑을 수 있어야</b> 하기 때문이다. 값은 {@link #pushDistance} 를 <b>넘지 않으므로</b> 반경
+	 * 천장의 약속(목적지·도중·연속 모두 섬 안)은 그대로다.
+	 *
+	 * @param x     사람의 x. 아레나 중앙이 {@code (0, 0)} 이다
+	 * @param z     사람의 z
+	 * @param away  미는 방향. <b>단위 벡터여야 하고 높이는 보지 않는다</b>
+	 * @param wanted 카드가 시킨 거리({@code PUSH_BLOCKS × knockback})
+	 * @param probe 그 자리에 설 땅이 있는가 — 엔더 파동과 같은 {@code Ground} 탐침을 넣는다
+	 */
+	static double groundedPushDistance(double x, double z, Vec3 away, double wanted,
+			TrialLandingShock.GroundProbe probe) {
+		double distance = pushDistance(x, z, away, wanted);
+		return TrialLandingShock.groundedReach(probe, x, z, away.x, away.z, distance);
 	}
 
 	/**

@@ -189,8 +189,74 @@ class SharedHurtFeedbackTest {
 		SharedHurtFeedback.onDamage(맞은사람, 좀비(), 0.0F, 0.0F, false);
 
 		assertEquals(1, 받은것(동료).size(), "처음 맞은 순간에는 동료도 알아야 한다");
-		assertEquals(0.0F, SpreadDamageManager.takeDeferredHit(맞은사람.getUUID()),
-				"미룬 양 표시는 한 번 꺼내면 사라져야 한다");
+	}
+
+	/**
+	 * <b>같은 꼬리의 뒤 소비자도 미룬 양을 본다.</b> {@code AFTER_DAMAGE} 에는 이 클래스가 맨 먼저
+	 * 등록되고 그 뒤에 {@code on_team_hurt}({@code PerkTriggers})·{@code pass_on_hurt}
+	 * ({@code PerkHolderManager})가 온다. 예전에는 여기서 미룬 양을 꺼내며 지워, 뒤의 둘이 처음 맞은
+	 * 순간을 「피해 0」으로 읽고 건너뛰었다 — 그리고 몫마다 돌았다(2026-10-06 Orca 검토 F-verified
+	 * 의 V7). 뒤의 둘이 읽는 값은 {@link SpreadDamageManager#hurtTaken} 그대로다.
+	 */
+	@Test
+	void 팀원_피격음을_보낸_뒤에도_같은_호출의_뒤_소비자는_미룬_양을_본다() throws Exception {
+		ServerPlayer 맞은사람 = 팀원("맞은사람");
+		ServerPlayer 동료 = 팀원("동료");
+		팀(맞은사람, 동료);
+		SpreadDamageManager.noteDeferredHit(맞은사람.getUUID(), 6.0F);
+
+		SharedHurtFeedback.onDamage(맞은사람, 좀비(), 0.0F, 0.0F, false);
+
+		assertEquals(6.0F, SpreadDamageManager.hurtTaken(맞은사람, 0.0F),
+				"먼저 등록된 피격음 쪽이 미룬 양을 가져가 on_team_hurt·pass_on_hurt 가 0 을 본다");
+		// 지우는 것은 같은 사람의 다음 hurtServer 맨 앞(intercept)이다.
+		SpreadDamageManager.intercept(맞은사람, 좀비(), 0.0F);
+		assertEquals(0.0F, SpreadDamageManager.hurtTaken(맞은사람, 0.0F),
+				"지난 호출의 미룬 양이 다음 사건으로 샜다");
+	}
+
+	/**
+	 * on_team_hurt·pass_on_hurt·팀원 피격음·피격 알림이 같이 쓰는 한 판정. 몫이면 0, 미룬 첫 피해면
+	 * 미룬 양, 그 밖에는 받은 값 그대로.
+	 */
+	@Test
+	void 맞은_양_판정은_몫이면_0_미룬_첫_피해면_미룬_양이다() {
+		assertEquals(5.0F, SpreadDamageManager.hurtTaken(5.0F, 0.0F, false), "완충이 없으면 그대로");
+		assertEquals(16.0F, SpreadDamageManager.hurtTaken(0.0F, 16.0F, false), "미룬 첫 피해");
+		assertEquals(0.0F, SpreadDamageManager.hurtTaken(2.0F, 0.0F, true), "몫은 처음에 이미 셌다");
+		assertEquals(0.0F, SpreadDamageManager.hurtTaken(2.0F, 3.0F, true),
+				"몫을 넣는 중이면 미룬 양 표시가 어쩌다 남아 있어도 0");
+		assertEquals(0.0F, SpreadDamageManager.hurtTaken(0.0F, 0.0F, false));
+	}
+
+	/**
+	 * 실제 길 — 한 대를 미루고 여덟 몫을 넣는 한 바퀴 동안 뒤 소비자가 보는 「맞은 양」. 처음에 미룬
+	 * 양 한 번, 몫에서는 0. 고치기 전에는 처음 0 · 몫마다 2 였다.
+	 */
+	@Test
+	void 한_바퀴_동안_뒤_소비자는_처음에만_미룬_양을_본다() throws Exception {
+		ServerPlayer 맞은사람 = 팀원("맞은사람");
+		ServerPlayer 동료 = 팀원("동료");
+		ShareTeam team = 팀(맞은사람, 동료);
+
+		SpreadDamageManager.queueForTesting(team.teamId(), 16.0F, 8);
+		SpreadDamageManager.noteDeferredHit(맞은사람.getUUID(), 16.0F);
+		SharedHurtFeedback.onDamage(맞은사람, 좀비(), 0.0F, 0.0F, false);
+		List<Float> 본것 = new ArrayList<>();
+		본것.add(SpreadDamageManager.hurtTaken(맞은사람, 0.0F));
+
+		for (int slice = 0; slice < 8; slice++) {
+			float amount = SpreadDamageManager.takeSliceForTesting(team.teamId());
+			SpreadDamageManager.asSliceForTesting(맞은사람, amount, () -> {
+				// deliver → hurtServer 맨 앞의 intercept, 그리고 꼬리의 AFTER_DAMAGE 소비자들.
+				SpreadDamageManager.intercept(맞은사람, 좀비(), amount);
+				SharedHurtFeedback.onDamage(맞은사람, 좀비(), amount, amount, false);
+				본것.add(SpreadDamageManager.hurtTaken(맞은사람, amount));
+			});
+		}
+
+		assertEquals(List.of(16.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F), 본것);
+		assertEquals(1, 받은것(동료).size());
 	}
 
 	/** 한 대를 미루고 여덟 몫을 넣는 한 바퀴 전체. 동료에게 나가는 것은 처음 한 번뿐이다. */

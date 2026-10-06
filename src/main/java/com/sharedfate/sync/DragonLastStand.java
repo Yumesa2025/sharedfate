@@ -222,11 +222,16 @@ import java.util.UUID;
  *       <b>드래곤이 115초 내내 빨갛다</b></li>
  *   <li><b>스코어보드 팀으로 {@code doTeamsAllowDamage} 를 거짓으로</b> — 드래곤과 사람을 한
  *       팀에 묶어야 한다. 이름표 색과 다른 기능까지 끌려간다</li>
- *   <li><b>믹스인으로 {@code hurt(ServerLevel, List)} 만 취소</b> ← 고른 것.
- *       {@code EnderDragonContactDamageMixin} 이다. 날개 밀치기는 <b>남는다</b> — 바닐라에서
- *       기둥에 앉은 드래곤이 이미 하는 짓이고, 앉은 동안에는 그 5 피해가 저절로 꺼져 있다
- *       ({@code knockBack} 안의 {@code !isSitting()}). 곧 이 믹스인 하나로 접촉 <b>피해</b>가
- *       0 이 되고 밀치기와 블록 부수기는 그대로다</li>
+ *   <li><b>믹스인으로 {@code hurt(ServerLevel, List)} 와 {@code knockBack(ServerLevel, List)}
+ *       을 취소</b> ← 고른 것. {@code EnderDragonContactDamageMixin} 이다. 머리·목 접촉 피해와
+ *       <b>날개 밀치기가 둘 다 꺼지고</b> 블록 부수기({@code checkWalls})만 그대로다.
+ *       ⚠ 전에는 이 자리에 「날개 밀치기는 남는다 — 바닐라가 이미 하는 짓」이라 적혀 있었다.
+ *       2026-10-04 에 그 판단이 틀린 것으로 드러나 믹스인이 {@code knockBack} 도 끊게 됐는데
+ *       이 문단만 옛 문장으로 남아 있었다(2026-10-06 Orca 검토 F-verified 의 E-5 · A-8).
+ *       {@code knockBack} 안의 {@code !isSitting()} 은 <b>5 피해에만</b> 붙어 있고 미는 힘은
+ *       조건 없이 돈다 — 그 값을 우리 넉백의 {@code syncVelocity} 가 본인에게 배달해 「점프하면
+ *       하늘로 날아간다」가 됐다. 까닭은 믹스인 클래스 설명의 「날개 밀치기도 끈다」 절에 있다.
+ *       <b>다시 「밀치기는 바닐라 몫」으로 되돌리지 말 것</b></li>
  * </ul>
  *
  * <h2>보스바 이름은 바닐라 고리를 쓴다 — 믹스인이 아니다</h2>
@@ -1030,7 +1035,10 @@ public final class DragonLastStand {
 	 *
 	 * <p>판 전체에 하나다 — 드래곤이 차원에 하나라 「어느 팀의 보호막인가」를 물을 자리가 없다
 	 * ({@link #contactDamageOff} 와 같은 판단). 팀이 둘이면 이 메서드가 한 틱에 두 번 불리는데,
-	 * 둘째가 첫째 뒤의 상태를 다시 읽으므로 그 틱의 마지막 답이 맞는 답이다.
+	 * 둘째가 첫째 뒤의 상태를 다시 읽으므로 그 틱의 마지막 답이 맞는 답이다. 지금은 시련 세션이 한
+	 * 번에 하나라({@code DragonTrialManager.trialHolder}, 2026-10-06 Orca 검토 F-verified 의 V2) 도는 판이
+	 * 많아야 하나다 — 그래도 판 전체를 훑는 모양은 남겨 둔다. ⚠ 그 대신 <b>팀이 사라진 판을 반드시
+	 * 거둬야 한다</b>({@link #onTeamGone}, V1) — 남으면 이 훑기가 죽은 판의 맥박을 대신 세운다.
 	 *
 	 * <p>⚠ 이 줄을 못 지나는 틱(드래곤이 사라졌거나 팀이 시련을 껐거나)에는 깃발이 다시 안 서고,
 	 * 그러면 믹스인이 맥박이 끊긴 것을 보고 <b>두 틱 안에 저절로 끈다</b> — 「안 맞는 드래곤」이
@@ -1038,16 +1046,44 @@ public final class DragonLastStand {
 	 */
 	private static void raiseShield(MinecraftServer server, ServerLevel end, EnderDragon dragon,
 			long now) {
-		Stand shielding = null;
+		Stand shielding = shieldingStand(now);
+		DragonLastStandShield.tick(server, end, dragon, shielding != null,
+				shielding == null ? now : shielding.beganAt, now);
+	}
+
+	/** 지금 보호막을 세워야 하는 판. 없으면 {@code null}. {@link #raiseShield} 가 판 전체를 훑는 자리다. */
+	private static @Nullable Stand shieldingStand(long now) {
 		for (Stand candidate : STANDS.values()) {
 			if (DragonLastStandShield.shielded(candidate.cinematicEntry, candidate.beganAt,
 					candidate.firstPatternAt, now)) {
-				shielding = candidate;
-				break;
+				return candidate;
 			}
 		}
-		DragonLastStandShield.tick(server, end, dragon, shielding != null,
-				shielding == null ? now : shielding.beganAt, now);
+		return null;
+	}
+
+	/**
+	 * <b>판이 얼어 있는 틱</b>에 보호막 맥박만 이어 간다. {@code DragonTrialManager.tickSessions} 가
+	 * {@link #tick} 대신 부른다.
+	 *
+	 * <h2>왜 따로 있는가 (2026-10-06 Orca 검토 F-verified 의 V3)</h2>
+	 *
+	 * <p>룰렛·증강 선택·{@code /tick freeze} 로 판이 얼면 게임 시각이 서는데 우리 틱은 매 서버 틱
+	 * 돈다. 그래서 실행기가 <b>같은 {@code now} 로 수백 번</b> 다시 불려 발동 틱의 소리·번개·밖 피해가
+	 * 되풀이됐다. 이제 그 틱에는 {@link #tick} 을 통째로 건너뛴다.
+	 *
+	 * <p>⚠ 그런데 보호막의 맥박은 <b>게임 시각이 아니라 서버 틱 수</b>로 잰다
+	 * ({@link DragonLastStandShield#alive}). 얼어 있어도 서버 틱은 흐르므로 맥박을 안 세우면 두 틱
+	 * 뒤에 막이 내려가, <b>진입 연출 도중 증강 선택창이 뜨면 그동안 드래곤이 맞는다.</b> 같은
+	 * {@code now} 로 다시 세우는 것은 안전하다 — 판단이 {@code now} 의 순수 함수이고, 반구 긋기는
+	 * {@code Shield.tick} 이 「이미 그은 {@code now}」면 건너뛴다.
+	 */
+	public static void holdShield(@Nullable MinecraftServer server, @Nullable ServerLevel end,
+			@Nullable EnderDragon dragon, long now) {
+		if (server == null || end == null || dragon == null || !dragon.isAlive() || STANDS.isEmpty()) {
+			return;
+		}
+		raiseShield(server, end, dragon, now);
 	}
 
 	/**
@@ -1483,6 +1519,74 @@ public final class DragonLastStand {
 		}
 		contactDamageOff = !STANDS.isEmpty();
 		VICTORIOUS_TEAMS.add(team.teamId());
+		dropSharedState(end);
+		SharedFateMod.LOGGER.info("[END] 팀 '{}' 최후의 저항 종료 — 팀이 무적이 됩니다", team.name());
+	}
+
+	/**
+	 * 최후의 저항이 도는 중에 <b>팀이 사라졌다</b> — 해체됐거나 마지막 팀원이 나갔다.
+	 * {@code DragonTrialManager.tickSessions} 가 {@code teamById} 가 {@code null} 인 세션을 닫는
+	 * 틱에 부른다. 최후의 저항이 돌고 있지 않았으면 아무 일도 하지 않는다.
+	 *
+	 * <h2>이것이 없어서 열려 있던 길 (2026-10-06 Orca 검토 F-verified 의 V1)</h2>
+	 *
+	 * <p>그 갈래는 세션을 지우기만 하고 여기를 지나지 않았다. 그래서 사라진 팀의 {@code Stand} 가
+	 * {@link #STANDS} 에 서버가 내려갈 때까지 남아 <b>다른 판의 판정에 끼어들었다.</b>
+	 *
+	 * <ul>
+	 *   <li><b>보호막이 영원히 선다</b> — 첫 패턴 전에 사라진 판은 {@code firstPatternAt} 이
+	 *       {@code MIN} 이라 {@link DragonLastStandShield#shielded} 가 언제나 참이다.
+	 *       {@link #raiseShield} 가 판 전체를 훑으므로 같은 드래곤과 싸우는 다음 팀의 tick 이
+	 *       <b>죽은 판의 맥박을 대신 세워</b> 그 팀의 최후의 저항 내내 드래곤이 안 맞았다(소프트락).
+	 *       「맥박이 끊기면 두 틱 안에 꺼진다」는 세우는 쪽이 판을 가려 읽어야 성립한다</li>
+	 *   <li><b>지대가 꺼진다</b> — {@code DragonLastStandZone.drivingSince} 가 죽은 판의 원점으로
+	 *       남아 다음 판은 「남의 판」으로 읽혀 원·벽·밖 피해·박동 없이 싸웠다</li>
+	 *   <li><b>접촉 피해·날개 밀치기가 서버 재시작까지 꺼진다</b> — {@link #onFightClosed} 가
+	 *       {@code !STANDS.isEmpty()} 로 다시 세므로 죽은 판 하나가 깃발을 영영 붙든다</li>
+	 * </ul>
+	 *
+	 * <p>팀이 전투 중에 사라지는 길은 실제로 열려 있다 — {@code /shareteam leave}(1인 팀이면 해체)와
+	 * {@code disband confirm} 에 엔드 전투 검사가 없고, 기본 {@code singleTeamOnly} 에서도 팀이 비면
+	 * 새 팀이 생길 수 있다.
+	 *
+	 * <h2>{@link #onFightClosed} 와 다른 것</h2>
+	 *
+	 * <ul>
+	 *   <li><b>무적을 주지 않는다</b> — 드래곤을 잡은 것이 아니다. 그리고 줄 팀이 없다</li>
+	 *   <li><b>드래곤을 놓아준다</b> — 그쪽은 드래곤이 죽은 틱이라 놓을 것이 없지만, 여기는 드래곤이
+	 *       <b>살아서 {@code HOVERING} 에 눌린 채</b> 남는다. {@code HOVERING} 은 스스로 일어나지
+	 *       않는 칸이라(이 클래스 설명) 놓아주지 않으면 다음 팀이 허공에 박힌 드래곤과 싸운다.
+	 *       {@link #releaseDragon} 을 볼 것</li>
+	 *   <li>판 전체 상태(지대·번개·오브젝트·보호막·면·반구·보스바 이름)를 거두는 것은 같다 —
+	 *       {@link #dropSharedState} 한 벌을 둘이 지난다. 두 벌로 두면 「한쪽만 고쳐진다」</li>
+	 * </ul>
+	 *
+	 * <p>⚠ 시련 세션이 한 번에 하나뿐이라({@code DragonTrialManager.startSession} 의 「시련 세션은
+	 * 하나」, F-verified 의 V2) 여기서 판 전체 상태를 거둬도 <b>다른 팀의 판을 지우지 않는다.</b>
+	 *
+	 * @param end    엔드. {@code null} 이면 월드를 만지는 둘(보스바 이름·놓아주기)만 건너뛴다
+	 * @param teamId 사라진 팀
+	 */
+	public static void onTeamGone(@Nullable ServerLevel end, @Nullable UUID teamId) {
+		if (teamId == null || STANDS.remove(teamId) == null) {
+			return;
+		}
+		contactDamageOff = !STANDS.isEmpty();
+		dropSharedState(end);
+		if (STANDS.isEmpty()) {
+			releaseDragon(end);
+		}
+		SharedFateMod.LOGGER.info("[END] 팀({})이 최후의 저항 도중에 사라졌습니다 — 판을 거두고 드래곤을"
+				+ " 놓아줍니다", teamId);
+	}
+
+	/**
+	 * 판 전체에 하나뿐인 상태를 거둔다. {@link #onFightClosed} 와 {@link #onTeamGone} 이 함께 지난다.
+	 *
+	 * <p>{@link #clearState} 와 다른 것은 <b>월드가 살아 있는 자리</b>라는 것 하나다 — 그래서 보스바
+	 * 이름까지 되돌린다.
+	 */
+	private static void dropSharedState(@Nullable ServerLevel end) {
 		// 진입 보호막. 보호막 도중에 전투가 닫히는 길은 「무적을 지나치는 피해」(공허·
 		// generic_kill)와 /kill 뿐이다. 깨지는 소리는 내지 않는다 — 걷힌 것이 아니라 끝난 것이다.
 		DragonLastStandShield.clearState();
@@ -1496,7 +1600,25 @@ public final class DragonLastStand {
 		DragonLastStandLights.drop();
 		DragonLastStandZone.clearState();
 		restoreBossBarName(end);
-		SharedFateMod.LOGGER.info("[END] 팀 '{}' 최후의 저항 종료 — 팀이 무적이 됩니다", team.name());
+	}
+
+	/**
+	 * 눌러 둔 드래곤을 바닐라 비행으로 돌려보낸다. {@link #onTeamGone} 에서만 부른다.
+	 *
+	 * <p>{@code HOLDING_PATTERN} 인 까닭은 바닐라가 새 드래곤을 처음 띄우는 칸이 그것이라서다
+	 * ({@code EnderDragonFight.createNewDragon}). ⚠ {@code DYING} 은 건드리지 않는다 — {@link #hold}
+	 * 와 같은 까닭으로, 죽어 가는 드래곤을 되살리면 체력 1 로 남는다. {@code HOVERING} 이 아닌
+	 * 칸(이미 누가 옮겼다)도 건드리지 않는다.
+	 */
+	private static void releaseDragon(@Nullable ServerLevel end) {
+		if (end == null) {
+			return;
+		}
+		for (EnderDragon dragon : end.getEntities(EntityTypes.ENDER_DRAGON, EnderDragon::isAlive)) {
+			if (dragon.getPhaseManager().getCurrentPhase().getPhase() == EnderDragonPhase.HOVERING) {
+				dragon.getPhaseManager().setPhase(EnderDragonPhase.HOLDING_PATTERN);
+			}
+		}
 	}
 
 	/**
@@ -1648,5 +1770,19 @@ public final class DragonLastStand {
 	/** 이 팀이 드래곤을 잡아 무적인가. */
 	static boolean isVictorious(@Nullable UUID teamId) {
 		return teamId != null && VICTORIOUS_TEAMS.contains(teamId);
+	}
+
+	/** 지금 판 전체가 보호막을 세워야 하는가 — {@link #raiseShield} 가 매 틱 내리는 판단 그대로다. */
+	static boolean shieldWanted(long now) {
+		return shieldingStand(now) != null;
+	}
+
+	/**
+	 * 시험용. 월드 없이 <b>막 진입한 판</b>(진입 연출이 있고 첫 패턴 전)을 꽂아 둔다 — {@link #tick} 이
+	 * 진입 틱에 하는 것 가운데 정적 상태만이다.
+	 */
+	static void openForTesting(UUID teamId, long beganAt) {
+		STANDS.put(teamId, new Stand(beganAt, Vec3.ZERO, true, 0.0F));
+		contactDamageOff = true;
 	}
 }

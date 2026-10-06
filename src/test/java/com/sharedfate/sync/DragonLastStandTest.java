@@ -658,6 +658,74 @@ class DragonLastStandTest {
 				"비운 뒤에도 접촉 피해가 꺼져 있으면 다음 판의 드래곤이 사람을 못 때린다");
 	}
 
+	// ------------------------------------------------------------------ 팀이 사라진 판 (V1)
+
+	/**
+	 * 첫 패턴 전에 버려진 판은 <b>언제까지나</b> 보호막을 원한다 — 거두지 않으면 남의 tick 이 그 맥박을
+	 * 대신 세운다.
+	 *
+	 * <p>2026-10-06 Orca 검토 F-verified 의 V1 의 전제다. 이 단언이 거짓이 되면(예: 보호막에 기한이
+	 * 붙으면) {@link DragonLastStand#onTeamGone} 의 무게가 달라지므로 함께 본다.
+	 */
+	@Test
+	void 첫_패턴_전에_버려진_판은_보호막을_영영_원한다() {
+		UUID gone = UUID.randomUUID();
+		DragonLastStand.openForTesting(gone, 1_000L);
+		assertTrue(DragonLastStand.shieldWanted(1_000L + 20L * 60 * 60),
+				"첫 패턴을 고르지 않은 판은 한 시간 뒤에도 보호막을 원해야 한다 — 그래서 거둬야 한다");
+	}
+
+	/**
+	 * 팀이 사라지면 판을 거둔다 — 보호막·접촉 깃발·{@code STANDS} 가 함께 내려간다.
+	 *
+	 * <p>고치기 전에는 그 갈래({@code DragonTrialManager.tickSessions} 의 {@code team == null})가 세션만
+	 * 지워, 다음 팀의 최후의 저항 내내 드래곤이 안 맞고(보호막) 서버 재시작까지 접촉 피해·날개
+	 * 밀치기가 꺼졌다(F-verified V1).
+	 */
+	@Test
+	void 팀이_사라지면_판을_거둔다() {
+		UUID gone = UUID.randomUUID();
+		DragonLastStand.openForTesting(gone, 1_000L);
+		assertTrue(DragonLastStand.isRunning(gone));
+		assertTrue(DragonLastStand.contactDamageOff());
+
+		DragonLastStand.onTeamGone(null, gone);
+
+		assertFalse(DragonLastStand.isRunning(gone), "사라진 팀의 판이 STANDS 에 남았다");
+		assertFalse(DragonLastStand.shieldWanted(1_100L),
+				"사라진 판이 보호막을 계속 원한다 — 다음 팀의 드래곤이 끝까지 안 맞는다");
+		assertFalse(DragonLastStand.contactDamageOff(),
+				"사라진 판 하나가 접촉 깃발을 붙들었다 — 서버 재시작까지 접촉 피해가 꺼진다");
+		assertFalse(DragonLastStand.isVictorious(gone), "팀이 사라진 것은 처치가 아니다 — 무적을 주면 안 된다");
+	}
+
+	/** 다른 팀의 id 로는 아무것도 거두지 않는다. 판을 가진 팀만 판을 내린다. */
+	@Test
+	void 판이_없는_팀이_사라져도_남의_판은_그대로다() {
+		UUID running = UUID.randomUUID();
+		DragonLastStand.openForTesting(running, 1_000L);
+
+		DragonLastStand.onTeamGone(null, UUID.randomUUID());
+		DragonLastStand.onTeamGone(null, null);
+
+		assertTrue(DragonLastStand.isRunning(running));
+		assertTrue(DragonLastStand.contactDamageOff());
+		assertTrue(DragonLastStand.shieldWanted(1_100L));
+	}
+
+	/**
+	 * 관리자의 「팀이 사라졌다」 갈래가 실제로 {@link DragonLastStand#onTeamGone} 을 부르는가.
+	 *
+	 * <p>고치기 전의 클래스에는 이 이름이 없다 — 그 갈래는 {@code finished.add} 뒤 {@code continue} 뿐이었다.
+	 */
+	@Test
+	void 관리자가_사라진_팀의_판을_거둔다() {
+		String bytes = read("/com/sharedfate/sync/DragonTrialManager.class",
+				StandardCharsets.ISO_8859_1);
+		assertTrue(bytes.contains("onTeamGone"),
+				"DragonTrialManager 가 onTeamGone 을 안 부른다 — 팀이 사라진 판이 STANDS 에 남는다(V1)");
+	}
+
 	/** 지킬 것 — 파티클은 긴 형식, 소리는 {@code playEach}, 자막은 없다. */
 	@Test
 	void 연출이_저장소의_규약을_지킨다() {

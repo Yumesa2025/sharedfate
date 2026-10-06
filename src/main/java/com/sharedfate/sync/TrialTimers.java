@@ -162,7 +162,14 @@ public final class TrialTimers {
 	}
 
 	/** 한 사람에게 마지막으로 보낸 것. */
-	private record Sent(TrialTimersPayload payload, long gameTime, int serverTick) {
+	record Sent(TrialTimersPayload payload, long gameTime, int serverTick) {
+	}
+
+	/**
+	 * 이번 틱에 실제로 보낼 것 하나 — 누구에게 무엇을. {@link #plan} 이 고르고 {@link #publish} 가
+	 * 그대로 보낸다.
+	 */
+	record Delivery(UUID player, TrialTimersPayload payload) {
 	}
 
 	/**
@@ -191,41 +198,140 @@ public final class TrialTimers {
 		if (server == null) {
 			return;
 		}
-		int serverTick = server.getTickCount();
-		Set<UUID> reached = new HashSet<>();
+		// 사람 객체는 여기서만 다룬다. 고르는 일은 plan 이 UUID 로 한다 — 그래야 시험이 굴린다.
+		Map<UUID, ServerPlayer> players = new HashMap<>();
+		Map<UUID, TrialTimersPayload> byId = new HashMap<>();
 		for (Map.Entry<ServerPlayer, TrialTimersPayload> target : audience.entrySet()) {
 			ServerPlayer player = target.getKey();
+			if (player == null) {
+				continue;
+			}
+			players.put(player.getUUID(), player);
+			byId.put(player.getUUID(), target.getValue());
+		}
+		java.util.function.Function<UUID, ServerPlayer> resolve = id -> {
+			ServerPlayer player = players.get(id);
+			// 받는 사람 목록에 없는 사람(지울 사람)은 접속 목록에서 찾는다. 끊었으면 null 이다.
+			return player != null ? player : server.getPlayerList().getPlayer(id);
+		};
+		List<Delivery> deliveries = plan(SENT, byId, id -> {
+			ServerPlayer player = resolve.apply(id);
+			// canSend 를 먼저 묻는 것은 이 저장소의 관습이다(TrialHotbarLock.send). 이 묶음을 받을
+			// 줄 모르는 클라이언트 — 클라이언트 쪽 수신 등록이 아직 없는 판 — 에는 아예 보내지 않는다.
+			return player != null && ServerPlayNetworking.canSend(player, TrialTimersPayload.TYPE);
+		}, now, server.getTickCount());
+		for (Delivery delivery : deliveries) {
+			ServerPlayer player = resolve.apply(delivery.player());
+			if (player != null) {
+				ServerPlayNetworking.send(player, delivery.payload());
+			}
+		}
+	}
+
+	/**
+	 * {@link #publish} 의 <b>결정부</b> — 이번 틱에 누구에게 무엇을 보내고, 기록({@code sent})을 어떻게
+	 * 고치는가. <b>월드도 연결도 모른다 — 시험이 직접 굴린다.</b>
+	 *
+	 * <h2>떼어 낸 까닭 (2026-10-06 Orca 검토 F-verified 의 V10)</h2>
+	 *
+	 * <p>보내기·지우기·받는 사람 로직에 시험이 하나도 없었다. 지금 코드는 맞게 돌지만 아래 순서 하나만
+	 * 바뀌어도 조용히 깨진다 — 검토가 짚은 실패 넷이 전부 이 메서드 안의 줄 순서다.
+	 *
+	 * <ul>
+	 *   <li><b>「받았다」는 보낼 수 있는지 묻기 전에 센다.</b> 거꾸로 두면 받을 줄 모르는 클라이언트가
+	 *       매 틱 「지울 사람」 후보가 된다</li>
+	 *   <li><b>보낼 수 없으면 기록하지 않는다.</b> 기록해 두면 다음 틱에 받을 수 있게 된 사람이 「이미
+	 *       보냈다」로 읽혀 박동(1초)까지 아무것도 못 받는다</li>
+	 *   <li><b>지운 사람은 기록에서 뺀다.</b> 안 빼면 엔드를 떠난 사람이 <b>매 틱</b> 지우는 묶음을
+	 *       받는다 — 「한 번」이 깨진다</li>
+	 *   <li><b>기록에서 빼는 것은 보낼 수 있든 없든이다.</b> 접속을 끊은 사람은 보낼 길이 없고, 받는
+	 *       쪽이 끊길 때 스스로 지운다. 남겨 두면 다시 들어온 사람이 「이미 보냈다」로 읽힌다</li>
+	 * </ul>
+	 *
+	 * <p>보낼지 말지(상태 변화 즉시 · 박동 {@value #HEARTBEAT_TICKS} 틱 · 멈춤 시작과 끝)는
+	 * {@link #needsSend} 가 정한다. 받는 쪽이 묶음을 한 번도 안 받았으면 묻지 않고 보낸다.
+	 *
+	 * @param sent     사람마다 마지막으로 보낸 것. <b>이 메서드가 고친다</b> — 보낸 것은 적고, 지운 것은 뺀다
+	 * @param audience 이번 틱에 HUD 를 받을 사람과 그 묶음. 묶음이 {@code null} 이거나 안 보이는 것이면
+	 *                 받지 않는 사람으로 센다
+	 * @param canSend  그 사람에게 이 묶음을 보낼 수 있는가(접속해 있고 수신 등록이 있다)
+	 * @return 보낼 것들. 받는 사람 몫이 먼저, 지우는 묶음이 뒤다
+	 */
+	static List<Delivery> plan(Map<UUID, Sent> sent, Map<UUID, TrialTimersPayload> audience,
+			java.util.function.Predicate<UUID> canSend, long now, int serverTick) {
+		List<Delivery> deliveries = new ArrayList<>();
+		Set<UUID> reached = new HashSet<>();
+		for (Map.Entry<UUID, TrialTimersPayload> target : audience.entrySet()) {
+			UUID player = target.getKey();
 			TrialTimersPayload payload = target.getValue();
 			if (player == null || payload == null || !payload.visible()) {
 				continue;
 			}
-			reached.add(player.getUUID());
-			Sent last = SENT.get(player.getUUID());
+			reached.add(player);
+			Sent last = sent.get(player);
 			if (last != null && !needsSend(last.payload(), last.gameTime(), last.serverTick(),
 					payload, now, serverTick)) {
 				continue;
 			}
-			// canSend 를 먼저 묻는 것은 이 저장소의 관습이다(TrialHotbarLock.send). 이 묶음을 받을
-			// 줄 모르는 클라이언트 — 클라이언트 쪽 수신 등록이 아직 없는 판 — 에는 아예 보내지 않는다.
-			if (!ServerPlayNetworking.canSend(player, TrialTimersPayload.TYPE)) {
+			if (!canSend.test(player)) {
 				continue;
 			}
-			ServerPlayNetworking.send(player, payload);
-			SENT.put(player.getUUID(), new Sent(payload, now, serverTick));
+			deliveries.add(new Delivery(player, payload));
+			sent.put(player, new Sent(payload, now, serverTick));
 		}
-		Iterator<Map.Entry<UUID, Sent>> shown = SENT.entrySet().iterator();
+		Iterator<Map.Entry<UUID, Sent>> shown = sent.entrySet().iterator();
 		while (shown.hasNext()) {
 			Map.Entry<UUID, Sent> entry = shown.next();
 			if (reached.contains(entry.getKey())) {
 				continue;
 			}
 			shown.remove();
-			ServerPlayer gone = server.getPlayerList().getPlayer(entry.getKey());
 			// 접속을 끊은 사람에게는 보낼 길이 없다. 받는 쪽이 끊길 때 스스로 지운다.
-			if (gone != null && ServerPlayNetworking.canSend(gone, TrialTimersPayload.TYPE)) {
-				ServerPlayNetworking.send(gone, TrialTimersPayload.HIDDEN);
+			if (canSend.test(entry.getKey())) {
+				deliveries.add(new Delivery(entry.getKey(), TrialTimersPayload.HIDDEN));
 			}
 		}
+		return deliveries;
+	}
+
+	/**
+	 * {@code DragonTrialManager.publishTimers} 의 <b>결정부</b> — 세션들에서 「누가 어느 묶음을 받나」를
+	 * 고른다. 사람 객체를 모르므로 시험이 문자열이든 무엇이든 넣어 굴린다.
+	 *
+	 * <p>2026-10-06 Orca 검토 F-verified 의 V10 으로 떼어 냈다. 거르는 것은 셋이다.
+	 *
+	 * <ul>
+	 *   <li><b>시련을 끈 팀</b> — 바닐라 드래곤전이라 띄울 것이 없다. 팀을 찾기도 전에 거른다</li>
+	 *   <li><b>팀이 없어진 세션</b>({@code membersInEnd} 가 {@code null}) — 그 틱에 세션 루프가 닫는다</li>
+	 *   <li><b>엔드에 선 팀원이 없는 팀</b> — 묶음을 만들지도 않는다</li>
+	 * </ul>
+	 *
+	 * <p>⚠ 「엔드에 서 있는가」는 여기서 가르지 않는다 — {@code membersInEnd} 가 돌려주는 목록이 이미
+	 * 그것이어야 한다({@code DragonTrialManager.membersOf}). 오버월드 원점에 선 사람이 엔드 HUD 를
+	 * 받지 않게 하는 자리가 그 한 곳이다.
+	 *
+	 * @param membersInEnd 팀 id → 엔드에 서 있는 팀원. 팀이 없어졌으면 {@code null}
+	 * @param payloadOf    세션 → 그 팀의 묶음({@link #collect}). 받을 사람이 있는 팀에만 불린다
+	 */
+	static <P> Map<P, TrialTimersPayload> audienceOf(
+			java.util.Collection<DragonTrialSession> sessions,
+			java.util.function.Function<UUID, List<P>> membersInEnd,
+			java.util.function.Function<DragonTrialSession, TrialTimersPayload> payloadOf) {
+		Map<P, TrialTimersPayload> audience = new HashMap<>();
+		for (DragonTrialSession session : sessions) {
+			if (!session.trialsEnabled()) {
+				continue;
+			}
+			List<P> members = membersInEnd.apply(session.teamId());
+			if (members == null || members.isEmpty()) {
+				continue;
+			}
+			TrialTimersPayload payload = payloadOf.apply(session);
+			for (P member : members) {
+				audience.put(member, payload);
+			}
+		}
+		return audience;
 	}
 
 	/** 월드가 바뀌거나 서버가 내려갈 때. 보낼 연결이 없을 수 있으므로 기록만 버린다. */

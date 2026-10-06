@@ -392,8 +392,13 @@ public final class DragonLastStandZone {
 			SHOVE_GRACE.clear();
 		} else if (drivingSince != beganAt) {
 			// 남의 판이다. 드래곤이 차원에 하나라 중심도 하나뿐이고, 두 판이 같은 자리에 서로 다른
-			// 시각의 원을 그리면 원이 두 겹으로 뜬다 — 먼저 든 판이 몰고 간다. 실제로 두 판이 동시에
-			// 열리는 서버는 singleTeamOnly 를 끈 서버뿐이고, 그때 늦게 든 팀은 지대 없이 싸운다.
+			// 시각의 원을 그리면 원이 두 겹으로 뜬다 — 먼저 든 판이 몰고 간다.
+			// ⚠ 지금은 두 판이 동시에 열리지 않는다. 시련 세션이 한 번에 하나라(DragonTrialManager.
+			// trialHolder — singleTeamOnly 를 끈 서버에서도 둘째 시련 팀은 시련 끔으로 열린다) 최후의
+			// 저항도 하나뿐이다(2026-10-06 Orca 검토 F-verified 의 V2). 전에는 이 문만 「먼저 든 판」을
+			// 지켰고 번개·오브젝트·면은 서로 지웠다. 그리고 팀이 사라진 판의 원점이 여기 남아 다음 판이
+			// 영영 「남의 판」으로 읽히던 길은 DragonLastStand.onTeamGone 이 clearState 로 닫는다(V1).
+			// 이 문은 남겨 둔다 — 「한쪽만 막으면 반드시 샌다」.
 			return;
 		}
 		long elapsed = now - beganAt;

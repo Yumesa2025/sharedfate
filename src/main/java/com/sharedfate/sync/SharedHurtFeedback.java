@@ -32,8 +32,13 @@ import java.util.UUID;
  * </ol>
  *
  * <p>둘 다 {@link #shouldEcho} 한 곳에서 가른다. 몫을 넣는 중이면 보내지 않고, 이번 호출에서
- * 미룬 양({@link SpreadDamageManager#takeDeferredHit})이 있으면 피해가 0 이어도 보낸다. 완충이
- * 없는 팀의 피해는 두 값이 늘 거짓·0 이라 예전과 똑같이 판정된다.
+ * 미룬 양({@link SpreadDamageManager#deferredHit})이 있으면 피해가 0 이어도 보낸다. 완충이
+ * 없는 팀의 피해는 두 값이 늘 거짓·0 이라 예전과 똑같이 판정된다. 그 속의 「얼마나 맞았나」는
+ * {@link SpreadDamageManager#hurtTaken} 이고, {@code on_team_hurt}·{@code pass_on_hurt} 도 같은
+ * 것을 쓴다.
+ *
+ * <p>미룬 양은 <b>꺼내지 않고 들여다본다.</b> 예전에는 여기서 꺼내며 지워, 뒤에 등록된 두 소비자가
+ * 처음 맞은 순간을 「피해 0」으로 읽었다(2026-10-06 Orca 검토 F-verified 의 V7).
  */
 public final class SharedHurtFeedback {
 	private SharedHurtFeedback() {
@@ -41,8 +46,9 @@ public final class SharedHurtFeedback {
 
 	public static void onDamage(LivingEntity entity, DamageSource source,
 			float baseDamageTaken, float damageTaken, boolean blocked) {
-		// 미룬 양 표시는 아래에서 일찍 빠져나가더라도 남지 않게 맨 앞에서 꺼낸다.
-		float deferred = SpreadDamageManager.takeDeferredHit(entity.getUUID());
+		// 미룬 양은 꺼내지 않고 들여다만 본다. 같은 꼬리에서 뒤에 등록된 on_team_hurt·pass_on_hurt
+		// 도 같은 값을 봐야 한다(2026-10-06 Orca 검토 F-verified 의 V7). 지우는 것은 다음 intercept 다.
+		float deferred = SpreadDamageManager.deferredHit(entity.getUUID());
 		if (!(entity instanceof ServerPlayer victim) || !shouldEcho(blocked, damageTaken, deferred,
 				SpreadDamageManager.isDeliveringSlice())) {
 			return;
@@ -79,9 +85,10 @@ public final class SharedHurtFeedback {
 	 */
 	static boolean shouldEcho(boolean blocked, float damageTaken, float deferredAmount,
 			boolean spreadSlice) {
-		if (spreadSlice || blocked) {
+		if (blocked) {
 			return false;
 		}
-		return damageTaken > 0.0F || deferredAmount > 0.0F;
+		// 「몫이면 0, 미룬 첫 피해면 미룬 양」은 on_team_hurt·pass_on_hurt 와 같이 쓰는 한 판정이다.
+		return SpreadDamageManager.hurtTaken(damageTaken, deferredAmount, spreadSlice) > 0.0F;
 	}
 }

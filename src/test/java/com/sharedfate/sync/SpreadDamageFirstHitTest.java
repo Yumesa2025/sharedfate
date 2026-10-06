@@ -282,6 +282,30 @@ class SpreadDamageFirstHitTest {
 		assertFalse(SpreadDamageManager.ignoresShield(맞은사람), "몫이 끝났는데 방패가 꺼져 있다");
 	}
 
+	/**
+	 * <b>HEAD 의 처음 맞을 때 검사도 몫을 받는 사람에게만 건너뛴다.</b> 낙하 방패·광역 중복이 몫을
+	 * 버리면 떼어 낸 몫이 그대로 사라졌다(2026-10-06 Orca 검토 F-verified 의 V8). HEAD 가 이 판정을
+	 * 그 검사들 앞에서 묻는다는 것은 {@code SpreadDamageFirstHitTargetTest} 가 바이트코드로 붙든다.
+	 * 같은 틱에 맞은 <b>다른 팀원</b>의 진짜 피해는 예전처럼 광역 중복 판정을 받아야 한다.
+	 */
+	@Test
+	void 몫을_받는_사람만_처음_맞을_때의_버리기_검사를_건너뛴다() throws Exception {
+		ServerPlayer 맞은사람 = 팀원("맞은사람");
+		ServerPlayer 동료 = 팀원("동료");
+		SpreadDamageManager.queueForTesting(UUID.randomUUID(), 16.0F, 8);
+
+		assertFalse(SpreadDamageManager.receivingSlice(맞은사람), "몫을 넣기 전부터 검사가 꺼져 있다");
+		boolean[] 본것 = new boolean[2];
+		SpreadDamageManager.asSliceForTesting(맞은사람, 2.0F, () -> {
+			본것[0] = SpreadDamageManager.receivingSlice(맞은사람);
+			본것[1] = SpreadDamageManager.receivingSlice(동료);
+		});
+
+		assertTrue(본것[0], "몫이 낙하 방패·광역 중복 검사를 다시 지나 버려진다");
+		assertFalse(본것[1], "몫과 상관없는 팀원의 진짜 피해까지 검사를 건너뛴다");
+		assertFalse(SpreadDamageManager.receivingSlice(맞은사람), "몫이 끝났는데 검사가 꺼져 있다");
+	}
+
 	/** 큐가 하나도 없으면 방패 판정에 손대지 않는다. */
 	@Test
 	void 완충이_없으면_방패는_그대로다() throws Exception {
@@ -304,7 +328,7 @@ class SpreadDamageFirstHitTest {
 		assertEquals(0.0F, 넘긴것, EPSILON);
 		assertEquals(0.0F, SpreadDamageManager.remaining(team.teamId()), EPSILON,
 				"방패가 막은 피해가 몫으로 들어온다");
-		assertEquals(0.0F, SpreadDamageManager.takeDeferredHit(맞은사람.getUUID()), EPSILON);
+		assertEquals(0.0F, SpreadDamageManager.deferredHit(맞은사람.getUUID()), EPSILON);
 		assertFalse(한_바퀴_알림(맞은사람, 0.0F, 0.0F), "막은 한 대에 피격 알림이 떴다");
 	}
 

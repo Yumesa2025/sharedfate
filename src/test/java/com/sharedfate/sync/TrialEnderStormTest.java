@@ -213,6 +213,107 @@ class TrialEnderStormTest {
 	}
 
 	/**
+	 * ⚠⚠ <b>두 번째 천장 — 길에 허공이 있으면 그 앞에서 멈춘다.</b>
+	 *
+	 * <p>반경 천장({@code pushDistance})은 중앙에서 잰 거리만 안다. 중앙 섬은 둥글지 않아 반경 32
+	 * 안에도 빈 곳이 있다. 다른 밀치기 셋({@code TrialLandingShock.push}·{@code TrialEnderPulse}·
+	 * 날개 퍼덕이기)은 {@code groundedReach} 로 그 길을 짚는데 이 카드만 안 짚었다 — 2026-10-06 Orca
+	 * 검토 F-verified 의 V4. 고치기 전에는 {@code groundedPushDistance} 가 없어 이 시험이 컴파일도
+	 * 안 됐고, 반경 천장만 쓰던 값({@code pushDistance})은 홈을 지나쳐 낙사 자리까지 나온다.
+	 */
+	@Test
+	void 길에_허공이_있으면_그_앞에서_멈춘다() {
+		Vec3 away = new Vec3(1.0, 0.0, 0.0);
+		double wanted = TrialEnderStorm.PUSH_BLOCKS * KNOCKBACK;
+		// x = 14 ~ 16 에 폭 2 짜리 홈이 있는 섬. 반경 천장은 이 홈을 모른다.
+		TrialLandingShock.GroundProbe holed = (x, z) -> x < 14.0 || x >= 16.0;
+		double ceilingOnly = TrialEnderStorm.pushDistance(10.0, 0.0, away, wanted);
+		assertTrue(10.0 + ceilingOnly > 14.0,
+				"전제 — 반경 천장만으로는 홈을 지나쳐 간다(" + ceilingOnly + ")");
+
+		double grounded = TrialEnderStorm.groundedPushDistance(10.0, 0.0, away, wanted, holed);
+		assertTrue(grounded > 0.0, "홈 앞까지는 밀려야 한다 — 아무도 안 밀면 카드가 사라진다");
+		assertTrue(10.0 + grounded < 14.0,
+				"홈을 만났는데 그 앞에서 멈추지 않았다 — 목적지 x = " + (10.0 + grounded));
+		assertTrue(holed.hasGround(10.0 + grounded, 0.0), "목적지가 땅이어야 한다");
+	}
+
+	/**
+	 * 땅이 이어진 섬에서는 <b>세기가 한 칸도 달라지지 않는다</b> — 엔더폭풍의 기존 세기·반경 32 천장·
+	 * 공중 보정({@code pushVelocity})이 그대로라는 것이다. 두 번째 천장은 덜 미는 쪽으로만 일한다.
+	 */
+	@Test
+	void 땅이_이어져_있으면_세기가_그대로다() {
+		double wanted = TrialEnderStorm.PUSH_BLOCKS * KNOCKBACK;
+		TrialLandingShock.GroundProbe flat = (x, z) -> true;
+		for (double start : new double[] {0.0, 2.0, 10.0, 20.0, 31.0}) {
+			for (int degrees = 0; degrees < 360; degrees += 15) {
+				Vec3 away = TrialEnderStorm.outwardOf(Math.toRadians(degrees), 0, 1);
+				double px = away.x * start;
+				double pz = away.z * start;
+				assertEquals(TrialEnderStorm.pushDistance(px, pz, away, wanted),
+						TrialEnderStorm.groundedPushDistance(px, pz, away, wanted, flat), 1.0E-9,
+						"허공이 없는데 거리가 줄었다 — 시작 " + start + ", " + degrees + "도");
+			}
+		}
+		assertEquals(0.0, TrialEnderStorm.groundedPushDistance(0.0, 0.0, new Vec3(1.0, 0.0, 0.0), 0.0,
+				flat), "카드가 0 을 적었으면 아무 일도 없다");
+	}
+
+	/**
+	 * 둥글지 않은 섬을 훑는다 — 방향마다 섬 반지름이 다르고 반경 천장(32) 안에도 허공이 있다.
+	 * 어느 시작 자리·방향·세기에서도 <b>목적지와 가는 길 어느 점도 땅</b>이어야 하고, 값은 반경
+	 * 천장의 값을 <b>넘지 않아야</b> 한다(반경 천장의 약속이 그대로다).
+	 */
+	@Test
+	void 둥글지_않은_섬에서_길의_어느_점도_허공이_아니다() {
+		TrialLandingShock.GroundProbe lumpy = (x, z) -> {
+			double angle = Math.atan2(z, x);
+			double radius = 22.0 + 8.0 * Math.sin(3.0 * angle) + 4.0 * Math.cos(5.0 * angle);
+			return Math.hypot(x, z) < radius;
+		};
+		for (double factor : new double[] {1.0, 3.0, 100.0}) {
+			double wanted = TrialEnderStorm.PUSH_BLOCKS * factor;
+			for (double start = 0.0; start < TrialEnderStorm.pushLimitRadius(); start += 1.5) {
+				for (int degrees = 0; degrees < 360; degrees += 5) {
+					Vec3 away = TrialEnderStorm.outwardOf(Math.toRadians(degrees), 0, 1);
+					double px = away.x * start;
+					double pz = away.z * start;
+					if (!lumpy.hasGround(px, pz)) {
+						continue;
+					}
+					double reach = TrialEnderStorm.groundedPushDistance(px, pz, away, wanted, lumpy);
+					assertTrue(reach <= TrialEnderStorm.pushDistance(px, pz, away, wanted) + 1.0E-9,
+							"반경 천장의 값을 넘었다");
+					for (double along = 0.0; along <= reach; along += 0.25) {
+						assertTrue(lumpy.hasGround(px + away.x * along, pz + away.z * along),
+								"길에 허공이 있다 — 시작 " + start + ", " + degrees + "도, " + along
+										+ "칸");
+					}
+					assertTrue(lumpy.hasGround(px + away.x * reach, pz + away.z * reach),
+							"목적지가 허공이다 — 시작 " + start + ", " + degrees + "도");
+				}
+			}
+		}
+	}
+
+	/**
+	 * 두 번째 천장이 <b>실제 밀치기에 배선돼 있다</b>. 순수 함수 시험은 함수를 안 부르면 아무것도
+	 * 못 잡는다 — 월드 없이 {@code push} 를 굴릴 수 없으므로 상수 풀로 본다.
+	 */
+	@Test
+	void 두_번째_천장이_밀치기에_배선돼_있다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("groundedPushDistance"),
+				"push 가 반경 천장(pushDistance)만 부르면 길의 허공을 모른다");
+		assertTrue(bytes.contains("groundedReach"), "땅이 이어진 데까지를 재지 않는다");
+		assertTrue(bytes.contains("surfaceAt"),
+				"엔더 파동과 같은 Ground 탐침을 써야 두 카드가 같은 땅을 본다");
+		assertTrue(bytes.contains("com/sharedfate/sync/TrialLandingShock"),
+				"groundedReach 를 이 파일에 따로 적으면 두 벌이 된다");
+	}
+
+	/**
 	 * ⚠ 미는 방향이 <b>소용돌이가 나아가는 쪽의 반대</b>다.
 	 *
 	 * <p>전에는 나아가는 쪽(안쪽)이었다. 부호 하나가 이 카드의 성격 전부고, 뒤집히면 빌드도

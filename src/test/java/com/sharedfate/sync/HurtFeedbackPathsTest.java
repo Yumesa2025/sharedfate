@@ -101,12 +101,12 @@ class HurtFeedbackPathsTest {
 					}
 				}, ClassReader.SKIP_FRAMES);
 
-		int deferred = calls.indexOf("com/sharedfate/sync/SpreadDamageManager.takeDeferredHit");
+		int deferred = calls.indexOf("com/sharedfate/sync/SpreadDamageManager.deferredHit");
 		int slice = calls.indexOf("com/sharedfate/sync/SpreadDamageManager.isDeliveringSlice");
 		int decide = calls.indexOf("com/sharedfate/sync/SharedHurtFeedback.shouldEcho");
 		int packet = calls.indexOf(DAMAGE_EVENT_PACKET + ".<init>");
 		assertNotEquals(-1, packet, "onDamage 가 더 이상 꾸러미를 만들지 않는다: " + calls);
-		assertTrue(deferred >= 0 && deferred < packet, "미룬 양을 꾸러미보다 먼저 꺼내야 한다: " + calls);
+		assertTrue(deferred >= 0 && deferred < packet, "미룬 양을 꾸러미보다 먼저 봐야 한다: " + calls);
 		assertTrue(slice >= 0 && slice < packet, "몫인지 꾸러미보다 먼저 물어야 한다: " + calls);
 		assertTrue(decide >= 0 && decide < packet, "판정을 꾸러미보다 먼저 지나야 한다: " + calls);
 	}

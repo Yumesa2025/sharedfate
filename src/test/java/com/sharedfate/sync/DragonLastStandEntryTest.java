@@ -218,6 +218,79 @@ class DragonLastStandEntryTest {
 		assertTrue(classBytes().contains("surfaceAt"), "지표를 재지 않으면 발밑이 없다");
 	}
 
+	/**
+	 * ⚠⚠ <b>높이가 뛰는 기둥 앞에서 멈춘다</b> — 2026-10-06 Orca 검토 F-verified 의 V11.
+	 *
+	 * <p>반경 39 선은 흑요석 기둥(중심 반경 42, 굵기 4~5)의 발자국을 자른다. 전에는 탐침이 「그 자리에
+	 * 지표가 있는가」만 물어, 그 방향에 서 있던 사람이 <b>기둥 꼭대기</b>로 옮겨졌다. 여기서는 +x
+	 * 방향 중심 42 · 반지름 4 짜리 기둥(꼭대기 90)을 세우고, 길이 그 발자국을 만나기 전에 멈추는지
+	 * 본다. 같은 섬에서 <b>높이를 안 보는 옛 탐침</b>은 39 까지 간다는 것도 함께 확인해, 시험이 실제로
+	 * 고친 차이를 재도록 한다.
+	 */
+	@Test
+	void 높이가_뛰는_기둥_앞에서_멈춘다() {
+		double anchorY = 65.0;
+		double edge = DragonLastStandEntry.innerEdge();
+		DragonLastStandEntry.SurfaceProbe island = (x, z) -> {
+			if (Math.hypot(x, z) > 45.0) {
+				return TrialEnderPulse.NO_GROUND;
+			}
+			// 중심 (42, 0), 반지름 4 의 기둥. 꼭대기 90.
+			return Math.hypot(x - 42.0, z) <= 4.0 ? 90 : 64;
+		};
+
+		double old = TrialLandingShock.groundedReach(
+				(x, z) -> island.surfaceAt(x, z) != TrialEnderPulse.NO_GROUND,
+				0.0, 0.0, 1.0, 0.0, edge);
+		assertEquals(edge, old, 1.0E-9, "전제 — 높이를 안 보면 길이 기둥 위까지 간다");
+
+		double reach = DragonLastStandEntry.pullReach(island, anchorY, 0.0, 0.0, 1.0, 0.0, edge);
+		assertTrue(reach > 30.0, "기둥 앞까지는 데려와야 한다 — 아무도 안 옮기면 카드가 사라진다(" + reach + ")");
+		assertTrue(reach < 38.0, "기둥 발자국(x ≥ 38)에 닿았다 — 꼭대기로 옮겨진다(" + reach + ")");
+		assertEquals(64, island.surfaceAt(reach, 0.0), "도착한 자리가 섬 표면이 아니다");
+
+		// 기둥이 없는 방향은 가장자리까지 그대로 간다 — 천장이 카드를 무력화하지 않는다.
+		assertEquals(edge, DragonLastStandEntry.pullReach(island, anchorY, 0.0, 0.0, -1.0, 0.0, edge),
+				1.0E-9, "기둥이 없는 방향의 길이 짧아졌다");
+		assertEquals(edge, DragonLastStandEntry.pullReach(island, anchorY, 0.0, 0.0, 0.0, 1.0, edge),
+				1.0E-9, "기둥이 없는 방향의 길이 짧아졌다");
+	}
+
+	/**
+	 * 평평한 섬에서는 <b>모든 방향이 가장자리까지</b> 간다. 높이 조건이 평지의 데려오기를 건드리면
+	 * 사람이 기대한 「있던 방향 그대로 안쪽 가장자리」가 깨진다.
+	 */
+	@Test
+	void 평지에서는_가장자리까지_간다() {
+		double edge = DragonLastStandEntry.innerEdge();
+		DragonLastStandEntry.SurfaceProbe flat = (x, z) -> 64;
+		for (int degrees = 0; degrees < 360; degrees += 5) {
+			double radians = Math.toRadians(degrees);
+			assertEquals(edge, DragonLastStandEntry.pullReach(flat, 66.0, 0.0, 0.0,
+					Math.cos(radians), Math.sin(radians), edge), 1.0E-9, degrees + "도");
+		}
+		DragonLastStandEntry.SurfaceProbe hole = (x, z) -> x < 20.0 ? 64 : TrialEnderPulse.NO_GROUND;
+		assertEquals(19.5, DragonLastStandEntry.pullReach(hole, 66.0, 0.0, 0.0, 1.0, 0.0, edge),
+				1.0E-9, "땅이 끊기면 그 앞에서 멈춘다 — groundedReach 의 약속이 그대로다");
+	}
+
+	/** 높이 조건의 경계. 낮은 쪽은 묻지 않고, 높은 쪽은 {@code PULL_MAX_RISE} 까지만 봐 준다. */
+	@Test
+	void 오르막_여유가_경계에서_갈린다() {
+		double anchorY = 65.0;
+		int rise = (int) DragonLastStandEntry.PULL_MAX_RISE;
+		assertTrue(DragonLastStandEntry.PULL_MAX_RISE > 0.0, "여유가 0 이면 평지도 못 데려온다");
+		assertTrue(DragonLastStandEntry.PULL_MAX_RISE < 10.0,
+				"기둥 꼭대기는 섬 표면에서 10칸 넘게 솟는다 — 여유가 그보다 크면 기둥을 놓친다");
+		assertTrue(DragonLastStandEntry.standable((int) anchorY + rise, anchorY), "여유 안은 땅이다");
+		assertFalse(DragonLastStandEntry.standable((int) anchorY + rise + 1, anchorY),
+				"여유를 넘는 높이는 땅이 아니다");
+		assertTrue(DragonLastStandEntry.standable((int) anchorY - 30, anchorY),
+				"낮은 쪽은 묻지 않는다 — 섬 가장자리는 원래 낮다");
+		assertFalse(DragonLastStandEntry.standable(TrialEnderPulse.NO_GROUND, anchorY),
+				"지표가 없으면 땅이 아니다");
+	}
+
 	// ------------------------------------------------------------------ 되돌릴 것을 남기지 않는다
 
 	/**

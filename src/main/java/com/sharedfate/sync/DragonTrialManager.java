@@ -4,6 +4,7 @@ import com.sharedfate.SharedFateMod;
 import com.sharedfate.mixin.EnderDragonFightAccessor;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -134,6 +135,46 @@ public final class DragonTrialManager {
 	 */
 	static final int RECALL_INTERVAL_TICKS = 40;
 
+	/**
+	 * 세션 루프가 실행기(자리 감지 · 최후의 저항 · 입장 연출 · 룰렛 · 패시브 · 위험)를 마지막으로 돌린
+	 * 게임 시각. {@link #executorsDue} 가 이것과 지금을 견준다.
+	 *
+	 * <h2>이것이 없어서 일어나던 일 (2026-10-06 Orca 검토 F-verified 의 V3)</h2>
+	 *
+	 * <p>판이 얼면 — 시련 룰렛·고정 화면({@code TrialFreeze}), 증강 선택({@code PerkChoiceSession}),
+	 * 운영자의 {@code /tick freeze} — 26.3 {@code ServerLevel.tick} 이 {@code runsNormally()} 가
+	 * 거짓인 틱에 {@code tickTime} 을 건너뛰어 <b>게임 시각이 선다.</b> 그런데 이 파일은
+	 * {@code END_SERVER_TICK} 에서 돌아 <b>매 서버 틱</b> 불린다. 실행기는 전부 「{@code now} 가 틱마다
+	 * 하나씩 는다」에 기대 {@code firesAt(now, …)}·{@code stageJustChanged}·{@code blastingIndex} 로
+	 * 발동을 고르므로, <b>정지가 발동 틱에 걸리면 그 틱이 수백 번(룰렛 하나에 337번) 다시 돌았다</b> —
+	 * 폭발음·번개 엔티티 생성·자리 폭격 튕김이 정지 내내 되풀이되고, 피해 차단이 없는
+	 * {@code /tick freeze} 에서는 포격 {@code strike} 가 쿨타임을 지우며 매 틱 들어가 전멸할 수 있었다.
+	 *
+	 * <h2>「얼었는가」가 아니라 「같은 시각인가」를 본다</h2>
+	 *
+	 * <p>실행기가 기대는 사실은 「한 {@code now} 에 한 번」이다. 그래서 정지 깃발 셋(시련 정지 · 증강
+	 * 선택 · 바닐라 정지)을 하나하나 세지 않고 <b>결과</b>인 게임 시각을 본다 — 정지하는 길이 하나 늘어도
+	 * 이 줄은 바뀌지 않는다. {@code /tick step} 처럼 얼어 있어도 시각이 오르는 틱은 그대로 돈다.
+	 *
+	 * <h2>건너뛰는 것과 건너뛰지 않는 것</h2>
+	 *
+	 * <ul>
+	 *   <li><b>자리 감지({@link #detectTriggers})도 건너뛴다.</b> 거기서 {@code HEALTH_30} 이 처음
+	 *       터지면 그 답({@code lastStandBegins})을 같은 틱의 {@code DragonLastStand.tick} 이 받아야
+	 *       진입 연출이 돈다. 감지만 돌리고 최후의 저항을 건너뛰면 그 답이 버려져, 풀린 뒤에는
+	 *       「이미 터졌다 → 재시작 뒤 되살리기」로 읽혀 연출 없이 열린다</li>
+	 *   <li><b>보호막 맥박은 건너뛰지 않는다</b> — {@code DragonLastStand.holdShield}</li>
+	 *   <li>⚠ <b>{@code TrialFreeze.tick} 은 이 문 밖이다.</b> 그것이 정지를 풀어 주는 시계라
+	 *       건너뛰면 영원히 언다. {@link #tick} 첫 줄에서 그대로 돈다</li>
+	 *   <li>패턴 타이머 HUD({@link #publishTimers})도 이 문 밖이다 — 얼어 있는 동안
+	 *       {@code frozen = true} 를 실어 보내는 것이 받는 쪽 카운트다운을 세우는 신호다</li>
+	 *   <li>팀이 사라진 세션과 드래곤이 죽은 세션을 닫는 일도 문 밖이다 — 얼어 있어도 닫혀야 한다</li>
+	 * </ul>
+	 *
+	 * <p>저장하지 않는다. 재시작하면 첫 틱에 한 번 도는 것이 맞다.
+	 */
+	private static long executorsRanAt = Long.MIN_VALUE;
+
 	/** 전투 상태를 적어 두는 곳. 서버가 뜰 때 정해진다. */
 	private static @Nullable java.nio.file.Path stateFile;
 
@@ -163,7 +204,14 @@ public final class DragonTrialManager {
 			// 켬·끔은 저장 파일에 담지 않는다. 팀 설정이 그 사실의 유일한 출처이고, 여기
 			// 한 벌을 더 두면 팀을 해체하고 다시 만든 뒤에 옛 값이 되살아난다. 팀 명단은
 			// SharedFateMod 가 이보다 먼저(TeamRosterStore.onServerStarted) 세워 둔다.
-			boolean trials = trialsEnabled(server, teamId);
+			boolean wanted = trialsEnabled(server, teamId);
+			// 시련 세션은 하나다(trialHolder). 이 규칙이 생기기 전의 저장 파일은 시련 세션 둘을
+			// 들고 있을 수 있다 — 먼저 되살린 하나만 시련을 잇고 나머지는 끔으로 되살린다.
+			boolean trials = wanted && trialHolder(SESSIONS.values(), teamId) == null;
+			if (wanted && !trials) {
+				SharedFateMod.LOGGER.warn("[END] 팀({}) 시련 세션을 끔으로 되살립니다 — 다른 팀이 이미"
+						+ " 시련 세션을 들고 있습니다(시련 세션은 한 번에 하나)", teamId);
+			}
 			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick, trials);
 			session.restore(entry.chosen, entry.fired, entry.queued, entry.awaitingChoice,
 					entry.grantedTicks);
@@ -255,7 +303,10 @@ public final class DragonTrialManager {
 			}
 			// 시련을 켠 팀은 먼저 멈춰 세우고 리더에게 묻는다. 창을 띄우지 못했으면(리더가
 			// 접속해 있지 않다) 아래 예전 길로 그대로 흘러간다 — 거기가 바닐라와 같은 길이다.
-			if (trialsEnabled(server, teamId)
+			// ⚠ 다른 팀이 이미 시련 전투 중이면 창을 띄우지 않는다 — 이 팀은 시련 끔으로 열릴
+			// 것이라(trialHolder) 「시련을 시작합니다」 창은 거짓이 된다. 창이 둘 동시에 떠 있다가
+			// 둘 다 확인되는 경우는 startSession 이 마지막에 가른다.
+			if (trialsEnabled(server, teamId) && trialHolder(SESSIONS.values(), teamId) == null
 					&& TrialEntranceGate.open(end, team, findDragon(end),
 							onlineMembers(server, team), now)) {
 				continue;
@@ -435,24 +486,13 @@ public final class DragonTrialManager {
 			float healthRatio = dragon == null || !(dragon.getMaxHealth() > 0.0F)
 					? Float.NaN
 					: dragon.getHealth() / dragon.getMaxHealth();
-			for (DragonTrialSession session : SESSIONS.values()) {
-				if (!session.trialsEnabled()) {
-					continue;
-				}
-				ShareTeam team = TeamManager.get(server).teamById(session.teamId());
-				if (team == null) {
-					continue;
-				}
-				List<ServerPlayer> members = membersOf(server, team, end);
-				if (members.isEmpty()) {
-					continue;
-				}
-				com.sharedfate.net.TrialTimersPayload payload =
-						TrialTimers.collect(session, frozen, healthRatio, now);
-				for (ServerPlayer member : members) {
-					audience.put(member, payload);
-				}
-			}
+			// 누가 어느 묶음을 받는지는 TrialTimers.audienceOf 가 고른다 — 2026-10-06 Orca 검토
+			// F-verified 의 V10 으로 시험이 굴릴 수 있게 떼어 냈다. 여기 남은 것은 월드에서 팀과
+			// 「엔드에 선 팀원」을 찾아 주는 것뿐이다.
+			audience = TrialTimers.audienceOf(SESSIONS.values(), teamId -> {
+				ShareTeam team = TeamManager.get(server).teamById(teamId);
+				return team == null ? null : membersOf(server, team, end);
+			}, session -> TrialTimers.collect(session, frozen, healthRatio, now));
 		}
 		TrialTimers.publish(server, audience, now);
 	}
@@ -655,6 +695,9 @@ public final class DragonTrialManager {
 	 * <p>로그는 <b>켬·끔을 반드시 적는다.</b> 기본값이 끔이라 「왜 시련이 안 뜨지」의 답이 거의
 	 * 언제나 이 줄에 있다.
 	 *
+	 * <p>⚠ 시련을 켠 팀이라도 <b>다른 팀이 이미 시련 전투 중이면 끔으로 연다</b> — 시련 세션은 한 번에
+	 * 하나다({@link #trialHolder}). 그 팀에게는 채팅 한 줄로 까닭을 알린다.
+	 *
 	 * <h2>⚠⚠ 둘째 겹 — 죽은 드래곤·끝난 전투로는 열리지 않는다 (2026-10-01)</h2>
 	 *
 	 * <p>{@link #detectArrival} 이 첫째 겹이고 여기가 둘째다. <b>이 문을 지나는 길이 셋</b>이고
@@ -676,7 +719,23 @@ public final class DragonTrialManager {
 							+ " 엔드 크리스탈 넷으로 드래곤을 되살리면 다시 열립니다", team.name());
 			return false;
 		}
-		boolean trials = trialsEnabled(server, team.teamId());
+		boolean wanted = trialsEnabled(server, team.teamId());
+		// 시련 세션은 한 번에 하나다 — 까닭은 trialHolder 설명에 있다. 이미 다른 팀이 시련 전투를
+		// 치르고 있으면 이 팀은 시련 끔(바닐라 드래곤전)으로 연다.
+		UUID holder = wanted ? trialHolder(SESSIONS.values(), team.teamId()) : null;
+		boolean trials = wanted && holder == null;
+		if (holder != null) {
+			ShareTeam holderTeam = TeamManager.get(server).teamById(holder);
+			SharedFateMod.LOGGER.info(
+					"[END] 팀 '{}' 시련을 켰지만 팀 '{}' 가 이미 시련 전투 중이라 시련 끔으로 엽니다"
+							+ " — 시련 세션은 한 번에 하나입니다",
+					team.name(), holderTeam == null ? holder : holderTeam.name());
+			Component notice = Component.literal(TRIAL_SLOT_TAKEN_NOTICE)
+					.withStyle(ChatFormatting.YELLOW);
+			for (ServerPlayer member : onlineMembers(server, team)) {
+				member.sendSystemMessage(notice);
+			}
+		}
 		DragonTrialSession session = new DragonTrialSession(team.teamId(), now, trials);
 		SESSIONS.put(team.teamId(), session);
 		int memberCount = Math.max(1, team.members().size());
@@ -699,6 +758,46 @@ public final class DragonTrialManager {
 				countCrystals(end));
 		persist();
 		return true;
+	}
+
+	/**
+	 * 시련 자리가 차서 시련 끔으로 연 팀에게 보내는 채팅 한 줄. 시련을 켜 두었는데 바닐라 드래곤이
+	 * 나오면 「설정이 안 먹는다」로 읽히므로 <b>왜</b>를 바로 알린다.
+	 */
+	static final String TRIAL_SLOT_TAKEN_NOTICE =
+			"다른 팀이 이미 드래곤 시련 전투를 치르고 있어, 이번 전투는 시련 없이(바닐라 드래곤전) 진행됩니다.";
+
+	/**
+	 * 시련을 켠 채 열려 있는 세션의 팀. 없으면 {@code null}. <b>월드를 모른다 — 시험이 직접 굴린다.</b>
+	 *
+	 * <h2>시련 세션은 한 번에 하나다 (2026-10-06 Orca 검토 F-verified 의 V2)</h2>
+	 *
+	 * <p>시련의 실행기 상태는 팀별이 아니라 <b>정적 한 벌</b>이다 — 연쇄 포격·착지·착지 충격·엔더폭풍은
+	 * {@code granted != 기억값} 이면 {@code clearState()} 하고, 최후의 저항의 번개·오브젝트·면도
+	 * 「먼저 든 판」 문이 없다. {@code singleTeamOnly} 를 끈 서버에서 시련 팀 둘이 다른 틱에 들어오면
+	 * 한 서버 틱 안에서 A 호출이 B 상태를, B 호출이 A 상태를 지워 <b>포격이 영영 안 터지고 착지
+	 * 고정이 안 서며 최후의 저항 번개가 안 떨어졌다.</b> HUD 도 마지막에 돈 팀만 「우리 것」으로 읽었다.
+	 *
+	 * <p>근본은 그 상태들을 팀 열쇠 맵으로 바꾸는 것인데 손이 크다. 그래서 싼 길을 골랐다 — 두 번째
+	 * 시련 팀은 <b>시련 끔으로 연다.</b> 드래곤은 차원에 하나라 두 팀이 같은 드래곤을 두고 각자 시련을
+	 * 굴리는 판은 애초에 설계가 그리지 않은 판이다. 기본 {@code singleTeamOnly = true} 에서는 세션이
+	 * 둘 생기지 않으므로 이 규칙에 걸리지 않는다.
+	 *
+	 * <p>⚠ 문이 셋이다 — {@link #startSession}(열리는 모든 길의 목), {@link #detectArrival}(시련
+	 * 수락창을 띄울지), {@link #onServerStarted}(옛 저장 파일이 둘을 들고 있을 때). 「한쪽만 막으면
+	 * 반드시 샌다」.
+	 *
+	 * @param except 묻는 팀 자신. 제 세션은 세지 않는다({@link #forceStart} 가 다시 열 때). {@code null}
+	 *               이면 모든 세션을 센다
+	 */
+	static @Nullable UUID trialHolder(java.util.Collection<DragonTrialSession> sessions,
+			@Nullable UUID except) {
+		for (DragonTrialSession session : sessions) {
+			if (session.trialsEnabled() && !session.teamId().equals(except)) {
+				return session.teamId();
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -752,11 +851,21 @@ public final class DragonTrialManager {
 		}
 		EnderDragon dragon = findDragon(end);
 		List<UUID> finished = new ArrayList<>();
+		// 실행기를 이 now 로 이미 돌렸는가. 판이 얼어 있으면 게임 시각이 서므로 같은 now 가 매 서버
+		// 틱 다시 온다 — 까닭과 무엇을 건너뛰는지는 executorsRanAt 설명에 있다.
+		boolean executorsDue = executorsDue(executorsRanAt, now);
+		executorsRanAt = now;
 
 		for (Map.Entry<UUID, DragonTrialSession> entry : SESSIONS.entrySet()) {
 			DragonTrialSession session = entry.getValue();
 			ShareTeam team = TeamManager.get(server).teamById(entry.getKey());
 			if (team == null) {
+				// 팀이 전투 중에 사라졌다(해체·마지막 팀원 탈퇴). 세션만 지우면 최후의 저항의 판이
+				// STANDS 에 남아 다음 판 보호막이 영영 서고·지대가 꺼지고·접촉 깃발이 서버 재시작까지
+				// 붙들린다 — 2026-10-06 Orca 검토 F-verified 의 V1. 거두는 것은 저쪽 한 곳이다.
+				SharedFateMod.LOGGER.info("[END] 팀({})이 전투 중에 사라져 세션을 닫습니다",
+						entry.getKey());
+				DragonLastStand.onTeamGone(end, entry.getKey());
 				finished.add(entry.getKey());
 				continue;
 			}
@@ -780,6 +889,13 @@ public final class DragonTrialManager {
 			// ⚠ 최후의 저항도 이 줄에 함께 걸린다. 그것도 시련의 일부라 끈 팀은 붙박이
 			// 드래곤을 만나지 않고 바닐라 드래곤전을 끝까지 한다.
 			if (!session.trialsEnabled()) {
+				continue;
+			}
+			if (!executorsDue) {
+				// ⚠ 얼어 있는 틱이다. 자리 감지·최후의 저항·입장 연출·룰렛·패시브·위험을 전부
+				// 건너뛰고 보호막 맥박 하나만 잇는다 — 맥박은 서버 틱 수로 재므로 얼어 있어도 끊긴다
+				// (DragonLastStand.holdShield 설명). 자리 감지까지 건너뛰는 까닭은 executorsRanAt 에.
+				DragonLastStand.holdShield(server, end, dragon, now);
 				continue;
 			}
 			List<ServerPlayer> members = membersOf(server, team, end);
@@ -826,6 +942,19 @@ public final class DragonTrialManager {
 	}
 
 	/**
+	 * 이번 틱에 실행기를 돌려야 하는가. <b>월드를 모른다 — 시험이 직접 굴린다.</b>
+	 *
+	 * <p>{@code !=} 이지 {@code >} 가 아니다. 월드가 바뀌어 게임 시각이 거꾸로 가는 길이 있다면
+	 * {@code >} 는 실행기를 그 시각까지 <b>영영</b> 세우지만, {@code !=} 는 같은 시각 한 번만 막는다.
+	 *
+	 * @param ranAt {@link #executorsRanAt}
+	 * @param now   지금 엔드 게임 시각
+	 */
+	static boolean executorsDue(long ranAt, long now) {
+		return now != ranAt;
+	}
+
+	/**
 	 * 마지막 전투가 닫히는 틱에 시련이 판에 걸어 둔 것을 전부 되돌린다.
 	 *
 	 * <h2>이것이 없어서 실제로 일어나던 일</h2>
@@ -852,9 +981,17 @@ public final class DragonTrialManager {
 	 * ({@code TrialDryWorld.BAN_GRACE_TICKS} 기한, {@code TrialHotbarLock.LAPSE_TICKS} +
 	 * {@code seenAt}, {@code TrialNightHost.fighting}). 그것들은 걷어내지 않았다 — 서버 강제
 	 * 종료처럼 여기를 지나지 못하는 길이 아직 남아 있기 때문이다.
+	 *
+	 * <h2>「세션이 없을 때」가 아니라 「<b>시련 세션</b>이 없을 때」다 (2026-10-06)</h2>
+	 *
+	 * <p>되돌리는 상태는 시련을 켠 세션만 만든다. 그리고 시련 세션은 이제 한 번에 하나다
+	 * ({@link #startSession} 의 「시련 세션은 하나」). 전에는 세션이 하나라도 남으면 돌아갔으므로,
+	 * 시련 팀이 사라지고(F-verified 의 V1) 시련을 끈 팀이 같은 엔드에서 싸우고 있으면 화살 면역·적대
+	 * 엔더맨 같은 시련의 흔적이 <b>그 바닐라 판에 남았다.</b> 끈 팀의 세션은 이 상태를 읽지도 쓰지도
+	 * 않으므로 그 팀이 남아 있어도 비워도 된다.
 	 */
 	private static void endTrials() {
-		if (!SESSIONS.isEmpty()) {
+		if (trialHolder(SESSIONS.values(), null) != null) {
 			return;
 		}
 		TrialRisks.clearState();
@@ -1378,6 +1515,7 @@ public final class DragonTrialManager {
 		CRYSTALS_AT_START.clear();
 		READY_AT.clear();
 		RECALL_AT.clear();
+		executorsRanAt = Long.MIN_VALUE;
 		// 수락창은 저장되지 않고 붙들기도 매 틱 다시 거는 것이라 버리기만 하면 된다.
 		// 월드를 만질 수 없는 자리에서도 불리므로(SERVER_STOPPED) 꾸러미를 보내지 않는다.
 		TrialEntranceGate.clearState();

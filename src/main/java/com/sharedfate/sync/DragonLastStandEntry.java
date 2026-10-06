@@ -133,7 +133,10 @@ import java.util.List;
  *       자신이다. 여유를 둔 까닭은 {@link #WALL_MARGIN}</li>
  *   <li><b>{@code TrialLandingShock.groundedReach}</b> — 그 길을 0.5칸씩 짚어 <b>땅이 끊기기
  *       전</b>에서 멈춘다. 중앙 섬은 둥글지 않고 사람이 파 놓은 구멍도 있다. 이 함수를 <b>그대로
- *       부른다</b> — 날개 퍼덕이기의 천장과 같은 것이라 여기서 다시 짜면 두 벌이 된다</li>
+ *       부른다</b> — 날개 퍼덕이기의 천장과 같은 것이라 여기서 다시 짜면 두 벌이 된다. 다만 탐침에
+ *       <b>높이 조건</b>({@link #PULL_MAX_RISE})을 얹었다 — 반경 39 선이 흑요석 기둥의 발자국을
+ *       자르므로 땅이 이어져 있어도 <b>기둥 꼭대기</b>로 옮겨지면 안 된다(2026-10-06 Orca 검토
+ *       F-verified 의 V11)</li>
  * </ol>
  *
  * <p>출발점이 <b>드래곤을 못박아 둔 자리</b>(= 중앙 기반암 포디움 맨 위)인 것이 요점이다. 거기는
@@ -279,6 +282,21 @@ public final class DragonLastStandEntry {
 	 * 분명히 <b>제 뒤</b>에 있다.
 	 */
 	static final double WALL_MARGIN = 3.0;
+
+	/**
+	 * 데려오는 길에서 <b>포디움보다 이만큼 넘게 높은 지표</b>는 땅으로 치지 않는다(칸).
+	 * {@link #pullReach} 가 쓴다.
+	 *
+	 * <p>치려는 것이 <b>흑요석 기둥</b>이다. 26.3 {@code EndSpikeFeature} 의 기둥은 꼭대기가
+	 * {@code 76 + 3j} 칸(76~103)이라 섬 표면에서 한참 솟아 있고, 길이 기둥 발자국을 만나면 하이트맵이
+	 * 한 칸 만에 10칸 넘게 뛴다. 섬 표면의 기복은 그에 비해 완만하다고 보고(추정) 오르막 여유를
+	 * 작게 잡았다.
+	 *
+	 * <p>⚠ <b>이 값은 게임에서 확인하지 못했다.</b> 클 때(기둥을 놓친다)보다 작을 때(오르막 지형에서
+	 * 덜 데려온다)의 실패가 훨씬 싸므로 작은 쪽으로 틀렸다. 진입 순간 큰 기둥 바깥에 서 있다가 어디로
+	 * 옮겨지는지 보고 맞출 것(2026-10-06 Orca 검토 F-verified 의 V11 이 사람에게 남긴 확인).
+	 */
+	static final double PULL_MAX_RISE = 6.0;
 
 	/** 하강 궤적에 찍는 점 수. {@code TrialEntrance.TRAIL_POINTS} 와 같은 값이다. */
 	private static final int TRAIL_POINTS = 12;
@@ -550,6 +568,10 @@ public final class DragonLastStandEntry {
 	 * <b>「이 방향에서 중앙과 땅으로 이어진 가장 먼 자리」</b>다 — 우리가 묻고 싶은 것과 같은
 	 * 물음이라 새 함수를 만들지 않았다.
 	 *
+	 * <p>⚠ 탐침은 <b>높이도 본다</b>({@link #pullReach}). 전에는 지표가 있는지만 물어 반경 39 선을
+	 * 자르는 흑요석 기둥 발자국에 선 방향이면 사람이 기둥 꼭대기로 옮겨졌다 — 기둥 벽을 만나면
+	 * 그 앞에서 멈춘다(2026-10-06 Orca 검토 F-verified 의 V11).
+	 *
 	 * <p>출발점이 포디움이라 언제나 땅이고, 답이 0 이면 그 자리가 곧 포디움이다. 그때만
 	 * 「완전 중앙」이 되는데, 그것은 <b>중앙 한 칸 밖이 사방으로 허공</b>인 판에서만 나오는 답이라
 	 * 일어날 수 없는 경우의 바닥이다.
@@ -565,9 +587,8 @@ public final class DragonLastStandEntry {
 		}
 		double stepX = dx / from;
 		double stepZ = dz / from;
-		double reach = TrialLandingShock.groundedReach(
-				(x, z) -> ground.surfaceAt(end, x, z) != TrialEnderPulse.NO_GROUND,
-				anchor.x, anchor.z, stepX, stepZ, edge);
+		double reach = pullReach((x, z) -> ground.surfaceAt(end, x, z), anchor.y, anchor.x, anchor.z,
+				stepX, stepZ, edge);
 		double x = anchor.x + stepX * reach;
 		double z = anchor.z + stepZ * reach;
 		int surface = ground.surfaceAt(end, x, z);
@@ -576,6 +597,54 @@ public final class DragonLastStandEntry {
 			return anchor;
 		}
 		return new Vec3(x, surface, z);
+	}
+
+	/**
+	 * 데려올 길에서 <b>어디까지가 설 만한 땅인가</b> — 땅이 끊기거나 <b>높이가 뛰는</b> 데서 멈춘다.
+	 *
+	 * <p>{@link TrialLandingShock#groundedReach} 를 그대로 부르되 탐침에 높이 조건을 얹었다.
+	 * 전에는 「그 자리에 지표가 있는가」만 물어 <b>높이를 안 봤다</b> — 반경 39 선은 흑요석 기둥(중심
+	 * 반경 42, 굵기 4~5)의 발자국을 자르므로 그 방향에 서 있던 사람이 <b>기둥 꼭대기</b>(섬 표면보다
+	 * 10~40칸 위, 우리 있는 기둥이면 쇠창살 지붕 위)로 옮겨졌다. 내려오려면 떨어져야 하고 낙하는 공유
+	 * 체력이다(2026-10-06 Orca 검토 F-verified 의 V11).
+	 *
+	 * <p>높이 조건은 <b>드래곤을 못박아 둔 자리의 높이</b>({@code anchorY}, 포디움 맨 위)를 기준으로
+	 * 한다. 길이 포디움에서 이어지므로 {@link #PULL_MAX_RISE} 보다 높은 곳을 만나면 <b>그 앞</b>에서
+	 * 멈춘다 — 기둥 벽을 만나는 순간 거기까지가 답이다. 기둥을 건너뛰어 반대쪽 땅을 잡지 않는다
+	 * ({@code groundedReach} 가 구멍을 건너지 않는 것과 같다).
+	 *
+	 * <p>어긋나는 방향이 <b>언제나 덜 데려오는 쪽</b>이다. 오르막이 심한 땅을 지표로 안 쳐서 사람이
+	 * 안쪽으로 더 들어오는 것뿐이고, 지대 안(반경 39)이라는 약속은 {@code edge} 가 그대로 지킨다.
+	 *
+	 * <p>월드를 묻지 않고 {@code surface} 를 받는다 — 시험이 월드 없이 훑을 수 있게 하려는 것이다.
+	 *
+	 * @param surface 그 칸에서 설 수 있는 높이. 땅이 없으면 {@link TrialEnderPulse#NO_GROUND}
+	 * @param anchorY 드래곤을 못박아 둔 자리의 높이
+	 * @param edge    가장 멀리 데려올 거리({@link #innerEdge()})
+	 */
+	static double pullReach(SurfaceProbe surface, double anchorY, double x, double z, double stepX,
+			double stepZ, double edge) {
+		return TrialLandingShock.groundedReach(
+				(px, pz) -> standable(surface.surfaceAt(px, pz), anchorY),
+				x, z, stepX, stepZ, edge);
+	}
+
+	/**
+	 * 그 지표가 사람을 내려놓을 만한 땅인가. 땅이 없거나 포디움보다 {@link #PULL_MAX_RISE} 넘게
+	 * 높으면 거짓이다. <b>낮은 쪽은 묻지 않는다</b> — 내려놓는 높이가 그 자리 지표라 낮아도
+	 * 낙하가 아니고, 섬 가장자리는 원래 낮다.
+	 */
+	static boolean standable(int surface, double anchorY) {
+		if (surface == TrialEnderPulse.NO_GROUND) {
+			return false;
+		}
+		return surface - anchorY <= PULL_MAX_RISE;
+	}
+
+	/** 지표 높이를 묻는 자리. {@link #pullReach} 를 월드에서 떼어 놓는다. */
+	@FunctionalInterface
+	interface SurfaceProbe {
+		int surfaceAt(double x, double z);
 	}
 
 	// ------------------------------------------------------------------ ③ 신호기 빛과 충전

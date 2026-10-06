@@ -5,6 +5,7 @@ import com.sharedfate.perk.effect.HolderEffect;
 import com.sharedfate.perk.effect.HolderEffect.HolderMode;
 import com.sharedfate.perk.effect.HolderEffect.ModeResolver;
 import com.sharedfate.perk.effect.OwnerBoundEffect;
+import com.sharedfate.sync.SpreadDamageManager;
 import com.sharedfate.sync.TitleMessenger;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamLookup;
@@ -607,11 +608,16 @@ public final class PerkHolderManager {
 	 * <p>{@code pass_on_hurt} 가 켜진 증강에서 보유자가 피해를 받으면 버프를 다른 팀원에게
 	 * 넘긴다. 피해가 들어가는 모든 자리를 지나므로 어떤 예외도 밖으로 내보내지 않고, 보유자가
 	 * 하나도 없으면 첫 몇 줄에서 되돌아 나간다.
+	 *
+	 * <p>{@code damageTaken} 은 {@link SpreadDamageManager#hurtTaken} 으로 고쳐 읽는다. 「완충」을 가진
+	 * 팀에서는 처음 맞은 순간 피해가 0 으로 미뤄지고 그 뒤 몫이 1초마다 들어와, 그대로 믿으면 맞은
+	 * 순간엔 안 넘어가고 몫이 올 때마다 넘어갔다(2026-10-06 Orca 검토 F-verified 의 V7). 지금은
+	 * 몫이면 건너뛰고 미룬 첫 피해면 미룬 양으로 세어, 맞은 그 순간에 한 번 넘어간다.
 	 */
 	public static void onDamage(LivingEntity victim, DamageSource source,
 			float baseDamageTaken, float damageTaken, boolean blocked) {
 		try {
-			passOnHurt(victim, damageTaken, blocked);
+			passOnHurt(victim, SpreadDamageManager.hurtTaken(victim, damageTaken), blocked);
 		} catch (RuntimeException error) {
 			warnOnce(error);
 		}

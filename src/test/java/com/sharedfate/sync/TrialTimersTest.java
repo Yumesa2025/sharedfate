@@ -347,20 +347,46 @@ class TrialTimersTest {
 	}
 
 	/**
-	 * 룰렛이 판을 얼리면 게임 시각이 안 오른다. 카드 실행기는 그 게임 시각으로 세므로 같은
-	 * {@code now} 에서 읽으면 남은 틱도 그대로다 — 멈춤을 따로 뺄 필요가 없고, 받는 쪽에는
-	 * {@code frozen} 만 알리면 된다.
+	 * 룰렛이 판을 얼리면 게임 시각이 안 오른다. 카드 실행기는 그 게임 시각으로 세므로 남은 틱도
+	 * 저절로 선다 — 멈춤을 따로 뺄 필요가 없고, 받는 쪽에는 {@code frozen} 만 알리면 된다.
+	 *
+	 * <p>⚠ 그 약속이 서려면 <b>남은 틱이 인자 {@code now} 만의 함수</b>여야 한다. 전에는 같은 인자로
+	 * 두 번 불러 같은지만 봤는데, 그것은 {@code now} 를 받는 모든 함수가 참이라 실행기의 {@code clock}
+	 * 하나가 서버 틱 수·벽시계처럼 <b>얼어도 흐르는 시계</b>를 읽게 바뀌어도 통과했다(2026-10-06 Orca
+	 * 검토 F-verified 의 V9). 이제 {@code now} 를 옮겨 읽어 <b>옮긴 만큼만</b> 줄고, 다른 {@code now} 를
+	 * 읽은 뒤 돌아와도 처음 값 그대로인지(읽기가 상태를 굴리지 않는다) 본다.
 	 */
 	@Test
-	void 멈춤_동안은_남은_틱이_그대로이고_frozen_이_실린다() {
+	void 남은_틱은_now_만의_함수라_시각이_서면_함께_서고_frozen_이_실린다() {
 		DragonTrialSession session = new DragonTrialSession(UUID.randomUUID(), GRANTED, true);
 		session.choose("sharedfate:ground_strike", GRANTED);
 		long frozenAt = GRANTED + 77;
+		int shift = 3;
 		TrialTimersPayload first = TrialTimers.collect(session, true, 0.9F, frozenAt);
-		TrialTimersPayload later = TrialTimers.collect(session, true, 0.9F, frozenAt);
+		TrialTimersPayload moved = TrialTimers.collect(session, true, 0.9F, frozenAt + shift);
+		TrialTimersPayload back = TrialTimers.collect(session, true, 0.9F, frozenAt);
 		assertTrue(first.frozen());
-		assertEquals(first.timers(), later.timers());
-		assertFalse(TrialTimers.needsSend(first, frozenAt, 100, later, frozenAt, 110),
+
+		// 시각을 옮기면 옮긴 만큼만 준다 — now 가 아닌 시계를 읽는 줄이 있으면 여기서 어긋난다.
+		assertEquals(first.timers().size(), moved.timers().size());
+		int checked = 0;
+		for (Entry before : first.timers()) {
+			Entry after = moved.timers().stream()
+					.filter(entry -> entry.id().equals(before.id())).findFirst().orElseThrow();
+			if (before.remainingTicks() > shift) {
+				assertEquals(before.remainingTicks() - shift, after.remainingTicks(),
+						before.id() + " — now 를 " + shift + "틱 옮겼는데 남은 틱이 그만큼 안 줄었다");
+				checked++;
+			}
+		}
+		assertTrue(checked >= 2, "패시브와 카드 줄을 둘 다 재야 한다 — 잰 줄이 " + checked + "개");
+
+		// 다른 시각을 읽은 뒤 돌아와도 같다 — 읽기가 실행기 상태를 굴리지 않는다. 그래서 시각이 서
+		// 있는 동안 몇 번을 읽어도(매 서버 틱 HUD 를 모은다) 같은 묶음이다.
+		assertEquals(first.timers(), back.timers(),
+				"같은 now 로 돌아왔는데 남은 틱이 다르다 — 얼어 있는 동안 숫자가 흐른다");
+
+		assertFalse(TrialTimers.needsSend(first, frozenAt, 100, back, frozenAt, 110),
 				"얼어 있는 동안 상태가 안 바뀌면 박동 전에는 안 보낸다");
 		assertTrue(TrialTimers.needsSend(first, frozenAt, 100,
 				TrialTimers.collect(session, false, 0.9F, frozenAt), frozenAt, 101),

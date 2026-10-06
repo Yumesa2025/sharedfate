@@ -192,6 +192,13 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 	 *       한 번을 낭비하면 안 된다.</li>
 	 * </ol>
 	 *
+	 * <p><b>「완충」 몫에는 낙하 방패·공유 상태이상 중복·광역 중복을 다시 돌리지 않는다.</b> 몫은
+	 * 처음 맞을 때 이 검사들을 이미 지났고, 큐에서 떼어 낸 뒤 들어오므로 여기서 버리면 남은 피해가
+	 * 그대로 사라진다. 그래서 {@link SpreadDamageManager#receivingSlice} 가 참이면 앞의 멈춤 검사
+	 * (증강 선택·회차 시작 전·시련 화면)와 맨 끝의 「호위」만 돈다. 호위가 몫에 쓰이는 것은 알고 둔
+	 * 동작이다. 근거는 2026-10-06 Orca 검토 F-verified 의 V8, 자세한 까닭은
+	 * {@code SpreadDamageManager.deliver} 에 있다.
+	 *
 	 * <p>{@code false} 를 돌려주면 바닐라 입장에서는 "피해가 들어가지 않았다"와 같다. 체력·흡수·
 	 * 무적시간·피격 애니메이션 어느 것도 건드리지 않으므로 {@code StatMirror} 가 다음 틱에 관측할
 	 * 델타도 0 이고, {@code DamageLedger} 에도 이 몫이 기록되지 않는다.
@@ -212,17 +219,22 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 			callback.setReturnValue(false);
 			return;
 		}
-		if (PerkDamage.blocksFallDamage(self, source)) {
+		// 「완충」이 미뤄 둔 몫을 이 사람에게 넣는 중이면 아래 셋을 건너뛴다. 처음 맞을 때 이미 지난
+		// 검사이고, 몫은 떼어 낸 뒤라 여기서 버리면 그대로 사라진다 — 떨어진 뒤 방패를 들면 남은 낙하
+		// 몫이 지워지고, 같은 틱에 같은 몹이 팀원을 때렸으면 몫이 광역 중복으로 버려졌다(2026-10-06
+		// Orca 검토 F-verified 의 V8). 「호위」는 일부러 남긴다 — SpreadDamageManager.deliver 참고.
+		boolean firstHit = !SpreadDamageManager.receivingSlice(self);
+		if (firstHit && PerkDamage.blocksFallDamage(self, source)) {
 			// 막아 준 대가로 방패가 크게 닳는다. 피해를 버리기 <b>전에</b> 깎아야 막은 양을 안다.
 			PerkDamage.wearShieldForBlockedFall(self, amount);
 			callback.setReturnValue(false);
 			return;
 		}
-		if (SharedEffectDamage.isDuplicateEffectDamage(self)) {
+		if (firstHit && SharedEffectDamage.isDuplicateEffectDamage(self)) {
 			callback.setReturnValue(false);
 			return;
 		}
-		if (SharedAreaDamage.isDuplicateAreaDamage(self, source)) {
+		if (firstHit && SharedAreaDamage.isDuplicateAreaDamage(self, source)) {
 			callback.setReturnValue(false);
 			return;
 		}
