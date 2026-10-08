@@ -32,7 +32,7 @@ description: /shareteam 과 하위 명령 전부.
 | `/shareteam leave` | 팀에서 나갑니다 |
 | `/shareteam disband confirm` | 팀을 해체합니다 |
 
-팀을 만들 때 함께 정하는 일곱 가지 설정은 [게임 시작](/sharedfate/guide/start)에 적어
+팀을 만들 때 함께 정하는 여덟 가지 설정은 [게임 시작](/sharedfate/guide/start)에 적어
 두었습니다.
 
 **팀 창고**는 인벤토리가 꽉 차서 못 받은 물건이 쌓이는 곳입니다. 흘린 줄 알았던 것이 거기에

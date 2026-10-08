@@ -20,14 +20,14 @@ description: 팀을 만들고 사람을 모아 첫 회차를 시작하는 법.
 
 ### 설정은 이때 한 번만 정합니다
 
-일곱 가지를 만들 때 함께 적을 수 있고, **그 뒤로는 바꿀 수 없습니다.** 회차가 굴러가는 중에
+여덟 가지를 만들 때 함께 적을 수 있고, **그 뒤로는 바꿀 수 없습니다.** 회차가 굴러가는 중에
 규칙이 바뀌면 같은 회차의 앞뒤가 달라지기 때문입니다. 바꾸려면 팀을 해체하고 다시
 만들어야 합니다.
 
 ```text
 /shareteam create [perks on|off] [damagealert on|off] [deathalert on|off]
-                  [difficulty on|off] [health <20~40>] [swap off|<1~120>]
-                  [reroll <0~15>] <팀 이름>
+                  [difficulty on|off] [dragontrials on|off]
+                  [health <20~40>] [swap off|<1~120>] [reroll <0~15>] <팀 이름>
 ```
 
 | 설정 | 기본값 | 무엇 |
@@ -37,6 +37,7 @@ description: 팀을 만들고 사람을 모아 첫 회차를 시작하는 법.
 | `swap` | **5분** | 팀원 위치를 무작위로 뒤바꾸는 주기(분). `off` 로 끌 수 있습니다 |
 | `reroll` | **3** | 증강 카드를 다시 뽑을 수 있는 회차당 횟수 |
 | `difficulty` | 끔 | 30분마다 적대 몹이 **4%p 씩** 세짐 (최대 +100%, 엔더 드래곤 제외) |
+| `dragontrials` | 끔 | 엔더 드래곤이 인원에 비례해 세지고 시련 카드가 뜸. 끄면 바닐라 드래곤전 |
 | `damagealert` | 끔 | 팀원이 맞았을 때 알림과 화면 연출 |
 | `deathalert` | 끔 | 팀원이 죽었을 때 알림 |
 
