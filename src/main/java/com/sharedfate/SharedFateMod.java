@@ -80,6 +80,10 @@ public class SharedFateMod implements ModInitializer {
 			RunProgressManager.onServerStarted(server);
 			TeamRosterStore.onServerStarted(server);
 			WorldResetCoordinator.onServerStarted(server);
+			// 전투 중에 서버가 내려갔다 올라오면 체력만 강화된 채 타이머가 0 인 상태가 된다.
+			com.sharedfate.sync.DragonTrialManager.onServerStarted(server);
+			// 시련 룰렛도 시간을 멈춘다. 얼어 있는 채로 뜨는 일이 없게 여기서도 확인한다.
+			com.sharedfate.sync.TrialFreeze.onServerStarted(server);
 			// 발전과제 달성 알림 끄기. 회차마다 월드가 새로 만들어지므로 월드에 한 번 적어
 			// 두는 방식으로는 유지되지 않는다.
 			WorldGameRules.onServerStarted(server);
@@ -94,9 +98,18 @@ public class SharedFateMod implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STOPPING.register(TeamRosterStore::onServerStopping);
 		// 종료 직전에 시간 정지를 되돌린다. reset 은 서버가 완전히 멈춘 뒤라 너무 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(PerkManager::onServerStopping);
+		// 얼려 둔 채로 종료하지 않는다. 다음 기동이 정지 상태를 물려받지는 않지만, 저장이
+		// 멈춘 시각으로 남는 것과 종료 로그가 얼어붙는 것을 막는다.
+		ServerLifecycleEvents.SERVER_STOPPING.register(
+				com.sharedfate.sync.TrialFreeze::onServerStopping);
 		// 비행 허가는 저장보다 먼저 걷어내야 한다. SERVER_STOPPED 는 이미 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(
 				com.sharedfate.perk.PerkFlightCharm::onServerStopping);
+		// 최후의 저항의 부채꼴·십자 빨간 면과 연출 개체를 월드가 살아 있을 때 거둔다. 전에는 안전지대
+		// (엔드 월드 보더)를 저장보다 먼저 되돌리는 것이 이 줄의 첫 일이었는데, 2026-10-04 에 지대가
+		// 보더를 버리고 「나갈 수 있는 원」이 되어 그 일은 없어졌다.
+		ServerLifecycleEvents.SERVER_STOPPING.register(
+				com.sharedfate.sync.DragonLastStand::onServerStopping);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			TeamLookup.setServer(null);
 			ExpandedInventoryManager.clearRuntimeState();
@@ -110,6 +123,11 @@ public class SharedFateMod implements ModInitializer {
 			ConditionalPerkManager.reset();
 			PeriodicPerkManager.reset();
 			com.sharedfate.sync.AbsorptionRechargeManager.reset();
+			com.sharedfate.sync.DragonTrialManager.clearState();
+			// 순간이동 자물쇠의 「거절을 알린 시각」 기억. 1분이면 스스로 지워지지만, 엔드
+			// 전투 상태를 버리는 자리에 나란히 두어 다음 기동에 남는 것이 없게 한다.
+			com.sharedfate.sync.EndFightTeleportLock.reset();
+			com.sharedfate.sync.SharedAreaDamage.clearState();
 			com.sharedfate.perk.PerkSupplyDrops.reset();
 			PerkHolderManager.reset();
 			TeamGathering.reset();
@@ -130,6 +148,10 @@ public class SharedFateMod implements ModInitializer {
 			PerkWorldRules.reset();
 			com.sharedfate.sync.PreStartRestrictions.reset();
 			PerkCompassTargets.reset();
+			// 나침반 토글과 유적 좌표는 저장하지 않는 파생 상태다. 서버가 멈출 때 비워 두지
+			// 않으면 다음 판에서 「누른 적도 없는데 엔더 요새를 가리키는」 나침반이 나온다.
+			com.sharedfate.perk.PerkCompassToggle.reset();
+			com.sharedfate.perk.PerkRuinSurvey.reset();
 			com.sharedfate.perk.PerkGearManager.reset();
 			PerkLegacyGear.reset();
 			TimedPerkEffects.reset();
@@ -146,8 +168,14 @@ public class SharedFateMod implements ModInitializer {
 		// 넘는데 모두 「넣고 되돌려 보고 남는다」 모양이라, 부르는 곳마다 달지 않고 늘어난
 		// 것을 여기 한 곳에서 본다.
 		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.storage.TeamStorage::tick);
+		// 엔드 전투. 엔드에 사람이 없으면 첫 줄에서 빠져나가므로 평소에는 비용이 없다.
+		ServerTickEvents.END_SERVER_TICK.register(
+				com.sharedfate.sync.DragonTrialManager::tick);
 		ServerPlayerEvents.JOIN.register(player -> {
 			com.sharedfate.perk.PerkFlightCharm.onPlayerJoin(player);
+			// 유적 좌표는 저장하지 않으므로 서버를 다시 켜면 비어 있다. 여기서 한 번 채운다.
+			// 이미 있으면 아무 일도 하지 않는다 — 접속할 때마다 구조물을 다시 찾지 않는다.
+			com.sharedfate.perk.PerkRuinSurvey.onPlayerJoin(player);
 			TeamManager manager = TeamManager.get(player.level().getServer());
 			if (manager.consumeExperienceClear(player.getUUID())) {
 				StatMirror.setTotalExperience(player, 0);
@@ -231,6 +259,22 @@ public class SharedFateMod implements ModInitializer {
 				com.sharedfate.sync.PreStartRestrictions::onBeforeBlockBreak);
 		// 수면 차단 증강(no_sleep)의 집행 지점. null 을 돌려주면 평소대로 잔다.
 		EntitySleepEvents.ALLOW_SLEEPING.register(PerkWorldRules::onAllowSleep);
+		// 시련 「굳는 손」이 굳은 핫바 칸의 휘두르기·쓰기를 막는 지점 넷.
+		//
+		// ⚠ 아래 증강 UseItemCallback 네 줄보다 반드시 먼저 등록한다. Fabric 은 등록 순서대로
+		// 부르고 PASS 가 아닌 첫 답에서 멈추므로, 뒤에 두면 굳은 칸에 든 증강 아이템이 효과를
+		// 먼저 내고 나서 막힌다 — 사람 눈에는 「막혔는데 소모됐다」가 된다.
+		//
+		// 블록 부수기(AttackBlockCallback · PlayerBlockBreakEvents)에는 일부러 붙이지 않는다.
+		// 까닭은 TrialHotbarLock 의 「블록 부수기는 막지 않는다」에 적어 두었다.
+		net.fabricmc.fabric.api.event.player.AttackEntityCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onAttackEntity);
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onUseItem);
+		net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onUseBlock);
+		net.fabricmc.fabric.api.event.player.UseEntityCallback.EVENT.register(
+				com.sharedfate.sync.TrialHotbarLock::onUseEntity);
 		// 나무를 광물로 바꾸는 증강(ore_exchange)의 등록 지점. 허공 우클릭에서만 발화한다.
 		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
 				com.sharedfate.perk.PerkOreExchange::onUseItem);
@@ -246,6 +290,27 @@ public class SharedFateMod implements ModInitializer {
 		// 「비행 부적」을 들고 허공 우클릭했을 때만 발화한다.
 		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
 				com.sharedfate.perk.PerkFlightCharm::onUseItem);
+		// 세트 「개척 2」의 나침반 토글. 나침반을 들고 허공 우클릭했을 때만 발화한다.
+		// 위 넷과 같은 사건에 붙지만 서로 다른 아이템만 받으므로 부딪히지 않는다.
+		//
+		// ⚠ 세트가 없으면 반드시 PASS 를 돌려준다. 여기서 SUCCESS 를 흘리면 바닐라 나침반을
+		// 자철석에 대고 쓰는 길(CompassItem.useOn)이 통째로 막힌다.
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
+				com.sharedfate.perk.PerkCompassToggle::onUseItem);
+		// 시련 「메마른 세계」가 엔드에서 물·용암·서리눈을 놓지 못하게 하는 지점 둘.
+		//
+		// 손에 든 물·용암·물고기 양동이는 use 에서 스스로 자리를 찾으므로 UseItemCallback 이
+		// 잡고(주손·보조손이 한 줄로 함께 막힌다), 서리눈 양동이는 BlockItem 이라 useOn 으로
+		// 놓이므로 ItemEvents.USE_ON 이 잡는다.
+		//
+		// ⚠ USE_ON 은 통과가 null 이다(PASS 가 아니다). PASS 를 돌려주면 그것이 그대로
+		// ItemStack.useOn 의 결과가 되어 모든 아이템의 useOn 이 죽는다. UseBlockCallback 으로
+		// 바꾸지도 말 것 — 그쪽은 블록 상호작용보다 앞이라 서리눈 양동이를 든 채 상자도 못 연다.
+		// 디스펜서는 사람이 아니라 이 사건이 하나도 안 터지므로 BucketEmptyBanMixin 이 맡는다.
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register(
+				com.sharedfate.sync.TrialDryWorld::onUseItem);
+		net.fabricmc.fabric.api.event.player.ItemEvents.USE_ON.register(
+				com.sharedfate.sync.TrialDryWorld::onUseItemOn);
 		EffectSync.register();
 		ServerTickEvents.END_SERVER_TICK.register(EffectSync::tick);
 		ServerTickEvents.END_SERVER_TICK.register(StatMirror::tick);

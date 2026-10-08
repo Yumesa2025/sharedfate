@@ -23,7 +23,16 @@ import java.util.UUID;
 
 public final class RunProgressManager {
 	public static final String STATE_FILE_NAME = "sharedfate-run-state.json";
-	private static final UUID BOSS_EVENT_ID = UUID.nameUUIDFromBytes(
+	/**
+	 * 회차 표시 보스바의 식별자.
+	 *
+	 * <p>공개인 이유는 <b>클라이언트가 이 보스바만 골라내야 하기</b> 때문이다.
+	 * {@code BossHealthOverlayMixin} 이 이 값으로 「내 보스바인가」를 판정해 막대 그리기만
+	 * 건너뛴다. 이름이나 색으로 고르면 문구가 바뀔 때마다 조용히 어긋나므로 식별자로 고른다.
+	 * 값 자체는 이름에서 만드는 고정값이라 서버와 클라이언트가 따로 계산해도 같지만, 두 곳에
+	 * 적어 두면 한쪽만 고쳤을 때 알아챌 방법이 없어 여기 하나만 둔다.
+	 */
+	public static final UUID BOSS_EVENT_ID = UUID.nameUUIDFromBytes(
 			"sharedfate:run-progress".getBytes(StandardCharsets.UTF_8));
 
 	/** 보스바 문구를 다시 재는 주기. 사람이 단추를 누를 때만 바뀌는 값이라 1초면 충분하다. */

@@ -4,8 +4,10 @@ import com.sharedfate.perk.PerkChoiceSession;
 import com.sharedfate.perk.PerkDamage;
 import com.sharedfate.sync.DifficultyEscalation;
 import com.sharedfate.sync.GameStartManager;
+import com.sharedfate.sync.SharedAreaDamage;
 import com.sharedfate.sync.SharedEffectDamage;
 import com.sharedfate.sync.SpreadDamageManager;
+import com.sharedfate.sync.SpreadSliceAccess;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
@@ -16,6 +18,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
+import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -26,8 +29,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 상태이상이 팀 전원에게 똑같이 주는 중복 피해를 버리는 것이다. 둘 다 같은
  * {@code hurtServer} 진입점을 보므로 한 mixin 에 모아 둔다.
  *
- * <p>여기에 「완충」({@code spread_damage})의 두 지점이 함께 붙어 있다. 피해를 미뤄 두는 곳은
- * 배율을 먹이는 자리 바로 뒤이고, 나뉘어 들어오는 동안 회복을 막는 곳은 {@code heal} 진입점이다.
+ * <p>여기에 「완충」({@code spread_damage})의 지점들이 함께 붙어 있다. 피해를 미뤄 두는 곳은
+ * 방패 판정({@code applyItemBlocking}) 바로 뒤이고, 나뉜 몫이 방패를 건너뛰는 곳은
+ * {@code applyItemBlocking} 진입점, 나뉘어 들어오는 동안 회복을 막는 곳은 {@code heal} 진입점이다.
  * 회복 쪽은 피해와 상관없어 보이지만, <b>미뤄 둔 몫과 회복 금지는 한 몸</b>이라 갈라 두면 한쪽만
  * 고쳐지는 사고가 난다. 자세한 까닭은 {@link SpreadDamageManager} 머리말에 있다.
  *
@@ -100,7 +104,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * 결과만 본다. 즉 배율이 두 번 곱해질 여지가 없다.
  */
 @Mixin(LivingEntity.class)
-public abstract class LivingEntityPerkDamageMixin {
+public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 
 	/**
 	 * 직전에 받은 피해량. 피격 쿨타임 안에 들어온 공격이 <b>실제로 얼마나 아픈지</b>를 재는 데
@@ -145,6 +149,23 @@ public abstract class LivingEntityPerkDamageMixin {
 	public int damageCooldownTime;
 
 	/**
+	 * 「완충」이 미뤄 둔 몫을 넣을 때 {@link #lastHurt} 를 읽는 통로. {@link SpreadSliceAccess} 참고.
+	 *
+	 * <p>{@code lastHurt} 를 이미 {@code @Shadow} 로 끌어오고 있는 믹스인이 여기라, 접근자 믹스인을
+	 * 새로 만들어 등록하는 대신 이 클래스에 얹었다.
+	 */
+	@Override
+	public float sharedfate$lastHurt() {
+		return this.lastHurt;
+	}
+
+	/** 「완충」이 미뤄 둔 몫을 넣는 동안만 {@link #lastHurt} 를 0 으로 두었다가 되돌린다. */
+	@Override
+	public void sharedfate$setLastHurt(float value) {
+		this.lastHurt = value;
+	}
+
+	/**
 	 * 버려야 할 피해를 여기서 전부 걸러낸다.
 	 *
 	 * <p>두 가지를 본다.
@@ -171,6 +192,13 @@ public abstract class LivingEntityPerkDamageMixin {
 	 *       한 번을 낭비하면 안 된다.</li>
 	 * </ol>
 	 *
+	 * <p><b>「완충」 몫에는 낙하 방패·공유 상태이상 중복·광역 중복을 다시 돌리지 않는다.</b> 몫은
+	 * 처음 맞을 때 이 검사들을 이미 지났고, 큐에서 떼어 낸 뒤 들어오므로 여기서 버리면 남은 피해가
+	 * 그대로 사라진다. 그래서 {@link SpreadDamageManager#receivingSlice} 가 참이면 앞의 멈춤 검사
+	 * (증강 선택·회차 시작 전·시련 화면)와 맨 끝의 「호위」만 돈다. 호위가 몫에 쓰이는 것은 알고 둔
+	 * 동작이다. 근거는 2026-10-06 검토에서 확정된 문제, 자세한 까닭은
+	 * {@code SpreadDamageManager.deliver} 에 있다.
+	 *
 	 * <p>{@code false} 를 돌려주면 바닐라 입장에서는 "피해가 들어가지 않았다"와 같다. 체력·흡수·
 	 * 무적시간·피격 애니메이션 어느 것도 건드리지 않으므로 {@code StatMirror} 가 다음 틱에 관측할
 	 * 델타도 0 이고, {@code DamageLedger} 에도 이 몫이 기록되지 않는다.
@@ -184,17 +212,29 @@ public abstract class LivingEntityPerkDamageMixin {
 	private void sharedfate$skipDuplicateSharedEffectDamage(ServerLevel level, DamageSource source,
 			float amount, CallbackInfoReturnable<Boolean> callback) {
 		LivingEntity self = (LivingEntity) (Object) this;
-		if (PerkChoiceSession.blocksDamage(self) || GameStartManager.blocksDamage(self)) {
+		// 시련 룰렛도 시간을 멈춘다. 바닐라 정지는 플레이어를 얼리지 않으므로 화면을 읽는
+		// 4초 사이에 용암·낙하·불이 그대로 들어온다 — 증강 선택과 같은 이유로 여기서 버린다.
+		if (PerkChoiceSession.blocksDamage(self) || GameStartManager.blocksDamage(self)
+				|| com.sharedfate.sync.TrialFreeze.blocksDamage(self)) {
 			callback.setReturnValue(false);
 			return;
 		}
-		if (PerkDamage.blocksFallDamage(self, source)) {
+		// 「완충」이 미뤄 둔 몫을 이 사람에게 넣는 중이면 아래 셋을 건너뛴다. 처음 맞을 때 이미 지난
+		// 검사이고, 몫은 떼어 낸 뒤라 여기서 버리면 그대로 사라진다 — 떨어진 뒤 방패를 들면 남은 낙하
+		// 몫이 지워지고, 같은 틱에 같은 몹이 팀원을 때렸으면 몫이 광역 중복으로 버려졌다(2026-10-06
+		// 검토에서 확정된 문제). 「호위」는 일부러 남긴다 — SpreadDamageManager.deliver 참고.
+		boolean firstHit = !SpreadDamageManager.receivingSlice(self);
+		if (firstHit && PerkDamage.blocksFallDamage(self, source)) {
 			// 막아 준 대가로 방패가 크게 닳는다. 피해를 버리기 <b>전에</b> 깎아야 막은 양을 안다.
 			PerkDamage.wearShieldForBlockedFall(self, amount);
 			callback.setReturnValue(false);
 			return;
 		}
-		if (SharedEffectDamage.isDuplicateEffectDamage(self)) {
+		if (firstHit && SharedEffectDamage.isDuplicateEffectDamage(self)) {
+			callback.setReturnValue(false);
+			return;
+		}
+		if (firstHit && SharedAreaDamage.isDuplicateAreaDamage(self, source)) {
 			callback.setReturnValue(false);
 			return;
 		}
@@ -218,17 +258,18 @@ public abstract class LivingEntityPerkDamageMixin {
 	 * 붙으면 어느 쪽이 먼저 도는지가 우선순위에 달려 눈에 안 보인다. 둘 다 곱셈이라 순서는
 	 * 어차피 결과를 바꾸지 않는다.
 	 *
-	 * <p>마지막으로 「완충」이 이 값을 통째로 미뤄 갈 수 있다. 미뤄 가면 이번 피해량은 0 이 되고,
-	 * 같은 값이 몇 초에 걸쳐 나뉘어 다시 이 진입점으로 들어온다. <b>배율을 다 먹인 뒤에</b>
-	 * 미루는 것이 중요하다. 그래야 다시 넣을 때 배율을 한 번 더 곱하지 않는다.
+	 * <p>「완충」은 여기서 미루지 않는다. 미루는 자리는 방패 판정 바로 뒤의
+	 * {@link #sharedfate$deferAfterShield} 다. 예전에는 여기서 미뤄 피해를 0 으로 넘겼고, 그래서
+	 * 방패가 막을 양이 없어 완충을 가진 사람은 처음 맞을 때 방패로 막지 못했다.
 	 */
 	@ModifyVariable(method = "hurtServer", at = @At("HEAD"), argsOnly = true, index = 3)
 	private float sharedfate$applyPerkDamageMultipliers(float amount, ServerLevel level, DamageSource source) {
 		LivingEntity self = (LivingEntity) (Object) this;
-		// 미뤄 두었던 몫이 다시 들어오는 중이면 손대지 않는다. 배율은 미룰 때 이미 걸었고, 여기서
-		// 또 미루면 같은 피해가 영원히 나뉘기만 하고 끝나지 않는다.
+		// 미뤄 두었던 몫이 다시 들어오는 중이면 배율을 다시 걸지 않는다 — 배율은 미룰 때 이미
+		// 걸었다. 다만 몫은 Player.hurtServer 를 지나며 바닐라 난이도 배율을 한 번 더 맞고
+		// 내려오므로(어려움이면 몹 피해가 2.25배가 됐다), 넣으려던 몫 그대로 되돌린다.
 		if (SpreadDamageManager.isDeliveringSlice()) {
-			return amount;
+			return SpreadDamageManager.sliceArrival(self, amount);
 		}
 		// 「무엇에 맞았나」를 여기서 적어 둔다. 실제로 기록하는 자리(StatMirror)는 체력이 얼마나
 		// 줄었는지만 보고 출처를 모른다. 사망 알림을 끈 팀에서는 이것이 죽은 까닭을 아는
@@ -237,8 +278,56 @@ public abstract class LivingEntityPerkDamageMixin {
 			com.sharedfate.sync.DamageLedger.noteSource(victim, source);
 		}
 		float scaled = PerkDamage.scale(self, source, amount);
-		float escalated = DifficultyEscalation.scaleDamage(source, scaled);
-		return SpreadDamageManager.intercept(self, source, escalated);
+		return DifficultyEscalation.scaleDamage(source, scaled);
+	}
+
+	/**
+	 * 「완충」이 피해를 미뤄 가는 자리. <b>방패가 막고 남은 양</b>만 미룬다.
+	 *
+	 * <p>26.3 {@code LivingEntity.hurtServer} 는 79행에서 {@code applyItemBlocking(amount)} 로 막은
+	 * 양을 받고 88행에서 {@code amount -= 막은 양} 을 지역변수 3번에 되쓴다. 이 처리기는 그
+	 * 되쓰기 <b>바로 뒤</b>에 붙는다 — {@code slice} 로 {@code applyItemBlocking} 호출부터 보게 해
+	 * 그 뒤 첫 번째 3번 저장(88행)을 집는다. 앞쪽 저장(65행, 음수를 0 으로)이나 다른 모드가 HEAD
+	 * 근처에 끼워 넣는 저장이 있어도 순번이 밀리지 않는다.
+	 *
+	 * <p>그래서 처음 맞는 순간은 바닐라와 같다. 방패가 원래 피해를 막고(내구도·밀쳐내기·막는
+	 * 소리도 그 한 번), 다 막았으면 남은 양이 0 이라 미룰 것도 없다. 막은 피해는 AFTER_DAMAGE
+	 * 의 {@code blocked} 도 참이라 팀원 피격음({@code SharedHurtFeedback})도 바닐라처럼 안 난다.
+	 * 버그 보고는 사람 말 「이미 나눠 피해받을 때 방패 올려도 막으면 안 돼」(2026-10-04)에서
+	 * 시작했고, 같은 원인의 다른 반쪽이 「처음 맞을 때 방패로 못 막는다」였다.
+	 *
+	 * <p>이 뒤의 바닐라 처리(얼음 피해 5배, 모루 따위의 투구 0.75배, 무적시간 판정)는 미뤄진 0 을
+	 * 보고, 나뉜 몫이 들어올 때 몫을 상대로 한 번씩 돈다. 예전에 HEAD 에서 0 으로 넘길 때와 같다.
+	 *
+	 * <p>몫을 넣는 중이면 {@link SpreadDamageManager#intercept} 가 받은 값을 그대로 돌려준다.
+	 */
+	@ModifyVariable(method = "hurtServer",
+			slice = @Slice(from = @At(value = "INVOKE",
+					target = "Lnet/minecraft/world/entity/LivingEntity;applyItemBlocking(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/damagesource/DamageSource;F)F")),
+			at = @At(value = "STORE", ordinal = 0), index = 3)
+	private float sharedfate$deferAfterShield(float amount, ServerLevel level, DamageSource source) {
+		return SpreadDamageManager.intercept((LivingEntity) (Object) this, source, amount);
+	}
+
+	/**
+	 * 「완충」이 나눠 넣는 몫은 방패에 막히지 않는다.
+	 *
+	 * <p>사람 말 「이미 나눠 피해받을 때 방패 올려도 막으면 안 돼」(2026-10-04). 몫은 이미 맞은
+	 * 피해를 나눠 넣는 것이다. 막은 양 0 을 돌려주면 {@code applyItemBlocking} 안의 방패 내구도
+	 * 소모와 때린 쪽 밀쳐내기도 함께 빠진다.
+	 *
+	 * <p>{@code applyItemBlocking} 은 26.3 공통 jar 에서 {@code LivingEntity} 만 선언한다 —
+	 * {@code Player}·{@code ServerPlayer}·{@code Avatar} 모두 재정의하지 않으므로 이 본문이 그대로
+	 * 돈다. 부르는 곳은 {@code hurtServer} 와 염소 들이받기({@code RamTarget}) 둘이다.
+	 * {@link SpreadDamageManager#ignoresShield} 는 몫을 그 사람에게 넣는 중에만 참이라 다른
+	 * 길에는 손대지 않고, 몫이 하나도 없으면 첫 줄에서 곧바로 거짓이다.
+	 */
+	@Inject(method = "applyItemBlocking", at = @At("HEAD"), cancellable = true)
+	private void sharedfate$sliceIgnoresShield(ServerLevel level, DamageSource source, float amount,
+			CallbackInfoReturnable<Float> callback) {
+		if (SpreadDamageManager.ignoresShield((LivingEntity) (Object) this)) {
+			callback.setReturnValue(0.0F);
+		}
 	}
 
 	/**

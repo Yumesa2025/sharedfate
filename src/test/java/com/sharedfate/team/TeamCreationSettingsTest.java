@@ -53,6 +53,39 @@ class TeamCreationSettingsTest {
 		assertEquals(20.0F, settings.maxHealth());
 	}
 
+	/**
+	 * 드래곤 시련은 <b>끈 채로</b> 시작한다.
+	 *
+	 * <p>2026-09-30 전까지 늘 켜져 있던 것이라, 이 기본값이 참으로 뒤집히면 「팀을 만들 때
+	 * 켜 줘야 한다」는 전제로 쓴 화면 문구와 로그가 통째로 거짓이 된다.
+	 */
+	@Test
+	void 기본값에서_드래곤_시련은_꺼져_있다() {
+		assertFalse(TeamCreationSettings.defaults(20.0F).dragonTrialsEnabled());
+		assertFalse(TeamCreationSettings.DEFAULT_DRAGON_TRIALS);
+	}
+
+	@Test
+	void 드래곤_시련은_저장을_왕복해도_그대로다() {
+		TeamState on = TeamState.fresh(20.0F);
+		TeamCreationSettings.defaults(20.0F).withDragonTrials(true).applyTo(on);
+		assertTrue(decode(encode(on)).dragonTrialsEnabled);
+
+		TeamState off = TeamState.fresh(20.0F);
+		TeamCreationSettings.defaults(20.0F).applyTo(off);
+		assertFalse(decode(encode(off)).dragonTrialsEnabled);
+	}
+
+	/** 이 항목이 없던 예전 월드는 기본값과 같은 쪽 — 끔 — 으로 읽혀야 한다. */
+	@Test
+	void 항목이_없는_예전_월드의_팀은_드래곤_시련이_꺼진_것으로_읽힌다() {
+		TeamState state = TeamState.fresh(20.0F);
+		CompoundTag tag = encode(state);
+		tag.remove("dragonTrials");
+
+		assertFalse(decode(tag).dragonTrialsEnabled);
+	}
+
 	/** 위치 교환은 <b>켠 채로</b> 시작한다. */
 	@Test
 	void 기본값에서_위치_교환은_5분_주기로_켜져_있다() {

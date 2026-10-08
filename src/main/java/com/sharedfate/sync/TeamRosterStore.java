@@ -39,8 +39,12 @@ public final class TeamRosterStore {
 	 * 4: 「유산」이 몰수한 도구·무기·방어구 목록({@code legacyGear})을 함께 적기 시작했다.
 	 * 5: 난이도 상승 켜고 끄기({@code difficultyEscalationEnabled})를 함께 적기 시작했다.
 	 * 6: 증강 다시 뽑기의 회차당 횟수({@code rerollCount})를 함께 적기 시작했다.
+	 * 7: 엔더 드래곤 시련 켜고 끄기({@code dragonTrialsEnabled})를 함께 적기 시작했다.
+	 *    <b>기본값이 끔</b>이라 형식 6 이하의 파일에 이 항목이 없으면 Gson 이 두는 false 가
+	 *    그대로 맞는 값이다 — 두 알림·난이도 상승과 같은 결이고, 다시 뽑기처럼 따로 되돌릴
+	 *    필요가 없다.
 	 *
-	 * <p>5·4·3·2·1로 적힌 예전 파일도 그대로 읽는다. 설정 항목이 없으면 기본값으로 시작하고,
+	 * <p>6·5·4·3·2·1로 적힌 예전 파일도 그대로 읽는다. 설정 항목이 없으면 기본값으로 시작하고,
 	 * 두 알림과 난이도 상승의 기본값은 꺼짐이며, {@code legacyGear} 가 없으면 빈 목록이다.
 	 * <b>다시 뽑기 횟수만은 기본값이 0 이 아니다</b> — 형식 5 이하의 파일에는 이 항목이 없어
 	 * Gson 이 0 으로 두므로, 아래에서 {@linkplain
@@ -50,8 +54,8 @@ public final class TeamRosterStore {
 	 * 둘 다 회차마다 다시 세는 값이고 월드 저장에 들어 있다. 회차를 넘겨 이어져야 하는 것은
 	 * 「이 팀은 켜기로 했다」·「이 팀은 회차당 몇 번으로 정했다」는 결정뿐이다.
 	 */
-	private static final int FORMAT_VERSION = 6;
-	private static final List<Integer> READABLE_FORMAT_VERSIONS = List.of(6, 5, 4, 3, 2, 1);
+	private static final int FORMAT_VERSION = 7;
+	private static final List<Integer> READABLE_FORMAT_VERSIONS = List.of(7, 6, 5, 4, 3, 2, 1);
 	private static final int MAX_STORED_TEAMS = 1024;
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -76,10 +80,13 @@ public final class TeamRosterStore {
 	 * @param legacyGear          「유산」이 몰수해 다음 회차로 넘기는 아이템(SNBT 문자열 목록)
 	 * @param difficultyEscalationEnabled 난이도 상승을 켜기로 한 팀인가
 	 * @param rerollCount         증강 다시 뽑기의 회차당 횟수. 예전 형식에는 없어 {@code null} 일 수 있다
+	 * @param dragonTrialsEnabled 엔더 드래곤 시련을 켜기로 한 팀인가. 예전 형식에는 없고,
+	 *                            그때는 Gson 이 두는 {@code false}(=끔)가 곧 기본값이다
 	 */
 	private record StoredSettings(boolean perksEnabled, float maxHealth, int swapIntervalTicks,
 			boolean damageAlertEnabled, boolean deathAlertEnabled, List<String> legacyGear,
-			boolean difficultyEscalationEnabled, @Nullable Integer rerollCount) {
+			boolean difficultyEscalationEnabled, @Nullable Integer rerollCount,
+			boolean dragonTrialsEnabled) {
 	}
 
 	private record StoredTeam(String teamId, String name, List<String> members,
@@ -89,7 +96,8 @@ public final class TeamRosterStore {
 	/** 명단과 그 팀이 이어 갈 설정을 함께 들고 다니는 짝. */
 	public record RestoredTeam(ShareTeam team, boolean perksEnabled, float maxHealth,
 			int swapIntervalTicks, boolean damageAlertEnabled, boolean deathAlertEnabled,
-			List<ItemStack> legacyGear, boolean difficultyEscalationEnabled, int rerollCount) {
+			List<ItemStack> legacyGear, boolean difficultyEscalationEnabled, int rerollCount,
+			boolean dragonTrialsEnabled) {
 
 		/** 「유산」도 난이도 상승도 안 쓰는 보통의 경우를 짧게 적기 위한 편의 생성자. */
 		public RestoredTeam(ShareTeam team, boolean perksEnabled, float maxHealth,
@@ -113,6 +121,18 @@ public final class TeamRosterStore {
 			this(team, perksEnabled, maxHealth, swapIntervalTicks,
 					damageAlertEnabled, deathAlertEnabled, legacyGear, difficultyEscalationEnabled,
 					TeamCreationSettings.DEFAULT_REROLL_COUNT);
+		}
+
+		/**
+		 * 드래곤 시련을 지정하지 않는 편의 생성자.
+		 * {@linkplain TeamCreationSettings#DEFAULT_DRAGON_TRIALS 끔}으로 본다.
+		 */
+		public RestoredTeam(ShareTeam team, boolean perksEnabled, float maxHealth,
+				int swapIntervalTicks, boolean damageAlertEnabled, boolean deathAlertEnabled,
+				List<ItemStack> legacyGear, boolean difficultyEscalationEnabled, int rerollCount) {
+			this(team, perksEnabled, maxHealth, swapIntervalTicks,
+					damageAlertEnabled, deathAlertEnabled, legacyGear, difficultyEscalationEnabled,
+					rerollCount, TeamCreationSettings.DEFAULT_DRAGON_TRIALS);
 		}
 
 		public RestoredTeam {
@@ -195,7 +215,7 @@ public final class TeamRosterStore {
 					state.positionSwapIntervalTicks,
 					state.damageAlertEnabled, state.deathAlertEnabled,
 					List.copyOf(state.legacyGear), state.difficultyEscalationEnabled,
-					state.rerollAllowance));
+					state.rerollAllowance, state.dragonTrialsEnabled));
 		}
 		return result;
 	}
@@ -219,7 +239,8 @@ public final class TeamRosterStore {
 								entry.damageAlertEnabled(), entry.deathAlertEnabled(),
 								encodeItems(entry.legacyGear(), registries),
 								entry.difficultyEscalationEnabled(),
-								entry.rerollCount())))
+								entry.rerollCount(),
+								entry.dragonTrialsEnabled())))
 				.toList();
 		StoredRoster roster = new StoredRoster(FORMAT_VERSION, storedTeams);
 		Path parent = file.getParent();
@@ -271,9 +292,11 @@ public final class TeamRosterStore {
 				ShareTeam share = new ShareTeam(UUID.fromString(team.teamId()), team.name(), members);
 				// 형식 1 에는 설정이 없다. 그때는 기본값으로 시작한다. 형식 2 에는 알림
 				// 항목이, 형식 3 이하에는 legacyGear 가, 형식 4 이하에는 난이도 상승이,
-				// 형식 5 이하에는 다시 뽑기 횟수가 없는데, Gson 이 없는 필드를 각각
-				// false·null 로 두므로 알림과 난이도 상승은 저절로 꺼짐이 되고 legacyGear 는
-				// 아래에서 빈 목록으로, 다시 뽑기 횟수는 기본 3회로 바꾼다.
+				// 형식 5 이하에는 다시 뽑기 횟수가, 형식 6 이하에는 드래곤 시련이 없는데,
+				// Gson 이 없는 필드를 각각 false·null 로 두므로 알림·난이도 상승·드래곤 시련은
+				// 저절로 꺼짐이 되고 legacyGear 는 아래에서 빈 목록으로, 다시 뽑기 횟수는
+				// 기본 3회로 바꾼다. 드래곤 시련만 따로 되돌리지 않는 이유는 기본값이 곧
+				// 꺼짐이기 때문이다 — 「안 적힌 팀」과 「끄기로 한 팀」을 가를 이유가 없다.
 				StoredSettings settings = team.settings();
 				teams.add(settings == null
 						? new RestoredTeam(share, false, defaultMaxHealth(), 0, false, false,
@@ -283,7 +306,8 @@ public final class TeamRosterStore {
 								settings.damageAlertEnabled(), settings.deathAlertEnabled(),
 								decodeItems(settings.legacyGear(), registries),
 								settings.difficultyEscalationEnabled(),
-								rerollCount(settings.rerollCount())));
+								rerollCount(settings.rerollCount()),
+								settings.dragonTrialsEnabled()));
 			}
 		} catch (RuntimeException e) {
 			throw new IOException("팀 명단 값이 손상되었습니다: " + file, e);

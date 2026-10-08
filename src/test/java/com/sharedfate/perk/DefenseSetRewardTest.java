@@ -106,7 +106,7 @@ class DefenseSetRewardTest {
 			    "effects": [
 			      { "type": "conditional", "condition": "health_below", "threshold": 0.5,
 			        "when_true": [
-			          { "type": "status_effect", "effect": "minecraft:resistance", "amplifier": 2 }
+			          { "type": "damage_taken", "multiplier": 0.7 }
 			        ] },
 			      { "type": "conditional", "condition": "health_above", "threshold": 0.75,
 			        "when_true": [ { "type": "damage_taken", "multiplier": 1.1 } ], "drawback": true }
@@ -334,7 +334,8 @@ class DefenseSetRewardTest {
 	 * 경로 ⑤ — {@code conditional}.
 	 *
 	 * <p>「불굴」의 두 번째 조건부는 묶음이 하나뿐인 <b>대가 그 자체</b>라 통째로 표시를 붙였다.
-	 * 첫 번째 조건부(체력 절반 이하일 때 저항 III)는 이득이므로 손대지 않는다.
+	 * 첫 번째 조건부(체력 절반 이하일 때 받는 피해 ×0.7)는 이득이므로 손대지 않는다. 두 조건부가
+	 * 같은 {@code damage_taken} 을 들고 있어도 표시는 조건부 단위라 이득 쪽은 건너뛰지 않는다.
 	 *
 	 * <p>대가를 <b>없애는 것이 아니라 건너뛴다.</b> 조건부 효과 자신이 들고 있는 배율은 그대로
 	 * 1.1 이고, 그것을 곱하지 않는 쪽은 {@code PerkManager.multiplier} 와
@@ -351,11 +352,12 @@ class DefenseSetRewardTest {
 
 		assertEquals(ConditionalEffect.Condition.HEALTH_BELOW, benefit.condition());
 		assertEquals(ConditionalEffect.Condition.HEALTH_ABOVE, cost.condition());
-		assertFalse(waives(state, "sharedfate:def_unbroken", 0), "저항 III 은 이득이라 그대로다");
+		assertFalse(waives(state, "sharedfate:def_unbroken", 0), "받는 피해 ×0.7 은 이득이라 그대로다");
 		assertTrue(waives(state, "sharedfate:def_unbroken", 1));
 
 		assertEquals(1.1, cost.damageTakenMultiplier(true), 1.0e-9,
 				"효과 자신은 그대로다 — 곱하지 않는 쪽이 건너뛴다");
+		assertEquals(0.7, benefit.damageTakenMultiplier(true), 1.0e-9);
 	}
 
 	/** {@code conditional} 하위에 적은 표시는 읽지 않는다. 조용히 무시하지 않고 경고를 남긴다. */

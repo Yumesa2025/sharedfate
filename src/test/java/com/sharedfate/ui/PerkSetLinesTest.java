@@ -93,7 +93,7 @@ class PerkSetLinesTest {
 
 	@Test
 	void 한_개도_없는_유형은_빠진다() {
-		// 유형이 열한 개다. 전부 그리면 「기동 0/2」 같은 줄이 화면 왼쪽 위를 통째로 덮는다.
+		// 유형이 열네 개다. 전부 그리면 「기동 0/2」 같은 줄이 화면 왼쪽 위를 통째로 덮는다.
 		List<PerkSetLines.Line> lines = PerkSetLines.visible(List.of(
 				entry("mining", "채굴", 2, 3, 0),
 				entry("mobility", "기동", 0, 2, 0),

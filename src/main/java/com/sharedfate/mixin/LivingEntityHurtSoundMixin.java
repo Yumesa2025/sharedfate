@@ -21,6 +21,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * {@link SpreadDamageManager} 가 값을 되돌리는 것으로 막지만, <b>소리는 그 자리에서 이미
  * 나가 버려</b> 되돌릴 수가 없다. 그래서 나가기 전에 여기서 막는다.
  *
+ * <h2>⚠ 지금은 거의 쓰이지 않는 예비다</h2>
+ * <p>위 두 막기는 <b>클라이언트 연출을 못 막았다.</b> 붉은 번쩍임·기울기·피격음은 서버가
+ * 보내는 {@code broadcastDamageEvent} 를 받아 클라이언트가 {@code handleDamageEvent} 에서
+ * 스스로 만든다. 그래서 {@code SpreadDamageManager.deliver} 가 몫을 바닐라의 「쿨타임 안 추가
+ * 피해」 갈래로 넣도록 바꿨고, 그 갈래는 {@code broadcastDamageEvent} 도
+ * {@code playHurtSound} 도 부르지 않는다. 여기가 실제로 도는 것은 피해 종류가
+ * {@code bypasses_cooldown} 이라 바닐라가 쿨타임을 무시할 때뿐이다(26.3 바닐라의 그 태그는
+ * 비어 있다). 지우지 않고 남겨 두는 것은 데이터팩이 그 태그를 채웠을 때 서버쪽 소리만이라도
+ * 막기 위해서다.
+ *
  * <h2>완충 몫일 때만 막는다</h2>
  * <p>{@link SpreadDamageManager#isDeliveringSlice()} 는 <b>미뤄 둔 몫을 넣는 그 순간에만</b>
  * 참이고, 큐가 하나도 없으면 첫 줄에서 곧바로 거짓이다. 이 증강을 아무도 갖고 있지 않은

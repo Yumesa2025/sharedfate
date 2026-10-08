@@ -1,7 +1,7 @@
 package com.sharedfate.ui;
 
 /**
- * 팀 만들기 탭의 설정 단추 일곱 가지에 붙는 툴팁 문구.
+ * 팀 만들기 탭의 설정 단추 여덟 가지에 붙는 툴팁 문구.
  *
  * <p><b>글은 실제 동작을 보고 그대로 옮긴 것이다.</b> 지어낸 문구가 아니라 각 설정을 소비하는
  * 자리를 읽고 확인했다.
@@ -15,6 +15,10 @@ package com.sharedfate.ui;
  *       로그에도 남지 않는다.</li>
  *   <li>{@link #DIFFICULTY} — {@code DifficultyEscalation} 이 이 값을 볼 때만 회차 경과 시간에
  *       따라 몹을 강화한다.</li>
+ *   <li>{@link #DRAGON_TRIAL} — {@code DragonTrialManager.startSession} 이 이 값을 볼 때만
+ *       드래곤 체력을 올리고 시련 세션을 「켜짐」으로 연다. 꺼진 팀은 체력 수정자가 아예 안
+ *       붙어 바닐라 200 이고, {@code DragonTrialSession} 이 자리를 세지 않아 시련 카드도 고정
+ *       시련도 뜨지 않으며 {@code DragonPassives} 도 돌지 않는다.</li>
  *   <li>{@link #MAX_HEALTH} — {@code TeamCreationSettings#applyTo} 가 팀 하나의 공유 체력
  *       상한으로 새긴다. 팀원 각자의 체력이 아니라 <b>팀 전체가 나눠 쓰는 값</b>이다.</li>
  *   <li>{@link #POSITION_SWAP} — {@code PositionSwapManager} 가 이 주기마다 팀원들의 자리를
@@ -44,6 +48,18 @@ public final class TeamCreationTooltips {
 	public static final String DIFFICULTY =
 			"켜면 게임을 시작한 뒤 시간이 흐를수록 몹이 점점 강해집니다. "
 					+ "끄면 난이도가 처음 그대로 유지됩니다.";
+
+	/**
+	 * 드래곤 시련.
+	 *
+	 * <p><b>다른 일곱과 달리 기본값을 문구에 적는다.</b> 「팀을 만든 뒤 못 바꾼다」를 뺀 것과
+	 * 같은 결로 생략하려 했지만, 이 설정만은 <b>기본값이 곧 사고의 원인</b>이다 — 2026-09-30
+	 * 전까지 시련은 늘 켜져 있었고, 이제는 팀을 만들 때마다 손으로 켜야 한다. 안 켠 채로
+	 * 엔드까지 간 뒤에야 「왜 시련이 안 뜨지」를 묻게 되는데, 그때는 팀을 해체하는 수밖에 없다.
+	 */
+	public static final String DRAGON_TRIAL =
+			"켜면 드래곤이 인원 비례로 세지고 시련 카드가 뜹니다. "
+					+ "끄면(기본값) 바닐라 드래곤전 그대로입니다.";
 
 	public static final String DAMAGE_ALERT =
 			"켜면 팀원이 맞을 때마다 화면에 알림이 뜹니다. 끄면 알림이 오지 않습니다.";

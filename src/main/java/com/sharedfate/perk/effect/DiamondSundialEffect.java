@@ -31,7 +31,7 @@ import java.util.Optional;
  * <p>JSON 형식:
  * <pre>
  * { "type": "diamond_sundial", "radius": 20, "duration_seconds": 10,
- *   "cooldown_seconds": 30, "max_results": 16 }
+ *   "cooldown_seconds": 90, "max_results": 16 }
  * </pre>
  *
  * <p>네 값 모두 생략할 수 있고, 생략하면 {@link #DEFAULT_RADIUS}·{@link #DEFAULT_DURATION_SECONDS}·
@@ -125,8 +125,13 @@ public final class DiamondSundialEffect implements PerkEffect {
 	 *
 	 * <p>이 값은 <b>지속이 끝난 뒤부터</b> 도므로 한 판의 실제 주기는 지속 + 쿨타임이다. 정의의
 	 * 숫자를 고칠 때 그 점을 잊으면 체감 간격이 적은 것보다 길어진다.
+	 *
+	 * <p><b>전에는 30 초였다.</b> 2026-09-30 에 직접 플레이해 본 사람이 「너무 세다」고 해서
+	 * 90 초(1분 30초)로 늘렸다. 30 초는 지속 10 초와 합쳐 주기가 40 초밖에 안 돼, 굴을 파는
+	 * 내내 거의 상시로 켜 두고 다닐 수 있었다. 90 초면 주기가 100 초가 되어 「한 번 보고
+	 * 그 자리를 파러 간다」가 된다.
 	 */
-	public static final int DEFAULT_COOLDOWN_SECONDS = 30;
+	public static final int DEFAULT_COOLDOWN_SECONDS = 90;
 	public static final int MIN_COOLDOWN_SECONDS = 1;
 	/** 쿨타임 상한(초). 한 회차보다 길 이유가 없다. */
 	public static final int MAX_COOLDOWN_SECONDS = 600;

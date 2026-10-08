@@ -105,28 +105,42 @@ class TeamCreationCycleTest {
 	@Test
 	void 만들기_명령은_사양이_정한_형태_그대로다() {
 		assertEquals("create perks on damagealert off deathalert off difficulty off"
-						+ " health 20 swap off reroll 3 우리팀",
-				TeamCreationCycle.createCommand(true, false, false, false, 20,
+						+ " dragontrials off health 20 swap off reroll 3 우리팀",
+				TeamCreationCycle.createCommand(true, false, false, false, false, 20,
 						TeamCreationCycle.SWAP_OFF, 3, "우리팀"));
 	}
 
 	@Test
 	void 켠_값과_위치_교환_주기도_같은_자리에_들어간다() {
 		assertEquals("create perks off damagealert on deathalert on difficulty on"
-						+ " health 34 swap 15 reroll 0 원정대",
-				TeamCreationCycle.createCommand(false, true, true, true, 34, 15, 0, "원정대"));
+						+ " dragontrials on health 34 swap 15 reroll 0 원정대",
+				TeamCreationCycle.createCommand(false, true, true, true, true, 34, 15, 0, "원정대"));
 	}
 
 	@Test
-	void 일곱_가지를_하나도_빼지_않고_적는다() {
-		String command = TeamCreationCycle.createCommand(true, true, true, true, 40, 120, 10, "팀");
+	void 여덟_가지를_하나도_빼지_않고_적는다() {
+		String command =
+				TeamCreationCycle.createCommand(true, true, true, true, true, 40, 120, 10, "팀");
 
 		for (String keyword : new String[] {
-				"perks", "damagealert", "deathalert", "difficulty", "health", "swap", "reroll"}) {
+				"perks", "damagealert", "deathalert", "difficulty", "dragontrials",
+				"health", "swap", "reroll"}) {
 			assertTrue(command.contains(" " + keyword + " "),
 					keyword + " 가 빠지면 서버가 그 항목을 기본값으로 두어 화면과 어긋난다");
 		}
 		assertTrue(command.endsWith(" 팀"), "이름은 greedyString 이라 반드시 맨 뒤여야 한다");
+	}
+
+	/**
+	 * 드래곤 시련만은 <b>기본값이 끔</b>이라, 낱말을 빠뜨리면 「화면에서는 켰는데 실제로는
+	 * 꺼진」 팀이 만들어지고 그 사실이 엔드에 도착할 때까지 드러나지 않는다.
+	 */
+	@Test
+	void 드래곤_시련은_켜든_끄든_반드시_적힌다() {
+		assertTrue(TeamCreationCycle.createCommand(true, false, false, false, true, 20,
+				TeamCreationCycle.SWAP_OFF, 3, "팀").contains(" dragontrials on "));
+		assertTrue(TeamCreationCycle.createCommand(true, false, false, false, false, 20,
+				TeamCreationCycle.SWAP_OFF, 3, "팀").contains(" dragontrials off "));
 	}
 
 	@Test

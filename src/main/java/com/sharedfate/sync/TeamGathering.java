@@ -233,7 +233,12 @@ public final class TeamGathering {
 	 */
 	private static void gatherTeam(List<ServerPlayer> players, GatherEffect gather,
 			RandomGenerator random) {
-		int anchor = random.nextInt(players.size());
+		// 엔드 전투 중에는 기준점을 엔드 안으로 돌린다. 차원이 다르면 거리와 무관하게
+		// 「흩어졌다」이고(anyPairTooFar) 「운명 공동체」의 재사용 대기가 20틱(1초)이라, 팀이
+		// 엔드 안팎으로 갈린 동안 이 집합이 초당 한 번 발동한다. 기준점이 밖으로 뽑히면
+		// 엔드 안 사람은 EndFightTeleportLock 에 걸려 못 움직이고 팀은 갈린 채 남아,
+		// 같은 판정이 1초 뒤 또 돌아온다. 안으로 돌리면 그 자리에서 팀이 엔드에 합쳐져 끝난다.
+		int anchor = EndFightTeleportLock.preferEndAnchor(players, random.nextInt(players.size()));
 		List<PositionSwapManager.Position> origins =
 				players.stream().map(PositionSwapManager.Position::capture).toList();
 		PositionSwapManager.Position destination = origins.get(anchor);

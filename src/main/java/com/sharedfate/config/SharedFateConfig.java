@@ -70,6 +70,36 @@ public class SharedFateConfig {
 	 */
 	public int worldResetDelayTicks = 100;
 	/**
+	 * 엔더 드래곤 최대 체력을 <b>팀 인원 한 명당</b> 얼마로 할 것인가. 0 이면 강화하지 않는다.
+	 *
+	 * <p>바닐라는 200 이다. 인원 비례인 이유는 공유 체력이 <b>방어에서는 인원을 불리하게</b>
+	 * 만들지만(맞을 기회가 늘어난다) <b>공격에서는 인원이 그대로 유리</b>하기 때문이다. 네 명이
+	 * 때리면 DPS 가 네 배다. 체력이 고정이면 4인 전투가 3인보다 짧아져 시련을 덜 본다.
+	 *
+	 * <p>인원은 접속자가 아니라 <b>팀 명단</b>으로 센다. 접속 인원으로 세면 전투 중 누가 끊겼을
+	 * 때 드래곤 체력이 줄어든다.
+	 *
+	 * <p><b>이 값은 난이도가 아니라 전투 길이를 정한다.</b> 어려움은 시련이 담당한다.
+	 *
+	 * <p>⚠ <b>팀 설정에서 「드래곤 시련」을 끈 팀에게는 이 값이 아예 읽히지 않는다.</b> 그 팀의
+	 * 드래곤은 바닐라 최대 체력 200 그대로이고, 체력 수정자를 붙였다 떼는 것이 아니라 처음부터
+	 * 붙지 않는다({@code com.sharedfate.sync.DragonTrialManager#startSession}). 게다가
+	 * <b>시련은 기본값이 끔</b>이라, 팀을 만들면서 켜 주지 않으면 이 값을 아무리 올려도 드래곤이
+	 * 200 에서 꿈쩍하지 않는다 — 「왜 안 먹지」의 답은 대개 서버 설정이 아니라 그 팀의 설정이다.
+	 * 지금 팀이 켰는지는 {@code /shareteam status} 의 「드래곤 시련」 줄에서 볼 수 있다.
+	 *
+	 * <p>여기에 <b>0</b> 을 적는 것은 그것과 다른 이야기다. 그때는 팀 설정과 무관하게 엔드 전투
+	 * 지휘가 통째로 멈춰 <b>전원 소환도 일어나지 않는다.</b>
+	 */
+	public int dragonHealthPerMember = 600;
+	/**
+	 * 시련이 나오는 자리는 여섯 곳으로 고정이다 — 엔드 입장, 첫 크리스탈, 크리스탈 전멸,
+	 * 드래곤 체력 80·50·30%.
+	 *
+	 * <p>시간이 아니라 진행도로 세므로 간격 설정이 없다. 체력 막대만 보면 다음 시련이 언제 올지
+	 * 알 수 있고, 빨리 깎을수록 시련을 빨리 받는다.
+	 */
+	/**
 	 * 발전과제(도전 과제) 달성을 채팅에 뿌리지 않는다.
 	 *
 	 * <p>바닐라 게임 규칙 {@code show_advancement_messages}(예전 이름
@@ -77,6 +107,16 @@ public class SharedFateConfig {
 	 * 만들어져도 유지된다. 자세한 것은 {@link com.sharedfate.sync.WorldGameRules} 에 적어 뒀다.
 	 */
 	public boolean silenceAdvancementMessages = true;
+	/**
+	 * 화면 맨 위에 「SharedFate · N회차 …」 한 줄을 띄운다.
+	 *
+	 * <p>속은 보스바지만 <b>막대는 보이지 않는다</b> — 글자만 남기고 막대를 건너뛰는 일은
+	 * 클라이언트의 {@code BossHealthOverlayMixin} 이 한다. 이름을 그대로 두는 이유는 설정
+	 * 파일 호환이고, 여기를 끄면 보스바 자체가 만들어지지 않아 글자도 함께 사라진다.
+	 *
+	 * <p>모드를 깔지 않은 클라이언트에게는 막대가 그대로 보인다. 다만 {@code requireClientMod}
+	 * 가 그런 접속을 기본적으로 막는다.
+	 */
 	public boolean showRunBossBar = true;
 	public boolean dragonKillEndsRun = true;
 	/**

@@ -216,6 +216,13 @@ public final class RallyShardManager {
 		}
 		PositionSwapManager.Position origin = PositionSwapManager.Position.capture(target);
 		PositionSwapManager.Position destination = PositionSwapManager.Position.capture(summoner);
+		// 엔드 전투 중에 소환자가 엔드 밖에 있으면 이 한 걸음이 팀원을 엔드에서 빼낸다.
+		// 보통은 PerkRallyShard 가 조각을 누르는 자리에서 미리 거절하지만, 누른 뒤 소환자가
+		// 엔드를 나가는 길(순차 소환은 여러 틱에 걸친다)이 남아 있어 여기서도 가린다.
+		if (EndFightTeleportLock.blocks(target, destination.level())) {
+			EndFightTeleportLock.refuse(target);
+			return false;
+		}
 		if (!destination.gather(target)) {
 			SharedFateMod.LOGGER.warn("소집 중 {} 이동이 실패해 건너뜁니다.", target.getPlainTextName());
 			return false;

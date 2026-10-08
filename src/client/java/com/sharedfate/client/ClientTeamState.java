@@ -26,6 +26,11 @@ public final class ClientTeamState {
 	private static boolean perksEnabled;
 	private static boolean damageAlertEnabled;
 	private static boolean deathAlertEnabled;
+	/**
+	 * 이 팀이 엔더 드래곤 시련을 쓰는가. <b>보여 주기만 한다</b> — 시련을 걸고 안 걸고는
+	 * 전부 서버가 정하고, 클라이언트는 설정 탭에 한 줄을 적는 데만 쓴다.
+	 */
+	private static boolean dragonTrialsEnabled;
 	private static boolean leader;
 	/** 이 팀의 회차가 시작되었는가. 거짓이면 「시작 대기」다. */
 	private static boolean runStarted;
@@ -56,6 +61,7 @@ public final class ClientTeamState {
 		perksEnabled = payload.perksEnabled();
 		damageAlertEnabled = payload.damageAlertEnabled();
 		deathAlertEnabled = payload.deathAlertEnabled();
+		dragonTrialsEnabled = payload.dragonTrialsEnabled();
 		runStarted = payload.runStarted();
 		// 확장 인벤토리는 클라이언트가 스스로 셀 수 없다. 팀의 보유 증강을 모르기 때문이다.
 		com.sharedfate.inventory.ExpandedInventoryManager.setClientUnlockedSlots(
@@ -83,6 +89,7 @@ public final class ClientTeamState {
 		perksEnabled = false;
 		damageAlertEnabled = false;
 		deathAlertEnabled = false;
+		dragonTrialsEnabled = false;
 		runStarted = false;
 		leader = false;
 	}
@@ -141,6 +148,11 @@ public final class ClientTeamState {
 	}
 
 	/** 이 팀의 회차가 시작되었는가. 거짓이면 리더에게 「게임 시작」 단추를 보여 준다. */
+	/** 이 팀이 엔더 드래곤 시련을 쓰는가. 거짓이면 바닐라 드래곤전이다. */
+	public static boolean dragonTrialsEnabled() {
+		return dragonTrialsEnabled;
+	}
+
 	public static boolean runStarted() {
 		return runStarted;
 	}

@@ -272,9 +272,9 @@ class MaxHealthBonusEffectTest {
 		assertEquals(35.0F,
 				PerkHealthRules.effectiveMaxHealth(perkTeam("sharedfate:blind_giant")),
 				"프리즘 「장님 거인」 은 최대 체력 +15 이다");
-		assertEquals(12.0F,
+		assertEquals(16.0F,
 				PerkHealthRules.effectiveMaxHealth(perkTeam("sharedfate:ascetic")),
-				"프리즘 「고행자」 는 최대 체력 12 고정이다");
+				"프리즘 「고행자」 는 최대 체력 16 고정이다 — 12 는 너무 빡빡해 2026-09-30 에 올렸다");
 	}
 
 	@Test

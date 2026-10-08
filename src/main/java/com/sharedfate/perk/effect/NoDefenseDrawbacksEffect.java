@@ -27,7 +27,7 @@ import org.jetbrains.annotations.Nullable;
  *   <li>{@code PerkManager.refreshPlayer} — {@code attribute} 로 붙였다 떼는 대가
  *       (「바람 빠진 방패」의 넉백 2배, 「맨살의 각오」의 채굴 속도 감소)</li>
  *   <li>{@code PerkManager.multiplier} — 받는·주는 피해 배율
- *       (「불굴」의 체력 75% 초과 시 ×1.1)</li>
+ *       (「불굴」의 체력이 가득 찼을 때 ×1.1)</li>
  *   <li>{@code ConditionalPerkManager.refreshPlayer} — 위와 짝을 이루는 주기 재평가.
  *       여기서 걸러 내지 않으면 {@code refreshPlayer} 가 걷어낸 것을 반 초 뒤에 다시 붙인다</li>
  *   <li>{@code PerkDamage.takenSourceMultiplier} — {@code damage_taken_from}

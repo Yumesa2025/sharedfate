@@ -3,6 +3,7 @@ package com.sharedfate.perk;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.inventory.ExpandedInventoryManager;
 import com.sharedfate.perk.effect.RallyShardEffect;
+import com.sharedfate.sync.EndFightTeleportLock;
 import com.sharedfate.sync.RallyShardCooldown;
 import com.sharedfate.sync.RallyShardManager;
 import com.sharedfate.team.ShareTeam;
@@ -160,6 +161,14 @@ public final class PerkRallyShard {
 		}
 		if (RallyShardManager.hasActiveSummon(team.teamId())) {
 			refuse(user, "이미 소집이 진행 중입니다");
+			return InteractionResult.FAIL;
+		}
+		// 엔드 전투 중에 엔드 밖에서 부르면 팀 전원이 엔드에서 끌려 나온다. 조각을 삼키고
+		// 아무 일도 안 일어난 것처럼 보이지 않게, 쿨타임을 걸기 전에 까닭을 말하고 돌려보낸다.
+		// 엔드 안에서 부르는 소집은 그대로 된다 — 막는 것은 나가는 방향뿐이다.
+		if (user.level().dimension() != Level.END
+				&& EndFightTeleportLock.inForce(server, team.teamId())) {
+			refuse(user, "드래곤전 중에는 엔드 밖으로 부를 수 없습니다");
 			return InteractionResult.FAIL;
 		}
 

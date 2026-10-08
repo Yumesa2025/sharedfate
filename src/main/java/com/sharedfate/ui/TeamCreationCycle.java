@@ -77,8 +77,10 @@ public final class TeamCreationCycle {
 	/**
 	 * 화면이 정한 값들을 {@code /shareteam} 뒤에 붙일 한 줄로 만든다.
 	 *
-	 * <p><b>일곱 가지를 하나도 빼지 않고 적는다.</b> 안 적은 항목은 서버가 기본값으로 두는데,
+	 * <p><b>여덟 가지를 하나도 빼지 않고 적는다.</b> 안 적은 항목은 서버가 기본값으로 두는데,
 	 * 화면에는 이미 다른 값이 보이고 있을 수 있어 눈에 보이는 것과 실제가 어긋난다.
+	 * 드래곤 시련은 기본값이 <b>끔</b>이라 특히 그렇다 — 화면에서 켜 놓고 낱말을 빠뜨리면
+	 * 「켰는데 안 켜진」 팀이 만들어지고, 그 사실은 엔드에 도착해서야 드러난다.
 	 *
 	 * <p>낱말 순서는 {@code ShareTeamCommand.createNode} 가 쌓아 둔 순서와 같아야 한다 —
 	 * 이름이 greedyString 이라 <b>모든 설정이 이름 앞</b>에 정해진 차례로 와야 하기 때문이다.
@@ -86,11 +88,13 @@ public final class TeamCreationCycle {
 	 * @param name 팀 이름. 앞뒤 공백은 부르는 쪽에서 이미 다듬어 넘긴다
 	 */
 	public static String createCommand(boolean perks, boolean damageAlert, boolean deathAlert,
-			boolean difficulty, int maxHealth, int swapMinutes, int rerollCount, String name) {
+			boolean difficulty, boolean dragonTrials, int maxHealth, int swapMinutes,
+			int rerollCount, String name) {
 		return "create perks " + onOff(perks)
 				+ " damagealert " + onOff(damageAlert)
 				+ " deathalert " + onOff(deathAlert)
 				+ " difficulty " + onOff(difficulty)
+				+ " dragontrials " + onOff(dragonTrials)
 				+ " health " + maxHealth
 				+ " swap " + swapArgument(swapMinutes)
 				+ " reroll " + rerollCount

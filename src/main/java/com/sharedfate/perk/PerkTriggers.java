@@ -4,6 +4,7 @@ import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.effect.HungerOnDamageEffect;
 import com.sharedfate.perk.effect.OnCriticalEffect;
 import com.sharedfate.perk.effect.OnTeamHurtEffect;
+import com.sharedfate.sync.SpreadDamageManager;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
@@ -81,11 +82,21 @@ public final class PerkTriggers {
 	 * {@code ServerLivingEntityEvents.AFTER_DAMAGE} 에 붙는 지점.
 	 *
 	 * <p>피해가 들어가는 모든 자리를 지나므로 어떤 예외도 밖으로 내보내지 않는다.
+	 *
+	 * <h2>「완충」을 가진 팀 — 처음 맞은 순간에 한 번</h2>
+	 * <p>{@code damageTaken} 은 그대로 믿지 않고 {@link SpreadDamageManager#hurtTaken} 으로 고쳐
+	 * 읽는다. 완충이 미룬 첫 피해는 {@code damageTaken} 이 0 으로 오고, 그 뒤 1초마다 들어오는 몫은
+	 * 몫 크기로 온다. 그대로 믿으면 <b>맞은 순간엔 안 돌고 몫마다 돌아</b> — 동병상련(2초 저항 II)이
+	 * 몫마다 갱신돼 약 9초 내내 유지되고 그동안의 몫·다른 피해가 40% 깎였다. 반격(8초 힘 II)은 약
+	 * 16초였다(2026-10-06 검토에서 확정된 문제). 지금은 몫이면 건너뛰고, 미룬 첫 피해면 미룬
+	 * 양으로 센다. 허기({@code hunger_on_damage})도 미룬 양으로 맞은 순간에 한 번 찬다 — 바닐라에서
+	 * 그 한 대를 맞았을 때와 같은 양이고, 처치로 남은 몫이 지워져도 이미 찬 허기는 그대로다.
 	 */
 	public static void onDamage(LivingEntity victim, DamageSource source,
 			float baseDamageTaken, float damageTaken, boolean blocked) {
 		try {
-			teamHurt(victim, damageBasis(baseDamageTaken, damageTaken), blocked);
+			teamHurt(victim, SpreadDamageManager.hurtTaken(victim,
+					damageBasis(baseDamageTaken, damageTaken)), blocked);
 		} catch (RuntimeException error) {
 			warnOnce(error);
 		}

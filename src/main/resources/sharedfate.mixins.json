@@ -19,6 +19,14 @@
     "PlayerSweepFriendlyFireMixin",
     "LivingEntityHurtSoundMixin",
     "ServerLevelSanctuaryTickMixin",
+    "EndCrystalGuardMixin",
+    "EndCrystalSealMixin",
+    "EnderDragonContactDamageMixin",
+    "EnderDragonPerchHoldMixin",
+    "EnderDragonPerchRangedImmunityMixin",
+    "AbstractDragonPhaseInstanceAccessor",
+    "EnderDragonFightAccessor",
+    "DragonHoldingPatternLandingMixin",
     "LivingEntityPerkDamageMixin",
     "LivingEntitySharedHealMixin",
     "MobEffectInstanceSharedTickMixin",
@@ -27,6 +35,7 @@
     "ExpandedFurnaceMenuMixin",
     "ExpandedInventoryMenuMixin",
     "ExpandedMerchantMenuMixin",
+    "ExpandedPlaceRecipeMixin",
     "ExpandedStandardMenuMixin",
     "ExpandedQuickMoveFallbackMixin",
     "PlayerEnchantmentLevelMixin",
@@ -47,6 +56,8 @@
     "PlayerMiningSpeedMixin",
     "EnchantmentHelperLootingMixin",
     "ExperienceOrbAwardMixin",
+    "AbstractFurnaceCookTimeMixin",
+    "VillagerTradeMixin",
     "BlockDropReplaceMixin",
     "BlockExperienceSourceMixin",
     "MobExperienceSourceMixin",
@@ -56,7 +67,9 @@
     "AnvilMenuQuickMoveMixin",
     "ServerPlayerCritMixin",
     "ServerPlayerDeathMessageMixin",
-    "SlotAccessor"
+    "SlotAccessor",
+    "BucketEmptyBanMixin",
+    "BedBlockEndBlastMixin"
   ],
   "injectors": {
     "defaultRequire": 1

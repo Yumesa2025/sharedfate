@@ -67,8 +67,29 @@ public final class ExpandedInventoryContainer implements Container, StackedConte
 		setChanged();
 	}
 
+	/**
+	 * 바뀐 것을 <b>주인의 바닐라 인벤토리에도 알린다.</b>
+	 *
+	 * <p>여기 담긴 물건은 {@code TeamState.extraItems}(클라이언트에서는 그 사본)라 따로 저장할
+	 * 것이 없다. 그래서 오래도록 빈 메서드였다.
+	 *
+	 * <p>그런데 조합법 책이 「만들 수 있는가」를 <b>다시</b> 세는 조건은
+	 * {@code Inventory.getTimesChanged()} 가 달라졌는지 하나뿐이다
+	 * ({@code RecipeBookComponent.tick}). 추가 칸만 바뀐 경우에는 그 수가 오르지 않아
+	 * <b>회색·흰색이 갱신되지 않는다</b> — 추가 칸 안에서만 물건을 옮겼을 때가 그 경우다.
+	 * 바닐라 칸이 함께 바뀌는 흔한 길에서는 그쪽이 올려 주어 드러나지 않았다.
+	 *
+	 * <p>{@code Inventory.setChanged()} 는 {@code timesChanged++} 한 줄뿐이고, 26.3 에서 그
+	 * 값을 읽는 곳은 {@code RecipeBookComponent} 밖에 없다. 그래서 여기서 올려도 다른 데로
+	 * 새지 않는다.
+	 */
 	@Override
 	public void setChanged() {
+		// 시험은 player 없이 이 칸만 세운다. 실제 놀이에서는 둘 다 비지 않는다.
+		if (player == null || player.getInventory() == null) {
+			return;
+		}
+		player.getInventory().setChanged();
 	}
 
 	@Override
@@ -92,9 +113,31 @@ public final class ExpandedInventoryContainer implements Container, StackedConte
 		setChanged();
 	}
 
+	/**
+	 * 조합법 책과 자동 채우기가 「무엇을 얼마나 가졌는가」를 셀 때 지나는 자리.
+	 *
+	 * <h2>열린 칸까지만 센다</h2>
+	 * <p>잠긴 칸은 화면 밖({@link ExpandedInventoryManager#HIDDEN_Y})이라 꺼낼 수 없고,
+	 * 꺼내는 쪽({@link ExpandedRecipeFill#findIngredient})도 열린 칸까지만 본다. 세는 범위가
+	 * 더 넓으면 <b>조합법이 흰색으로 떠 있는데 눌러도 안 채워진다.</b>
+	 *
+	 * <p>잠긴 칸의 물건을 못 쓰게 되는 것이 아니다 —
+	 * {@code PerkInventorySlots.unlockedFor} 가 「물건이 든 칸까지는 반드시 연다」라서 그 칸은
+	 * 이미 열린 것으로 세어진다.
+	 *
+	 * <h2>{@code accountSimpleStack} 이어야 한다</h2>
+	 * <p>바닐라 {@code Inventory.fillStackedContents} 가 쓰는 것이 이쪽이다
+	 * ({@code accountStack} 과 달리 {@code Inventory.isUsableForCrafting} 을 먼저 본다).
+	 * {@code accountStack} 으로 세면 <b>닳은 곡괭이·마법이 걸린 검·이름을 붙인 물건</b>까지
+	 * 재료로 잡히는데, 정작 꺼내는 쪽은 바닐라와 같이 그것들을 거른다. 그러면 조합법이
+	 * 만들 수 있는 것으로 떠 있다가 눌러도 채워지지 않는다.
+	 */
 	@Override
 	public void fillStackedContents(StackedItemContents contents) {
-		backing().forEach(contents::accountStack);
+		int open = openSlots();
+		for (int slot = 0; slot < open; slot++) {
+			contents.accountSimpleStack(getItem(slot));
+		}
 	}
 
 	public NonNullList<ItemStack> getItems() {

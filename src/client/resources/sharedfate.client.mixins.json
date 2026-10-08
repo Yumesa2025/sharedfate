@@ -6,12 +6,15 @@
     "AbstractContainerScreenAccessor",
     "AbstractRecipeBookScreenMixin",
     "AnvilScreenMixin",
+    "BossHealthOverlayAccessor",
+    "BossHealthOverlayMixin",
     "ContainerScreenMixin",
     "CreativeModeInventoryScreenMixin",
     "DeathScreenAccessor",
     "EnchantmentScreenMixin",
     "InventoryScreenTeamButtonMixin",
     "MultiPlayerGameModeMixin",
+    "RecipeBookButtonPositionMixin",
     "ScreenAccessor"
   ],
   "injectors": {

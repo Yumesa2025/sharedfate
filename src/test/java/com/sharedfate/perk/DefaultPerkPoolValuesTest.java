@@ -79,12 +79,97 @@ class DefaultPerkPoolValuesTest {
 		assertEquals(0.5, conditional.threshold(), 1.0e-9);
 	}
 
+	/**
+	 * 「불굴」의 이득은 저항 III 이 아니라 <b>받는 피해 ×0.7</b> 이다(사람 말 2026-10-04,
+	 * 「저항이 아니라 받는 뎀 30프로 감소로」).
+	 *
+	 * <p>상태이상이 아니므로 몸에 붙는 것이 없다. 배율은 {@code PerkManager.multiplier} 가 피해를
+	 * 셀 때마다 {@code ConditionalEffect.damageTakenMultiplier()} 를 부르고, 그 자리에서 팀 공유
+	 * 체력으로 조건을 다시 본다. 그래서 조건이 뒤집히거나 증강을 잃으면 다음 피해부터 곧바로
+	 * 빠지고, 걷어낼 것이 따로 없다.
+	 *
+	 * <p>대가(가득 찼을 때 ×1.1)와는 조건이 서로 배타적이라 한 피해에 둘이 함께 곱해지지 않는다.
+	 * 50~100% 사이(가득 찬 순간 제외)는 어느 쪽도 걸리지 않는다.
+	 */
 	@Test
-	void 유리_세계는_받는_피해_2점5배다(@TempDir Path dir) throws IOException {
+	void 불굴의_이득은_받는_피해_30퍼센트_감소다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:unbroken");
+		ConditionalEffect benefit = assertInstanceOf(ConditionalEffect.class, perk.effects().get(0));
+		ConditionalEffect cost = assertInstanceOf(ConditionalEffect.class, perk.effects().get(1));
+
+		assertEquals(1, benefit.whenTrue().size(), "이득은 받는 피해 배율 하나뿐이다");
+		assertTrue(benefit.whenFalse().isEmpty());
+		DamageTakenEffect reduced = assertInstanceOf(DamageTakenEffect.class, benefit.whenTrue().get(0));
+		assertEquals(0.7, reduced.multiplier(), 1.0e-9);
+		assertFalse(PerkDrawbacks.isDrawback(benefit), "이득이라 방어 3단계가 건너뛰면 안 된다");
+
+		// 저항 상태이상은 어디에도 남아 있지 않다 — 남아 있으면 몸에 붙어 걷어낼 길이 따로 생긴다.
+		for (PerkEffect effect : perk.effects()) {
+			ConditionalEffect conditional = assertInstanceOf(ConditionalEffect.class, effect);
+			for (PerkEffect child : conditional.children()) {
+				assertFalse(child instanceof StatusEffectPerk, "상태이상이 남아 있다: " + child);
+			}
+		}
+
+		// 대가는 그대로다.
+		assertEquals(ConditionalEffect.Condition.HEALTH_FULL, cost.condition());
+		assertTrue(PerkDrawbacks.isDrawback(cost));
+		assertEquals(1.1, cost.damageTakenMultiplier(true), 1.0e-9);
+
+		// 체력 비율마다 두 조건부가 함께 내는 받는 피해 배율. PerkManager.multiplier 와 같은 곱이다.
+		assertEquals(1.1, combinedTaken(benefit, cost, 20.0F), 1.0e-9, "가득 참 — 대가만");
+		assertEquals(1.0, combinedTaken(benefit, cost, 15.0F), 1.0e-9, "75% — 어느 쪽도 아님");
+		assertEquals(1.0, combinedTaken(benefit, cost, 10.5F), 1.0e-9, "52.5% — 어느 쪽도 아님");
+		assertEquals(0.7, combinedTaken(benefit, cost, 10.0F), 1.0e-9, "정확히 절반 — 이득만");
+		assertEquals(0.7, combinedTaken(benefit, cost, 2.0F), 1.0e-9, "10% — 이득만");
+	}
+
+	/** 최대 체력 20 인 팀이 {@code health} 일 때 두 조건부가 함께 내는 받는 피해 배율. */
+	private static double combinedTaken(ConditionalEffect benefit, ConditionalEffect cost, float health) {
+		com.sharedfate.team.TeamState state = com.sharedfate.team.TeamState.fresh(20.0F);
+		state.health = health;
+		return benefit.damageTakenMultiplier(benefit.matches(state))
+				* cost.damageTakenMultiplier(cost.matches(state));
+	}
+
+	@Test
+	void 유리_세계는_받는_피해_2배다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:glass_world");
 		DamageTakenEffect damageTaken = assertInstanceOf(DamageTakenEffect.class, perk.effects().get(1));
 
-		assertEquals(2.5, damageTaken.multiplier(), 1.0e-9);
+		assertEquals(2.0, damageTaken.multiplier(), 1.0e-9);
+	}
+
+	/**
+	 * 「벼랑 끝」의 대가는 나약함 I 이 아니라 <b>공격력 −15%</b>(최종값에 곱하는 수정자)다.
+	 *
+	 * <p>수정자는 플레이어 몸에 붙으므로 같은 것이 두 번 붙지 않고 반드시 걷히려면 식별자가
+	 * 고정이어야 한다. {@code conditional} 의 거짓 쪽 0번 하위라 순번은
+	 * {@code childIndex(0, 50)} = 150 으로 정해지고, 조건이 뒤집힐 때·증강을 잃을 때·팀을 떠날 때
+	 * ({@code PerkManager.detach}) 모두 {@code ConditionalEffect.remove} 가 이 식별자로 걷어낸다.
+	 *
+	 * <p>공격력 감소라 세트 「무기 3단계 — 깎이지 않는다」에도 걸린다. 나약함일 때는 상태이상이라
+	 * 걸리지 않던 것이 바뀐 자리다.
+	 */
+	@Test
+	void 벼랑_끝의_대가는_공격력_15퍼센트_감소다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:brink");
+		ConditionalEffect conditional = assertInstanceOf(ConditionalEffect.class, perk.effects().get(0));
+
+		assertEquals(ConditionalEffect.Condition.HEALTH_BELOW, conditional.condition());
+		assertEquals(0.75, conditional.threshold(), 1.0e-9);
+		assertEquals(3, conditional.whenTrue().size(), "힘 II·신속 I·저항 I 은 그대로다");
+
+		assertEquals(1, conditional.whenFalse().size(), "대가는 공격력 감소 하나뿐이다");
+		AttributeEffect penalty = assertInstanceOf(AttributeEffect.class,
+				conditional.whenFalse().get(0), "나약함(상태이상)이 아니라 속성 수정자여야 한다");
+		assertEquals("minecraft:attack_damage", penalty.attributeId().toString());
+		assertEquals(AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, penalty.operation());
+		assertEquals(-0.15, penalty.amount(), 1.0e-9);
+		assertEquals(AttributeEffect.modifierId("sharedfate:brink", ConditionalEffect.childIndex(0, 50)),
+				penalty.modifierId(), "식별자가 고정이어야 두 번 붙지 않고 걷어낼 수 있다");
+		assertTrue(com.sharedfate.perk.effect.NoAttackDamageLossEffect.reduces(penalty),
+				"공격력 감소라 세트 「무기 3단계」가 걷어낸다");
 	}
 
 	/**
@@ -440,21 +525,23 @@ class DefaultPerkPoolValuesTest {
 	void 기본_풀은_하나도_버려지지_않고_읽힌다(@TempDir Path dir) throws IOException {
 		loadDefaultPool(dir);
 
-		assertEquals(94, PerkRegistry.all().size(),
+		assertEquals(96, PerkRegistry.all().size(),
 				"파일에 적힌 수와 읽힌 수가 다르면 효과 타입이 등록되지 않은 것이다");
 
 		long silver = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.SILVER).count();
 		long gold = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.GOLD).count();
 		long prism = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.PRISM).count();
-		assertEquals(34, silver, "실버");
-		assertEquals(35, gold, "골드");
+		// 세트 「개척」이 들어오며 실버 +1(유적 감별사) · 골드 +1(흥정의 달인) 이 됐다.
+		assertEquals(35, silver, "실버");
+		assertEquals(36, gold, "골드");
 		assertEquals(25, prism, "프리즘");
 
 		// 등록을 빠뜨리면 여기서 먼저 걸린다.
 		for (String id : new String[] {"sharedfate:grounded_guard", "sharedfate:arcane_workshop",
 				"sharedfate:diamond_sundial", "sharedfate:final_movement",
 				"sharedfate:rally_shard", "sharedfate:bloodlust",
-				"sharedfate:cushion"}) {
+				"sharedfate:cushion", "sharedfate:haggling_master",
+				"sharedfate:ruin_appraiser"}) {
 			assertTrue(PerkRegistry.byId(id).isPresent(), id + " 가 풀에서 빠졌다");
 		}
 	}

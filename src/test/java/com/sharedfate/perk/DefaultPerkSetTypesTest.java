@@ -54,6 +54,9 @@ class DefaultPerkSetTypesTest {
 		expected.put(PerkSetType.RECOVERY, 5);
 		expected.put(PerkSetType.BLESSING, 7);
 		expected.put(PerkSetType.BOND, 6);
+		// 개척은 기존 무유형 둘(길잡이 나침반·요새 탐지기)을 데려오고 새 증강 둘
+		// (유적 감별사·흥정의 달인)을 더해 만들어졌다. 그래서 무유형이 13 에서 11 로 줄었다.
+		expected.put(PerkSetType.PIONEER, 4);
 
 		for (PerkSetType type : PerkSetType.values()) {
 			long count = PerkRegistry.all().stream().filter(p -> p.hasSetType(type)).count();
@@ -61,7 +64,7 @@ class DefaultPerkSetTypesTest {
 		}
 
 		long none = PerkRegistry.all().stream().filter(p -> p.setTypes().isEmpty()).count();
-		assertEquals(13, none, "무유형");
+		assertEquals(11, none, "무유형");
 	}
 
 	/**

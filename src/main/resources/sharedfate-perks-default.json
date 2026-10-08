@@ -79,7 +79,7 @@
       "id": "sharedfate:glass_world",
       "icon": "minecraft:glass",
       "name": "유리 세계",
-      "description": "엔더 드래곤을 제외한 모든 몹의 체력이 ×0.4 가 됩니다. 대신 받는 피해가 ×2.5 가 됩니다.",
+      "description": "엔더 드래곤을 제외한 모든 몹의 체력이 ×0.4 가 됩니다. 대신 받는 피해가 ×2 가 됩니다.",
       "rarity": "prism",
       "effects": [
         {
@@ -91,7 +91,7 @@
         },
         {
           "type": "damage_taken",
-          "multiplier": 2.5
+          "multiplier": 2.0
         }
       ]
     },
@@ -198,7 +198,7 @@
       "id": "sharedfate:ascetic",
       "icon": "minecraft:bread",
       "name": "고행자",
-      "description": "허기가 어떤 상황에서도 줄지 않습니다. 대신 최대 체력이 12 로 고정되며 다른 증강으로도 오르지 않습니다.",
+      "description": "허기가 어떤 상황에서도 줄지 않습니다. 대신 최대 체력이 16 으로 고정되며 다른 증강으로도 오르지 않습니다.",
       "rarity": "prism",
       "effects": [
         {
@@ -207,7 +207,7 @@
         },
         {
           "type": "max_health_lock",
-          "value": 12.0
+          "value": 16.0
         }
       ]
     },
@@ -651,7 +651,7 @@
       "id": "sharedfate:brink",
       "icon": "minecraft:redstone",
       "name": "벼랑 끝",
-      "description": "체력이 75% 이하일 때 힘 II 와 신속 I·저항 I 을 얻습니다. 대신 체력이 75% 를 넘을 때 나약함 I 을 얻습니다.",
+      "description": "체력이 75% 이하일 때 힘 II 와 신속 I·저항 I 을 얻습니다. 대신 체력이 75% 를 넘을 때 공격력이 15% 감소합니다.",
       "rarity": "prism",
       "set_types": [
         "power"
@@ -680,9 +680,10 @@
           ],
           "when_false": [
             {
-              "type": "status_effect",
-              "effect": "minecraft:weakness",
-              "amplifier": 0
+              "type": "attribute",
+              "attribute": "minecraft:attack_damage",
+              "operation": "add_multiplied_total",
+              "amount": -0.15
             }
           ]
         }
@@ -1282,6 +1283,9 @@
       "name": "요새 탐지기",
       "description": "나침반을 받습니다. 네더에서 가장 가까운 네더 요새를 가리킵니다.",
       "rarity": "silver",
+      "set_types": [
+        "pioneer"
+      ],
       "effects": [
         {
           "type": "item_grant",
@@ -1409,7 +1413,7 @@
       "id": "sharedfate:unbroken",
       "icon": "minecraft:enchanted_golden_apple",
       "name": "불굴",
-      "description": "체력이 절반 이하일 때 저항 III 을 얻습니다. 대신 체력이 가득 찼을 때 받는 피해가 ×1.1 이 됩니다.",
+      "description": "체력이 절반 이하일 때 받는 피해가 30% 감소합니다. 대신 체력이 가득 찼을 때 받는 피해가 ×1.1 이 됩니다.",
       "rarity": "gold",
       "set_types": [
         "defense"
@@ -1421,9 +1425,8 @@
           "threshold": 0.5,
           "when_true": [
             {
-              "type": "status_effect",
-              "effect": "minecraft:resistance",
-              "amplifier": 2
+              "type": "damage_taken",
+              "multiplier": 0.7
             }
           ]
         },
@@ -1880,6 +1883,9 @@
       "name": "길잡이 나침반",
       "description": "나침반을 1개 얻고, 오버월드에서 그 나침반이 가장 가까운 마을을 가리킵니다.",
       "rarity": "silver",
+      "set_types": [
+        "pioneer"
+      ],
       "effects": [
         {
           "type": "item_grant",
@@ -1895,6 +1901,51 @@
           "structure": "#minecraft:village",
           "dimension": "minecraft:overworld",
           "search_radius": 100
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:haggling_master",
+      "icon": "minecraft:emerald",
+      "name": "흥정의 달인",
+      "description": "주민 거래 값이 15% 싸지고 재입고가 2배 빨라집니다. 대신 거래 경험치가 절반이 됩니다.",
+      "rarity": "gold",
+      "set_types": [
+        "pioneer"
+      ],
+      "effects": [
+        {
+          "type": "villager_trade",
+          "price_discount": 0.15,
+          "restock_speed": 2.0,
+          "experience_multiplier": 0.5
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:ruin_appraiser",
+      "icon": "minecraft:spyglass",
+      "name": "유적 감별사",
+      "description": "고대 도시와 숲의 저택 좌표를 알려 줍니다. 지도도 나침반도 아닌 좌표뿐입니다.",
+      "rarity": "silver",
+      "set_types": [
+        "pioneer"
+      ],
+      "effects": [
+        {
+          "type": "ruin_survey",
+          "dimension": "minecraft:overworld",
+          "search_radius": 100,
+          "structures": [
+            {
+              "id": "minecraft:ancient_city",
+              "label": "고대 도시"
+            },
+            {
+              "id": "minecraft:mansion",
+              "label": "숲의 저택"
+            }
+          ]
         }
       ]
     },
@@ -2124,7 +2175,7 @@
       "id": "sharedfate:diamond_sundial",
       "icon": "minecraft:clock",
       "name": "엑스레이",
-      "description": "우클릭하면 10초 동안 32칸 안의 다이아몬드 광석이 보입니다(끝난 뒤 30초). 받는 피해가 ×1.15 가 됩니다.",
+      "description": "우클릭하면 10초 동안 32칸 안의 다이아몬드 광석이 보입니다(끝난 뒤 1분 30초). 받는 피해가 ×1.15 가 됩니다.",
       "rarity": "gold",
       "set_types": [
         "mining"
@@ -2134,7 +2185,7 @@
           "type": "diamond_sundial",
           "radius": 32,
           "duration_seconds": 10,
-          "cooldown_seconds": 30,
+          "cooldown_seconds": 90,
           "max_results": 16
         },
         {

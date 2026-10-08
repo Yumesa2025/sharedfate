@@ -3,6 +3,8 @@ package com.sharedfate.client.perk;
 import com.sharedfate.net.PerkChoiceC2SPayload;
 import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkRerollC2SPayload;
+import com.sharedfate.net.PerkVoteC2SPayload;
+import com.sharedfate.net.PerkVoteSyncPayload;
 import com.sharedfate.perk.PerkRarity;
 import com.sharedfate.ui.OwnedPerkPanelLayout;
 import com.sharedfate.ui.PerkCardDismiss;
@@ -14,6 +16,7 @@ import com.sharedfate.ui.PerkSetLines;
 import com.sharedfate.ui.PerkSetPanelLayout;
 import com.sharedfate.ui.PerkSetTooltip;
 import com.sharedfate.ui.PerkSetTooltipLines;
+import com.sharedfate.ui.PerkVoteBoard;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
@@ -35,13 +38,16 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3x2fStack;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * 증강 후보를 카드 형태로 가로 배치해 보여주는 화면.
  *
- * <p>{@code canChoose} 가 false 면 클릭이 막힌 관전 모드로 동작한다.
+ * <p>{@code canChoose} 가 false 면 <b>고를 수는 없고 제안만 하는</b> 모드로 동작한다. 예전에는
+ * 클릭이 통째로 막힌 보기 전용 창이었다 — 아래 「표」 절에 적어 두었다.
  *
  * <p>여는 경로가 두 가지다.
  *
@@ -73,6 +79,27 @@ import java.util.Optional;
  *
  * <p>판이 떠 있는 동안에는 HUD 가 세트 줄을 접는다({@code CoordinateHud}). 같은 내용이 흐린
  * 채로 하나 더 남으면 화면만 지저분해진다.
+ *
+ * <h2>표 — 선택자가 아닌 사람의 제안</h2>
+ * <p>선택자가 아닌 사람이 카드를 누르면 그 카드 <b>등급 띠 오른쪽</b>에 체크가 붙고, 한 명 더
+ * 누르면 수가 오른다. 같은 카드를 다시 누르면 취소되고 다른 카드를 누르면 그쪽으로 옮겨 간다.
+ * 「다시 뽑기」도 같은 장치를 쓴다 — 선택자가 아닌 사람에게는 그 단추가 <b>제안 단추</b>로
+ * 바뀌고, 그 자리에서 남은 횟수도 함께 보인다.
+ *
+ * <p>⚠ <b>표는 제안일 뿐이다.</b> 몇 개가 모이든 실제로 고르는 것은 선택자 하나고, 이 화면에도
+ * 서버에도 표를 세어 자동으로 정하는 길이 없다.
+ *
+ * <p><b>세는 일은 서버가 한다.</b> 이 화면이 보내는 것은 「내가 이걸 눌렀다」 하나뿐이고
+ * ({@link PerkVoteC2SPayload}), 켠 것인지 끈 것인지도 서버가 정해서 수를 되돌려 준다
+ * ({@link PerkVoteSyncPayload}). 누른 순간 화면이 미리 체크를 그리지 않는 것은 <b>서버가
+ * 거절했을 때 화면만 거짓말을 하게</b> 되기 때문이다 — 「다시 뽑기」가 남은 횟수를 미리 안
+ * 깎는 것과 같은 이유다.
+ *
+ * <p>체크를 <b>등급 띠 안에</b> 두는 이유는 자리다. 카드 위쪽에 줄을 하나 더 놓으려면 카드가
+ * 그만큼 짧아지는데, 1080p 의 GUI 배율 4배(480×270)처럼 좁은 화면에서는 그 몇 픽셀에 설명
+ * 마지막 줄이 잘려 나간다({@link PerkCardMetrics}). 등급 띠는 <b>이미 카드 맨 위에 있고</b>
+ * 등급 글자가 가운데 정렬이라 오른쪽 끝이 늘 비어 있다. 아이콘·이름·세트 유형·설명을 하나도
+ * 안 가린다.
  *
  * <h2>흐림 위에 그린다</h2>
  * <p>선택 화면은 뒤의 게임 화면을 흐리게 깐다. 그 흐림은 {@code Screen.extractBackground} 안의
@@ -107,6 +134,22 @@ public class PerkOfferScreen extends Screen {
 	private static final int TEXT_WAITING = 0xFF7FE07F;
 	/** 등급 띠는 밝은 등급색으로 채우므로 글자는 어두워야 읽힌다. */
 	private static final int BAND_TEXT = 0xFF10131A;
+
+	/**
+	 * 표 체크 뒤에 까는 어두운 바탕.
+	 *
+	 * <p>등급 띠는 실버·골드·프리즘이 저마다 다른 밝은 색이고 프리즘은 아예 무지개다. 어떤
+	 * 색 위에 얹혀도 읽히려면 <b>체크가 제 바탕을 들고 다녀야</b> 한다.
+	 */
+	private static final int VOTE_MARK_BACKGROUND = 0xD00C0C13;
+	/** 내가 던진 표. 왼쪽 세트 판의 「켜진 줄」과 같은 초록이다. */
+	private static final int VOTE_MARK_OWN = 0xFF7FE07F;
+	/** 남이 던진 표만 있는 자리. */
+	private static final int VOTE_MARK_OTHER = 0xFFFFFFFF;
+	/** 체크 바탕과 카드 오른쪽 변 사이의 틈. */
+	private static final int VOTE_MARK_INSET = 2;
+	/** 체크 바탕 안쪽 좌우 여백. */
+	private static final int VOTE_MARK_PADDING = 2;
 
 	private static final int TIMER_CALM = 0xFFFFFFFF;
 	private static final int TIMER_URGENT = 0xFFFF5555;
@@ -234,7 +277,7 @@ public class PerkOfferScreen extends Screen {
 	/**
 	 * 세트 판에 그릴 줄 수의 상한.
 	 *
-	 * <p>유형이 열한 가지지만 <b>가진 것이 0인 유형은 {@link PerkSetLines#visible} 이 이미
+	 * <p>유형이 열네 가지지만 <b>가진 것이 0인 유형은 {@link PerkSetLines#visible} 이 이미
 	 * 빼고 준다.</b> 여덟이면 한 회차에 흩어질 수 있는 유형을 거의 다 담는다. 이보다 많아도
 	 * 어차피 카드 높이가 세로를 막는다.
 	 */
@@ -327,8 +370,24 @@ public class PerkOfferScreen extends Screen {
 	private int rerollWaitTicks;
 	/** 서버의 답을 기다리는 시간. 2초. */
 	private static final int REROLL_WAIT_TICKS = 40;
-	/** 카드 아래 가운데의 「다시 뽑기」 단추. 관전자와 직접 연 창에는 없어서 null 일 수 있다. */
+	/**
+	 * 카드 아래 가운데의 단추. 직접 연 창에는 없어서 null 일 수 있다.
+	 *
+	 * <p>하는 일이 <b>보는 사람에 따라 다르다.</b> 선택자에게는 진짜 「다시 뽑기」고,
+	 * 선택자가 아닌 사람에게는 「다시 뽑자」는 표를 던지는 제안 단추다. 자리와 크기가 같아
+	 * 위젯을 둘로 나누지 않았다 — 나누면 둘이 같은 자리에 겹칠 수 있다.
+	 */
 	private @Nullable Button rerollButton;
+
+	/**
+	 * 대상마다 지금 몇 표인가. <b>서버가 센 값을 그대로 담는다.</b>
+	 *
+	 * <p>열쇠는 후보 증강 id 이거나 {@link PerkVoteBoard#REROLL_TARGET} 이다. 여기에 스스로
+	 * 더하거나 빼지 않는다 — 두 사람이 같은 순간에 누르면 화면마다 다른 수가 뜬다.
+	 */
+	private final Map<String, Integer> voteCounts = new HashMap<>();
+	/** 내가 표를 던져 둔 대상. 안 던졌으면 빈 문자열. 체크 색을 가르는 데 쓴다. */
+	private String ownVote = "";
 
 	/**
 	 * 결정된 증강의 후보 번호. 아직 결정 전이면 -1.
@@ -454,6 +513,70 @@ public class PerkOfferScreen extends Screen {
 	}
 
 	/**
+	 * 서버가 센 표를 받아 화면에 반영한다.
+	 *
+	 * <p>구간이 다른 묶음은 버린다. 늦게 도착한 것이 다음 회차의 창에 체크를 그리면 안 된다.
+	 *
+	 * <p>받은 값으로 <b>통째로 갈아 끼운다.</b> 서버가 보낸 목록에 없는 대상은 0표라는 뜻이고,
+	 * 마지막 한 사람이 표를 거두면 빈 목록이 온다. 있는 것만 덮어쓰면 그때 체크가 안 지워진다.
+	 */
+	public void updateVotes(PerkVoteSyncPayload payload) {
+		if (payload == null || payload.milestone() != milestone) {
+			return;
+		}
+		voteCounts.clear();
+		for (PerkVoteSyncPayload.Tally tally : payload.tallies()) {
+			voteCounts.put(tally.target(), tally.count());
+		}
+		ownVote = payload.ownVote();
+		// 단추 글자에도 표 수가 붙는다. 매 프레임 맞추고는 있지만 여기서 한 번 더 맞춰 두면
+		// 받은 그 순간에 바뀐다.
+		refreshRerollButton();
+	}
+
+	/** 이 대상에 모인 표 수. 아무도 안 던졌으면 0. */
+	private int voteCount(String target) {
+		return voteCounts.getOrDefault(target, 0);
+	}
+
+	/**
+	 * 지금 표를 던질 수 있는가.
+	 *
+	 * <p>서버가 강제로 띄운 창에서 <b>선택자가 아닌 사람</b>만이다. 선택자는 고르면 되지
+	 * 제안할 것이 없고, {@code /shareteam perk} 로 직접 연 창은 혼자 보는 확인용이라
+	 * 제안할 상대가 없다.
+	 *
+	 * <p>관전자는 뺀다. 서버도 같은 판정으로 버리지만({@code PerkChoiceSession.castVote}),
+	 * 여기서 막지 않으면 눌러도 아무 일이 안 일어나는 카드가 눌릴 것처럼 밝아진다.
+	 */
+	private boolean votable() {
+		return forced && !canChoose && !showingResult() && !spectating();
+	}
+
+	/** 이 클라이언트가 관전 모드인가. 아직 월드에 들어오지 않았으면 거짓으로 본다. */
+	private boolean spectating() {
+		return this.minecraft != null && this.minecraft.player != null
+				&& this.minecraft.player.isSpectator();
+	}
+
+	/**
+	 * 「이걸 하자」고 서버에 알린다. <b>보내는 것은 「눌렀다」는 사실뿐이다.</b>
+	 *
+	 * <p>여기서 체크를 미리 그리지 않는다. 켤지 끌지 옮길지도, 그래서 몇 표가 되는지도 전부
+	 * 서버가 정해 {@link PerkVoteSyncPayload} 로 되돌려 준다. 미리 그려 두면 서버가 요청을
+	 * 버렸을 때(관전자가 됐다든지, 후보가 방금 갈렸다든지) 화면만 거짓말을 하게 된다 —
+	 * {@link #requestReroll} 이 남은 횟수를 미리 안 깎는 것과 같은 이유다.
+	 */
+	private void castVote(String target) {
+		if (!votable()) {
+			return;
+		}
+		if (ClientPlayNetworking.canSend(PerkVoteC2SPayload.TYPE)) {
+			ClientPlayNetworking.send(new PerkVoteC2SPayload(milestone, target));
+		}
+	}
+
+	/**
 	 * 결과가 정해진 뒤 지난 시간(ms). 카드가 움직이는 계산은 전부 이 값을 기준으로 한다.
 	 *
 	 * <p>남은 틱({@code resultTicks})으로 재지 않는다. 틱은 초당 20번뿐이라 그 값으로 자리를
@@ -509,7 +632,10 @@ public class PerkOfferScreen extends Screen {
 		int footerTop = Math.max(headerBottom + 46, this.height - 22);
 		// 다시 뽑기 단추는 카드 아래 가운데에 선다. 그릴 자리를 먼저 떼어 두지 않으면
 		// 카드가 그 자리까지 늘어나 단추와 겹친다.
-		boolean showReroll = PerkRerollButton.visible(forced, canChoose);
+		// 선택자가 아닌 사람에게도 같은 자리에 선다 — 그쪽은 제안 단추다. 자리를 떼는 조건이
+		// 달라지면 사람마다 카드 높이가 달라져 같은 회차를 서로 다른 화면으로 보게 된다.
+		boolean showReroll = PerkRerollButton.visible(forced, canChoose)
+				|| PerkRerollButton.proposable(forced, canChoose);
 		int rerollBlock = showReroll ? REROLL_HEIGHT + REROLL_GAP : 0;
 		int room = footerTop - rerollBlock - headerBottom - 6;
 		// 아이콘을 큰 것부터 대 보고 세로·가로 자리가 모두 나오는 첫 크기를 고른다.
@@ -541,8 +667,8 @@ public class PerkOfferScreen extends Screen {
 			int rerollY = Math.min(cardTop + cardHeight + REROLL_GAP,
 					this.height - 16 - REROLL_HEIGHT);
 			rerollButton = Button.builder(
-							Component.literal(PerkRerollButton.label(rerollsRemaining)),
-							button -> requestReroll())
+							Component.literal(rerollButtonLabel()),
+							button -> onRerollButtonPressed())
 					.bounds((this.width - rerollWidth) / 2, rerollY, rerollWidth, REROLL_HEIGHT)
 					.build();
 			addRenderableWidget(rerollButton);
@@ -747,8 +873,51 @@ public class PerkOfferScreen extends Screen {
 		// 「보유 증강」 판이 펴져 있는 동안에도 감춘다. 단추는 위젯이라 이 화면이 그리는 것보다
 		// 나중에 올라와, 감추지 않으면 판 위에 단추만 동동 뜬다.
 		rerollButton.visible = !showingResult() && !ownedOpen;
+		// 글자에 표 수가 붙으므로 매번 다시 적는다. 제안 단추가 아닐 때는 같은 글자가 다시
+		// 들어갈 뿐이라 값이 없다.
+		rerollButton.setMessage(Component.literal(rerollButtonLabel()));
+		if (PerkRerollButton.proposable(forced, canChoose)) {
+			// 관전자는 표를 못 던진다. 서버도 같은 판정으로 버리지만, 여기서 잠가 두지 않으면
+			// 눌러도 아무 일이 안 일어나는 단추가 된다 — 회색 단추가 낫다.
+			rerollButton.active = PerkRerollButton.proposeEnabled(forced, canChoose,
+					showingResult(), rerollsRemaining) && !spectating();
+			return;
+		}
 		rerollButton.active = PerkRerollButton.enabled(forced, canChoose, choiceSent, rerollSent,
 				showingResult(), rerollsRemaining);
+	}
+
+	/**
+	 * 단추에 적을 글자.
+	 *
+	 * <p>제안 단추에는 뒤에 표 수가 붙는다. 카드처럼 <b>단추 위에</b> 줄을 따로 놓지 않는
+	 * 것은 자리 때문이다 — 카드 아랫변과 아래 안내 문구 사이에 남는 것은 틈 5픽셀과 단추
+	 * 높이 16픽셀뿐이고, 줄을 하나 끼우려고 그만큼 떼면 카드가 짧아져 설명 마지막 줄이
+	 * 잘린다. 단추는 카드와 달리 글자 한 줄이 전부라, 같은 체크를 글자 끝에 붙이면
+	 * 가릴 것이 없다.
+	 */
+	private String rerollButtonLabel() {
+		if (!PerkRerollButton.proposable(forced, canChoose)) {
+			return PerkRerollButton.label(rerollsRemaining);
+		}
+		String base = PerkRerollButton.proposeLabel(rerollsRemaining);
+		String mark = PerkVoteBoard.mark(voteCount(PerkVoteBoard.REROLL_TARGET));
+		return mark.isEmpty() ? base : base + " " + mark;
+	}
+
+	/**
+	 * 단추를 눌렀다. 선택자면 진짜로 다시 뽑고, 아니면 「다시 뽑자」는 표를 던진다.
+	 *
+	 * <p>어느 쪽인지는 {@link PerkRerollButton#proposable} 하나로 가른다. 두 길이 같은 위젯을
+	 * 쓰므로 여기서 갈라 두지 않으면 관전하던 사람이 진짜 재추첨 패킷을 보내게 된다 — 서버가
+	 * 버리기는 하지만, 버려질 것을 보내는 화면은 곧 거짓말하는 화면이 된다.
+	 */
+	private void onRerollButtonPressed() {
+		if (PerkRerollButton.proposable(forced, canChoose)) {
+			castVote(PerkVoteBoard.REROLL_TARGET);
+			return;
+		}
+		requestReroll();
 	}
 
 	/**
@@ -1068,7 +1237,9 @@ public class PerkOfferScreen extends Screen {
 		int right = left + cardWidth;
 		// 「보유 증강」 판이 펴져 있으면 눌러도 안 골라진다. 그동안은 호버도 끈다 — 밝아지는
 		// 카드는 「지금 누르면 된다」는 뜻이라 거짓말이 된다.
-		boolean hovered = clickable() && !ownedOpen
+		// 표를 던질 수 있는 사람에게도 카드가 밝아진다. 눌러도 되는 카드인 것은 같고, 이쪽은
+		// 고르는 대신 제안이 될 뿐이다.
+		boolean hovered = (clickable() || votable()) && !ownedOpen
 				&& isInside(mouseX, mouseY, left, right, cardTop + cardHeight);
 		// 강조한 카드는 호버와 같은 밝기를 쓰되, 아래의 빛과 두 겹 테두리로 한 단계 더 올린다.
 		boolean bright = hovered || highlighted;
@@ -1113,8 +1284,11 @@ public class PerkOfferScreen extends Screen {
 		}
 		graphics.enableScissor(left + 1, top + 1, right - 1, clipBottom);
 		int textCenterX = left + cardWidth / 2;
-		graphics.centeredText(this.font, card.rarityLabel(), textCenterX,
-				top + (BAND_HEIGHT - this.font.lineHeight + 1) / 2, BAND_TEXT);
+		int bandTextY = top + (BAND_HEIGHT - this.font.lineHeight + 1) / 2;
+		graphics.centeredText(this.font, card.rarityLabel(), textCenterX, bandTextY, BAND_TEXT);
+		// 표는 등급 글자를 그린 뒤 그 오른쪽에 얹는다. 등급 글자가 가운데 정렬이라 카드가
+		// 가장 좁을 때(56픽셀)도 오른쪽 끝은 비어 있다.
+		renderVoteMark(graphics, index, right, top, bandTextY);
 
 		int y = top + BAND_HEIGHT + ICON_GAP_TOP;
 		if (iconSize > 0) {
@@ -1126,7 +1300,7 @@ public class PerkOfferScreen extends Screen {
 			y += this.font.lineHeight;
 		}
 		// 세트 유형. 이름 바로 아래, 구분선 위다 — 「이 증강이 무엇에 속하는가」는 이름의 일부처럼
-		// 읽혀야지 설명에 섞이면 안 된다. 유형이 없는 증강(열여섯 개)에는 이 자리가 아예 없다.
+		// 읽혀야지 설명에 섞이면 안 된다. 유형이 없는 증강(열한 개)에는 이 자리가 아예 없다.
 		if (!card.setTypeLines().isEmpty()) {
 			y += SET_TYPE_GAP;
 			for (FormattedCharSequence line : card.setTypeLines()) {
@@ -1149,6 +1323,35 @@ public class PerkOfferScreen extends Screen {
 			graphics.fill(left, top, right, bottom,
 					withAlpha(DISMISS_SHADE, Math.round(0xFF * Math.clamp(shade, 0.0F, 1.0F))));
 		}
+	}
+
+	/**
+	 * 카드에 모인 표를 등급 띠 오른쪽 끝에 그린다.
+	 *
+	 * <p>{@code renderCard} 가 걸어 둔 잘라내기 안이라 카드 밖으로 새지 않는다. 바탕을 한 겹
+	 * 깔고 그 위에 체크를 얹는 것은 등급 띠가 저마다 밝은 색이고 프리즘은 아예 무지개여서다.
+	 *
+	 * <p>내가 던진 표가 섞여 있으면 초록으로 그린다. 「내 표가 어디 있는지」가 안 보이면
+	 * 취소하려고 누른 것이 오히려 옮기는 일이 된다.
+	 *
+	 * <p>강제로 띄운 창이 아니면 아무것도 안 그린다. {@code /shareteam perk} 로 직접 연 창은
+	 * 혼자 보는 확인용이라 표가 있을 수 없다 — 서버가 그 경로로는 표 묶음을 보내지 않는다.
+	 */
+	private void renderVoteMark(GuiGraphicsExtractor graphics, int index, int right, int top,
+			int textY) {
+		if (!forced || showingResult() || index >= options.size()) {
+			return;
+		}
+		String target = options.get(index).id();
+		String mark = PerkVoteBoard.mark(voteCount(target));
+		if (mark.isEmpty()) {
+			return;
+		}
+		int markRight = right - VOTE_MARK_INSET;
+		int markLeft = markRight - this.font.width(mark) - VOTE_MARK_PADDING * 2;
+		graphics.fill(markLeft, top + 1, markRight, top + BAND_HEIGHT - 1, VOTE_MARK_BACKGROUND);
+		graphics.text(this.font, mark, markLeft + VOTE_MARK_PADDING, textY,
+				target.equals(ownVote) ? VOTE_MARK_OWN : VOTE_MARK_OTHER);
 	}
 
 	/**
@@ -1241,12 +1444,18 @@ public class PerkOfferScreen extends Screen {
 		if (ownedOpen && ownedPanel.contains(event.x(), event.y())) {
 			return true;
 		}
-		if (clickable() && !ownedOpen && isSelectClick(event.button())) {
+		// 카드를 누르는 뜻이 사람에 따라 다르다 — 선택자는 고르고, 나머지는 제안한다.
+		// 판정 자리는 같으므로 훑는 것은 한 번이다.
+		if ((clickable() || votable()) && !ownedOpen && isSelectClick(event.button())) {
 			for (int index = 0; index < cards.size(); index++) {
 				int left = cardLeft(index);
 				if (isInside(event.x(), event.y(), left, left + cardWidth,
 						cardTop + cardHeight)) {
-					choose(index);
+					if (clickable()) {
+						choose(index);
+					} else if (index < options.size()) {
+						castVote(options.get(index).id());
+					}
 					return true;
 				}
 			}
@@ -1401,7 +1610,14 @@ public class PerkOfferScreen extends Screen {
 		if (chooser.isEmpty()) {
 			chooser = "팀원";
 		}
-		return Component.literal(chooser + "님이 고르는 중입니다 (관전 중)");
+		if (!votable()) {
+			// 관전자이거나 결과가 뜬 뒤다. 누를 것이 없으므로 예전 그대로 적는다.
+			return Component.literal(chooser + "님이 고르는 중입니다 (관전 중)");
+		}
+		if (this.width < 320) {
+			return Component.literal(chooser + "님이 고르는 중 · 눌러서 제안");
+		}
+		return Component.literal(chooser + "님이 고르는 중입니다 · 눌러서 제안할 수 있습니다");
 	}
 
 	private Component footerHint() {
@@ -1416,6 +1632,15 @@ public class PerkOfferScreen extends Screen {
 		if (forced) {
 			if (escapable()) {
 				return Component.literal("응답이 없습니다 · ESC로 닫을 수 있습니다");
+			}
+			// 표를 던질 수 있는 사람에게는 무엇보다 이 말이 먼저다. 체크가 쌓이는 것을 보고
+			// 「표가 모이면 그걸로 정해진다」고 읽으면, 정작 선택자가 다른 것을 골랐을 때
+			// 모드가 고장 난 것으로 여기게 된다. 시간 정지와 무적은 아래 문구가 아니어도
+			// 화면 위 카운트다운이 이미 말하고 있다.
+			if (votable()) {
+				return Component.literal(this.width < 320
+						? "제안일 뿐 · 고르는 것은 선택자"
+						: "표는 제안일 뿐입니다 · 실제로 고르는 것은 선택자 한 사람입니다");
 			}
 			if (this.width < 320) {
 				return Component.literal("시간 정지 중 · 피해 무효");

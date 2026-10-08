@@ -178,6 +178,9 @@ public class TeamManager extends SavedData {
 			state.positionSwapIntervalTicks = Math.max(0, entry.swapIntervalTicks());
 			// 난이도 상승은 켜고 끄기만 이어진다. 오른 시간은 회차마다 0 에서 다시 센다.
 			state.difficultyEscalationEnabled = entry.difficultyEscalationEnabled();
+			// 드래곤 시련도 「이 팀은 켜기로 했다」는 결정이라 회차를 넘겨 그대로 이어진다.
+			// 전투 상태(무슨 카드를 뽑았나)는 여기 없다 — 그쪽은 회차마다 0 에서 다시 쌓인다.
+			state.dragonTrialsEnabled = entry.dragonTrialsEnabled();
 			// 다시 뽑기도 같은 결이다. 「회차당 몇 번」이라는 결정만 이어지고, 이번 회차에
 			// 남은 횟수는 여기서 가득 찬다 — 회차가 넘어가면 다시 차야 하기 때문이다.
 			state.rerollAllowance = TeamCreationSettings.sanitizeRerollCount(entry.rerollCount());

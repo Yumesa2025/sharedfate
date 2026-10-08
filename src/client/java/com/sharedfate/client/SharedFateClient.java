@@ -7,6 +7,7 @@ import com.sharedfate.client.hud.GameOverHud;
 import com.sharedfate.client.hud.HotbarHighlight;
 import com.sharedfate.client.hud.PerkProgressHud;
 import com.sharedfate.client.hud.TeamLevelHud;
+import com.sharedfate.client.hud.TrialTimersHud;
 import com.sharedfate.client.team.TeamScreen;
 import com.sharedfate.client.perk.ClientPerkFeatures;
 import com.sharedfate.client.perk.ClientPerkSets;
@@ -14,6 +15,8 @@ import com.sharedfate.client.perk.DoubleJumpHandler;
 import com.sharedfate.client.perk.PerkClientState;
 import com.sharedfate.client.perk.PerkDrawScreen;
 import com.sharedfate.client.perk.PerkOfferScreen;
+import com.sharedfate.client.trial.TrialEntranceScreen;
+import com.sharedfate.client.trial.TrialRouletteScreen;
 import com.sharedfate.net.ClientVersionPayload;
 import com.sharedfate.net.StatSnapshotPayload;
 import com.sharedfate.net.DamageAlertPayload;
@@ -26,10 +29,16 @@ import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkResultPayload;
 import com.sharedfate.net.PerkSetSyncPayload;
 import com.sharedfate.net.PerkSyncPayload;
+import com.sharedfate.net.PerkVoteSyncPayload;
 import com.sharedfate.net.SelectedSlotPayload;
 import com.sharedfate.net.SharedFateNetworking;
 import com.sharedfate.net.TeamSyncPayload;
 import com.sharedfate.net.TeamWipePayload;
+import com.sharedfate.net.TrialEntranceClosePayload;
+import com.sharedfate.net.TrialEntranceOfferPayload;
+import com.sharedfate.net.TrialHotbarLockPayload;
+import com.sharedfate.net.TrialRoulettePayload;
+import com.sharedfate.net.TrialTimersPayload;
 import com.sharedfate.net.WorldResetPayload;
 import com.sharedfate.perk.effect.HideHudEffect;
 import com.sharedfate.inventory.ExpandedInventoryManager;
@@ -113,7 +122,8 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkSyncPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> PerkClientState.update(payload.owned(),
-								payload.pendingCount(), payload.chooserName())));
+								payload.pendingCount(), payload.chooserName(),
+								payload.ruinCoords())));
 		// 선택자 뽑기 연출. 서버가 선택창을 보낼 때까지 이 화면이 떠 있는다.
 		ClientPlayNetworking.registerGlobalReceiver(PerkDrawPayload.TYPE,
 				(payload, context) -> context.client().execute(
@@ -122,6 +132,10 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkResultPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> showPerkResult(context.client(), payload)));
+		// 선택자가 아닌 사람들이 던진 표. 세는 일은 서버가 하고 화면은 받은 수를 그린다.
+		ClientPlayNetworking.registerGlobalReceiver(PerkVoteSyncPayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> showPerkVotes(context.client(), payload)));
 		// 클라이언트가 스스로 해야 하는 증강 기능. HUD 가 읽는 값이므로 렌더와 같은
 		// 스레드(클라이언트 본 스레드)에서 갱신한다.
 		ClientPlayNetworking.registerGlobalReceiver(PerkClientFeaturesPayload.TYPE,
@@ -138,6 +152,39 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkSetSyncPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> ClientPerkSets.update(payload)));
+		// 엔드 시련 룰렛 — 네트워크 스레드에서 화면을 열 수 없으므로 클라이언트 스레드로
+		// 넘긴다. 이 화면에는 뒤따르는 패킷이 없다. 연출도 닫는 것도 화면이 혼자 한다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialRoulettePayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> openTrialRoulette(context.client(), payload)));
+		// 엔드 입장 수락창. 서버가 1초마다 다시 보내므로 이미 떠 있는 창을 밀어내지 않는다 —
+		// 그 까닭은 openTrialEntrance 에 적어 두었다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialEntranceOfferPayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> openTrialEntrance(context.client(), payload)));
+		// 리더가 확인했거나 기다림이 끝났다. 누른 사람의 창은 제 손으로 닫히고 나머지 셋은
+		// 이 지시로 닫힌다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialEntranceClosePayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> closeTrialEntrance(context.client(), payload)));
+		// 시련 「굳는 손」이 굳혀 둔 핫바 칸. HotbarHighlight 가 그리기 스레드에서 읽으므로
+		// 갱신도 클라이언트 본 스레드에서 한다.
+		//
+		// 받은 시각을 함께 적어 둔다. 「그만 그려라」를 보내 주는 사람이 없기 때문이다 —
+		// 드래곤이 죽는 틱에 서버가 세션만 닫고 지나가는 길이 있어 끄는 패킷을 기대할 수 없다.
+		// 월드가 아직 없으면 시각을 잴 수 없으므로 버린다. 서버는 1초마다 다시 보낸다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialHotbarLockPayload.TYPE,
+				(payload, context) -> context.client().execute(() -> {
+					if (context.client().level == null) {
+						return;
+					}
+					ClientHotbarLock.update(payload, context.client().level.getGameTime());
+				}));
+		// 드래곤 패턴 타이머 HUD. 받은 묶음을 통째로 바꿔 들고 틱마다 스스로 줄인다
+		// (ClientTrialTimers). TrialTimersHud 가 그리기 스레드에서 읽으므로 갱신도 클라이언트 본
+		// 스레드에서 한다. 서버는 canSend 를 먼저 묻기 때문에 이 등록이 있어야 보내기 시작한다.
+		ClientPlayNetworking.registerGlobalReceiver(TrialTimersPayload.TYPE,
+				(payload, context) -> context.client().execute(() -> ClientTrialTimers.update(payload)));
 
 		// 접속하자마자 자기 판을 한 번 알린다. 서버는 로그에만 적는다 — 막는 일은 규약
 		// 번호가 하고, 이것은 「누가 어떤 클라이언트를 쓰는지」를 서버에서 볼 수 있게 하는
@@ -147,6 +194,12 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
 			ClientTeamState.clear();
 			ClientSwapTimer.clear();
+			// 남겨 두면 다음 서버의 첫 화면에 남의 판 붉은 칸이 뜬다. 낡으면 스스로 지우지만
+			// (STALE_TICKS 3초) 그 3초가 곧 다른 서버의 첫 3초다.
+			ClientHotbarLock.clear();
+			// 끊기는 길로는 서버가 「그만 그려라」를 못 보낸다. 남겨 두면 다음 서버의 첫 화면에 남의
+			// 드래곤 시계가 0 에 멈춘 채 떠 있다.
+			ClientTrialTimers.clear();
 			SelectedSlotReporter.reset();
 			DamageAlertHud.clear();
 			ExpandedInventoryManager.clearNegotiatedClientLayout();
@@ -165,6 +218,8 @@ public class SharedFateClient implements ClientModInitializer {
 			DamageAlertHud.tick();
 			GameOverClientDisplay.tick(client);
 			DoubleJumpHandler.tick(client);
+			// 얼어 있거나(frozen) 일시정지면 안 줄인다 — 서버의 실행기 시계도 그때 선다.
+			ClientTrialTimers.tick(client.isPaused());
 		});
 
 		HudElementRegistry.attachElementAfter(
@@ -196,6 +251,13 @@ public class SharedFateClient implements ClientModInitializer {
 		HudElementRegistry.addLast(
 				SharedFateMod.id("coordinates"),
 				new CoordinateHud());
+		// 드래곤 패턴 타이머 — 오른쪽 위 패널(상태이상 아이콘 바로 아래)과 가운데 위 시전 바(보스바들
+		// 바로 아래). 둘 다 그 바닐라 요소들의 자리에 기대어 서므로 보스바 바로 뒤에 붙인다. 자리를
+		// 정하는 셈은 TrialTimersLayout 에 있다.
+		HudElementRegistry.attachElementAfter(
+				VanillaHudElements.BOSS_BAR,
+				SharedFateMod.id("trial_timers"),
+				new TrialTimersHud());
 
 		// 「장님 거인」 처럼 HUD 를 가리는 증강. 바닐라 요소를 지우지 않고 "가려야 할 때만
 		// 건너뛰는" 껍데기로 감싼다. removeElement 는 되돌릴 수 없어 증강을 잃어도 영영
@@ -264,6 +326,69 @@ public class SharedFateClient implements ClientModInitializer {
 	}
 
 	/**
+	 * 엔드 시련 룰렛을 연다.
+	 *
+	 * <p>후보가 하나도 없으면 열지 않는다({@code TrialRouletteScreen.shouldOpen}). 서버가 그런
+	 * 패킷을 만들지 않지만 <b>패킷은 밖에서 오는 값</b>이고, 빈 룰렛이 4초 동안 떠 있다가
+	 * 사라지면 고장으로 읽힌다.
+	 *
+	 * <p>사망 화면만은 밀어내지 않는다 — 증강 쪽과 같은 이유다. 연출을 못 봐도 시련은 서버가
+	 * 이미 정해 두었으므로 진행이 막히지 않는다.
+	 */
+	private static void openTrialRoulette(Minecraft client, TrialRoulettePayload payload) {
+		if (client.gui.screen() instanceof DeathScreen || !TrialRouletteScreen.shouldOpen(payload)) {
+			return;
+		}
+		client.setScreenAndShow(new TrialRouletteScreen(payload));
+	}
+
+	/**
+	 * 엔드 입장 수락창을 연다.
+	 *
+	 * <p>서버가 <b>1초마다 다시 보낸다</b>({@code TrialEntranceGate.OFFER_RESEND_TICKS}). 그래서
+	 * 세 갈래가 필요하다.
+	 *
+	 * <ol>
+	 *   <li><b>같은 창이 이미 떠 있다</b> — 리더 이름과 누를 수 있는지만 갈아 끼우고 <b>시계는
+	 *       건드리지 않는다.</b> 새 창으로 바꿔 끼우면 남은 시간이 매초 제자리로 튀어 영영 안
+	 *       닫히는 것처럼 보인다</li>
+	 *   <li><b>밀어내면 안 되는 창이 떠 있다</b> — 사망 화면과 증강 선택창이다. 둘 다 그 자리에서
+	 *       해야 할 일이 있는 창이라 덮으면 안 된다. ⚠ 그래서 <b>이 사람은 수락창을 지금 못
+	 *       본다</b> — 1초 뒤에 다시 오므로 그 창을 닫으면 그때 뜬다. 한 번만 보냈다면 영영 못
+	 *       보고, 그 사람이 리더면 팀이 제한시간을 다 쓴다</li>
+	 *   <li>그 밖 — 띄운다. 다른 창(인벤토리 등)은 밀어낸다. 판이 바뀌는 자리라 그쪽이 더 급하다</li>
+	 * </ol>
+	 */
+	private static void openTrialEntrance(Minecraft client, TrialEntranceOfferPayload payload) {
+		if (!TrialEntranceScreen.shouldOpen(payload)) {
+			return;
+		}
+		if (client.gui.screen() instanceof TrialEntranceScreen open) {
+			if (open.openedTick() == payload.openedTick()) {
+				open.absorb(payload);
+				return;
+			}
+		} else if (client.gui.screen() instanceof DeathScreen
+				|| client.gui.screen() instanceof PerkOfferScreen) {
+			return;
+		}
+		client.setScreenAndShow(new TrialEntranceScreen(payload));
+	}
+
+	/**
+	 * 서버의 지시로 엔드 입장 수락창을 닫는다.
+	 *
+	 * <p>다른 화면이 떠 있으면 아무것도 하지 않는다. 늦게 도착한 지시가 <b>그 사이에 열린 다음
+	 * 창</b>을 닫아 버리지 않도록 창의 이름표까지 맞춰 본다 — 전투가 끝나고 다시 엔드에 들어가면
+	 * 창이 또 열리므로 실제로 일어날 수 있다.
+	 */
+	private static void closeTrialEntrance(Minecraft client, TrialEntranceClosePayload payload) {
+		if (client.gui.screen() instanceof TrialEntranceScreen open) {
+			open.closeFromServer(payload.openedTick());
+		}
+	}
+
+	/**
 	 * 골라진 증강을 선택창에 표시한다.
 	 *
 	 * <p>선택창이 떠 있지 않으면 아무것도 하지 않는다. 사망 화면을 보고 있었거나 창을 놓친
@@ -272,6 +397,21 @@ public class SharedFateClient implements ClientModInitializer {
 	private static void showPerkResult(Minecraft client, PerkResultPayload payload) {
 		if (client.gui.screen() instanceof PerkOfferScreen offer) {
 			offer.showResult(payload.perkId(), payload.chooserName(), payload.holdTicks());
+		}
+	}
+
+	/**
+	 * 지금 표가 이렇다고 선택창에 알린다.
+	 *
+	 * <p>선택창이 떠 있지 않으면 아무것도 하지 않는다 — 사망 화면을 보느라 창을 못 받은
+	 * 사람에게 표만 따로 들려 줄 곳이 없다. 값을 어디 모아 두지도 않는다. 표는 그 창이
+	 * 떠 있는 동안에만 뜻이 있고, 창은 새로 뜰 때마다 서버가 보낸 후보와 함께 다시 만들어진다.
+	 *
+	 * <p>구간이 맞는지는 창이 스스로 가린다({@code PerkOfferScreen.updateVotes}).
+	 */
+	private static void showPerkVotes(Minecraft client, PerkVoteSyncPayload payload) {
+		if (client.gui.screen() instanceof PerkOfferScreen offer) {
+			offer.updateVotes(payload);
 		}
 	}
 

@@ -25,7 +25,7 @@ class TeamRosterStoreTest {
 	/**
 	 * 지금 쓰는 명단 형식. {@code TeamRosterStore.FORMAT_VERSION} 을 올릴 때 여기도 올린다.
 	 */
-	private static final String CURRENT_FORMAT = "\"formatVersion\": 6";
+	private static final String CURRENT_FORMAT = "\"formatVersion\": 7";
 
 	@BeforeAll
 	static void bootstrap() {
@@ -71,6 +71,44 @@ class TeamRosterStoreTest {
 				team, true, 20.0F, 0, false, false, List.of(), true)));
 
 		assertTrue(TeamRosterStore.load(file).getFirst().difficultyEscalationEnabled());
+	}
+
+	@Test
+	void 드래곤_시련_켜고_끄기도_회차를_넘겨_이어진다(@TempDir Path server) throws Exception {
+		Path file = server.resolve(TeamRosterStore.FILE_NAME);
+		ShareTeam team = new ShareTeam(TEAM, "원정대", List.of(A));
+
+		TeamRosterStore.save(file, List.of(new TeamRosterStore.RestoredTeam(
+				team, true, 20.0F, 0, false, false, List.of(), false, 3, true)));
+
+		assertTrue(TeamRosterStore.load(file).getFirst().dragonTrialsEnabled());
+	}
+
+	/**
+	 * 형식 6 이하에는 이 항목이 없다. 기본값이 곧 <b>끔</b>이라 Gson 이 두는 false 가 그대로
+	 * 맞는 값이고, 따로 되돌릴 것이 없다 — 다시 뽑기 횟수와 다른 점이 이것이다.
+	 */
+	@Test
+	void 드래곤_시련_항목이_없는_예전_형식은_꺼진_채로_읽힌다(@TempDir Path server) throws Exception {
+		Path file = server.resolve(TeamRosterStore.FILE_NAME);
+		Files.writeString(file, """
+				{
+				  "formatVersion": 6,
+				  "teams": [
+				    {
+				      "teamId": "%s",
+				      "name": "원정대",
+				      "members": ["%s"],
+				      "settings": { "perksEnabled": true, "maxHealth": 20.0,
+				                    "swapIntervalTicks": 0, "rerollCount": 3 }
+				    }
+				  ]
+				}
+				""".formatted(TEAM, A), StandardCharsets.UTF_8);
+
+		TeamRosterStore.RestoredTeam loaded = TeamRosterStore.load(file).getFirst();
+		assertFalse(loaded.dragonTrialsEnabled());
+		assertTrue(loaded.perksEnabled(), "시련과 무관한 값은 그대로 읽혀야 한다");
 	}
 
 	@Test

@@ -53,7 +53,7 @@ class PerkSetsTest {
 		assertEquals(0, counts.get(PerkSetType.MINING), "안 가진 유형은 0 이다");
 	}
 
-	/** 표에는 유형 열한 개가 모두 들어 있다. 화면이 「채굴 0/3」을 그리려면 없는 유형도 알아야 한다. */
+	/** 표에는 유형 열네 개가 모두 들어 있다. 화면이 「채굴 0/3」을 그리려면 없는 유형도 알아야 한다. */
 	@Test
 	void 개수표에는_유형이_전부_들어_있다() {
 		Map<PerkSetType, Integer> counts = PerkSets.countByType(List.of(), id -> null);
@@ -235,7 +235,7 @@ class PerkSetsTest {
 		}
 	}
 
-	/** 상태 목록에는 유형 열한 개가 모두 들어 있다. */
+	/** 상태 목록에는 유형 열네 개가 모두 들어 있다. */
 	@Test
 	void 상태_목록에는_유형이_전부_들어_있다() {
 		List<PerkSets.Status> statuses = PerkSets.statuses(List.of(), id -> null, Map.of());

@@ -328,7 +328,7 @@ public final class PerkRegistry {
 	 * 덧붙임이라, 오타 하나 때문에 증강이 통째로 사라지면 잃는 쪽이 훨씬 크다. 모르는
 	 * 문자열은 그 항목만 건너뛰고 경고를 남긴다.
 	 *
-	 * <p>{@code set_types} 를 아예 안 적은 증강은 무유형이며 이는 정상이다. 무유형이 열여섯
+	 * <p>{@code set_types} 를 아예 안 적은 증강은 무유형이며 이는 정상이다. 무유형이 열한
 	 * 개나 되므로 그때는 아무 말도 하지 않는다. 같은 유형을 두 번 적으면 한 번만 센다.
 	 */
 	private static List<PerkSetType> parseSetTypes(String perkId, JsonObject json) {

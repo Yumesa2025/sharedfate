@@ -670,6 +670,34 @@
       ]
     },
     {
+      "_comment": [
+        "개척은 2단계 하나뿐이다. 3·4단계를 비워 둔 것이 아니라 아예 만들지 않았다.",
+        "증강 넷이 전부 '길을 줄여 주는' 것이라 세기를 올릴 축이 없어서, 값을 2단계에 몰았다.",
+        "PerkSetType.PIONEER 의 주석에 같은 말이 적혀 있다."
+      ],
+      "type": "pioneer",
+      "tiers": [
+        {
+          "count": 2,
+          "description": "화로·용광로·훈연기가 2배 빨라지고, 나침반을 우클릭해 마을과 엔더 요새를 오갈 수 있습니다.",
+          "effects": [
+            {
+              "type": "smelting_speed",
+              "multiplier": 2.0
+            },
+            {
+              "type": "compass_toggle",
+              "structure": "minecraft:stronghold",
+              "dimension": "minecraft:overworld",
+              "search_radius": 100,
+              "base_name": "길잡이 나침반",
+              "alternate_name": "엔더 요새 나침반"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "type": "bond",
       "tiers": [
         {

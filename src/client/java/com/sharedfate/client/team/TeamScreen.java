@@ -11,6 +11,7 @@ import com.sharedfate.ui.PanelScroll;
 import com.sharedfate.ui.PerkSetLines;
 import com.sharedfate.ui.PerkSetTooltip;
 import com.sharedfate.ui.PerkSetTooltipLines;
+import com.sharedfate.ui.RuinCoordPlacement;
 import com.sharedfate.ui.StatRow;
 import com.sharedfate.ui.TeamDisbandWarning;
 import com.sharedfate.ui.TeamNameInput;
@@ -27,6 +28,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 
 import java.util.ArrayList;
@@ -84,6 +86,23 @@ public class TeamScreen extends Screen {
 	private static final int PANEL_BG = 0xC0101018;
 
 	/**
+	 * 「유적 감별사」 좌표를 세우는 자리의 왼쪽 여백.
+	 *
+	 * <p>{@link #PANEL_BG} 의 오른쪽 변이 {@code left + PANEL_WIDTH + 6} 이고 스크롤 막대가
+	 * {@code +1}~{@code +4} 를 쓴다. 둘을 지난 자리라야 바탕판 밖의 빈 곳에 선다.
+	 */
+	private static final int RUIN_COORD_GAP = 12;
+
+	/**
+	 * 유적 좌표 글자색.
+	 *
+	 * <p>증강을 처음 골랐을 때 띄운 채팅 한 줄({@code PerkRuinSurvey.announce} 의
+	 * {@code ChatFormatting.AQUA})과 같은 물색이다. 같은 값을 두 곳에서 읽는 사람이 「이게 그거」를
+	 * 색으로 알아채야 한다.
+	 */
+	private static final int RUIN_COORD = 0xFF55FFFF;
+
+	/**
 	 * 세트 툴팁 줄에 쓸 색.
 	 *
 	 * <p>줄을 만드는 계산({@link PerkSetTooltipLines})은 이 화면의 색 상수를 몰라야 해서 색을
@@ -130,13 +149,27 @@ public class TeamScreen extends Screen {
 	/**
 	 * 팀 만들기 탭의 설정 줄들.
 	 *
-	 * <p>정할 것이 일곱 가지로 늘어 한 줄에 하나씩 두면 창을 넘긴다. 절반씩 둘을 나란히 놓고,
+	 * <p>정할 것이 여덟 가지로 늘어 한 줄에 하나씩 두면 창을 넘긴다. 절반씩 둘을 나란히 놓고,
 	 * 숫자는 −/+ 두 단추 대신 <b>누를 때마다 값이 굴러가는</b> 단추 하나로 줄였다
 	 * ({@link TeamCreationCycle}).
+	 *
+	 * <h2>여덟 번째를 넣으면서 창 높이도 줄 높이도 건드리지 않았다</h2>
+	 *
+	 * <p>절반씩 둘을 놓으면 <b>일곱은 네 줄에 한 칸이 빈다</b> — 마지막 줄(「다시 뽑기」)의
+	 * 오른쪽이 그동안 비어 있었다. 여덟 번째는 그 빈칸에 그대로 들어가므로 줄이 늘지 않고,
+	 * 따라서 아래의 「팀 만들기」 단추도 경고 세 줄도 예전과 <b>같은 y</b>에 선다.
+	 *
+	 * <p>줄을 더 줄이거나 창을 키우는 쪽은 둘 다 대가가 있어 고르지 않았다. {@code FORM_ROW}
+	 * 를 줄이면 단추가 서로 붙어 잘못 누르기 쉬워지고, 판을 키우면 GUI 배율이 큰 사람에게서
+	 * 아래 경고 줄이 「닫기」 단추와 겹친다 — 바닐라가 보장하는 세로는 240 뿐이라 지금도
+	 * 여유가 크지 않다. <b>빈칸이 이미 있는데 자리를 새로 만들 이유가 없다.</b>
+	 *
+	 * <p>⚠ 아홉 번째를 넣는 사람은 그때 진짜로 골라야 한다. 네 줄이 꽉 차므로 다섯 번째 줄이
+	 * 생기고, 그만큼 아래의 모든 것이 20px 씩 내려간다.
 	 */
 	private static final int FORM_TOP = PANEL_TOP + 34;
 	private static final int FORM_ROW = 20;
-	/** 설정 줄의 단추 높이. 기본 20 보다 낮춰야 일곱 가지가 창 안에 들어간다. */
+	/** 설정 줄의 단추 높이. 기본 20 보다 낮춰야 여덟 가지가 네 줄로 창 안에 들어간다. */
 	private static final int FORM_BUTTON_HEIGHT = 18;
 
 	private enum Tab {
@@ -176,6 +209,20 @@ public class TeamScreen extends Screen {
 	 * 내려가는데, 그리는 쪽이 다른 길이를 쓰면 세트가 증강 목록 위에 겹쳐 찍힌다.
 	 */
 	private List<PerkSetLines.Line> setLines = List.of();
+	/**
+	 * 「유적 감별사」 좌표 줄들. 그 증강이 없으면 빈 목록이다.
+	 *
+	 * <p>{@link #layoutPerkList()} 에서 접어 두고 그 프레임 내내 쓴다. 판 안에 들일 때는
+	 * {@link #setBlockTop()} 이 이 목록의 길이만큼 아래로 내려가므로, 그리는 쪽이 다른 길이를
+	 * 쓰면 세트 줄이 좌표 위에 겹쳐 찍힌다 — {@link #setLines} 와 같은 규칙이다.
+	 */
+	private List<FormattedCharSequence> ruinLines = List.of();
+	/**
+	 * 좌표를 어디에 세울지. {@link RuinCoordPlacement} 가 화면 가로를 보고 정한다.
+	 *
+	 * <p>화면 크기가 바뀌면 달라지므로 {@link #layoutPerkList()} 에서 매번 다시 정한다.
+	 */
+	private RuinCoordPlacement.Spot ruinSpot = RuinCoordPlacement.Spot.NONE;
 	/** 증강 목록 전체의 세로 길이(px). 스크롤 범위의 분모다. */
 	private int perkContentHeight;
 	/** 증강 목록이 보이는 창의 세로 길이(px). */
@@ -184,7 +231,7 @@ public class TeamScreen extends Screen {
 	private int perkScroll;
 
 	/**
-	 * 팀을 만들 때 정할 일곱 가지. 아직 팀이 없으니 서버에 있을 수 없어 화면이 들고 있다가
+	 * 팀을 만들 때 정할 여덟 가지. 아직 팀이 없으니 서버에 있을 수 없어 화면이 들고 있다가
 	 * 「팀 만들기」를 누를 때 명령 한 줄로 보낸다. 창을 닫았다 열면 기본값으로 돌아간다.
 	 *
 	 * <p><b>기본값은 서버의 {@link TeamCreationSettings} 와 같아야 한다.</b> 화면에 보이는
@@ -192,13 +239,19 @@ public class TeamScreen extends Screen {
 	 * 실제 팀이 어긋난다. 그래서 <b>서버 상수를 그대로 참조</b>한다 — 숫자를 여기에 옮겨
 	 * 적으면 언젠가 한쪽만 고쳐진다. 증강과 위치 교환이 켬이고 나머지는 끔·서버 설정값이다.
 	 *
-	 * <p>두 알림과 난이도 상승은 <b>만든 뒤에 바꿀 수 없으므로</b> 켜는 것을 일부러 손으로
-	 * 고르게 한다.
+	 * <p>두 알림과 난이도 상승, 드래곤 시련은 <b>만든 뒤에 바꿀 수 없으므로</b> 켜는 것을
+	 * 일부러 손으로 고르게 한다.
+	 *
+	 * <p>⚠ <b>드래곤 시련은 2026-09-30 전까지 늘 켜져 있던 것</b>이라 특히 조심할 자리다.
+	 * 이제 기본값이 끔이므로 <b>시험 월드를 새로 열 때마다 팀을 만들면서 켜 줘야</b> 하고,
+	 * 안 켜면 엔드에 도착해도 카드가 한 장도 안 뜬다. 창을 닫았다 열면 여기 적힌 기본값으로
+	 * 돌아가므로 「아까 켰는데」도 통하지 않는다.
 	 */
 	private boolean newTeamPerks = TeamCreationSettings.DEFAULT_PERKS_ENABLED;
 	private boolean newTeamDamageAlert;
 	private boolean newTeamDeathAlert;
 	private boolean newTeamDifficulty = TeamCreationSettings.DEFAULT_DIFFICULTY_ESCALATION;
+	private boolean newTeamDragonTrials = TeamCreationSettings.DEFAULT_DRAGON_TRIALS;
 	/**
 	 * 서버가 정한 기본 최대 체력을 화면이 알 길이 없다 — 팀에 속하기 전에는 동기화가 오지
 	 * 않는다. 명령이 받는 아래 끝(20)에서 시작한다.
@@ -375,6 +428,11 @@ public class TeamScreen extends Screen {
 							newTeamRerollCount,
 							TeamCreationSettings.MIN_REROLL_COUNT,
 							TeamCreationSettings.MAX_REROLL_COUNT)));
+			// 마지막 줄의 오른쪽은 일곱 가지일 때 비어 있던 자리다. 여덟 번째가 여기 들어가므로
+			// 줄이 늘지 않고 아래 단추와 경고 줄의 y 도 그대로다 — FORM_ROW 문서를 보라.
+			addRenderableWidget(toggle(right, formRowY(3), half, "드래곤 시련",
+					newTeamDragonTrials, "켬", "끔", TeamCreationTooltips.DRAGON_TRIAL,
+					() -> newTeamDragonTrials = !newTeamDragonTrials));
 
 			createButton = Button.builder(Component.literal("팀 만들기"), button -> createTeam())
 					.bounds(left, formRowY(4) + 4, PANEL_WIDTH, FORM_BUTTON_HEIGHT).build();
@@ -512,7 +570,7 @@ public class TeamScreen extends Screen {
 	}
 
 	/**
-	 * 화면이 들고 있던 일곱을 모두 적어 보낸다.
+	 * 화면이 들고 있던 여덟을 모두 적어 보낸다.
 	 *
 	 * <p>적지 않은 항목은 서버가 기본값으로 두는데, 화면에는 이미 다른 값이 보이고 있을 수
 	 * 있어 눈에 보이는 것과 실제가 어긋난다. 그래서 늘 완전한 형태를 보낸다. 낱말 순서는
@@ -531,7 +589,8 @@ public class TeamScreen extends Screen {
 			return;
 		}
 		run(TeamCreationCycle.createCommand(newTeamPerks, newTeamDamageAlert, newTeamDeathAlert,
-				newTeamDifficulty, newTeamMaxHealth, newTeamSwapMinutes, newTeamRerollCount, name));
+				newTeamDifficulty, newTeamDragonTrials, newTeamMaxHealth, newTeamSwapMinutes,
+				newTeamRerollCount, name));
 		awaitingCreate = true;
 	}
 
@@ -583,8 +642,9 @@ public class TeamScreen extends Screen {
 	 */
 	private void layoutPerkList() {
 		perkLines.clear();
-		// 세트 줄을 먼저 정한다. perkListTop() 이 이 목록의 길이를 보고 자리를 내리기 때문에
-		// 순서가 바뀌면 첫 프레임이 옛 길이로 계산된다.
+		// 유적 좌표와 세트 줄을 먼저 정한다. setBlockTop()·perkListTop() 이 이 두 목록의 길이를
+		// 보고 자리를 내리기 때문에, 순서가 바뀌면 첫 프레임이 옛 길이로 계산된다.
+		layoutRuinCoords();
 		setLines = ClientPerkSets.lines(MAX_SET_ROWS);
 		int top = perkListTop();
 		perkViewHeight = Math.max(ROW_HEIGHT, perkListBottom() - top);
@@ -593,7 +653,7 @@ public class TeamScreen extends Screen {
 		List<PerkSyncPayload.Owned> owned = PerkClientState.owned();
 		for (PerkSyncPayload.Owned perk : owned) {
 			// 이름 뒤에 세트 유형을 흐린 글씨로 붙인다 — 「짐꾼 가호」처럼. 어디에도 안 들어가는
-			// 증강 열둘에는 안 붙는다.
+			// 증강 열하나에는 안 붙는다.
 			Component title = Component.literal("· " + perk.name())
 					.withStyle(style -> style.withColor(rarityColor(perk.rarity())));
 			if (perk.hasSetTypes()) {
@@ -620,9 +680,64 @@ public class TeamScreen extends Screen {
 		perkScroll = PanelScroll.clamp(perkScroll, perkContentHeight, perkViewHeight);
 	}
 
-	/** 세트 덩어리가 시작하는 y. 「보유 증강 N개」 머리글 바로 아래다. */
-	private int setBlockTop() {
+	/**
+	 * 「유적 감별사」 좌표 줄들을 접어 두고 세울 자리를 정한다.
+	 *
+	 * <p>판 안에 들일 때만 접는다. 오른쪽에 세우는 경우는 {@link RuinCoordPlacement} 가 이미
+	 * 「가장 긴 줄이 그대로 들어간다」를 확인한 뒤이므로 접을 것이 없다.
+	 */
+	private void layoutRuinCoords() {
+		List<String> coords = PerkClientState.ruinCoords();
+		int widest = 0;
+		for (String coord : coords) {
+			widest = Math.max(widest, this.font.width(coord));
+		}
+		int left = (this.width - PANEL_WIDTH) / 2;
+		ruinSpot = RuinCoordPlacement.choose(coords.size(), this.width, left, PANEL_WIDTH,
+				RUIN_COORD_GAP, widest);
+		if (ruinSpot == RuinCoordPlacement.Spot.NONE) {
+			ruinLines = List.of();
+			return;
+		}
+		List<FormattedCharSequence> lines = new ArrayList<>(coords.size());
+		for (String coord : coords) {
+			if (ruinSpot == RuinCoordPlacement.Spot.RIGHT) {
+				lines.add(FormattedCharSequence.forward(coord, Style.EMPTY));
+			} else {
+				// 판 안에서는 접는다. 접기는 글자를 버리지 않고 다음 줄로 넘기므로 「잘린 좌표」가
+				// 생기지 않는다 — 증강 이름·설명이 쓰는 폭과 같은 값을 쓴다.
+				lines.addAll(this.font.split(Component.literal(coord), PANEL_WIDTH - 8));
+			}
+		}
+		ruinLines = List.copyOf(lines);
+	}
+
+	/**
+	 * 판 안에 들인 좌표 덩어리가 차지하는 세로. 오른쪽에 세웠거나 없으면 0.
+	 *
+	 * <p>세트 덩어리와 같은 셈({@link PerkSetLines#blockHeight})을 쓴다 — 머리글 아래에 줄
+	 * 몇 개와 틈 하나를 두는 모양이 똑같아서, 계산을 새로 만들면 두 덩어리의 간격이 언젠가
+	 * 갈린다.
+	 */
+	private int ruinBlockHeight() {
+		return ruinSpot == RuinCoordPlacement.Spot.INSIDE
+				? PerkSetLines.blockHeight(ruinLines.size(), ROW_HEIGHT, SET_BLOCK_GAP)
+				: 0;
+	}
+
+	/** 판 안에 들인 좌표 덩어리가 시작하는 y. 「보유 증강 N개」 머리글 바로 아래다. */
+	private int ruinBlockTop() {
 		return PANEL_TOP + ROW_HEIGHT + 2;
+	}
+
+	/**
+	 * 세트 덩어리가 시작하는 y. 머리글과 — 판 안에 들였다면 — 유적 좌표 아래다.
+	 *
+	 * <p>좌표를 판 안에 들이면 그만큼 아래의 모든 것이 내려간다. 여기 한 곳만 내리면
+	 * {@link #perkListTop()} 과 그것을 보는 스크롤·잘라내기가 전부 따라온다.
+	 */
+	private int setBlockTop() {
+		return ruinBlockTop() + ruinBlockHeight();
 	}
 
 	/**
@@ -731,12 +846,12 @@ public class TeamScreen extends Screen {
 	private void renderTeam(GuiGraphicsExtractor graphics, int left) {
 		int y = PANEL_TOP;
 		if (!ClientTeamState.inTeam()) {
-			graphics.text(this.font, "새 팀 이름을 적고 일곱 가지를 정한 뒤 만드세요.",
+			graphics.text(this.font, "새 팀 이름을 적고 여덟 가지를 정한 뒤 만드세요.",
 					left, y, TEXT_DIM);
-			// 「팀 만들기」 단추 바로 아래. 일곱 가지 전부 되돌릴 수 없으므로 눈에 띄는 색으로
+			// 「팀 만들기」 단추 바로 아래. 여덟 가지 전부 되돌릴 수 없으므로 눈에 띄는 색으로
 			// 적고, 줄 수를 둘로 줄여 창이 낮을 때 닫기 단추와 겹치지 않게 한다.
 			int noteY = formRowY(4) + 4 + FORM_BUTTON_HEIGHT + 6;
-			graphics.text(this.font, "일곱 가지 모두 팀을 만들 때만 정합니다. 바꾸려면 팀을 해체하세요.",
+			graphics.text(this.font, "여덟 가지 모두 팀을 만들 때만 정합니다. 바꾸려면 팀을 해체하세요.",
 					left, noteY, TEXT_WARN);
 			// 단추가 꺼져 있으면 왜 꺼져 있는지를 늘 보이는 한 줄로 적는다.
 			boolean nameReady = TeamNameInput.valid(newTeamName);
@@ -811,6 +926,12 @@ public class TeamScreen extends Screen {
 				left, y, TEXT_MAIN);
 		y += ROW_HEIGHT;
 		graphics.text(this.font, "사망 알림 " + onOffText(ClientTeamState.deathAlertEnabled()),
+				left, y, TEXT_MAIN);
+		y += ROW_HEIGHT;
+		// 기본값이 끔이라 「켜 준 적이 있는가」를 게임 안에서 확인할 자리가 필요하다. 엔드에
+		// 가서 카드가 안 뜨는 것을 보고 여기를 열면 원인이 바로 읽혀야 한다.
+		graphics.text(this.font, "드래곤 시련 " + (ClientTeamState.dragonTrialsEnabled()
+						? "켜짐" : "꺼짐 (바닐라 엔더 드래곤전)"),
 				left, y, TEXT_MAIN);
 
 		y += ROW_HEIGHT + 6;
@@ -910,6 +1031,9 @@ public class TeamScreen extends Screen {
 				+ (overflows ? "  (휠로 넘겨 보세요)" : ""), left, y, TEXT_MAIN);
 
 		renderSets(graphics, left);
+		// 목록 오른쪽, 바탕판 밖의 빈자리다. 잘라내기를 켜기 전에 그려야 한다 — 잘라내기 범위는
+		// 목록 폭뿐이라 그 안에서 그리면 한 글자도 안 나온다.
+		renderRuinCoords(graphics, left);
 
 		// 창 밖으로 나가는 줄이 그려지지 않게 자른다. 자르지 않으면 스크롤한 목록이 머리글과
 		// 아래 단추를 덮어쓴다.
@@ -931,6 +1055,46 @@ public class TeamScreen extends Screen {
 
 		// 툴팁은 맨 마지막이다. 잘라내기가 풀린 뒤라야 목록 창 밖까지 뻗을 수 있다.
 		renderPerkTooltip(graphics, left, mouseX, mouseY);
+	}
+
+	/**
+	 * 「유적 감별사」 좌표를 그린다. <b>넓으면 목록 오른쪽, 좁으면 판 안 머리글 아래</b>다.
+	 *
+	 * <p>사람이 요청한 모양은 목록 오른쪽이다 — 목록 안이 아니라 그 오른쪽에 좌표만 나열한다.
+	 * 설명 문자열 뒤에 괄호로 붙여 보내던 임시 방편은 규약 35 에서 없앴다
+	 * ({@code PerkSyncPayload} 의 {@code ruinCoords}). <b>두 곳에 같은 좌표가 뜨면 안 된다</b> —
+	 * 그래서 자리는 {@link RuinCoordPlacement} 가 <b>하나만</b> 고른다.
+	 *
+	 * <p>줄은 서버가 만든 것을 글자 그대로 그린다. 「고대 도시  -1234, 567」처럼 이름표와 x·z 가
+	 * 이미 한 줄에 들어 있어 클라이언트가 이을 것이 없다. y 는 서버가 넣지 않는다 — 파고
+	 * 들어갈 자리다.
+	 *
+	 * <h2>「자리가 모자라면 안 그린다」를 걷어냈다</h2>
+	 *
+	 * <p>예전에는 오른쪽에 안 들어가면 아무것도 안 그렸다. 「잘린 좌표는 틀린 좌표다」는 근거는
+	 * 옳지만, 그 규칙이 실제로 한 일은 <b>1920×1080 의 기본 GUI 배율 4</b>(화면 480×270, 판
+	 * 오른쪽에 남는 자리 78px, 좌표 한 줄 104px)에서 좌표를 영영 안 보이게 만든 것이었다 —
+	 * 사람이 겪은 증상이 바로 이것이다. 이 증강이 하는 일은 「채팅이 올라가도 다시 볼 수 있게
+	 * 좌표를 화면에 남기는 것」이라, 안 그리면 증강 자체가 사라진다.
+	 *
+	 * <p>그래서 안 그리는 대신 판 안으로 들인다. 판은 어느 배율에서나 가로 300 이라 좌표 한 줄이
+	 * 늘 들어가고, 판 안에서는 접을 수 있어 잘릴 일도 없다. 배율별 숫자는
+	 * {@code RuinCoordPlacementTest} 가 붙들고 있다.
+	 *
+	 * <p>줄 수는 정의가 정하고 {@code RuinSurveyEffect.MAX_STRUCTURES} 만큼까지다. 지금 쓰이는
+	 * 정의는 둘이라 두 줄이지만, 여기서 둘을 못 박지는 않는다.
+	 */
+	private void renderRuinCoords(GuiGraphicsExtractor graphics, int left) {
+		if (ruinSpot == RuinCoordPlacement.Spot.NONE || ruinLines.isEmpty()) {
+			return;
+		}
+		boolean right = ruinSpot == RuinCoordPlacement.Spot.RIGHT;
+		int x = right ? RuinCoordPlacement.rightX(left, PANEL_WIDTH, RUIN_COORD_GAP) : left;
+		int y = right ? PANEL_TOP : ruinBlockTop();
+		for (FormattedCharSequence line : ruinLines) {
+			graphics.text(this.font, line, x, y, RUIN_COORD);
+			y += ROW_HEIGHT;
+		}
 	}
 
 	/**
@@ -1123,6 +1287,11 @@ public class TeamScreen extends Screen {
 				+ "|" + ClientTeamState.maxHealth() + "|" + PerkClientState.hasPending()
 				// 증강이 늘면 목록을 다시 접어야 한다. init() 이 그 일을 한다.
 				+ "|" + PerkClientState.owned().size()
+				// 유적 좌표는 글자까지 견준다. 「유적 감별사」를 가진 채로 서버를 다시 켜면
+				// 보유 개수는 그대로인데 좌표만 새로 채워져 오고(PerkRuinSurvey.ensure),
+				// 그때 다시 접지 않으면 화면이 계속 좌표 없는 상태로 남는다. 줄은 넷까지라
+				// (RuinSurveyEffect.MAX_STRUCTURES) 매 틱 이어 붙여도 값이 싸다.
+				+ "|" + String.join("·", PerkClientState.ruinCoords())
 				// 세트가 켜지거나 진행도가 오르면 줄의 글자가 바뀌고, 줄 수가 바뀌면 아래
 				// 증강 목록이 통째로 내려간다. 여기 안 넣으면 세트가 켜져도 화면이 그대로다.
 				+ "|" + ClientPerkSets.signature()

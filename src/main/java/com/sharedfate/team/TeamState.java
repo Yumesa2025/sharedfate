@@ -76,6 +76,20 @@ public class TeamState {
 	 */
 	public boolean difficultyEscalationEnabled;
 	/**
+	 * 엔더 드래곤 <b>시련</b>을 쓰는 팀인가. 팀을 만들 때 정하고 그 뒤로는 바꾸는 경로가 없다.
+	 *
+	 * <p>거짓이면 최종 보스가 <b>바닐라 엔더 드래곤전</b>이다. 시련 카드도 고정 시련도 기본
+	 * 패시브({@code DragonPassives})도 돌지 않고, 드래곤 체력은 바닐라 200 그대로다 —
+	 * {@code SharedFateConfig.dragonHealthPerMember} 는 이 팀에게 <b>아예 읽히지 않는다.</b>
+	 * 가르는 자리는 {@code com.sharedfate.sync.DragonTrialManager} 한 곳이다.
+	 *
+	 * <p><b>기본값이 거짓이다.</b> 저장에 이 항목이 없는 예전 월드의 팀도 거짓으로 읽힌다 —
+	 * 시련은 {@code feature/dragon-trials} 밖으로 나간 적이 없으므로 「예전 월드의 팀은 시련을
+	 * 쓰고 있었다」고 볼 근거가 없고, 기본값과 다르게 읽으면 같은 팀이 켜 준 적도 없는 설정을
+	 * 켠 채로 되살아난다.
+	 */
+	public boolean dragonTrialsEnabled;
+	/**
 	 * 이 회차에서 <b>팀원이 한 명이라도 접속해 있던</b> 시간(틱). 난이도 상승 단계를 이걸로 센다.
 	 *
 	 * <p>월드 저장에 들어가므로 서버를 껐다 켜도 이어지고, <b>서버가 꺼져 있던 시간은 세지
@@ -798,7 +812,12 @@ public class TeamState {
 			// 이 항목이 없는 예전 월드는 0 으로 읽는다 — 「아직 모른다」가 맞다. 그 월드에서는
 			// 게임 시간의 배수가 경계였으므로 켜진 시점이라는 값 자체가 없었다.
 			Codec.LONG.optionalFieldOf("supplyAnchorTick", 0L)
-					.<TeamState>forGetter(state -> state.supplyAnchorTick)
+					.<TeamState>forGetter(state -> state.supplyAnchorTick),
+			// 이 항목이 없는 예전 월드는 거짓으로 읽는다 — 기본값과 같아야 한다. 까닭은
+			// dragonTrialsEnabled 필드 문서에 적어 뒀다. 끈 팀은 저장에도 적히지 않아
+			// 형태가 예전과 같다.
+			Codec.BOOL.optionalFieldOf("dragonTrials", false)
+					.<TeamState>forGetter(state -> state.dragonTrialsEnabled)
 	).apply(instance, TeamState::withStoredSections));
 
 	/**
@@ -821,7 +840,9 @@ public class TeamState {
 	private static TeamState withStoredSections(TeamState state, PerkSection perks,
 			Optional<Float> baseMaxHealth, AlertSection alerts, List<ItemStack> legacyGear,
 			DifficultySection difficulty, boolean perkTestUsed, RerollSection reroll,
-			boolean runStarted, int extraPrismRounds, long supplyAnchorTick) {
+			boolean runStarted, int extraPrismRounds, long supplyAnchorTick,
+			boolean dragonTrials) {
+		state.dragonTrialsEnabled = dragonTrials;
 		state.supplyAnchorTick = Math.max(0L, supplyAnchorTick);
 		state.runStarted = runStarted;
 		// applyPerkSection 이 sanitizePerks 로 이 값까지 접으므로 그보다 먼저 채워야 한다.
