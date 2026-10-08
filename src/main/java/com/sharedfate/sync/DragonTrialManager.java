@@ -139,7 +139,7 @@ public final class DragonTrialManager {
 	 * 세션 루프가 실행기(자리 감지 · 최후의 저항 · 입장 연출 · 룰렛 · 패시브 · 위험)를 마지막으로 돌린
 	 * 게임 시각. {@link #executorsDue} 가 이것과 지금을 견준다.
 	 *
-	 * <h2>이것이 없어서 일어나던 일 (2026-10-06 Orca 검토 F-verified 의 V3)</h2>
+	 * <h2>이것이 없어서 일어나던 일 (2026-10-06 검토에서 확정된 문제)</h2>
 	 *
 	 * <p>판이 얼면 — 시련 룰렛·고정 화면({@code TrialFreeze}), 증강 선택({@code PerkChoiceSession}),
 	 * 운영자의 {@code /tick freeze} — 26.3 {@code ServerLevel.tick} 이 {@code runsNormally()} 가
@@ -486,8 +486,8 @@ public final class DragonTrialManager {
 			float healthRatio = dragon == null || !(dragon.getMaxHealth() > 0.0F)
 					? Float.NaN
 					: dragon.getHealth() / dragon.getMaxHealth();
-			// 누가 어느 묶음을 받는지는 TrialTimers.audienceOf 가 고른다 — 2026-10-06 Orca 검토
-			// F-verified 의 V10 으로 시험이 굴릴 수 있게 떼어 냈다. 여기 남은 것은 월드에서 팀과
+			// 누가 어느 묶음을 받는지는 TrialTimers.audienceOf 가 고른다 — 2026-10-06 검토에서
+			// 확정된 문제로 시험이 굴릴 수 있게 떼어 냈다. 여기 남은 것은 월드에서 팀과
 			// 「엔드에 선 팀원」을 찾아 주는 것뿐이다.
 			audience = TrialTimers.audienceOf(SESSIONS.values(), teamId -> {
 				ShareTeam team = TeamManager.get(server).teamById(teamId);
@@ -770,7 +770,7 @@ public final class DragonTrialManager {
 	/**
 	 * 시련을 켠 채 열려 있는 세션의 팀. 없으면 {@code null}. <b>월드를 모른다 — 시험이 직접 굴린다.</b>
 	 *
-	 * <h2>시련 세션은 한 번에 하나다 (2026-10-06 Orca 검토 F-verified 의 V2)</h2>
+	 * <h2>시련 세션은 한 번에 하나다 (2026-10-06 검토에서 확정된 문제)</h2>
 	 *
 	 * <p>시련의 실행기 상태는 팀별이 아니라 <b>정적 한 벌</b>이다 — 연쇄 포격·착지·착지 충격·엔더폭풍은
 	 * {@code granted != 기억값} 이면 {@code clearState()} 하고, 최후의 저항의 번개·오브젝트·면도
@@ -862,7 +862,7 @@ public final class DragonTrialManager {
 			if (team == null) {
 				// 팀이 전투 중에 사라졌다(해체·마지막 팀원 탈퇴). 세션만 지우면 최후의 저항의 판이
 				// STANDS 에 남아 다음 판 보호막이 영영 서고·지대가 꺼지고·접촉 깃발이 서버 재시작까지
-				// 붙들린다 — 2026-10-06 Orca 검토 F-verified 의 V1. 거두는 것은 저쪽 한 곳이다.
+				// 붙들린다 — 2026-10-06 검토에서 확정된 문제. 거두는 것은 저쪽 한 곳이다.
 				SharedFateMod.LOGGER.info("[END] 팀({})이 전투 중에 사라져 세션을 닫습니다",
 						entry.getKey());
 				DragonLastStand.onTeamGone(end, entry.getKey());
@@ -986,7 +986,7 @@ public final class DragonTrialManager {
 	 *
 	 * <p>되돌리는 상태는 시련을 켠 세션만 만든다. 그리고 시련 세션은 이제 한 번에 하나다
 	 * ({@link #startSession} 의 「시련 세션은 하나」). 전에는 세션이 하나라도 남으면 돌아갔으므로,
-	 * 시련 팀이 사라지고(F-verified 의 V1) 시련을 끈 팀이 같은 엔드에서 싸우고 있으면 화살 면역·적대
+	 * 시련 팀이 사라지고(2026-10-06 검토에서 확정된 문제) 시련을 끈 팀이 같은 엔드에서 싸우고 있으면 화살 면역·적대
 	 * 엔더맨 같은 시련의 흔적이 <b>그 바닐라 판에 남았다.</b> 끈 팀의 세션은 이 상태를 읽지도 쓰지도
 	 * 않으므로 그 팀이 남아 있어도 비워도 된다.
 	 */

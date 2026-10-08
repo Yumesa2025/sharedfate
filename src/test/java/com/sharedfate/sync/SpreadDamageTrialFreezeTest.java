@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 시련 화면({@link TrialFreeze})이 판을 얼리는 동안 「완충」의 남은 몫이 <b>줄지 않고 기다린다</b>는
- * 것을 못박는다(2026-10-06 Orca 검토 F-verified 의 V6).
+ * 것을 못박는다(2026-10-06 검토에서 확정된 문제).
  *
  * <p>예전에는 {@link SpreadDamageManager#tick} 이 증강 선택·게임 오버 카운트다운에만 멈췄다. 몫은
  * 큐에서 먼저 떼어 낸 뒤 {@code hurtServer} 로 들어가는데, 그 HEAD 가 시련 화면 동안 피해를 버리므로

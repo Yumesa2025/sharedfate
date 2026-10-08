@@ -251,8 +251,8 @@ public final class DragonLastStandShield {
 	private static long deflectDrawnAt = Long.MIN_VALUE;
 	/**
 	 * 마지막으로 반구를 그린 틱. 같은 틱에 두 번 불려도 한 번만 긋는다 — 팀이 둘이던 때는
-	 * {@code DragonLastStand.tick} 이 한 틱에 두 번 불렀고(지금은 시련 세션이 하나다, 2026-10-06 Orca 검토
-	 * F-verified 의 V2), 판이 얼어 있는 틱에는 {@code DragonLastStand.holdShield} 가 <b>같은 게임 시각</b>으로
+	 * {@code DragonLastStand.tick} 이 한 틱에 두 번 불렀고(지금은 시련 세션이 하나다, 2026-10-06 검토에서
+	 * 확정된 문제), 판이 얼어 있는 틱에는 {@code DragonLastStand.holdShield} 가 <b>같은 게임 시각</b>으로
 	 * 매 서버 틱 다시 부른다(V3). 두 길 다 이 칸이 막는다.
 	 */
 	private static long domeDrawnAt = Long.MIN_VALUE;

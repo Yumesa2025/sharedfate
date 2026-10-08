@@ -227,7 +227,7 @@ import java.util.UUID;
  *       <b>날개 밀치기가 둘 다 꺼지고</b> 블록 부수기({@code checkWalls})만 그대로다.
  *       ⚠ 전에는 이 자리에 「날개 밀치기는 남는다 — 바닐라가 이미 하는 짓」이라 적혀 있었다.
  *       2026-10-04 에 그 판단이 틀린 것으로 드러나 믹스인이 {@code knockBack} 도 끊게 됐는데
- *       이 문단만 옛 문장으로 남아 있었다(2026-10-06 Orca 검토 F-verified 의 E-5 · A-8).
+ *       이 문단만 옛 문장으로 남아 있었다(2026-10-06 검토에서 확정된 문제).
  *       {@code knockBack} 안의 {@code !isSitting()} 은 <b>5 피해에만</b> 붙어 있고 미는 힘은
  *       조건 없이 돈다 — 그 값을 우리 넉백의 {@code syncVelocity} 가 본인에게 배달해 「점프하면
  *       하늘로 날아간다」가 됐다. 까닭은 믹스인 클래스 설명의 「날개 밀치기도 끈다」 절에 있다.
@@ -1036,7 +1036,7 @@ public final class DragonLastStand {
 	 * <p>판 전체에 하나다 — 드래곤이 차원에 하나라 「어느 팀의 보호막인가」를 물을 자리가 없다
 	 * ({@link #contactDamageOff} 와 같은 판단). 팀이 둘이면 이 메서드가 한 틱에 두 번 불리는데,
 	 * 둘째가 첫째 뒤의 상태를 다시 읽으므로 그 틱의 마지막 답이 맞는 답이다. 지금은 시련 세션이 한
-	 * 번에 하나라({@code DragonTrialManager.trialHolder}, 2026-10-06 Orca 검토 F-verified 의 V2) 도는 판이
+	 * 번에 하나라({@code DragonTrialManager.trialHolder}, 2026-10-06 검토에서 확정된 문제) 도는 판이
 	 * 많아야 하나다 — 그래도 판 전체를 훑는 모양은 남겨 둔다. ⚠ 그 대신 <b>팀이 사라진 판을 반드시
 	 * 거둬야 한다</b>({@link #onTeamGone}, V1) — 남으면 이 훑기가 죽은 판의 맥박을 대신 세운다.
 	 *
@@ -1066,7 +1066,7 @@ public final class DragonLastStand {
 	 * <b>판이 얼어 있는 틱</b>에 보호막 맥박만 이어 간다. {@code DragonTrialManager.tickSessions} 가
 	 * {@link #tick} 대신 부른다.
 	 *
-	 * <h2>왜 따로 있는가 (2026-10-06 Orca 검토 F-verified 의 V3)</h2>
+	 * <h2>왜 따로 있는가 (2026-10-06 검토에서 확정된 문제)</h2>
 	 *
 	 * <p>룰렛·증강 선택·{@code /tick freeze} 로 판이 얼면 게임 시각이 서는데 우리 틱은 매 서버 틱
 	 * 돈다. 그래서 실행기가 <b>같은 {@code now} 로 수백 번</b> 다시 불려 발동 틱의 소리·번개·밖 피해가
@@ -1528,7 +1528,7 @@ public final class DragonLastStand {
 	 * {@code DragonTrialManager.tickSessions} 가 {@code teamById} 가 {@code null} 인 세션을 닫는
 	 * 틱에 부른다. 최후의 저항이 돌고 있지 않았으면 아무 일도 하지 않는다.
 	 *
-	 * <h2>이것이 없어서 열려 있던 길 (2026-10-06 Orca 검토 F-verified 의 V1)</h2>
+	 * <h2>이것이 없어서 열려 있던 길 (2026-10-06 검토에서 확정된 문제)</h2>
 	 *
 	 * <p>그 갈래는 세션을 지우기만 하고 여기를 지나지 않았다. 그래서 사라진 팀의 {@code Stand} 가
 	 * {@link #STANDS} 에 서버가 내려갈 때까지 남아 <b>다른 판의 판정에 끼어들었다.</b>
@@ -1562,7 +1562,7 @@ public final class DragonLastStand {
 	 * </ul>
 	 *
 	 * <p>⚠ 시련 세션이 한 번에 하나뿐이라({@code DragonTrialManager.startSession} 의 「시련 세션은
-	 * 하나」, F-verified 의 V2) 여기서 판 전체 상태를 거둬도 <b>다른 팀의 판을 지우지 않는다.</b>
+	 * 하나」) 여기서 판 전체 상태를 거둬도 <b>다른 팀의 판을 지우지 않는다.</b>
 	 *
 	 * @param end    엔드. {@code null} 이면 월드를 만지는 둘(보스바 이름·놓아주기)만 건너뛴다
 	 * @param teamId 사라진 팀

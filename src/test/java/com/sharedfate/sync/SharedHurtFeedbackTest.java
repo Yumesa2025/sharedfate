@@ -195,8 +195,8 @@ class SharedHurtFeedbackTest {
 	 * <b>같은 꼬리의 뒤 소비자도 미룬 양을 본다.</b> {@code AFTER_DAMAGE} 에는 이 클래스가 맨 먼저
 	 * 등록되고 그 뒤에 {@code on_team_hurt}({@code PerkTriggers})·{@code pass_on_hurt}
 	 * ({@code PerkHolderManager})가 온다. 예전에는 여기서 미룬 양을 꺼내며 지워, 뒤의 둘이 처음 맞은
-	 * 순간을 「피해 0」으로 읽고 건너뛰었다 — 그리고 몫마다 돌았다(2026-10-06 Orca 검토 F-verified
-	 * 의 V7). 뒤의 둘이 읽는 값은 {@link SpreadDamageManager#hurtTaken} 그대로다.
+	 * 순간을 「피해 0」으로 읽고 건너뛰었다 — 그리고 몫마다 돌았다(2026-10-06 검토에서 확정된
+	 * 문제). 뒤의 둘이 읽는 값은 {@link SpreadDamageManager#hurtTaken} 그대로다.
 	 */
 	@Test
 	void 팀원_피격음을_보낸_뒤에도_같은_호출의_뒤_소비자는_미룬_양을_본다() throws Exception {

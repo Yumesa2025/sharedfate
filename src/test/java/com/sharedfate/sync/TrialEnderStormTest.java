@@ -217,8 +217,8 @@ class TrialEnderStormTest {
 	 *
 	 * <p>반경 천장({@code pushDistance})은 중앙에서 잰 거리만 안다. 중앙 섬은 둥글지 않아 반경 32
 	 * 안에도 빈 곳이 있다. 다른 밀치기 셋({@code TrialLandingShock.push}·{@code TrialEnderPulse}·
-	 * 날개 퍼덕이기)은 {@code groundedReach} 로 그 길을 짚는데 이 카드만 안 짚었다 — 2026-10-06 Orca
-	 * 검토 F-verified 의 V4. 고치기 전에는 {@code groundedPushDistance} 가 없어 이 시험이 컴파일도
+	 * 날개 퍼덕이기)은 {@code groundedReach} 로 그 길을 짚는데 이 카드만 안 짚었다 — 2026-10-06
+	 * 검토에서 확정된 문제. 고치기 전에는 {@code groundedPushDistance} 가 없어 이 시험이 컴파일도
 	 * 안 됐고, 반경 천장만 쓰던 값({@code pushDistance})은 홈을 지나쳐 낙사 자리까지 나온다.
 	 */
 	@Test

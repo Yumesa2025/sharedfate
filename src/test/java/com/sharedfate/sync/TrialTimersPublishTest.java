@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * 드래곤 패턴 타이머 HUD 의 서버 쪽 — <b>누구에게 · 언제</b> 보내는가.
  *
- * <p>2026-10-06 Orca 검토 F-verified 의 V10: 보내기·지우기·받는 사람 로직에 시험이 하나도 없었다.
+ * <p>2026-10-06 검토에서 확정된 문제: 보내기·지우기·받는 사람 로직에 시험이 하나도 없었다.
  * 지금 코드는 맞게 돌지만 줄 순서 하나만 바뀌어도 조용히 깨지는 종류라, 결정부를 순수 함수
  * ({@link TrialTimers#plan} · {@link TrialTimers#audienceOf})로 떼어 여기서 굴린다. 사람과 연결은
  * UUID 와 「보낼 수 있는가」 술어로 바꿔 넣는다.

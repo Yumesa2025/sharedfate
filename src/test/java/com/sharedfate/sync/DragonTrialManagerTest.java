@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * 세션 루프의 <b>수명</b> — 얼어 있는 틱에 실행기를 다시 돌리지 않는 것(V3)과, 시련 세션을 한 번에
- * 하나로 두는 것(V2). 둘 다 2026-10-06 Orca 검토 F-verified 에서 나왔다.
+ * 하나로 두는 것(V2). 둘 다 2026-10-06 검토에서 확정된 문제다.
  *
  * <p>월드 없이 두 순수 함수({@link DragonTrialManager#executorsDue},
  * {@link DragonTrialManager#trialHolder})를 굴리고, 그 함수가 실제로 배선돼 있는지는 클래스 바이트로 본다.
@@ -35,7 +35,7 @@ class DragonTrialManagerTest {
 	 * 룰렛 하나(정지 337 서버 틱) 동안 게임 시각이 서 있으면 실행기는 <b>한 번</b>만 돈다.
 	 *
 	 * <p>고치기 전에는 매 서버 틱 돌아 337번이었다 — 발동 틱에 걸리면 폭발음·번개 엔티티·튕김이 그만큼
-	 * 되풀이됐다(F-verified V3, 원 보고 B-2).
+	 * 되풀이됐다(2026-10-06 검토에서 확정된 문제).
 	 */
 	@Test
 	void 얼어_있는_동안_같은_시각으로는_한_번만_돈다() {

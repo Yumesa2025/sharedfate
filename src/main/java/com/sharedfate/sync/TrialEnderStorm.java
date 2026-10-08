@@ -55,8 +55,8 @@ import java.util.UUID;
  *       점도 {@link #pushLimitRadius} 안이다. 산수는 값을 고치는 사람이 안 볼 수 있지만 이
  *       함수는 못 피한다. <b>지우면 이 카드는 그날로 전멸 카드다</b>. 다만 이 천장은 반경만 알아서
 	 *       <b>길에 허공이 있는지는 모른다</b> — 그래서 {@link #groundedPushDistance} 가 그 뒤에
-	 *       {@link TrialLandingShock#groundedReach} 로 길을 한 번 더 짚는다(2026-10-06 Orca 검토
-	 *       F-verified 의 V4 — 다른 밀치기 셋은 이미 둘을 다 지났는데 이 카드만 앞의 하나였다)</li>
+	 *       {@link TrialLandingShock#groundedReach} 로 길을 한 번 더 짚는다(2026-10-06 검토에서
+	 *       확정된 문제 — 다른 밀치기 셋은 이미 둘을 다 지났는데 이 카드만 앞의 하나였다)</li>
  *   <li><b>방향을 사람에게서 구하지 않는다.</b> {@link #push} 가 쓰는 벡터는 <b>소용돌이가
  *       나아가는 방향의 반대</b>({@code +outward}) 하나뿐이고, 사람의 좌표는 한 번도 들어가지
  *       않는다. 「사람과 소용돌이의 상대 위치」로 방향을 잡으면 소용돌이보다 안쪽에 선 사람이
@@ -733,8 +733,8 @@ public final class TrialEnderStorm {
 	 * 선 사람은 중앙을 가로질러 반대편으로 날아간다.
 	 *
 	 * <p>⚠ <b>천장이 둘이다</b> — {@link #groundedPushDistance} 가 {@link #pushDistance} 뒤에
-	 * {@link TrialLandingShock#groundedReach} 로 길의 땅을 한 번 더 확인한다(2026-10-06 Orca 검토
-	 * F-verified 의 V4). 전에는 앞의 하나뿐이라 반경 32 안의 허공 홈으로 밀 수 있었다.
+	 * {@link TrialLandingShock#groundedReach} 로 길의 땅을 한 번 더 확인한다(2026-10-06 검토에서
+	 * 확정된 문제). 전에는 앞의 하나뿐이라 반경 32 안의 허공 홈으로 밀 수 있었다.
 	 *
 	 * <p>속도를 <b>더하지 않고 덮어쓴다</b>({@code setDeltaMovement}). 더하면 이미 들고 있던
 	 * 수평 속도가 얹혀 천장이 계산한 목적지를 넘는다.
@@ -1169,7 +1169,7 @@ public final class TrialEnderStorm {
 	 * 있고({@code TrialRisks.pickSpot} 의 설명) 사람이 파 놓은 구멍도 있다. 그런 자리로 밀면
 	 * 천장을 지켰는데도 낙사다. 「착지 충격」·「엔더 파동」·날개 퍼덕이기는 이미 두 천장을 다
 	 * 지나는데 <b>이 카드만 앞의 하나였다</b> — 5장 「넉백에는 천장이 있습니다」의 두 원칙 가운데
-	 * 뒤의 것이 빠져 있었다(2026-10-06 Orca 검토 F-verified 의 V4).
+	 * 뒤의 것이 빠져 있었다(2026-10-06 검토에서 확정된 문제).
 	 *
 	 * <p>월드를 묻지 않고 {@code probe} 를 받는다. <b>낙사를 막는 함수라 시험이 월드 없이 섬 곳곳을
 	 * 훑을 수 있어야</b> 하기 때문이다. 값은 {@link #pushDistance} 를 <b>넘지 않으므로</b> 반경

@@ -38,7 +38,7 @@ import java.util.UUID;
  * 것을 쓴다.
  *
  * <p>미룬 양은 <b>꺼내지 않고 들여다본다.</b> 예전에는 여기서 꺼내며 지워, 뒤에 등록된 두 소비자가
- * 처음 맞은 순간을 「피해 0」으로 읽었다(2026-10-06 Orca 검토 F-verified 의 V7).
+ * 처음 맞은 순간을 「피해 0」으로 읽었다(2026-10-06 검토에서 확정된 문제).
  */
 public final class SharedHurtFeedback {
 	private SharedHurtFeedback() {
@@ -47,7 +47,7 @@ public final class SharedHurtFeedback {
 	public static void onDamage(LivingEntity entity, DamageSource source,
 			float baseDamageTaken, float damageTaken, boolean blocked) {
 		// 미룬 양은 꺼내지 않고 들여다만 본다. 같은 꼬리에서 뒤에 등록된 on_team_hurt·pass_on_hurt
-		// 도 같은 값을 봐야 한다(2026-10-06 Orca 검토 F-verified 의 V7). 지우는 것은 다음 intercept 다.
+		// 도 같은 값을 봐야 한다(2026-10-06 검토에서 확정된 문제). 지우는 것은 다음 intercept 다.
 		float deferred = SpreadDamageManager.deferredHit(entity.getUUID());
 		if (!(entity instanceof ServerPlayer victim) || !shouldEcho(blocked, damageTaken, deferred,
 				SpreadDamageManager.isDeliveringSlice())) {

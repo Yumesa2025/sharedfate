@@ -664,7 +664,7 @@ class DragonLastStandTest {
 	 * 첫 패턴 전에 버려진 판은 <b>언제까지나</b> 보호막을 원한다 — 거두지 않으면 남의 tick 이 그 맥박을
 	 * 대신 세운다.
 	 *
-	 * <p>2026-10-06 Orca 검토 F-verified 의 V1 의 전제다. 이 단언이 거짓이 되면(예: 보호막에 기한이
+	 * <p>2026-10-06 검토에서 확정된 문제의 전제다. 이 단언이 거짓이 되면(예: 보호막에 기한이
 	 * 붙으면) {@link DragonLastStand#onTeamGone} 의 무게가 달라지므로 함께 본다.
 	 */
 	@Test
@@ -680,7 +680,7 @@ class DragonLastStandTest {
 	 *
 	 * <p>고치기 전에는 그 갈래({@code DragonTrialManager.tickSessions} 의 {@code team == null})가 세션만
 	 * 지워, 다음 팀의 최후의 저항 내내 드래곤이 안 맞고(보호막) 서버 재시작까지 접촉 피해·날개
-	 * 밀치기가 꺼졌다(F-verified V1).
+	 * 밀치기가 꺼졌다(2026-10-06 검토에서 확정된 문제).
 	 */
 	@Test
 	void 팀이_사라지면_판을_거둔다() {

@@ -250,7 +250,7 @@ class SpreadDamageFirstHitTargetTest {
 	/**
 	 * <b>HEAD 의 버리기 검사.</b> 몫을 받는 사람이면 낙하 방패·공유 상태이상 중복·광역 중복을
 	 * 건너뛴다. 예전에는 몫이 이 셋을 다시 지나 버려졌고, 떼어 낸 몫은 그대로 사라졌다(2026-10-06
-	 * Orca 검토 F-verified 의 V8). 묻는 자리는 판이 멈춘 검사(증강 선택·회차 시작 전·시련 화면) 뒤,
+	 * 검토에서 확정된 문제). 묻는 자리는 판이 멈춘 검사(증강 선택·회차 시작 전·시련 화면) 뒤,
 	 * 세 검사 앞이다. 「호위」({@code blocksMobDamage})는 몫에도 돌아야 하므로 그대로 있어야 한다.
 	 */
 	@Test
@@ -279,7 +279,7 @@ class SpreadDamageFirstHitTargetTest {
 	 * <b>{@code AFTER_DAMAGE} 소비자 전부가 같은 「맞은 양」 판정을 지난다.</b> Fabric 의
 	 * {@code damageTaken} 은 완충이 미룬 첫 피해에서 0, 몫에서 몫 크기라, 그대로 믿는 소비자는
 	 * 「처음엔 안 돌고 몫마다 돈다」. 피격음·피격 알림만 고쳐지고 {@code on_team_hurt}·
-	 * {@code pass_on_hurt} 가 남아 있었다(2026-10-06 Orca 검토 F-verified 의 V7). 문서 6장 「한쪽만
+	 * {@code pass_on_hurt} 가 남아 있었다(2026-10-06 검토에서 확정된 문제). 문서 6장 「한쪽만
 	 * 막으면 반드시 샌다」 — 그래서 {@code SharedFateMod} 가 등록하는 소비자 목록 자체를 읽어 붙든다.
 	 * 새 소비자가 생기면 여기가 빨개진다.
 	 */

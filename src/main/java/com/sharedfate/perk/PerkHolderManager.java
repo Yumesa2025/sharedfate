@@ -611,7 +611,7 @@ public final class PerkHolderManager {
 	 *
 	 * <p>{@code damageTaken} 은 {@link SpreadDamageManager#hurtTaken} 으로 고쳐 읽는다. 「완충」을 가진
 	 * 팀에서는 처음 맞은 순간 피해가 0 으로 미뤄지고 그 뒤 몫이 1초마다 들어와, 그대로 믿으면 맞은
-	 * 순간엔 안 넘어가고 몫이 올 때마다 넘어갔다(2026-10-06 Orca 검토 F-verified 의 V7). 지금은
+	 * 순간엔 안 넘어가고 몫이 올 때마다 넘어갔다(2026-10-06 검토에서 확정된 문제). 지금은
 	 * 몫이면 건너뛰고 미룬 첫 피해면 미룬 양으로 세어, 맞은 그 순간에 한 번 넘어간다.
 	 */
 	public static void onDamage(LivingEntity victim, DamageSource source,

@@ -284,7 +284,7 @@ class SpreadDamageFirstHitTest {
 
 	/**
 	 * <b>HEAD 의 처음 맞을 때 검사도 몫을 받는 사람에게만 건너뛴다.</b> 낙하 방패·광역 중복이 몫을
-	 * 버리면 떼어 낸 몫이 그대로 사라졌다(2026-10-06 Orca 검토 F-verified 의 V8). HEAD 가 이 판정을
+	 * 버리면 떼어 낸 몫이 그대로 사라졌다(2026-10-06 검토에서 확정된 문제). HEAD 가 이 판정을
 	 * 그 검사들 앞에서 묻는다는 것은 {@code SpreadDamageFirstHitTargetTest} 가 바이트코드로 붙든다.
 	 * 같은 틱에 맞은 <b>다른 팀원</b>의 진짜 피해는 예전처럼 광역 중복 판정을 받아야 한다.
 	 */

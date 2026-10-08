@@ -684,8 +684,8 @@ public final class DragonLastStandObjects {
 	 *
 	 * <p>⚠ 다만 지대와 달리 {@link #tick} 에는 「남의 판이면 돌아간다」 문이 <b>없다</b> — 원점이 다르면
 	 * {@code clearState()} 로 새로 연다. 그래서 두 판이 다른 틱에 들면 매 틱 서로를 지웠다. 지금은 시련
-	 * 세션이 한 번에 하나라({@code DragonTrialManager.trialHolder}) 두 판이 서지 않는다(2026-10-06 Orca
-	 * 검토 F-verified 의 V2). 그 규칙을 풀 사람은 여기에 지대와 같은 문을 먼저 달 것.
+	 * 세션이 한 번에 하나라({@code DragonTrialManager.trialHolder}) 두 판이 서지 않는다(2026-10-06
+	 * 검토에서 확정된 문제). 그 규칙을 풀 사람은 여기에 지대와 같은 문을 먼저 달 것.
 	 */
 	private static long owner = Long.MIN_VALUE;
 

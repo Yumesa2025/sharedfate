@@ -176,7 +176,7 @@ public final class SpreadDamageManager {
 	 * {@link #reset} 뿐이다. <b>읽는 쪽은 꺼내 가지 않는다</b>({@link #deferredHit}). 같은 꼬리에서
 	 * 이 값을 보는 소비자가 넷(팀원 피격음·{@code on_team_hurt}·{@code pass_on_hurt}, 그리고 그 판정을
 	 * 같이 쓰는 피격 알림)인데, 예전처럼 꺼내며 지우면 먼저 등록된 {@link SharedHurtFeedback} 이
-	 * 가져가 버려 뒤의 둘은 「아무 피해도 없었다」로 읽었다(2026-10-06 Orca 검토 F-verified 의 V7).
+	 * 가져가 버려 뒤의 둘은 「아무 피해도 없었다」로 읽었다(2026-10-06 검토에서 확정된 문제).
 	 *
 	 * <p>꺼내 가지 않아도 다음 사건으로 새지 않는다. 26.3 {@code hurtServer} 바이트코드에서 꼬리
 	 * ({@code AFTER_DAMAGE}, 637행 {@code ireturn} 앞)에 닿는 길은 전부 79행 방패 판정과 88행 저장
@@ -337,7 +337,7 @@ public final class SpreadDamageManager {
 	 *
 	 * <p>처음 맞은 순간은 체력이 그대로라 알림이 체력만 보면 놓친다. 이 값이 0 보다 크면 체력이
 	 * 안 줄었어도 알린다 — 팀원 피격음이 {@link #deferredHit}(→ {@link #hurtTaken})를 보는 것과 같은
-	 * 원리다. ⚠ 그쪽은 2026-10-06 Orca 검토 F-verified 의 V7 로 「꺼내며 지움」(옛 이름
+	 * 원리다. ⚠ 그쪽은 2026-10-06 검토에서 확정된 문제로 「꺼내며 지움」(옛 이름
 	 * {@code takeDeferredHit})에서 「들여다보기」가 됐지만 이 값은 여전히 꺼내며 지운다 — 읽는 곳이
 	 * {@code StatMirror} 한 바퀴 하나뿐이라서다.
 	 */
@@ -478,7 +478,7 @@ public final class SpreadDamageManager {
 	 * {@code on_team_hurt}(동병상련·반격, {@code PerkTriggers}), {@code pass_on_hurt}
 	 * ({@code PerkHolderManager}). 예전에는 앞의 둘만 이 갈래를 알아 뒤의 둘이 <b>처음엔 안 돌고
 	 * 몫마다 돌았다</b> — 완충 + 동병상련이면 1초마다 오는 몫이 2초짜리 저항 II 를 다시 채워 약
-	 * 9초 내내 유지됐다(2026-10-06 Orca 검토 F-verified 의 V7). 문서 6장 「한쪽만 막으면 반드시
+	 * 9초 내내 유지됐다(2026-10-06 검토에서 확정된 문제). 문서 6장 「한쪽만 막으면 반드시
 	 * 샌다」 그대로라, 새 {@code AFTER_DAMAGE} 소비자도 이것을 지나야 한다.
 	 *
 	 * @param victim      맞은 엔티티
@@ -600,7 +600,7 @@ public final class SpreadDamageManager {
 	 * 곧바로 빠져나가는 빠른 경로를 갖고 있어, 실제로 「완충」을 가진 팀의 피해에만 얹힌다.
 	 *
 	 * <p>시련 화면({@link TrialFreeze})은 HEAD 가 같은 판정으로 먼저 버리므로 여기까지 오지 않지만,
-	 * HEAD 의 다른 「통째로 버림」과 한 벌로 맞춰 둔다(2026-10-06 Orca 검토 F-verified 의 V6 에서
+	 * HEAD 의 다른 「통째로 버림」과 한 벌로 맞춰 둔다(2026-10-06 검토에서 확정된 문제 —
 	 * 이 목록에 그것만 빠져 있었다).
 	 */
 	private static boolean discarded(ServerPlayer victim, @Nullable DamageSource source) {
@@ -621,8 +621,8 @@ public final class SpreadDamageManager {
 	 * 동안에는 진행하지 않는다. 시간이 멈춰 있고 팀원은 창에 갇혀 있어 피할 수도 없다. 남은 몫은
 	 * <b>줄지 않고 그대로</b> 기다리고, 흉내 낸 무적시간({@link Guard})도 같이 멈춘다.
 	 *
-	 * <p>시련 화면이 이 목록에 빠져 있던 동안에는 몫이 <b>통째로 사라졌다</b>(2026-10-06 Orca 검토
-	 * F-verified 의 V6). 이 틱은 {@code END_SERVER_TICK} 이라 판이 얼어 있어도 돌고, 몫은
+	 * <p>시련 화면이 이 목록에 빠져 있던 동안에는 몫이 <b>통째로 사라졌다</b>(2026-10-06 검토에서
+	 * 확정된 문제). 이 틱은 {@code END_SERVER_TICK} 이라 판이 얼어 있어도 돌고, 몫은
 	 * {@code takeSlice} 로 먼저 떼어 낸 뒤 {@code hurtServer} 로 들어가는데, 그 HEAD
 	 * ({@code LivingEntityPerkDamageMixin})가 {@code TrialFreeze.blocksDamage} 로 피해를 버린다.
 	 * 룰렛 337틱·카드 화면 300틱이면 8초짜리 몫이 전부 사라져, 룰렛이 「완충」의 대가를 지우는
@@ -803,7 +803,7 @@ public final class SpreadDamageManager {
 	 * <p>{@code LivingEntityPerkDamageMixin} HEAD 는 버릴 피해를 {@code false} 로 끝낸다. 몫은 이미
 	 * {@link Spread#takeSlice} 로 떼어 낸 뒤라 거기서 버려지면 <b>그대로 사라진다.</b> 그래서 몫을 받는
 	 * 사람({@link #receivingSlice})에게는 「판이 멈춤」(증강 선택·회차 시작 전·시련 화면)만 남기고,
-	 * 처음 맞을 때 이미 지난 셋을 건너뛴다(2026-10-06 Orca 검토 F-verified 의 V8).
+	 * 처음 맞을 때 이미 지난 셋을 건너뛴다(2026-10-06 검토에서 확정된 문제).
 	 *
 	 * <ul>
 	 *   <li><b>버티는 방패의 낙하 면역</b> — 지금 방패를 들었는가를 본다. 떨어진 뒤 방패를 들면 남은
@@ -819,7 +819,7 @@ public final class SpreadDamageManager {
 	 * <p>「호위」({@code damage_ward})는 <b>건너뛰지 않는다.</b> 쿨타임을 20 으로 채워 두므로
 	 * 낭비 방지({@code effectiveAmount})도 {@code lastHurt} = 0 을 보고 몫 전부를 실제 피해로
 	 * 세고, 호위가 돌아온 순간의 몫 하나를 막는다. 쿨타임을 0 으로 두던 예전과 같은 값이고 알고 둔
-	 * 동작이다(검토 F-verified V8 (c)).
+	 * 동작이다(2026-10-06 검토에서 확정).
 	 *
 	 * <p>판이 멈춘 동안은 {@link #tick} 이 몫을 아예 진행하지 않으므로 HEAD 의 멈춤 검사에 몫이
 	 * 걸리는 일은 회차 시작 전 무적뿐이다.
