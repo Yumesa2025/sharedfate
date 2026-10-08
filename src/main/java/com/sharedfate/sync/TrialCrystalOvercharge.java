@@ -1,5 +1,6 @@
 package com.sharedfate.sync;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -7,7 +8,15 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -26,7 +35,8 @@ import java.util.UUID;
  *   <li>15초({@code fuseTicks}) 안에 <b>부수면</b> 아무 일도 없다</li>
  *   <li>못 부수면 그 크리스탈이 무작위 한 명에게 <b>구체를 던진다</b> — 10초({@code beamTicks})
  *       동안 <b>초에 한 발씩 열 발</b>, 맞으면 발당 {@code damagePerSecond}</li>
- *   <li>구체는 <b>블록으로 가리면 막힌다</b> — 숨는 것이 이 카드가 요구하는 행동이다</li>
+ *   <li>구체는 <b>블록으로 가리면 막힌다</b> — 숨는 것이 이 카드가 요구하는 행동이다.
+ *       <b>쇠창살만은 막지 않는다</b>(아래 「쇠창살은 막지 않는다」)</li>
  *   <li>볼리가 끝나거나 제때 부수면 20초({@code restTicks}) 뒤에 다음 크리스탈이 달아오른다</li>
  * </ul>
  *
@@ -153,16 +163,32 @@ import java.util.UUID;
  *       안 되기 때문이다. 피해도 소리도 없다</li>
  * </ul>
  *
- * <p>판정은 26.3 바닐라 {@code LivingEntity.hasLineOfSight(Entity)} 다 — 자기 눈에서 상대의
- * 눈높이로 {@code ClipContext.Block.COLLIDER}·{@code Fluid.NONE} 광선을 쏘아
+ * <p>판정({@link #clearShot})은 26.3 바닐라 {@code LivingEntity.hasLineOfSight(Entity)} 를
+ * <b>그대로 옮긴 것에서 쇠창살 하나만 뺀 것</b>이다 — 사람의 눈에서 크리스탈의 눈높이로
+ * {@code ClipContext.Block.COLLIDER}·{@code Fluid.NONE} 광선을 쏘아
  * {@code HitResult.Type.MISS} 인지를 본다. <b>몹이 표적을 보는지 판단할 때 쓰는 바로 그
- * 방법</b>이라, 「가리면 막힌다」의 「블록」이 바닐라의 「블록」과 같아진다 — 플레이어가 두 규칙을
+ * 광선</b>이라, 「가리면 막힌다」의 「블록」이 바닐라의 「블록」과 같아진다 — 플레이어가 두 규칙을
  * 따로 배우지 않는다.
  *
- * <p>이 메서드에는 <b>128 블록 상한</b>이 박혀 있다(그 너머는 무조건 거짓). 아레나 반대편에서
- * 기둥 꼭대기까지가 90 남짓이라 전투 중에는 닿지만, 엔드 <b>흑요석 발판</b>(x 100)까지 나간
- * 사람은 상한을 넘어 늘 「가려짐」이 된다. 아레나 밖으로 걸어 나간 사람이 안전한 것은 이 카드의
- * 뜻과 어긋나지 않으므로 그대로 둔다.
+ * <p>바닐라 메서드에는 <b>128 블록 상한</b>이 박혀 있고({@link #SIGHT_REACH}, 그 너머는 무조건
+ * 거짓) 옮긴 판정도 같다. 아레나 반대편에서 기둥 꼭대기까지가 90 남짓이라 전투 중에는 닿지만,
+ * 엔드 <b>흑요석 발판</b>(x 100)까지 나간 사람은 상한을 넘어 늘 「가려짐」이 된다. 아레나 밖으로
+ * 걸어 나간 사람이 안전한 것은 이 카드의 뜻과 어긋나지 않으므로 그대로 둔다.
+ *
+ * <h2>쇠창살은 막지 않는다 (2026-10-08 사람 결정)</h2>
+ *
+ * <p>크리스탈을 고를 때 쇠창살 우리 안인지는 보지 않는다. 바닐라 판정을 그대로 쓰면 우리 안
+ * 크리스탈이 골렸을 때 <b>우리 벽과 지붕이 시선을 막아</b> 사람이 어디에 서 있든 「가려짐」이
+ * 되고, 볼리 열 발이 <b>한 발도 안 나갈 수 있다</b> — 카드가 운에 따라 통째로 꺼진다. 사람이
+ * 「과충전이 쇠창살은 통과되게 하면 되는 거 아니야?」라고 해서 그렇게 정했다.
+ *
+ * <p>그래서 광선은 <b>쇠창살({@code Blocks.IRON_BARS})만 빈 칸으로 본다</b>({@link #seeThrough}).
+ * 바닐라 우리도 「다시 선 쇠창살」({@code TrialCrystalGuard.cageState})이 세우는 우리도 같은
+ * 블록이라 둘 다 통과한다. <b>다른 블록은 그대로 막는다</b> — 사람이 쌓은 블록 뒤에 숨는 것이
+ * 여전히 이 카드의 대응이다. 우리를 사람이 쌓은 블록으로 덮으면 그 블록이 막는다.
+ *
+ * <p>⚠ 고르는 쪽에서 우리 안 크리스탈을 빼지 않은 것도 같은 결정이다. 빼면 우리가 있는 판에서
+ * 고를 크리스탈이 줄어들고, 「다시 선 쇠창살」이 걸린 판에서는 후보가 통째로 사라질 수 있다.
  *
  * <p><b>시계는 멈추지 않는다.</b> {@code beamTicks} 는 가려져 있든 아니든 그대로 흐르므로, 숨는
  * 것이 곧 시간을 버는 것이 된다.
@@ -332,6 +358,14 @@ public final class TrialCrystalOvercharge {
 	 * 적이 있다.
 	 */
 	static final double BLOCKED_PULLBACK = 2.0;
+
+	/**
+	 * 시선 판정의 거리 상한(블록). 넘으면 광선을 쏘지 않고 「가려짐」이다.
+	 *
+	 * <p>26.3 바닐라 {@code LivingEntity.hasLineOfSight} 에 박힌 {@code 128.0} 을 그대로 옮겼다.
+	 * 판정을 바닐라에서 떼어 왔어도 <b>동작은 같아야</b> 하므로 늘리거나 줄이지 말 것.
+	 */
+	static final double SIGHT_REACH = 128.0;
 
 	// ------------------------------------------------------------------ 걸음
 
@@ -692,9 +726,9 @@ public final class TrialCrystalOvercharge {
 	 */
 	private static void launch(ServerLevel end, @Nullable List<ServerPlayer> members,
 			EndCrystal crystal, ServerPlayer target, long inStep) {
-		// 26.3 바닐라 LivingEntity.hasLineOfSight — 눈에서 상대의 눈높이로 COLLIDER·Fluid.NONE
-		// 광선을 쏘아 MISS 인지 본다. 몹이 표적을 보는지 판단하는 바로 그 방법이다.
-		if (!target.hasLineOfSight(crystal)) {
+		// 바닐라 hasLineOfSight 와 같은 눈→눈 광선이고, 쇠창살만 지나간다(클래스 설명의
+		// 「쇠창살은 막지 않는다」). 닿는 틱의 판정과 반드시 같은 것을 써야 한다.
+		if (!clearShot(target, crystal)) {
 			return;
 		}
 		Vec3 muzzle = crystal.position().add(0.0, EMBER_LIFT, 0.0);
@@ -772,7 +806,8 @@ public final class TrialCrystalOvercharge {
 	 * 자리에서 한 발에 {@code 피해 × 4} 가 공유 체력에 들어간다 — 클래스 설명의 「피해는 한
 	 * 사람에게만」이 그 이야기다.
 	 *
-	 * <p><b>닿는 틱에 시선을 한 번 더 묻는다.</b> 쏜 뒤에 숨은 사람은 여기서 살아난다. 그때
+	 * <p><b>닿는 틱에 시선을 한 번 더 묻는다</b>({@link #clearShot} — 쏘는 틱과 같은 판정이라
+	 * 쇠창살은 여기서도 막지 않는다). 쏜 뒤에 숨은 사람은 여기서 살아난다. 그때
 	 * 구체는 사람 자리가 아니라 {@link #BLOCKED_PULLBACK} 블록 앞에서 터지고 <b>소리도 피해도
 	 * 없다</b> — 「맞았다」와 「막혔다」가 같은 그림이면 가린 것이 일했는지 알 수 없다.
 	 *
@@ -789,7 +824,8 @@ public final class TrialCrystalOvercharge {
 	private static void land(ServerLevel end, @Nullable List<ServerPlayer> members,
 			EndCrystal crystal, Orb orb, ServerPlayer target, float damage) {
 		Vec3 at = target.position().add(0.0, ORB_LIFT, 0.0);
-		if (!target.hasLineOfSight(crystal)) {
+		// 쏘는 틱과 같은 판정이다. 둘이 갈라지면 「쇠창살 너머로 쐈는데 쇠창살에 막혔다」가 된다.
+		if (!clearShot(target, crystal)) {
 			Vec3 toward = orb.from().subtract(at);
 			Vec3 blocked = toward.lengthSqr() > 0.0
 					? at.add(toward.normalize().scale(BLOCKED_PULLBACK))
@@ -976,6 +1012,69 @@ public final class TrialCrystalOvercharge {
 			}
 		}
 		return alive;
+	}
+
+	// ------------------------------------------------------------------ 시선
+
+	/**
+	 * 그 사람이 달아오른 크리스탈을 보는가 — 쏘는 틱과 닿는 틱이 <b>둘 다 이것만</b> 묻는다.
+	 *
+	 * <p>26.3 바닐라 {@code LivingEntity.hasLineOfSight(Entity)} 와 한 줄씩 같다 — 다른 차원이면
+	 * 거짓, 사람의 눈({@code getEyeY})에서 크리스탈의 눈높이까지 {@link #SIGHT_REACH} 를 넘으면
+	 * 거짓, 아니면 그 사이로 광선을 쏜다. 다른 것은 광선이 <b>쇠창살을 지나간다</b>는 것 하나다
+	 * (클래스 설명의 「쇠창살은 막지 않는다」).
+	 */
+	private static boolean clearShot(ServerPlayer target, EndCrystal crystal) {
+		if (target.level() != crystal.level()) {
+			return false;
+		}
+		Vec3 eye = new Vec3(target.getX(), target.getEyeY(), target.getZ());
+		Vec3 aim = new Vec3(crystal.getX(), crystal.getEyeY(), crystal.getZ());
+		return clearLine(target.level(), eye, aim, CollisionContext.of(target));
+	}
+
+	/**
+	 * 두 점 사이가 트여 있는가. {@link #clearShot} 의 광선 부분이고, <b>월드 대신 아무
+	 * {@link BlockGetter} 나 받아</b> 시험이 블록 몇 개만 놓고 굴린다.
+	 *
+	 * @param viewer 바닐라가 보는 쪽 엔티티로 만드는 것과 같은 충돌 문맥
+	 */
+	static boolean clearLine(BlockGetter level, Vec3 from, Vec3 to, CollisionContext viewer) {
+		if (to.distanceTo(from) > SIGHT_REACH) {
+			return false;
+		}
+		return level.clip(new PastBars(from, to, viewer)).getType() == HitResult.Type.MISS;
+	}
+
+	/**
+	 * 광선이 지나가는 블록인가. <b>쇠창살뿐이다.</b>
+	 *
+	 * <p>바닐라 우리와 「다시 선 쇠창살」이 세우는 우리가 같은 {@code IRON_BARS} 다. 판유리나 다른
+	 * 창살까지 넓히지 말 것 — 사람이 정한 것은 「쇠창살은 통과」이고, 나머지 블록이 막는 것이
+	 * 「블록 뒤에 숨기」라는 이 카드의 대응이다.
+	 */
+	static boolean seeThrough(BlockState state) {
+		return state.is(Blocks.IRON_BARS);
+	}
+
+	/**
+	 * 바닐라 {@code COLLIDER}·{@code Fluid.NONE} 광선에서 {@link #seeThrough} 블록만 빈 모양으로
+	 * 보는 문맥.
+	 *
+	 * <p>{@code BlockGetter.clip} 은 칸마다 {@link ClipContext#getBlockShape} 로 모양을 받아
+	 * 광선과 맞대 보므로, 여기서 빈 모양을 돌려주면 그 칸은 공기와 같다. 광선을 칸 단위로 다시
+	 * 짜지 않아도 되고 <b>나머지 블록은 바닐라가 보는 모양 그대로</b>다.
+	 */
+	private static final class PastBars extends ClipContext {
+
+		PastBars(Vec3 from, Vec3 to, CollisionContext viewer) {
+			super(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, viewer);
+		}
+
+		@Override
+		public VoxelShape getBlockShape(BlockState state, BlockGetter level, BlockPos pos) {
+			return seeThrough(state) ? Shapes.empty() : super.getBlockShape(state, level, pos);
+		}
 	}
 
 	// ------------------------------------------------------------------ 걸음 바꾸기

@@ -162,6 +162,9 @@ import java.util.List;
  * 넷이 「드래곤을 둘러싼 정사각형」으로 읽히고, 안에 있는 사람(머리는 몸 앞 6.5칸이다)이 빛
  * 안쪽에 선다. {@code TrialEntrance.SEAT_RING_RADIUS} 가 같은 근거로 12 를 쓴다.
  *
+ * <p>밑동은 <b>월드 바닥 아래</b>({@value #BEACON_BELOW_FLOOR}칸 더)다. 세운 자리가 포디움 꼭대기라
+ * 귀퉁이의 섬 표면보다 높아 기둥이 떠 보였다(2026-10-08 사람 지적, {@link #BEACON_BELOW_FLOOR}).
+ *
  * <h2>연출 길이 — <b>사람이 정하지 않았다</b></h2>
  *
  * <p>{@value #LENGTH_TICKS}틱 = <b>8초</b>로 잡았다. 나눠 쓴 근거가 셋이다.
@@ -260,13 +263,26 @@ public final class DragonLastStandEntry {
 	static final double BEACON_HALF_SIDE = 10.0;
 
 	/**
-	 * 신호기 빛의 높이(칸).
+	 * 신호기 빛이 <b>세운 자리 위로</b> 뻗는 높이(칸). 밑으로는 {@link #BEACON_BELOW_FLOOR} 가
+	 * 따로 내린다.
 	 *
 	 * <p>바닐라 신호기 빛은 월드 천장까지 가지만 그렇게 긴 상자는 <b>멀리서 화면을 통째로
 	 * 가린다.</b> 48칸이면 흑요석 기둥(42칸)보다 높아 「하늘로 뻗는다」로 읽히고, 엔드 섬
 	 * 위에서 올려다보면 끝이 시야 밖이다.
 	 */
 	static final double BEACON_HEIGHT = 48.0;
+
+	/**
+	 * 신호기 빛의 밑동을 <b>월드 바닥보다</b> 이만큼 더 내린다(칸). 엔드 바닥이 0 이므로 밑동은
+	 * {@code y = −16} 이다.
+	 *
+	 * <p>⚠ 전에는 밑동이 세운 자리(포디움 기반암 꼭대기의 하이트맵 높이)였다. 그 높이가 정사각형
+	 * 귀퉁이의 섬 표면보다 몇 칸 위라 넷이 <b>허공에 떠</b> 보였다(2026-10-08 사람 지적). 귀퉁이마다
+	 * 지표를 재어 맞추면 기둥마다 밑동이 들쭉날쭉하고 흑요석 기둥 발자국이나 섬 가장자리에 걸리면
+	 * 또 뜬다 — 그래서 <b>섬을 꿰뚫어 공허 밑까지</b> 내린다. 어디서 보든 땅에서 솟은 것으로 읽히고
+	 * 밑동은 섬 아래에 숨는다. 꼭대기는 {@link #BEACON_HEIGHT} 그대로다.
+	 */
+	static final double BEACON_BELOW_FLOOR = 16.0;
 
 	/** 정사각형이므로 넷이다. */
 	static final int BEACON_COUNT = 4;
@@ -406,6 +422,17 @@ public final class DragonLastStandEntry {
 		double x = (corner == 0 || corner == 3) ? BEACON_HALF_SIDE : -BEACON_HALF_SIDE;
 		double z = (corner == 0 || corner == 1) ? BEACON_HALF_SIDE : -BEACON_HALF_SIDE;
 		return new Vec3(x, 0.0, z);
+	}
+
+	/**
+	 * 세운 자리에서 신호기 빛의 밑동까지 내려가는 길이(칸). 밑동이 {@code minY −}
+	 * {@link #BEACON_BELOW_FLOOR} 에 닿는다.
+	 *
+	 * @param anchorY 기둥을 세우는 자리의 높이
+	 * @param minY    월드 최저 높이({@code Level.getMinY()})
+	 */
+	static double beaconDepth(double anchorY, int minY) {
+		return Math.max(0.0, anchorY - (minY - BEACON_BELOW_FLOOR));
 	}
 
 	/**
@@ -654,10 +681,12 @@ public final class DragonLastStandEntry {
 		dropBeacons();
 		// 심지는 남은 연출 길이 + 1초다. 지우는 줄을 아무도 못 지나도 그 뒤에는 반드시 사라진다.
 		int fuse = CHARGE_TICKS + SETTLE_TICKS + 20;
+		// 개체는 세운 자리에 두고 상자만 공허 밑까지 늘린다(raisePillar 의 설명 — 거리 판정).
+		double below = beaconDepth(anchor.y, end.getMinY());
 		for (int index = 0; index < BEACON_COUNT; index++) {
 			Vec3 offset = beaconOffset(index);
 			DragonLastStandLights.Glow glow = DragonLastStandLights.raisePillar(end,
-					anchor.add(offset), DyeColor.PURPLE, BEACON_HEIGHT, fuse);
+					anchor.add(offset), DyeColor.PURPLE, below, BEACON_HEIGHT, fuse);
 			if (glow != null) {
 				BEACONS.add(glow);
 			}

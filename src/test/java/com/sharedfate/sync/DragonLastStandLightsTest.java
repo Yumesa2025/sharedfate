@@ -75,6 +75,22 @@ class DragonLastStandLightsTest {
 		assertEquals(width / 2.0, high.z(), 1.0E-4);
 	}
 
+	/**
+	 * 밑으로 내린 기둥은 <b>밑동만 내려가고 꼭대기는 그대로</b>다. 내리지 않은 기둥(오브젝트 파도의
+	 * 흰 선)은 전과 똑같은 행렬이다.
+	 */
+	@Test
+	void 내린_기둥은_밑동만_내려가고_흰_기둥은_그대로다() {
+		double width = DragonLastStandLights.PILLAR_WIDTH;
+		Matrix4f sunk = DragonLastStandLights.pillarShape(width, 70.0, 48.0).getMatrixCopy();
+		assertEquals(-70.0F, corner(sunk, 0.0F, 0.0F, 0.0F).y(), 1.0E-3F, "밑동이 받은 깊이만큼 안 내려갔다");
+		assertEquals(48.0F, corner(sunk, 1.0F, 1.0F, 1.0F).y(), 1.0E-3F, "꼭대기가 움직였다");
+
+		assertEquals(DragonLastStandLights.pillarShape(width, 0.0, 48.0).getMatrixCopy(),
+				DragonLastStandLights.pillarShape(width, 48.0).getMatrixCopy(),
+				"내리지 않는 기둥의 모양이 바뀌었다 — 흰 신호기 선이 함께 움직인다");
+	}
+
 	// ------------------------------------------------------------------ 바 — 세우는 코드는 없고 셈만 남았다
 
 	/**
@@ -290,7 +306,8 @@ class DragonLastStandLightsTest {
 			}
 		}
 		// 「raise」는 셋이 함께 쓰던 비공개 몸통이고 「raisePillar」가 남은 하나뿐인 입구다.
-		assertEquals(List.of("raise", "raisePillar"), raisers.stream().sorted().toList(),
+		// raisePillar 는 밑동을 내리는 것과 안 내리는 것 두 벌이라 이름으로만 센다.
+		assertEquals(List.of("raise", "raisePillar"), raisers.stream().distinct().sorted().toList(),
 				"세우는 길이 둘 이상이다 — 바가 되살아났거나 새 연출이 들어왔다");
 
 		// 기하학은 남아 있다. 어려웠던 것은 세우는 세 줄이 아니라 그 함수의 두 판단이다.

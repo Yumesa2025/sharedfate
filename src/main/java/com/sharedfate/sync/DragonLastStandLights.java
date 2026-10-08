@@ -160,8 +160,26 @@ public final class DragonLastStandLights {
 	 */
 	static @Nullable Glow raisePillar(ServerLevel end, Vec3 base, DyeColor color, double height,
 			int fuse) {
+		return raisePillar(end, base, color, 0.0, height, fuse);
+	}
+
+	/**
+	 * 빛기둥 하나. 받은 자리보다 {@code below} 칸 <b>아래에서</b> 시작해 받은 자리 위로
+	 * {@code height} 칸까지 뻗는다. 꼭대기는 {@code below} 와 상관없이 같다.
+	 *
+	 * <p>⚠ <b>개체는 받은 자리에 서고 상자만 아래로 늘어난다.</b> 개체 자체를 밑동까지 내리면 26.3
+	 * {@code Entity.shouldRender} 가 거리를 <b>개체 자리</b>에서 재므로, 공허 밑에 선 개체는 위에
+	 * 있는 사람에게서 그만큼 멀어져 {@link #VIEW_RANGE} 안에서도 기둥이 통째로 꺼질 수 있다.
+	 * 화면 밖 판정은 걱정하지 않아도 된다 — {@code width}·{@code height} 를 주지 않은
+	 * {@code Display} 는 {@code updateCulling} 이 {@code noCulling} 을 켜 두므로 밑동이 화면 밖이어도
+	 * 기둥이 사라지지 않는다. 이 둘을 바꾸는 사람은 이 문단을 먼저 읽을 것.
+	 *
+	 * @param below 받은 자리에서 밑동까지 내려가는 길이(칸). 0 이면 받은 자리가 곧 밑동이다
+	 */
+	static @Nullable Glow raisePillar(ServerLevel end, Vec3 base, DyeColor color, double below,
+			double height, int fuse) {
 		return raise(end, base, glass(color), Display.BillboardConstraints.FIXED,
-				pillarShape(PILLAR_WIDTH, height), fuse);
+				pillarShape(PILLAR_WIDTH, below, height), fuse);
 	}
 
 	private static @Nullable Glow raise(ServerLevel end, Vec3 at, BlockState state,
@@ -225,10 +243,21 @@ public final class DragonLastStandLights {
 	 * 0 이다.
 	 */
 	static Transformation pillarShape(double width, double height) {
+		return pillarShape(width, 0.0, height);
+	}
+
+	/**
+	 * 받은 자리보다 {@code below} 칸 아래에서 시작하는 빛기둥의 변환. 세로 이동이 {@code −below}
+	 * 이고 세로 크기가 {@code below + height} 라 <b>꼭대기는 {@code height} 그대로</b>다.
+	 */
+	static Transformation pillarShape(double width, double below, double height) {
+		double sink = Math.max(0.0, below);
 		return new Transformation(
-				new Vector3f((float) (-width / 2.0), 0.0F, (float) (-width / 2.0)),
+				// ⚠ -sink 가 아니라 0.0 - sink 다. 0 일 때 -0.0 이 되면 코덱 왕복에서 +0.0 으로
+				// 돌아와 행렬이 「달라진다」(DragonLastStandLightsTest.태그가_되읽힌다).
+				new Vector3f((float) (-width / 2.0), (float) (0.0 - sink), (float) (-width / 2.0)),
 				new Quaternionf(),
-				new Vector3f((float) width, (float) Math.max(0.0, height), (float) width),
+				new Vector3f((float) width, (float) (sink + Math.max(0.0, height)), (float) width),
 				new Quaternionf());
 	}
 

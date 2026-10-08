@@ -166,6 +166,35 @@ class DragonLastStandEntryTest {
 				"흑요석 기둥(42칸)보다 낮으면 「하늘로 뻗는다」가 안 된다");
 	}
 
+	/**
+	 * ⚠ <b>신호기 빛의 밑동이 월드 바닥 아래이고 꼭대기는 그대로다.</b>
+	 *
+	 * <p>세운 자리(포디움 꼭대기)를 밑동으로 쓰면 귀퉁이의 섬 표면보다 높아 기둥이 떠 보였다
+	 * (2026-10-08 사람 지적). 행렬을 실제로 굴려 상자의 아래 끝과 위 끝을 월드 높이로 잰다.
+	 * 엔드 바닥(0)과 오버월드 바닥(−64) 둘 다 본다.
+	 */
+	@Test
+	void 신호기_밑동이_월드_바닥_아래고_꼭대기는_그대로다() {
+		for (int minY : new int[] {0, -64}) {
+			for (double anchorY : new double[] {minY + 1.0, minY + 65.0, minY + 120.0}) {
+				double below = DragonLastStandEntry.beaconDepth(anchorY, minY);
+				org.joml.Matrix4f matrix = DragonLastStandLights
+						.pillarShape(DragonLastStandLights.PILLAR_WIDTH, below,
+								DragonLastStandEntry.BEACON_HEIGHT)
+						.getMatrixCopy();
+				double bottom = anchorY + matrix.transformPosition(new org.joml.Vector3f(0.0F, 0.0F, 0.0F)).y();
+				double top = anchorY + matrix.transformPosition(new org.joml.Vector3f(1.0F, 1.0F, 1.0F)).y();
+
+				assertTrue(bottom < minY, "밑동이 월드 바닥 위다 — 또 떠 보인다. anchorY=" + anchorY
+						+ " 밑동=" + bottom);
+				assertEquals(minY - DragonLastStandEntry.BEACON_BELOW_FLOOR, bottom, 1.0E-3,
+						"밑동이 정한 깊이가 아니다");
+				assertEquals(anchorY + DragonLastStandEntry.BEACON_HEIGHT, top, 1.0E-3,
+						"꼭대기가 움직였다 — 밑으로 늘린 만큼 위도 따라 올라갔다");
+			}
+		}
+	}
+
 	/** 충전음이 낮은 데서 시작해 1.0 을 넘긴다. 안 넘기면 「올라갔다」가 안 들린다. */
 	@Test
 	void 충전음이_올라간다() {

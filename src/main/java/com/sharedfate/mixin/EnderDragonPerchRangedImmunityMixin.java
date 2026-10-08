@@ -79,6 +79,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code #minecraft:is_projectile} 을 쓰지 않은 까닭(쇠뇌 폭죽·스플래시 물약·TNT 가 그 태그에
  * 없다)도 그쪽에 적어 두었다.
  *
+ * <h2>막은 것을 다 보이지는 않는다</h2>
+ *
+ * <p>거절은 범위 그대로지만 불꽃과 방패 소리는 {@code DragonPerch.playerCaused} 가 참일 때만
+ * 낸다. 이 문은 바닐라 무적 검사보다 앞이라, 앉은 몸통 상자 안의 불({@code in_fire})처럼
+ * 바닐라가 어차피 버릴 피해가 <b>매 틱</b> 지나간다. 그것까지 연출하면 아무도 안 때리는데
+ * 방패 소리가 계속 난다 — 근거는 그 메서드 설명에 있다.
+ *
  * <h2>refmap 이 없다</h2>
  *
  * <p>서술자가 틀려도 빌드는 통과한다. {@code injectors.defaultRequire} 가 1 이라 붙이는 순간
@@ -111,7 +118,11 @@ public abstract class EnderDragonPerchRangedImmunityMixin {
 		// 통과). 착지 판별보다 앞이다: 보호막이 서 있는 동안 착지 깃발은 이미 내려가 있지만,
 		// 순서가 뒤집히면 근접 한 방이 아래 「melee 면 통과」로 빠져나간다.
 		if (DragonLastStandShield.refuses(level, source)) {
-			DragonLastStandShield.deflect(level, part == null ? null : part.position());
+			// 막는 것은 전부, 보이고 들리는 것은 사람이 일으킨 한 방만이다. 발밑의 불처럼
+			// 매 틱 이 문을 지나는 것이 있다(DragonPerch.playerCaused).
+			if (DragonPerch.playerCaused(source)) {
+				DragonLastStandShield.deflect(level, part == null ? null : part.position());
+			}
 			callback.setReturnValue(false);
 			return;
 		}
@@ -124,7 +135,10 @@ public abstract class EnderDragonPerchRangedImmunityMixin {
 		}
 		// 아무 반응 없이 0 이 들어가면 사람은 「막혔다」가 아니라 「버그다」로 읽는다. 맞은
 		// 부위에서 튕긴다 — 몸 중심에서 내면 날개 끝을 맞춘 화살이 엉뚱한 데서 튕긴다.
-		DragonPerch.deflect(level, part == null ? null : part.position());
+		// 단 사람이 일으킨 한 방일 때만. 앉은 몸통 안의 불은 매 틱 여기로 온다.
+		if (DragonPerch.playerCaused(source)) {
+			DragonPerch.deflect(level, part == null ? null : part.position());
+		}
 		callback.setReturnValue(false);
 	}
 }

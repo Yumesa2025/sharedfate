@@ -1,7 +1,16 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.TestBootstrap;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageType;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.entity.AreaEffectCloud;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.phases.AbstractDragonSittingPhase;
@@ -12,9 +21,18 @@ import net.minecraft.world.entity.boss.enderdragon.phases.DragonSittingFlamingPh
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonSittingScanningPhase;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhaseManager;
+import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.level.block.BaseFireBlock;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -366,6 +384,115 @@ class DragonPerchTest {
 				"서술자가 바뀌었다 — 다른 hurt 를 물면 드래곤이 사람을 못 때리게 된다");
 	}
 
+	// ------------------------------------------------------------------ 막힘 연출은 사람에게만
+
+	/**
+	 * <b>사람이 아닌 것</b>이 막혀도 불꽃과 방패 소리를 내지 않는다.
+	 *
+	 * <p>사람이 「아무도 안 때리는데 방패 소리가 계속 난다」를 들고 왔다. 첫 줄의 {@code in_fire} 가
+	 * 그 원인이다 — 드래곤은 {@code aiStep} 에서 매 틱 몸통 상자 안의 블록 효과를 받고, 불 블록은
+	 * {@code fireImmune} 을 보지 않고 때린다. 바닐라는 몇 단계 뒤에 버리지만 우리 문은 그보다 앞이다.
+	 * 나머지 줄은 같은 문을 지나는 <b>주인 없는</b> 피해들이다.
+	 */
+	@Test
+	void 사람이_아닌_피해는_막힘_연출을_내지_않는다() throws Exception {
+		TestBootstrap.ensureInitialized();
+		EnderDragon 드래곤 = allocate(EnderDragon.class);
+
+		assertFalse(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.IN_FIRE))),
+				"발밑의 불 — 앉은 내내 매 틱 온다. 이것이 방패 소리가 멈추지 않던 원인이다");
+		assertFalse(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.ON_FIRE))));
+		assertFalse(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.EXPLOSION))),
+				"주인 없는 폭발");
+		assertFalse(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.EXPLOSION),
+				allocate(EndCrystal.class), null)), "깬 사람이 없는 크리스탈의 연쇄 폭발");
+		assertFalse(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.INDIRECT_MAGIC),
+				allocate(AreaEffectCloud.class), 드래곤)), "드래곤 제 숨결 구름 — 주인이 드래곤이다");
+		assertFalse(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.ARROW),
+				allocate(Arrow.class), null)), "쏜 사람이 없는 화살(발사기)");
+		assertFalse(DragonPerch.playerCaused(null));
+	}
+
+	/** <b>사람이 일으킨</b> 한 방은 막히면 반드시 보이고 들린다. 이것이 연출을 넣은 까닭이다. */
+	@Test
+	void 사람이_일으킨_한_방은_막힘_연출을_낸다() throws Exception {
+		TestBootstrap.ensureInitialized();
+		ServerPlayer 사람 = allocate(ServerPlayer.class);
+
+		assertTrue(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.ARROW),
+				allocate(Arrow.class), 사람)), "사람의 화살");
+		assertTrue(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.FIREWORKS),
+				allocate(FireworkRocketEntity.class), 사람)), "쇠뇌 폭죽");
+		assertTrue(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.EXPLOSION),
+				allocate(EndCrystal.class), 사람)), "사람이 깬 크리스탈의 폭발");
+		assertTrue(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.PLAYER_ATTACK),
+				사람)), "근접 — 최후의 저항 진입 보호막은 근접도 막으므로 연출이 나가야 한다");
+		assertTrue(DragonPerch.playerCaused(new DamageSource(피해종류(DamageTypes.EXPLOSION),
+				사람, null)), "원인 칸이 비어도 직접 원인이 사람이면 사람이다");
+	}
+
+	/**
+	 * 믹스인이 <b>판별을 지난 뒤에만</b> 연출을 부른다.
+	 *
+	 * <p>상수 풀에 이름이 있는지만 보면 「부르기는 하는데 결과를 안 본다」를 못 잡는다. 처리기의
+	 * 명령어를 순서대로 읽어 {@code deflect} 호출마다 그 앞에 {@code playerCaused} 와 그 결과를
+	 * 가르는 분기가 있는지 본다. 거절({@code setReturnValue})은 판별과 무관하게 남아 있어야 한다.
+	 */
+	@Test
+	void 믹스인이_판별을_지난_뒤에만_연출한다() throws IOException {
+		ClassNode node = new ClassNode();
+		try (InputStream in = DragonPerchTest.class.getResourceAsStream(
+				"/com/sharedfate/mixin/EnderDragonPerchRangedImmunityMixin.class")) {
+			assertNotNull(in);
+			new ClassReader(in).accept(node, ClassReader.SKIP_FRAMES);
+		}
+		MethodNode handler = node.methods.stream()
+				.filter(method -> method.name.equals("sharedfate$refuseRangedWhilePerched"))
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("처리기 이름이 바뀌었다"));
+
+		int deflects = 0;
+		int refusals = 0;
+		boolean judged = false;
+		boolean branched = false;
+		for (AbstractInsnNode insn = handler.instructions.getFirst(); insn != null;
+				insn = insn.getNext()) {
+			if (insn instanceof MethodInsnNode call) {
+				if (call.name.equals("playerCaused")) {
+					assertEquals("com/sharedfate/sync/DragonPerch", call.owner,
+							"판별을 다른 곳에 복사했다 — 뜻이 두 곳에 있게 된다");
+					judged = true;
+					branched = false;
+				} else if (call.name.equals("deflect")) {
+					assertTrue(judged && branched,
+							call.owner + ".deflect 를 판별 없이 부른다 — 발밑의 불이 매 틱 방패 소리를 낸다");
+					judged = false;
+					deflects++;
+				} else if (call.name.equals("setReturnValue")) {
+					refusals++;
+				}
+			} else if (judged && insn.getOpcode() == Opcodes.IFEQ) {
+				branched = true;
+			}
+		}
+		assertEquals(2, deflects, "보호막과 착지, 연출이 두 군데다");
+		assertEquals(2, refusals, "거절은 판별과 무관하게 두 군데 그대로여야 한다 — 막는 범위는 바꾸지 않는다");
+	}
+
+	/**
+	 * 「매 틱 불이 때린다」의 근거가 26.3 에 그대로 있다.
+	 *
+	 * <p>바닐라가 이 길을 닫으면 판별이 할 일이 줄 뿐 틀리지는 않는다. 그래도 근거가 사라졌다는 것은
+	 * 알아야 하므로 본다.
+	 */
+	@Test
+	void 드래곤이_매_틱_블록_효과를_받는다() {
+		assertTrue(vanillaClassBytes(EnderDragon.class).contains("applyEffectsFromBlocks"),
+				"드래곤이 블록 효과를 더 받지 않는다 — playerCaused 설명의 근거를 다시 볼 것");
+		assertTrue(vanillaClassBytes(BaseFireBlock.class).contains("inFire"),
+				"불 블록이 in_fire 로 때리지 않는다 — playerCaused 설명의 근거를 다시 볼 것");
+	}
+
 	/**
 	 * 믹스인 둘이 <b>등록되어 있다.</b>
 	 *
@@ -468,6 +595,19 @@ class DragonPerchTest {
 	private static String rangedMixinBytes() {
 		return read("/com/sharedfate/mixin/EnderDragonPerchRangedImmunityMixin.class",
 				StandardCharsets.ISO_8859_1);
+	}
+
+	/** 시험용 레지스트리의 피해 종류. */
+	private static Holder<DamageType> 피해종류(ResourceKey<DamageType> key) {
+		return TestBootstrap.registries().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(key);
+	}
+
+	/** 생성자를 거치지 않은 빈 엔티티. 판별이 보는 것은 종류뿐이다. */
+	@SuppressWarnings("unchecked")
+	private static <T> T allocate(Class<T> type) throws Exception {
+		Field field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+		field.setAccessible(true);
+		return (T) ((sun.misc.Unsafe) field.get(null)).allocateInstance(type);
 	}
 
 	/** 바닐라 클래스의 바이트. 우리가 기대고 있는 사실이 그 안에 있는지 본다. */

@@ -8,6 +8,8 @@ import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -358,6 +360,53 @@ public final class DragonPerch {
 		return source == null
 				|| source.is(DamageTypeTags.IS_PLAYER_ATTACK)
 				|| source.is(DamageTypeTags.BYPASSES_INVULNERABILITY);
+	}
+
+	/**
+	 * 이 한 방을 <b>사람이 일으켰는가</b> — 막힘 연출({@link #deflect}·
+	 * {@code DragonLastStandShield.deflect})을 낼 자격이다.
+	 *
+	 * <h2>사람이 아닌 것도 이 문을 지난다 — 그것도 매 틱</h2>
+	 *
+	 * <p>사람이 「아무도 안 때리는데 방패 소리가 계속 난다」를 들고 왔다. 막는 문
+	 * ({@code EnderDragon.hurt} 의 {@code HEAD})은 바닐라의 무적 검사보다 <b>앞</b>이라, 바닐라가
+	 * 어차피 버릴 피해까지 「막았다」로 세고 있었다. 26.3 바이트코드로 확인한 길이 이렇다.
+	 *
+	 * <pre>{@code
+	 * EnderDragon.aiStep()
+	 *   if (!level.isClientSide()) applyEffectsFromBlocks();   ← 매 틱, 16×8 몸통 상자 전체
+	 * BaseFireBlock.entityInside(…)
+	 *   applier.runAfter(FIRE_IGNITE, e -> e.hurt(damageSources().inFire(), …));   ← fireImmune 을 안 본다
+	 * EnderDragon.hurtServer → hurt(level, body, in_fire, …)   ← 여기 HEAD 에서 거절 + 연출
+	 * }</pre>
+	 *
+	 * <p>바닐라는 이것을 {@code reallyHurt} → {@code LivingEntity.hurtServer} 의
+	 * {@code isInvulnerableTo}({@code IS_FIRE} + {@code fireImmune()}, 드래곤은
+	 * {@code EntityTypes} 에서 {@code .fireImmune()})에서 조용히 버린다. 앉은 몸통 상자 안에 불이
+	 * 한 칸만 있어도 착지 내내 매 틱 「막았다」가 되고, 소리 간격({@value #DEFLECT_SOUND_GAP_TICKS}틱)
+	 * 만큼 계속 울린다. 엔드의 기반암은 {@code #infiniburn_end} 라 포디움에 붙은 불은 꺼지지 않는다.
+	 * 「연결된 수정」이 크리스탈에서 같은 함정을 이미 겪었다({@code EndCrystalSealMixin}).
+	 *
+	 * <h2>막는 것은 그대로, 연출만 가린다</h2>
+	 *
+	 * <p>거절하는 범위는 바꾸지 않는다 — 불은 바닐라도 버리므로 거절해도 결과가 같고, 다른 피해원을
+	 * 하나씩 골라 통과시키면 「무엇을 막는가」가 이 판별에 끌려 다닌다. 바뀌는 것은 <b>보이고
+	 * 들리는가</b>뿐이다. 「전기 불꽃 + 방패 소리」는 사람에게 「네 한 방이 안 들어갔다」를 가르치는
+	 * 신호라, 사람이 쏘거나 던지거나 터뜨린 것이 아니면 가르칠 상대가 없다.
+	 *
+	 * <p>판별은 {@code EndCrystalGuardMixin} 의 「깬 사람」과 같은 두 단계다 — 화살이면
+	 * {@code getEntity()} 가 쏜 사람이고, 소유자가 원인으로 실리지 않은 TNT·투사체는
+	 * {@code Explosion.getIndirectSourceEntity} 가 한 단계 푼다. 드래곤 제 숨결 구름은 주인이
+	 * 드래곤이라 여기서 걸러진다.
+	 */
+	public static boolean playerCaused(@Nullable DamageSource source) {
+		if (source == null) {
+			return false;
+		}
+		if (source.getEntity() instanceof Player) {
+			return true;
+		}
+		return Explosion.getIndirectSourceEntity(source.getDirectEntity()) instanceof Player;
 	}
 
 	/**

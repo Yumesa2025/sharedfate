@@ -149,7 +149,7 @@ chmod +x start-sharedfate-server.sh sharedfate-server-loop.sh
 ## 켜고 나서
 
 서버를 한 번 켜면 `config/sharedfate.json` 하나가 생깁니다. 손대지 않아도 그대로 놀 수
-있고, 바꿀 만한 것은 셋입니다.
+있고, 바꿀 만한 것은 넷입니다.
 
 - **`requireClientMod`** (기본 켬) — 모드가 없는 클라이언트의 접속을 막습니다. 끄면 공유는
   되지만 화면 표시가 전혀 없어 무엇이 일어나는지 알 수 없습니다
@@ -157,6 +157,9 @@ chmod +x start-sharedfate-server.sh sharedfate-server-loop.sh
   있으면 덮어쓰지 않습니다
 - **`perkTestCommands`** (기본 끔) — 증강을 직접 넣고 빼는 운영자 전용 시험 명령입니다.
   **실제로 노는 서버에서는 켜지 마십시오**
+- **`dragonHealthPerMember`** (기본 600) — 팀 인원 한 명당 엔더 드래곤 최대 체력입니다.
+  바닐라는 200 입니다. 팀 설정에서 「드래곤 시련」을 끈 팀에게는 읽히지 않습니다.
+  **0 으로 두면 서버 전체에서 드래곤 강화·시련·엔드 전원 소환이 함께 꺼집니다**
 
 **증강과 세트 정의는 모드 안에 들어 있습니다.** 설정 폴더로 나오지 않으므로 **판을 올릴 때
 지울 것이 없습니다.** 예전 판에서 올라와 `config/sharedfate-perks.json` 이 남아 있어도

@@ -1,16 +1,30 @@
 package com.sharedfate.sync;
 
+import com.sharedfate.TestBootstrap;
 import com.sharedfate.perk.PerkHealthRules;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -459,16 +473,121 @@ class TrialCrystalOverchargeTest {
 	}
 
 	/**
-	 * 시선 판정은 바닐라 것을 쓴다.
+	 * 시선 판정은 바닐라 광선({@code COLLIDER})에서 쇠창살만 뺀 것이다.
 	 *
 	 * <p>「블록으로 가리면 막힌다」의 「블록」이 바닐라가 몹에게 적용하는 「블록」과 같아야
 	 * 플레이어가 두 규칙을 따로 배우지 않는다. 구체가 파티클이라 <b>바닐라가 벽을 대신 봐 주지
 	 * 않으므로</b>, 쏘는 틱과 닿는 틱 두 곳에서 직접 물어야 한다.
+	 *
+	 * <p>바닐라 {@code hasLineOfSight} 로 되돌리면 쇠창살 우리 안 크리스탈이 골렸을 때 한 발도
+	 * 안 나간다 — 2026-10-08 사람이 「쇠창살은 통과」로 정한 까닭이다.
 	 */
 	@Test
-	void 시선은_바닐라_판정을_쓴다() {
-		assertTrue(classBytes().contains("hasLineOfSight"),
-				"시선 판정을 직접 짜면 바닐라와 다른 「가려짐」이 두 개가 된다");
+	void 시선은_쇠창살만_빼고_바닐라_광선을_쓴다() {
+		String bytes = classBytes();
+		// 광선 문맥은 안쪽 클래스라 클래스 파일이 따로다.
+		assertTrue(classBytes("TrialCrystalOvercharge$PastBars").contains("COLLIDER"),
+				"광선 종류가 바닐라와 다르면 「가려짐」이 두 개가 된다");
+		assertTrue(bytes.contains("IRON_BARS"), "쇠창살을 지나가는 판정이 사라졌다");
+		assertFalse(bytes.contains("hasLineOfSight"),
+				"바닐라 hasLineOfSight 로 되돌아갔다 — 쇠창살 우리 안 크리스탈이 한 발도 못 쏜다");
+	}
+
+	// ------------------------------------------------------------------ 시선 — 쇠창살은 막지 않는다
+
+	/** 쇠창살만 지나간다. 다른 블록은 바닐라처럼 막는다. */
+	@Test
+	void 광선이_지나가는_블록은_쇠창살뿐이다() {
+		TestBootstrap.ensureInitialized();
+		assertTrue(TrialCrystalOvercharge.seeThrough(Blocks.IRON_BARS.defaultBlockState()));
+		assertTrue(TrialCrystalOvercharge.seeThrough(TrialCrystalGuard.cageState(0, 0, 3)),
+				"「다시 선 쇠창살」이 세우는 지붕도 같은 블록이어야 한다");
+		assertFalse(TrialCrystalOvercharge.seeThrough(Blocks.STONE.defaultBlockState()));
+		assertFalse(TrialCrystalOvercharge.seeThrough(Blocks.GLASS_PANE.defaultBlockState()),
+				"판유리까지 넓히지 않는다 — 사람이 정한 것은 쇠창살뿐이다");
+	}
+
+	@Test
+	void 아무것도_없으면_안_가려진다() {
+		TestBootstrap.ensureInitialized();
+		assertTrue(clear(new Blocky()), "빈 하늘인데 가려졌다");
+	}
+
+	/** 사람이 쌓은 블록 뒤에 숨는 것이 이 카드의 대응이다 — 그대로 막혀야 한다. */
+	@Test
+	void 돌_블록이_사이에_있으면_가려진다() {
+		TestBootstrap.ensureInitialized();
+		assertFalse(clear(new Blocky().put(MIDDLE, Blocks.STONE.defaultBlockState())),
+				"돌 뒤에 숨었는데 구체가 나간다");
+	}
+
+	/**
+	 * 쇠창살만 사이에 있으면 안 가려진다.
+	 *
+	 * <p>같은 자리를 바닐라 광선으로 쏘면 <b>막힌다</b>는 것도 같이 본다. 그래야 이 시험이 「광선이
+	 * 쇠창살을 비껴갔다」가 아니라 「쇠창살을 지나갔다」를 재고 있다는 것이 보장된다.
+	 */
+	@Test
+	void 쇠창살만_사이에_있으면_안_가려진다() {
+		TestBootstrap.ensureInitialized();
+		Blocky bars = new Blocky().put(MIDDLE, TrialCrystalGuard.cageState(0, 0, 3));
+		assertTrue(clear(bars), "쇠창살이 시선을 막았다 — 우리 안 크리스탈이 한 발도 못 쏜다");
+		assertNotEquals(HitResult.Type.MISS, bars.clip(new ClipContext(FROM, TO,
+						ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()))
+				.getType(), "바닐라 광선도 지나간다면 이 시험은 쇠창살을 재고 있지 않다");
+	}
+
+	@Test
+	void 쇠창살과_돌이_같이_있으면_돌이_막는다() {
+		TestBootstrap.ensureInitialized();
+		Blocky both = new Blocky()
+				.put(MIDDLE, TrialCrystalGuard.cageState(0, 0, 3))
+				.put(MIDDLE.east(), Blocks.STONE.defaultBlockState());
+		assertFalse(clear(both), "쇠창살 너머의 돌이 막지 못했다");
+	}
+
+	/**
+	 * 「다시 선 쇠창살」이 세우는 우리를 통째로 둘러도 안 가려진다.
+	 *
+	 * <p>우리 한가운데(크리스탈 자리)를 비스듬히 위에서 본다 — 벽과 지붕을 둘 다 지나는 광선이다.
+	 */
+	@Test
+	void 쇠창살_우리_안의_크리스탈도_보인다() {
+		TestBootstrap.ensureInitialized();
+		Blocky cage = new Blocky();
+		BlockPos seat = new BlockPos(0, 80, 0);
+		for (int dx = -TrialCrystalGuard.CAGE_HALF_WIDTH; dx <= TrialCrystalGuard.CAGE_HALF_WIDTH; dx++) {
+			for (int dz = -TrialCrystalGuard.CAGE_HALF_WIDTH; dz <= TrialCrystalGuard.CAGE_HALF_WIDTH; dz++) {
+				for (int dy = 0; dy <= TrialCrystalGuard.CAGE_TOP; dy++) {
+					if (TrialCrystalGuard.cagePart(dx, dz, dy)) {
+						cage.put(seat.offset(dx, dy, dz), TrialCrystalGuard.cageState(dx, dz, dy));
+					}
+				}
+			}
+		}
+		Vec3 crystalEye = new Vec3(0.5, 81.5, 0.5);
+		Vec3 playerEye = new Vec3(20.5, 90.0, 7.5);
+		assertTrue(TrialCrystalOvercharge.clearLine(cage, playerEye, crystalEye, CollisionContext.empty()),
+				"쇠창살 우리가 시선을 막았다");
+		cage.put(seat.offset(TrialCrystalGuard.CAGE_HALF_WIDTH, 1, 0), Blocks.STONE.defaultBlockState());
+		cage.put(seat.offset(TrialCrystalGuard.CAGE_HALF_WIDTH, 2, 0), Blocks.STONE.defaultBlockState());
+		cage.put(seat.offset(TrialCrystalGuard.CAGE_HALF_WIDTH, 1, 1), Blocks.STONE.defaultBlockState());
+		cage.put(seat.offset(TrialCrystalGuard.CAGE_HALF_WIDTH, 2, 1), Blocks.STONE.defaultBlockState());
+		assertFalse(TrialCrystalOvercharge.clearLine(cage, playerEye, crystalEye, CollisionContext.empty()),
+				"우리 벽을 돌로 메웠는데 보인다 — 사람이 쌓은 블록은 막아야 한다");
+	}
+
+	/** 바닐라 {@code hasLineOfSight} 의 128 블록 상한을 그대로 지킨다. */
+	@Test
+	void 거리_상한을_넘으면_가려진다() {
+		TestBootstrap.ensureInitialized();
+		assertEquals(128.0, TrialCrystalOvercharge.SIGHT_REACH, "바닐라 상한과 같아야 한다");
+		Vec3 far = FROM.add(TrialCrystalOvercharge.SIGHT_REACH + 1.0, 0.0, 0.0);
+		assertFalse(TrialCrystalOvercharge.clearLine(new Blocky(), FROM, far, CollisionContext.empty()),
+				"상한 너머인데 보인다");
+		Vec3 near = FROM.add(TrialCrystalOvercharge.SIGHT_REACH - 1.0, 0.0, 0.0);
+		assertTrue(TrialCrystalOvercharge.clearLine(new Blocky(), FROM, near, CollisionContext.empty()),
+				"상한 안인데 가려졌다");
 	}
 
 	/**
@@ -567,6 +686,52 @@ class TrialCrystalOverchargeTest {
 
 	// ------------------------------------------------------------------ 거들기
 
+	/** 시선 시험의 광선 — 사람의 눈에서 크리스탈 쪽으로 x 를 따라 10칸. */
+	private static final Vec3 FROM = new Vec3(0.5, 65.5, 0.5);
+	private static final Vec3 TO = new Vec3(10.5, 65.5, 0.5);
+	/** 그 광선이 한가운데에서 지나는 칸. */
+	private static final BlockPos MIDDLE = new BlockPos(5, 65, 0);
+
+	private static boolean clear(Blocky level) {
+		return TrialCrystalOvercharge.clearLine(level, FROM, TO, CollisionContext.empty());
+	}
+
+	/** 놓은 블록 말고는 공기인 세계. 시선 판정이 월드 없이 돈다. */
+	private static final class Blocky implements BlockGetter {
+
+		private final Map<BlockPos, BlockState> blocks = new HashMap<>();
+
+		Blocky put(BlockPos pos, BlockState state) {
+			blocks.put(pos.immutable(), state);
+			return this;
+		}
+
+		@Override
+		public @Nullable BlockEntity getBlockEntity(BlockPos pos) {
+			return null;
+		}
+
+		@Override
+		public BlockState getBlockState(BlockPos pos) {
+			return blocks.getOrDefault(pos, Blocks.AIR.defaultBlockState());
+		}
+
+		@Override
+		public FluidState getFluidState(BlockPos pos) {
+			return getBlockState(pos).getFluidState();
+		}
+
+		@Override
+		public int getHeight() {
+			return 384;
+		}
+
+		@Override
+		public int getMinY() {
+			return -64;
+		}
+	}
+
 	private static TrialCatalog.Risk.CrystalOvercharge card() {
 		TrialCatalog.Trial trial = TrialCatalog.byId("sharedfate:crystal_overcharge");
 		assertNotNull(trial, "「수정 과충전」 카드가 없다");
@@ -579,10 +744,14 @@ class TrialCrystalOverchargeTest {
 	}
 
 	private static String classBytes() {
+		return classBytes("TrialCrystalOvercharge");
+	}
+
+	private static String classBytes(String name) {
 		try (InputStream in = TrialCrystalOvercharge.class
-				.getResourceAsStream("/com/sharedfate/sync/TrialCrystalOvercharge.class")) {
+				.getResourceAsStream("/com/sharedfate/sync/" + name + ".class")) {
 			if (in == null) {
-				return fail("TrialCrystalOvercharge 의 클래스 파일을 찾지 못했다");
+				return fail(name + " 의 클래스 파일을 찾지 못했다");
 			}
 			return new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
 		} catch (IOException failed) {
