@@ -309,7 +309,7 @@ public class SharedFateClient implements ClientModInitializer {
 		if (client.gui.screen() instanceof DeathScreen) {
 			return;
 		}
-		client.setScreenAndShow(new PerkOfferScreen(payload));
+		ForcedScreens.show(client, new PerkOfferScreen(payload));
 	}
 
 	/**
@@ -322,7 +322,7 @@ public class SharedFateClient implements ClientModInitializer {
 		if (client.gui.screen() instanceof DeathScreen) {
 			return;
 		}
-		client.setScreenAndShow(new PerkDrawScreen(payload));
+		ForcedScreens.show(client, new PerkDrawScreen(payload));
 	}
 
 	/**
@@ -339,7 +339,7 @@ public class SharedFateClient implements ClientModInitializer {
 		if (client.gui.screen() instanceof DeathScreen || !TrialRouletteScreen.shouldOpen(payload)) {
 			return;
 		}
-		client.setScreenAndShow(new TrialRouletteScreen(payload));
+		ForcedScreens.show(client, new TrialRouletteScreen(payload));
 	}
 
 	/**
@@ -356,7 +356,8 @@ public class SharedFateClient implements ClientModInitializer {
 	 *       해야 할 일이 있는 창이라 덮으면 안 된다. ⚠ 그래서 <b>이 사람은 수락창을 지금 못
 	 *       본다</b> — 1초 뒤에 다시 오므로 그 창을 닫으면 그때 뜬다. 한 번만 보냈다면 영영 못
 	 *       보고, 그 사람이 리더면 팀이 제한시간을 다 쓴다</li>
-	 *   <li>그 밖 — 띄운다. 다른 창(인벤토리 등)은 밀어낸다. 판이 바뀌는 자리라 그쪽이 더 급하다</li>
+	 *   <li>그 밖 — 띄운다. 다른 창(인벤토리 등)은 밀어낸다. 판이 바뀌는 자리라 그쪽이 더 급하다.
+	 *       메뉴가 있는 창은 바닐라 ESC 처럼 닫은 뒤에 밀어낸다({@link ForcedScreens})</li>
 	 * </ol>
 	 */
 	private static void openTrialEntrance(Minecraft client, TrialEntranceOfferPayload payload) {
@@ -372,7 +373,7 @@ public class SharedFateClient implements ClientModInitializer {
 				|| client.gui.screen() instanceof PerkOfferScreen) {
 			return;
 		}
-		client.setScreenAndShow(new TrialEntranceScreen(payload));
+		ForcedScreens.show(client, new TrialEntranceScreen(payload));
 	}
 
 	/**

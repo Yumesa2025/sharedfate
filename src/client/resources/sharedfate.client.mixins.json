@@ -13,6 +13,7 @@
     "DeathScreenAccessor",
     "EnchantmentScreenMixin",
     "InventoryScreenTeamButtonMixin",
+    "KeyMappingUnknownKeyMixin",
     "MultiPlayerGameModeMixin",
     "RecipeBookButtonPositionMixin",
     "ScreenAccessor"
