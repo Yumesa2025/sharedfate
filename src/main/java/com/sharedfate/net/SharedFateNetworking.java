@@ -274,7 +274,18 @@ public final class SharedFateNetworking {
 	//     배포판으로 나가는 것은 시련을 실제로 내보내기로 정한 뒤다.
 	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다. 양쪽을 다 끄고 바꿀 것(안 그러면
 	//     ZipException).
-	public static final int PROTOCOL_VERSION = 37;
+	// 38: 「완충」이 앞으로 깎을 체력을 <b>체력바 위에</b> 겹쳐 그린다
+	//     (StatSnapshotPayload 에 spreadPending 칸 하나).
+	//
+	//     사람이 정한 것(2026-10-16) — 「완충으로 앞으로 나눠 들어올 남은 피해량을 체력바 위에
+	//     보여 준다」. 미뤄 둔 몫은 서버의 큐에만 있어 클라이언트가 스스로 알 길이 없다. 새 묶음을
+	//     만들지 않고, 서버만 아는 값을 바뀔 때만 보내는 기존 묶음에 얹었다.
+	//
+	//     칸이 하나 늘어 <b>형식 자체가 바뀌었으므로</b> 옛 클라이언트는 이 묶음을 아예 읽지
+	//     못한다. 35 와 같은 경우라 악수 단계에서 걸러지도록 번호를 올린다. 올려도 된다는 것은
+	//     사람이 확인했다(2026-10-16).
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다.
+	public static final int PROTOCOL_VERSION = 38;
 
 	private SharedFateNetworking() {
 	}

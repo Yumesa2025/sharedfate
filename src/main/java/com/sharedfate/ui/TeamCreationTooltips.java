@@ -58,8 +58,8 @@ public final class TeamCreationTooltips {
 	 * 엔드까지 간 뒤에야 「왜 시련이 안 뜨지」를 묻게 되는데, 그때는 팀을 해체하는 수밖에 없다.
 	 */
 	public static final String DRAGON_TRIAL =
-			"켜면 드래곤이 인원 비례로 세지고 시련 카드가 뜹니다. "
-					+ "끄면(기본값) 바닐라 드래곤전 그대로입니다.";
+			"드래곤을 강화합니다. 숙련자가 아니면 추천하지 않습니다. "
+					+ "끄면(기본값) 바닐라 드래곤 그대로입니다.";
 
 	public static final String DAMAGE_ALERT =
 			"켜면 팀원이 맞을 때마다 화면에 알림이 뜹니다. 끄면 알림이 오지 않습니다.";

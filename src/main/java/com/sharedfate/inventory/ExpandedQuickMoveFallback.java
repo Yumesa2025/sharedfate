@@ -107,15 +107,16 @@ public final class ExpandedQuickMoveFallback {
 	}
 
 	/**
-	 * 추가 칸의 아이템을 <b>핫바 → 인벤토리 세 줄</b> 순서로 내보낸다.
+	 * 추가 칸의 아이템을 <b>핫바로</b> 내보낸다.
 	 *
 	 * <p>바닐라 메뉴는 제 몫의 칸을 먼저 붙이고 <b>그다음에</b>
 	 * {@code addStandardInventorySlots} 로 플레이어 36칸을 붙인다. 그 시작 번호는
 	 * {@link ExpandedMenuLayout#sharedfate$playerSlotStart()} 가 알고 있으므로, 세 줄 27칸과
 	 * 핫바 9칸이 계산으로 나온다.
 	 *
-	 * <p>바닐라가 인벤토리 세 줄에서 핫바로 보내듯 <b>핫바를 먼저</b> 채운다. 추가 세 줄은
-	 * 화면에서 세 줄 바로 아래에 붙은 또 하나의 인벤토리 줄이므로 같은 규칙을 따른다.
+	 * <p>바닐라가 인벤토리 세 줄에서 핫바로 보내듯 <b>핫바만</b> 채운다. 추가 세 줄은
+	 * 화면에서 세 줄 바로 아래에 붙은 또 하나의 인벤토리 줄이므로 같은 규칙을 따른다
+	 * ({@link ExpandedInventoryMoves#hotbarOrder} 에 까닭이 있다).
 	 *
 	 * <h2>화면 제 칸(재료 칸·모루 왼쪽 칸 등)은 여기서 보지 않는다</h2>
 	 *
@@ -135,7 +136,7 @@ public final class ExpandedQuickMoveFallback {
 		ItemStack original = stack.copy();
 
 		if (!ExpandedInventoryMoves.move(
-				menu, stack, ExpandedInventoryMoves.hotbarFirstOrder(playerStart), false)) {
+				menu, stack, ExpandedInventoryMoves.hotbarOrder(playerStart), false)) {
 			return ItemStack.EMPTY;
 		}
 

@@ -121,19 +121,25 @@ public final class ExpandedInventoryMoves {
 	}
 
 	/**
-	 * 추가 칸에서 <b>나갈 때</b>의 기본 목적지 순서 — <b>핫바가 먼저</b>, 그다음 위 세 줄.
+	 * 추가 칸에서 <b>플레이어 쪽으로 나갈 때</b>의 목적지 — <b>핫바 아홉 칸뿐</b>이다.
 	 *
 	 * <p>바닐라는 「인벤토리 세 줄에서 쉬프트 클릭하면 핫바로, 핫바에서 하면 세 줄로」
 	 * 보낸다. 추가 세 줄은 화면에서 세 줄 <b>바로 아래</b>에 있는 또 다른 인벤토리 줄이므로
 	 * 같은 규칙을 따라 핫바로 가야 한다.
 	 *
+	 * <h2>위 세 줄을 목록에 넣으면 안 된다</h2>
+	 *
+	 * <p>예전에는 「핫바 → 위 세 줄」을 한 목록으로 넘겼다. 그런데 {@link #move} 는 <b>목록
+	 * 전체에서 합칠 곳을 먼저</b> 찾으므로, 위 세 줄에 같은 아이템이 덜 찬 채로 있으면 핫바가
+	 * 텅 비어 있어도 그쪽으로 합쳐져 <b>위로 올라가 버렸다.</b> 바닐라의 세 줄도 핫바가 가득
+	 * 차면 그 자리에 남는다 — 같은 인벤토리 안에서 옮겨 봐야 쓸모가 없기 때문이다. 추가 세 줄도
+	 * 똑같이, 핫바가 받지 못한 몫은 제자리에 남긴다.
+	 *
 	 * @param playerSlotStart 인벤토리 세 줄이 시작하는 메뉴 번호
 	 */
-	public static int[] hotbarFirstOrder(int playerSlotStart) {
+	public static int[] hotbarOrder(int playerSlotStart) {
 		int hotbarStart = playerSlotStart + ExpandedInventoryManager.EXTRA_SIZE;
-		return order(
-				hotbarStart, ExpandedInventoryManager.EXTRA_COLUMNS,
-				playerSlotStart, ExpandedInventoryManager.EXTRA_SIZE);
+		return order(hotbarStart, ExpandedInventoryManager.EXTRA_COLUMNS);
 	}
 
 	/**

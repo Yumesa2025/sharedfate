@@ -4,6 +4,7 @@ import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.Perk;
 import com.sharedfate.perk.PerkChoiceSession;
 import com.sharedfate.perk.PerkDamage;
+import com.sharedfate.perk.PerkDrawbacks;
 import com.sharedfate.perk.PerkEffect;
 import com.sharedfate.perk.PerkRegistry;
 import com.sharedfate.perk.PerkSetEffects;
@@ -15,10 +16,15 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -27,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.DoubleUnaryOperator;
 
 /**
  * 프리즘 「완충」({@code spread_damage})의 실행부. 받는 피해를 그 자리에서 넣지 않고 미뤄 두었다가
@@ -108,10 +115,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * 무적시간이 흔들리기 때문이다. 진짜 값을 그대로 믿으면 몫을 넣을 때마다 무적시간이 새로 차서
  * 분산 중에는 몹에게 거의 맞지 않는 증강이 된다.
  *
- * <h2>회복은 분산이 끝날 때까지 막는다</h2>
- * <p>{@link #blocksHealing} 이 {@code LivingEntity.heal} 진입 시점에 불린다. 자연 회복도 재생
- * 상태이상도 금사과도 그 한 지점을 지나므로 여기서 함께 막힌다. <b>큐가 살아 있는 동안, 팀원
- * 전원에게</b> 걸린다 — 체력이 공유라 누가 회복해도 미뤄 둔 몫이 지워지기 때문이다.
+ * <h2>자연 회복은 분산이 끝날 때까지 막는다 — 이것이 대가다</h2>
+ * <p>{@link #blocksNaturalRegen} 이 {@code FoodData.tick} 의 자연 회복 갈래에서 불린다. 재생
+ * 상태이상·금사과 같은 다른 회복은 막지 않는다. <b>큐가 살아 있는 동안, 팀원 전원에게</b>
+ * 걸린다 — 체력이 공유라 누가 회복해도 미뤄 둔 몫이 지워지기 때문이다. 세트 「방어 3단계」를 켠
+ * 팀에서는 이 대가가 사라진다.
  *
  * <h2>적을 처치하면 남은 몫이 사라진다</h2>
  * <p>나뉘어 들어오는 동안 팀원 누군가가 몹을 잡으면 {@link #clearPending} 이 <b>아직 넣지 않은
@@ -124,7 +132,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 「남은 몫 면제」지 「무적시간 초기화」가 아니다. 몫이 다 빠진 표는 무적시간이 다 흐른 뒤
  * {@link #stepTeam} 이 알아서 치운다.
  *
- * <p>회복 금지는 {@link #isSpreading} 이 {@code pending()} 을 보므로 큐를 닫는 순간 함께 풀린다.
+ * <p>자연 회복 금지는 {@link #isSpreading} 이 {@code pending()} 을 보므로 큐를 닫는 순간 함께 풀린다.
  * 따로 걷어낼 상태가 없다.
  *
  * <h2>알면서 받아들인 어긋남</h2>
@@ -882,24 +890,32 @@ public final class SpreadDamageManager {
 		return !ACTIVE.isEmpty() && Boolean.TRUE.equals(DELIVERING.get());
 	}
 
-	// ------------------------------------------------------------------ 회복 금지
+	// ------------------------------------------------------------------ 자연 회복 금지
 
 	/**
-	 * 이 대상은 지금 회복되지 않는가. {@code LivingEntity.heal} 진입 시점마다 불린다.
+	 * 이 대상은 지금 허기로 차는 자연 회복을 얻지 못하는가. 「완충」의 대가다.
+	 *
+	 * <p>{@link com.sharedfate.mixin.FoodDataNaturalRegenMixin} 이 {@code FoodData.tick} 의 자연
+	 * 회복 두 갈래 한가운데서 묻는다. {@code no_natural_regen} 과 같은 자리라, 막을 때는 회복 갈래에
+	 * 아예 들어가지 않아 허기 소모도 타이머도 움직이지 않는다.
+	 *
+	 * <p><b>막는 것은 자연 회복뿐이다.</b> 재생 상태이상·금사과·포션·평화 난이도의 회복·처치 보상은
+	 * 나뉘어 들어오는 동안에도 그대로 든다. 사람이 정한 대가가 「나눠 받는 동안 자연 회복이 안 되는
+	 * 것」(2026-10-16)이라서다. 예전에는 {@code LivingEntity.heal} 을 통째로 막아 모든 회복이
+	 * 멈췄다.
 	 *
 	 * <p>큐가 살아 있는 팀의 <b>팀원 전원</b>이 막힌다. 체력이 공유라 누가 회복해도 미뤄 둔 몫이
-	 * 지워지기 때문이다. 자연 회복·재생 상태이상·금사과가 모두 {@code heal} 한 지점을 지나므로
-	 * 여기 하나만 막으면 「나뉘어 들어오는 동안 회복되지 않는다」가 성립한다.
+	 * 지워지기 때문이다.
+	 *
+	 * <p>세트 「방어 3단계」를 켠 팀이면 막지 않는다 — 대가가 효과 안에 묶여 있어 {@code drawback}
+	 * 표시로는 끌 수 없으므로 {@link PerkDrawbacks#builtInWaived} 로 묻는다. 판정은 매번 보유
+	 * 목록을 다시 세므로 세트가 켜지기 전에 고른 「완충」이든 뒤에 고른 것이든, 다시 접속하거나
+	 * 서버를 다시 켠 뒤든 같고, 세트가 풀리면 그 순간 대가가 돌아온다.
 	 *
 	 * <p>미뤄 둔 몫이 하나도 없으면 맵이 비었는지만 보고 곧바로 거짓이라, 평소 회복 경로에는
 	 * 사실상 아무 부담도 얹히지 않는다.
-	 *
-	 * <p><b>{@code FoodData.tick} 의 자연 회복은 소모도를 먼저 쌓고 회복을 부른다.</b> 회복만
-	 * 막으므로 그 4초 동안은 회복 없이 배만 고파진다. {@code no_natural_regen} 이 {@code isHurt}
-	 * 를 가로채 그 문제를 피한 것과 다른 점인데, 그러려면 mixin 이 하나 더 필요하고 재생
-	 * 상태이상은 또 따로 막아야 한다. 4초짜리 대가에는 지나친 값이라고 보았다.
 	 */
-	public static boolean blocksHealing(@Nullable LivingEntity entity) {
+	public static boolean blocksNaturalRegen(@Nullable LivingEntity entity) {
 		if (ACTIVE.isEmpty() || !(entity instanceof ServerPlayer player)) {
 			return false;
 		}
@@ -907,8 +923,22 @@ public final class SpreadDamageManager {
 		if (server == null) {
 			return false;
 		}
-		ShareTeam team = TeamManager.get(server).teamOf(player.getUUID());
-		return team != null && isSpreading(team.teamId());
+		TeamManager manager = TeamManager.get(server);
+		ShareTeam team = manager.teamOf(player.getUUID());
+		if (team == null) {
+			return false;
+		}
+		return blocksNaturalRegen(isSpreading(team.teamId()), manager.stateOf(player.getUUID()));
+	}
+
+	/**
+	 * 월드를 보지 않는 순수 판정. 나누어 받는 중이고, 대가가 면제되지 않았을 때만 참이다.
+	 *
+	 * @param spreading 이 팀이 지금 피해를 나누어 받는 중인가({@link #isSpreading})
+	 * @param state     이 팀의 상태
+	 */
+	public static boolean blocksNaturalRegen(boolean spreading, @Nullable TeamState state) {
+		return spreading && !PerkDrawbacks.builtInWaived(state, SpreadDamageEffect.class);
 	}
 
 	/**
@@ -926,6 +956,98 @@ public final class SpreadDamageManager {
 	public static float remaining(@Nullable UUID teamId) {
 		Spread spread = teamId == null ? null : ACTIVE.get(teamId);
 		return spread == null || !spread.pending() ? 0.0F : spread.remaining;
+	}
+
+	/**
+	 * 이 사람 화면의 체력바가 「곧 깎일 만큼」으로 그릴 양. 아직 넣지 않은 몫이 실제로 깎을
+	 * 체력(흡수 포함)의 예상치다. 나누어 받는 중이 아니면 0.
+	 *
+	 * <p>{@link #remaining} 을 그대로 쓰지 않는 까닭은 몫이 <b>방어구 계산 앞</b>에서 미뤄진 값이기
+	 * 때문이다. 몫은 들어갈 때마다 방어구·저항·보호 마법을 다시 지나므로, 다이아 갑옷이면 미뤄 둔 8 이
+	 * 실제로는 3 남짓만 깎는다. 그대로 그리면 체력바가 두세 배를 부풀려 말한다.
+	 *
+	 * <p>그래서 몫을 받을 사람({@link #pickVictim} — 실제로 넣을 때와 같은 사람)의 지금 장비로 몫을
+	 * 하나씩 깎아 본다. 계산은 {@link #mitigated} 가 바닐라를 그대로 따라 하되 방어구 내구도를 닳게
+	 * 하거나 통계를 올리지 않는다. 장비를 바꾸면 다음 훑기에 값이 따라온다.
+	 */
+	public static float expectedLoss(@Nullable ServerPlayer viewer) {
+		if (ACTIVE.isEmpty() || viewer == null) {
+			return 0.0F;
+		}
+		MinecraftServer server = viewer.level().getServer();
+		if (server == null) {
+			return 0.0F;
+		}
+		ShareTeam team = TeamManager.get(server).teamOf(viewer.getUUID());
+		Spread spread = team == null ? null : ACTIVE.get(team.teamId());
+		if (spread == null || !spread.pending()) {
+			return 0.0F;
+		}
+		ServerPlayer picked = pickVictim(server, team, spread);
+		ServerPlayer victim = picked != null ? picked : viewer;
+		DamageSource source = spread.source;
+		try {
+			return expectedLoss(spread.remaining, spread.slicesLeft,
+					slice -> mitigated(victim, source, (float) slice));
+		} catch (RuntimeException error) {
+			// 예상치 하나 때문에 동기화가 멈추면 안 된다. 깎지 않은 값으로 물러선다.
+			warnOnce(error);
+			return spread.remaining;
+		}
+	}
+
+	/**
+	 * 남은 몫을 {@link Spread#takeSlice} 와 같은 순서로 떼어 내며 하나씩 깎아 더한 값. 월드를 보지
+	 * 않는 순수 계산이라 시험이 그대로 부른다.
+	 *
+	 * @param mitigation 몫 하나가 실제로 깎을 양. 방어구 계산 등을 흉내 낸다
+	 */
+	static float expectedLoss(float remaining, int slicesLeft, DoubleUnaryOperator mitigation) {
+		float left = remaining;
+		float total = 0.0F;
+		for (int slices = slicesLeft; slices > 0 && left > 0.0F; slices--) {
+			float slice = sliceAmount(left, slices);
+			left -= slice;
+			double lost = mitigation.applyAsDouble(slice);
+			if (Double.isFinite(lost) && lost > 0.0) {
+				total += (float) lost;
+			}
+		}
+		return total;
+	}
+
+	/**
+	 * 몫 하나가 이 사람에게 들어가면 깎일 양. {@code Player.actuallyHurt} 가 부르는
+	 * {@code getDamageAfterArmorAbsorb}·{@code getDamageAfterMagicAbsorb} 를 26.3 바이트코드 그대로
+	 * 따라 했다 — 다만 그 둘을 직접 부르지 않는다. 앞쪽은 방어구를 닳게 하고 뒤쪽은 「저항으로 막은
+	 * 피해」 통계를 올리므로, 예상치를 셀 때마다 장비가 닳는다.
+	 */
+	private static float mitigated(ServerPlayer victim, @Nullable DamageSource source, float amount) {
+		if (source == null) {
+			return amount;
+		}
+		float damage = amount;
+		if (!source.is(DamageTypeTags.BYPASSES_ARMOR)) {
+			damage = CombatRules.getDamageAfterAbsorb(victim, damage, source, victim.getArmorValue(),
+					(float) victim.getAttributeValue(Attributes.ARMOR_TOUGHNESS));
+		}
+		if (source.is(DamageTypeTags.BYPASSES_EFFECTS)) {
+			return damage;
+		}
+		MobEffectInstance resistance = victim.getEffect(MobEffects.RESISTANCE);
+		if (resistance != null && !source.is(DamageTypeTags.BYPASSES_RESISTANCE)) {
+			int resisted = (resistance.getAmplifier() + 1) * 5;
+			damage = Math.max(damage * (25 - resisted) / 25.0F, 0.0F);
+		}
+		if (damage <= 0.0F) {
+			return 0.0F;
+		}
+		if (source.is(DamageTypeTags.BYPASSES_ENCHANTMENTS)
+				|| !(victim.level() instanceof ServerLevel level)) {
+			return damage;
+		}
+		float protection = EnchantmentHelper.getDamageProtection(level, victim, source);
+		return protection > 0.0F ? CombatRules.getDamageAfterMagicAbsorb(damage, protection) : damage;
 	}
 
 	// ------------------------------------------------------------------ 정리

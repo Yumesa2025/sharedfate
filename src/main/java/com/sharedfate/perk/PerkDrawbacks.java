@@ -202,4 +202,52 @@ public final class PerkDrawbacks {
 	public static Waiver waiverFor(@Nullable TeamState state) {
 		return new Waiver(state);
 	}
+
+	// ------------------------------------------------------------------ 효과 안에 묶인 대가
+
+	/**
+	 * 효과 <b>안에 묶여 있는</b> 대가가 이 팀에서 면제되는가.
+	 *
+	 * <p>{@code drawback} 표시는 효과 하나를 통째로 건너뛰는 그릇이라, 이득과 대가가 한 효과에
+	 * 함께 들어 있는 경우에는 쓸 수 없다. 지금 그런 것이 둘이다.
+	 *
+	 * <ul>
+	 *   <li>「완충」({@code spread_damage}) — 나뉘어 들어오는 동안 자연 회복이 막힌다.
+	 *       {@code SpreadDamageManager.blocksNaturalRegen} 이 묻는다</li>
+	 *   <li>「버티는 방패」({@code shield_fall_immunity}) — 막아 낸 낙하 피해의 열 배로 방패가 닳는다.
+	 *       {@link PerkDamage#wearShieldForBlockedFall} 이 묻는다</li>
+	 * </ul>
+	 *
+	 * <p>두 효과 모두 필드가 없거나 하나뿐이라 표시를 붙일 수 없다({@code shield_fall_immunity} 는
+	 * 하나를 돌려쓰는 홑개체다). 그래서 <b>효과 형</b>으로 묻는다.
+	 *
+	 * <p>{@link Waiver#waives} 와 같은 세 조건을 본다. 다만 이 형을 가진 증강이 여럿이면
+	 * <b>전부</b> 방어 유형이어야 참이다 — 방어가 아닌 증강이 같은 형을 들고 있으면 그 증강의 대가는
+	 * 남아야 하는데, 형으로는 둘을 가를 수 없으므로 대가를 남기는 쪽으로 물러선다. 그 형을 가진
+	 * 증강이 하나도 없으면 면제할 대가도 없으므로 거짓이다.
+	 *
+	 * <p>판정은 언제나 {@code ownedPerks} 를 다시 세어 만든다. 세트가 켜지기 전에 고른 것이든 뒤에
+	 * 고른 것이든, 다시 접속하거나 서버를 다시 켠 뒤든 같은 답이 나오고, 세트가 풀리는 순간 대가가
+	 * 돌아온다.
+	 *
+	 * @param state 대상 팀
+	 * @param type  대가를 품은 효과 형
+	 */
+	public static boolean builtInWaived(@Nullable TeamState state, Class<? extends PerkEffect> type) {
+		if (state == null || type == null || !state.perksEnabled || state.ownedPerks.isEmpty()) {
+			return false;
+		}
+		boolean held = false;
+		for (String perkId : state.ownedPerks) {
+			Perk perk = PerkRegistry.byId(perkId).orElse(null);
+			if (perk == null || perk.effects().stream().noneMatch(type::isInstance)) {
+				continue;
+			}
+			if (!perk.hasSetType(PerkSetType.DEFENSE)) {
+				return false;
+			}
+			held = true;
+		}
+		return held && NoDefenseDrawbacksEffect.heldBy(state);
+	}
 }

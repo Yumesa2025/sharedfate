@@ -6,6 +6,7 @@ import com.sharedfate.client.perk.ClientPerkSets;
 import com.sharedfate.client.perk.PerkClientState;
 import com.sharedfate.net.PerkSyncPayload;
 import com.sharedfate.team.TeamCreationSettings;
+import com.sharedfate.ui.DragonTrialGlow;
 import com.sharedfate.ui.GameStartButton;
 import com.sharedfate.ui.PanelScroll;
 import com.sharedfate.ui.PerkSetLines;
@@ -24,12 +25,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.util.Util;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -172,6 +175,19 @@ public class TeamScreen extends Screen {
 	/** 설정 줄의 단추 높이. 기본 20 보다 낮춰야 여덟 가지가 네 줄로 창 안에 들어간다. */
 	private static final int FORM_BUTTON_HEIGHT = 18;
 
+	/**
+	 * 「드래곤 시련 — 켬」 단추 둘레의 빛 색. 자리 계산은 {@link DragonTrialGlow} 가 한다.
+	 *
+	 * <p>바탕 테두리는 어둡고 반투명하게 늘 깔리고, 그 위를 꼬리가 밝은 보라로, 머리가 거의
+	 * 흰 연보라로 지나간다. 머리를 꼬리와 같은 색으로 두면 어디가 앞인지 안 보여 「도는」
+	 * 느낌이 사라진다. 엔드 수정·드래곤 숨결의 보랏빛에서 가져온 결이다.
+	 */
+	private static final int GLOW_BASE = 0xB0401060;
+	private static final int GLOW_TAIL = 0xB45CFF;
+	private static final int GLOW_HEAD = 0xFFF0DCFF;
+	/** 머리 둘레 3×3 에 얇게 번지는 빛. 테두리 1px 만으로는 「빛난다」기보다 「점」이다. */
+	private static final int GLOW_HALO = 0x70C77DFF;
+
 	private enum Tab {
 		STATUS("현황"),
 		TEAM("팀"),
@@ -275,6 +291,14 @@ public class TeamScreen extends Screen {
 	private Button createButton;
 
 	/**
+	 * 「드래곤 시련」 단추. 켜져 있을 때 둘레에 빛을 덧그리려고 자리를 들고 있는다.
+	 *
+	 * <p>{@link #init()} 이 돌 때마다 비우고 팀 만들기 양식에서만 채운다 — 다른 탭으로 옮긴 뒤에
+	 * 옛 단추가 남아 있으면 보이지 않는 자리에 빛만 돈다.
+	 */
+	private Button dragonTrialButton;
+
+	/**
 	 * 「팀 만들기」 명령을 보내 두고 아직 결과를 못 봤는가.
 	 *
 	 * <p>명령을 보낸 그 틱에는 아직 팀이 없다. 팀이 생겼다는 사실은 몇 틱 뒤 도착하는
@@ -327,6 +351,7 @@ public class TeamScreen extends Screen {
 	@Override
 	protected void init() {
 		lastSignature = signature();
+		dragonTrialButton = null;
 		int left = (this.width - PANEL_WIDTH) / 2;
 
 		int tabWidth = PANEL_WIDTH / Tab.values().length;
@@ -430,9 +455,16 @@ public class TeamScreen extends Screen {
 							TeamCreationSettings.MAX_REROLL_COUNT)));
 			// 마지막 줄의 오른쪽은 일곱 가지일 때 비어 있던 자리다. 여덟 번째가 여기 들어가므로
 			// 줄이 늘지 않고 아래 단추와 경고 줄의 y 도 그대로다 — FORM_ROW 문서를 보라.
-			addRenderableWidget(toggle(right, formRowY(3), half, "드래곤 시련",
-					newTeamDragonTrials, "켬", "끔", TeamCreationTooltips.DRAGON_TRIAL,
-					() -> newTeamDragonTrials = !newTeamDragonTrials));
+			// 다른 켜고 끄기와 달리 켤 때 확인창을 거치므로 toggle() 을 쓰지 않는다. 켜진 글자도
+			// 초록이 아니라 빨강이다 — 켜서 좋아지는 것이 아니라 어려워지는 설정이다. 둘레의 빛은
+			// renderDragonTrialGlow 가 덧그린다.
+			dragonTrialButton = Button.builder(
+					toggleText("드래곤 시련", newTeamDragonTrials, "켬", "끔", ChatFormatting.RED),
+					button -> pressDragonTrial())
+					.bounds(right, formRowY(3), half, FORM_BUTTON_HEIGHT)
+					.tooltip(Tooltip.create(Component.literal(TeamCreationTooltips.DRAGON_TRIAL)))
+					.build();
+			addRenderableWidget(dragonTrialButton);
 
 			createButton = Button.builder(Component.literal("팀 만들기"), button -> createTeam())
 					.bounds(left, formRowY(4) + 4, PANEL_WIDTH, FORM_BUTTON_HEIGHT).build();
@@ -542,14 +574,59 @@ public class TeamScreen extends Screen {
 	 */
 	private Button toggle(int x, int y, int width, String label, boolean value,
 			String onText, String offText, String tooltip, Runnable flip) {
-		Component text = Component.literal(label + " — " + (value ? onText : offText))
-				.withStyle(value ? ChatFormatting.GREEN : ChatFormatting.GRAY);
-		return Button.builder(text, button -> {
-			flip.run();
-			rebuild();
-		}).bounds(x, y, width, FORM_BUTTON_HEIGHT)
+		return Button.builder(toggleText(label, value, onText, offText, ChatFormatting.GREEN),
+				button -> {
+					flip.run();
+					rebuild();
+				}).bounds(x, y, width, FORM_BUTTON_HEIGHT)
 				.tooltip(Tooltip.create(Component.literal(tooltip)))
 				.build();
+	}
+
+	/** 켜고 끄기 단추의 글자. 켜지면 {@code onColor}, 꺼지면 회색이다. */
+	private static Component toggleText(String label, boolean value, String onText,
+			String offText, ChatFormatting onColor) {
+		return Component.literal(label + " — " + (value ? onText : offText))
+				.withStyle(value ? onColor : ChatFormatting.GRAY);
+	}
+
+	/**
+	 * 「드래곤 시련」 단추를 눌렀다.
+	 *
+	 * <p>끄는 쪽은 바로 끈다. <b>켜는 쪽만</b> 확인창을 한 번 거친다 — 켜면 드래곤이 숙련자도
+	 * 버거울 만큼 세지는데, 다른 일곱과 나란히 놓인 단추라 훑으며 누르다 함께 켜기 쉽다. 팀을
+	 * 만든 뒤에는 못 끈다.
+	 *
+	 * <h2>돌아왔을 때 적던 것이 그대로인 까닭</h2>
+	 * <p>확인창에서 돌아오면 {@code Screen.init(int, int)} → {@code repositionElements()} →
+	 * {@code rebuildWidgets()} 를 지나 {@link #init()} 이 다시 돌고 위젯이 모두 새것이 된다.
+	 * 그래도 지워지는 것이 없다 — 여덟 설정은 처음부터 이 화면의 필드에만 있고, 이름 칸도
+	 * 글자가 들어올 때마다 {@link #newTeamName} 에 옮겨 두었다가 새 칸에 다시 채운다.
+	 * <b>값을 위젯에 두는 것을 여기서도 하지 말 것.</b>
+	 *
+	 * <p>{@code TeamDisbandConfirmScreen} 과 달리 바닐라 {@link ConfirmScreen} 을 그대로 쓴다.
+	 * 해체와 달리 되돌릴 수 있는 고르기라(다시 누르면 꺼진다) 읽어야 할 목록도, 잠가 둘 단추도
+	 * 없다. ESC 는 바닐라가 「취소」로 넘겨준다.
+	 */
+	private void pressDragonTrial() {
+		if (newTeamDragonTrials) {
+			newTeamDragonTrials = false;
+			rebuild();
+			return;
+		}
+		Minecraft client = this.minecraft;
+		if (client == null) {
+			return;
+		}
+		client.setScreenAndShow(new ConfirmScreen(proceed -> {
+			if (proceed) {
+				newTeamDragonTrials = true;
+			}
+			client.setScreenAndShow(this);
+		}, Component.literal("드래곤 시련"),
+				Component.literal("쉽지 않은 전투가 될 것입니다. 진행하시겠습니까?"),
+				Component.literal("진행").withStyle(ChatFormatting.RED),
+				Component.literal("취소")));
 	}
 
 	/**
@@ -785,6 +862,58 @@ public class TeamScreen extends Screen {
 			case STATS -> renderStats(graphics, left);
 		}
 		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+		// 위젯 다음에 그려야 단추 바탕 위에 선다. 툴팁은 다음 그리기 단계로 미뤄지므로 빛이
+		// 툴팁을 덮지는 않는다.
+		renderDragonTrialGlow(graphics);
+	}
+
+	/**
+	 * 「드래곤 시련 — 켬」 단추 둘레를 도는 보라 빛. 꺼져 있으면 아무것도 안 그린다.
+	 *
+	 * <p>버튼 위젯을 감싸 재정의하지 않고 화면이 덧그린다. 26.3 의
+	 * {@code AbstractButton.extractWidgetRenderState} 가 {@code final} 이라 단추 안에서 그릴
+	 * 자리가 없고, 덧그리면 {@link #toggle} 과 같은 {@code Button.builder} 를 그대로 쓸 수 있다.
+	 *
+	 * <p>바깥 1px 테두리를 칸 단위 {@code fill} 로 찍는다. 꼬리를 먼 쪽부터 그려야 머리가
+	 * 맨 위에 남는다.
+	 */
+	private void renderDragonTrialGlow(GuiGraphicsExtractor graphics) {
+		Button button = dragonTrialButton;
+		if (button == null || !button.visible || !newTeamDragonTrials) {
+			return;
+		}
+		int x = button.getX();
+		int y = button.getY();
+		int width = button.getWidth();
+		int height = button.getHeight();
+		int perimeter = DragonTrialGlow.perimeter(width, height);
+		if (perimeter == 0) {
+			return;
+		}
+
+		// 바탕 테두리. 빛이 지나가지 않는 자리에서도 「켜져 있다」가 보이게 은은하게 깐다.
+		graphics.outline(x, y, width, height, GLOW_BASE);
+
+		long now = Util.getMillis();
+		for (int head = 0; head < DragonTrialGlow.HEADS; head++) {
+			int headIndex = DragonTrialGlow.headIndex(now, perimeter, head);
+			for (int step = DragonTrialGlow.TAIL_LENGTH - 1; step >= 1; step--) {
+				int alpha = DragonTrialGlow.tailAlpha(step);
+				if (alpha == 0) {
+					continue;
+				}
+				DragonTrialGlow.Pixel pixel =
+						DragonTrialGlow.pixelAt(headIndex - step, width, height);
+				graphics.fill(x + pixel.dx(), y + pixel.dy(),
+						x + pixel.dx() + 1, y + pixel.dy() + 1,
+						DragonTrialGlow.withAlpha(GLOW_TAIL, alpha));
+			}
+			DragonTrialGlow.Pixel tip = DragonTrialGlow.pixelAt(headIndex, width, height);
+			int tipX = x + tip.dx();
+			int tipY = y + tip.dy();
+			graphics.fill(tipX - 1, tipY - 1, tipX + 2, tipY + 2, GLOW_HALO);
+			graphics.fill(tipX, tipY, tipX + 1, tipY + 1, GLOW_HEAD);
+		}
 	}
 
 	private void renderStatus(GuiGraphicsExtractor graphics, int left) {

@@ -12,6 +12,7 @@ import com.sharedfate.perk.effect.DoubleJumpEffect;
 import com.sharedfate.perk.effect.HolderEffect;
 import com.sharedfate.perk.effect.ItemGrantEffect;
 import com.sharedfate.perk.effect.MaxHealthBonusEffect;
+import com.sharedfate.perk.effect.MobDamageEffect;
 import com.sharedfate.perk.effect.NoDamageBoostEffect;
 import com.sharedfate.perk.effect.OnKillEffect;
 import com.sharedfate.perk.effect.OreExchangeEffect;
@@ -133,11 +134,16 @@ class DefaultPerkPoolValuesTest {
 	}
 
 	@Test
-	void 유리_세계는_받는_피해_2배다(@TempDir Path dir) throws IOException {
+	void 유리_세계는_몹에게_받는_피해_2배다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:glass_world");
-		DamageTakenEffect damageTaken = assertInstanceOf(DamageTakenEffect.class, perk.effects().get(1));
+		// 모든 피해가 아니라 엔더 드래곤을 뺀 몹에게 받는 피해다(사람 결정 2026-10-16). 한 서버에
+		// 팀은 하나뿐이라 mob_damage 가 곧 「이 팀이 몹에게 받는 피해」다.
+		MobDamageEffect mobDamage = assertInstanceOf(MobDamageEffect.class, perk.effects().get(1));
 
-		assertEquals(2.0, damageTaken.multiplier(), 1.0e-9);
+		assertEquals(2.0, mobDamage.multiplier(), 1.0e-9);
+		assertTrue(mobDamage.targets().excludes().contains(
+				net.minecraft.resources.Identifier.parse("minecraft:ender_dragon")));
+		assertTrue(perk.effects().stream().noneMatch(DamageTakenEffect.class::isInstance));
 	}
 
 	/**
@@ -439,6 +445,7 @@ class DefaultPerkPoolValuesTest {
 	@Test
 	void 아가미는_물에_있을_때만_회복한다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:gills");
+		assertEquals(PerkRarity.GOLD, perk.rarity(), "실버에서 골드로 올라갔다");
 
 		ConditionalEffect conditional = assertInstanceOf(ConditionalEffect.class,
 				perk.effects().get(0));
@@ -477,6 +484,25 @@ class DefaultPerkPoolValuesTest {
 				.orElseThrow(() -> new AssertionError("rally_shard 가 없다"));
 		assertEquals(60, shard.freezeTicks(), "굳는 시간은 3초다");
 		assertEquals(4800, shard.cooldownTicks(), "쿨타임은 4분이다");
+	}
+
+	/**
+	 * 「뿌리내린 발」은 프리즘이고 <b>대가가 없다</b> — 자리를 막는 것 하나뿐이다.
+	 *
+	 * <p>예전에는 골드였고 원래 바뀔 시점마다 실명·구속({@code on_swap})을 물었다. 그 대가를
+	 * 걷어내며 프리즘으로 올렸다. {@code on_swap} 이 정의에 남아 있으면 설명에는 없는 디버프가
+	 * 주기마다 몰래 걸린다.
+	 *
+	 * <p>막힘은 여전히 <b>평범한 쪽</b>이다. 교환 시점은 계속 찾아와서 함께 가진 다른 증강
+	 * (「본진이 바뀐다」의 저항, 「정거장」의 나약함 등)의 교환 시점 효과는 그대로 돈다.
+	 */
+	@Test
+	void 뿌리내린_발은_대가_없이_자리만_막는다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:rooted_feet");
+
+		assertEquals(PerkRarity.PRISM, perk.rarity());
+		assertEquals(1, perk.effects().size(), "swap_block 하나뿐, 실명·구속은 빠졌다");
+		assertSame(SwapBlockEffect.INSTANCE, perk.effects().get(0));
 	}
 
 	/**
@@ -525,23 +551,25 @@ class DefaultPerkPoolValuesTest {
 	void 기본_풀은_하나도_버려지지_않고_읽힌다(@TempDir Path dir) throws IOException {
 		loadDefaultPool(dir);
 
-		assertEquals(96, PerkRegistry.all().size(),
+		assertEquals(97, PerkRegistry.all().size(),
 				"파일에 적힌 수와 읽힌 수가 다르면 효과 타입이 등록되지 않은 것이다");
 
 		long silver = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.SILVER).count();
 		long gold = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.GOLD).count();
 		long prism = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.PRISM).count();
 		// 세트 「개척」이 들어오며 실버 +1(유적 감별사) · 골드 +1(흥정의 달인) 이 됐다.
+		// 그 뒤 「아가미」가 실버 → 골드, 「뿌리내린 발」이 골드 → 프리즘으로 올라갔다.
+		// 「굳은살」이 들어오며 실버 +1.
 		assertEquals(35, silver, "실버");
 		assertEquals(36, gold, "골드");
-		assertEquals(25, prism, "프리즘");
+		assertEquals(26, prism, "프리즘");
 
 		// 등록을 빠뜨리면 여기서 먼저 걸린다.
 		for (String id : new String[] {"sharedfate:grounded_guard", "sharedfate:arcane_workshop",
 				"sharedfate:diamond_sundial", "sharedfate:final_movement",
 				"sharedfate:rally_shard", "sharedfate:bloodlust",
 				"sharedfate:cushion", "sharedfate:haggling_master",
-				"sharedfate:ruin_appraiser"}) {
+				"sharedfate:ruin_appraiser", "sharedfate:callus"}) {
 			assertTrue(PerkRegistry.byId(id).isPresent(), id + " 가 풀에서 빠졌다");
 		}
 	}

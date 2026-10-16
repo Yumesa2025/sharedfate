@@ -22,6 +22,9 @@ import org.jetbrains.annotations.Nullable;
  *       {@code PerkManager.damageTakenMultiplier} 가 유일한 출처다.</li>
  *   <li><b>몹 최대 체력·공격력 배율</b> — 증강({@code mob_health}/{@code mob_damage})과
  *       「난이도 상승」이 함께 만든다. 몹에게 붙는 값이라 사람의 속성에는 흔적이 없다.</li>
+ *   <li><b>「완충」이 앞으로 깎을 체력</b> — 미뤄 둔 몫은 서버의 큐에만 있다. 체력바가 곧 깎일
+ *       만큼을 겹쳐 그리는 데 쓴다. 능력치 화면 값은 아니지만, 「서버만 알고 바뀔 때만 보내면
+ *       되는 값」이라 묶음을 하나 더 만들지 않고 여기에 얹었다(통신 규약 38).</li>
  *   <li><b>공격 속도</b>는 여기 없다. {@code minecraft:attack_speed} 는 공격력과 달리
  *       {@code setSyncable(true)} 로 등록되어 <b>수정자까지 그대로 클라이언트에 온다.</b>
  *       이미 있는 값을 또 보내면 두 값이 어긋날 자리만 생긴다.</li>
@@ -35,9 +38,12 @@ import org.jetbrains.annotations.Nullable;
  *                            피해 종류를 가리는 {@code damage_taken_from} 은 들어 있지 않다
  * @param mobHealth           적대적 몹의 최대 체력에 곱해지는 배율(증강 × 난이도 상승)
  * @param mobDamage           적대적 몹이 주는 피해에 곱해지는 배율(증강 × 난이도 상승)
+ * @param spreadPending       「완충」으로 미뤄 둔 몫이 앞으로 깎을 체력(흡수 포함)의 예상치. 방어구
+ *                            계산을 지난 값이다({@code SpreadDamageManager.expectedLoss}). 없으면 0
  */
 public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurrent,
-		float damageTaken, float mobHealth, float mobDamage) implements CustomPacketPayload {
+		float damageTaken, float mobHealth, float mobDamage, float spreadPending)
+		implements CustomPacketPayload {
 
 	public static final Type<StatSnapshotPayload> TYPE =
 			new Type<>(SharedFateMod.id("stat_snapshot"));
@@ -48,6 +54,7 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 					ByteBufCodecs.FLOAT, StatSnapshotPayload::damageTaken,
 					ByteBufCodecs.FLOAT, StatSnapshotPayload::mobHealth,
 					ByteBufCodecs.FLOAT, StatSnapshotPayload::mobDamage,
+					ByteBufCodecs.FLOAT, StatSnapshotPayload::spreadPending,
 					StatSnapshotPayload::new);
 
 	public StatSnapshotPayload {
@@ -58,6 +65,7 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 		damageTaken = sanitizeMultiplier(damageTaken);
 		mobHealth = sanitizeMultiplier(mobHealth);
 		mobDamage = sanitizeMultiplier(mobDamage);
+		spreadPending = sanitize(spreadPending, 0.0F);
 	}
 
 	/**
@@ -85,8 +93,11 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 	 * 패킷을 쓸 이유가 없기 때문이다. 「무엇이 달라진 것인가」의 답이 화면과 네트워크에서
 	 * 갈라지지 않도록 한 곳에서만 정한다.
 	 *
-	 * <p>다섯 값을 모두 본다. 무기를 바꾸면 공격력이, 증강을 고르면 배율이 달라지는데 어느
+	 * <p>여섯 값을 모두 본다. 무기를 바꾸면 공격력이, 증강을 고르면 배율이 달라지는데 어느
 	 * 하나만 보면 나머지가 바뀐 순간을 놓친다.
+	 *
+	 * <p>「완충」의 남은 피해만은 화면 글자가 아니라 하트 위의 칸이라 기준이 다르다 —
+	 * {@link #PENDING_STEP} 보다 크게 움직였거나 0 이 되고 안 되고가 바뀌었을 때 보낸다.
 	 *
 	 * @param sent 지난번에 보낸 것. 아직 한 번도 보내지 않았으면 null
 	 */
@@ -96,7 +107,21 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 				|| StatSummary.changed(sent.attackDamageCurrent, attackDamageCurrent)
 				|| StatSummary.changed(sent.damageTaken, damageTaken)
 				|| StatSummary.changed(sent.mobHealth, mobHealth)
-				|| StatSummary.changed(sent.mobDamage, mobDamage);
+				|| StatSummary.changed(sent.mobDamage, mobDamage)
+				|| pendingChanged(sent.spreadPending, spreadPending);
+	}
+
+	/**
+	 * 남은 피해가 이만큼 넘게 움직여야 다시 보낸다. 하트 반 칸(체력 1)의 십분의 일이라 화면에서
+	 * 어긋나 보일 일은 없고, 방어구 계산이 남기는 부스러기 소수점으로 패킷이 나가지도 않는다.
+	 */
+	public static final float PENDING_STEP = 0.1F;
+
+	static boolean pendingChanged(float sent, float now) {
+		if ((sent > 0.0F) != (now > 0.0F)) {
+			return true;
+		}
+		return Math.abs(now - sent) > PENDING_STEP;
 	}
 
 	@Override

@@ -27,9 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 틀려도 <b>빌드가 그냥 통과</b>하고, 그 자리를 처음 지나는 순간에야 터진다. 피해와 회복은
  * 서버가 뜨고 사람이 맞아 봐야 도는 자리라 사고를 늦게 알아차린다.
  *
- * <p>특히 {@code heal} 은 「완충」({@code spread_damage})의 <b>대가 전부</b>가 걸린 자리다.
- * 여기가 조용히 빗나가면 「나뉘어 들어오는 동안 회복되지 않는다」가 통째로 사라지는데,
- * 빌드도 서버도 멀쩡해서 아무도 모른 채 이득만 있는 프리즘이 된다.
+ * <p>「완충」({@code spread_damage})의 대가(나뉘어 들어오는 동안 자연 회복 금지)는 2026-10-16 부터
+ * {@code heal} 이 아니라 {@code FoodDataNaturalRegenMixin} 이 무는 {@code FoodData.tick} 의
+ * {@code isHurt} 호출에 걸려 있다. {@code no_natural_regen} 과 같은 자리라 그쪽 시험
+ * ({@code NoNaturalRegenEffectTest})이 함께 붙든다.
  */
 class SpreadDamageTargetTest {
 
@@ -63,9 +64,10 @@ class SpreadDamageTargetTest {
 	/**
 	 * 회복 진입점.
 	 *
-	 * <p>26.2 에서 자연 회복·재생 상태이상·금사과가 모두 이 한 곳을 지난다. 그래서 여기만 막으면
-	 * 「완충」의 대가가 성립한다. {@code void} 라 취소해도 호출자에게 아무 신호가 가지 않는다는
-	 * 점도 함께 붙든다 — 반환형이 생기면 취소가 다른 뜻이 된다.
+	 * <p>26.2 에서 자연 회복·재생 상태이상·금사과가 모두 이 한 곳을 지난다. 「완충」은 더 이상
+	 * 여기를 막지 않지만(자연 회복만 막도록 좁혀졌다), 공유 회복의 중복을 막는
+	 * {@code LivingEntitySharedHealMixin} 이 여전히 이 자리를 문다. {@code void} 라 취소해도
+	 * 호출자에게 아무 신호가 가지 않는다는 점도 함께 붙든다 — 반환형이 생기면 취소가 다른 뜻이 된다.
 	 */
 	@Test
 	void 회복_대상_메서드가_그_서술자_그대로_있다() {

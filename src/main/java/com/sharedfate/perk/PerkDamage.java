@@ -1,6 +1,7 @@
 package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
+import com.sharedfate.perk.effect.DamageIncreaseReliefEffect;
 import com.sharedfate.perk.effect.DamageTakenBlockingEffect;
 import com.sharedfate.perk.effect.DamageTakenFromEffect;
 import com.sharedfate.perk.effect.DamageWardEffect;
@@ -38,6 +39,12 @@ public final class PerkDamage {
 	 * <p>바닐라가 막은 피해량만큼 깎는 것에 견주어 이만큼 더 깎는다.
 	 */
 	static final int FALL_BLOCK_DURABILITY_FACTOR = 10;
+
+	/**
+	 * 세트 「방어 3단계」가 켜져 위 대가가 사라졌을 때의 배수. 바닐라가 막은 피해량만큼 깎는 것과
+	 * 같은 값이다 — 대가가 사라졌다고 방패가 아예 안 닳으면 바닐라보다도 후해진다.
+	 */
+	static final int FALL_BLOCK_DURABILITY_FACTOR_WAIVED = 1;
 
 	/**
 	 * 바닐라가 「아직 피격 쿨타임 안이다」로 보는 경계. {@code damageCooldownTime > 10} 이다.
@@ -174,13 +181,20 @@ public final class PerkDamage {
 		if (state == null || !blocking || state.ownedPerks.isEmpty()) {
 			return 1.0;
 		}
+		// 「굳은살」이 있으면 증강이 늘린 몫만 덜어 낸다. 세트 쪽(방어 2단계 ×0.5)은 줄이는 값이라
+		// 걸리지 않는다.
+		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		double total = 1.0;
 		for (String perkId : state.ownedPerks) {
 			Perk perk = PerkRegistry.byId(perkId).orElse(null);
 			if (perk == null) {
 				continue;
 			}
-			total *= blockingMultiplierOf(perk.effects(), blocking);
+			for (PerkEffect effect : perk.effects()) {
+				if (effect instanceof DamageTakenBlockingEffect blockingEffect) {
+					total *= relief.ease(blockingEffect.multiplierFor(blocking));
+				}
+			}
 		}
 		total *= blockingMultiplierOf(PerkSetEffects.activeEffectsOf(state), blocking);
 		// 배율 0 은 "막는 동안 완전 면역"이라는 뜻이라 그대로 살려 둔다. 음수와 무한대만 물러난다.
@@ -251,6 +265,10 @@ public final class PerkDamage {
 	 * {@code durability_multiplier} 증강을 지나며 다시 줄어든다
 	 * ({@link com.sharedfate.mixin.ItemStackDurabilityMixin}).
 	 *
+	 * <p>세트 「방어 3단계」를 켠 팀이면 열 배가 아니라 바닐라처럼 막은 양만큼만 닳는다
+	 * ({@link PerkDrawbacks#builtInWaived}). 대가가 효과 안에 묶여 있어 {@code drawback} 표시로는
+	 * 끌 수 없기 때문이다.
+	 *
 	 * @param blocked 막아 낸 피해량. 배율이 이미 반영된 값이다
 	 */
 	public static void wearShieldForBlockedFall(@Nullable Entity victim, float blocked) {
@@ -262,11 +280,24 @@ public final class PerkDamage {
 			if (shield.isEmpty() || !shield.isDamageableItem()) {
 				return;
 			}
-			int cost = Math.max(1, Math.round(blocked) * FALL_BLOCK_DURABILITY_FACTOR);
-			shield.hurtAndBreak(cost, player, player.getUsedItemHand());
+			boolean waived = PerkDrawbacks.builtInWaived(
+					TeamLookup.stateOf(player.getUUID()), ShieldFallImmunityEffect.class);
+			shield.hurtAndBreak(fallBlockDurabilityCost(blocked, waived), player,
+					player.getUsedItemHand());
 		} catch (RuntimeException error) {
 			warnOnce(error);
 		}
+	}
+
+	/**
+	 * 막아 낸 낙하 피해에 방패가 닳을 양. 월드를 보지 않는 순수 계산이다.
+	 *
+	 * @param blocked 막아 낸 피해량
+	 * @param waived  세트 「방어 3단계」로 대가가 사라졌는가
+	 */
+	static int fallBlockDurabilityCost(float blocked, boolean waived) {
+		int factor = waived ? FALL_BLOCK_DURABILITY_FACTOR_WAIVED : FALL_BLOCK_DURABILITY_FACTOR;
+		return Math.max(1, Math.round(blocked) * factor);
 	}
 
 	// ------------------------------------------------------------------ 바닐라 피격 쿨타임 판정
@@ -434,17 +465,22 @@ public final class PerkDamage {
 		// 「화살막이」의 폭발 피해 ×1.2 가 이 길로 들어온다. 세트 「방어 3단계」를 켠 팀에서는
 		// 그 한 줄만 빠지고 ×0.5 쪽은 그대로 남는다.
 		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
+		// 「굳은살」은 면제되고 남은 대가에만 걸린다. 면제된 것은 위에서 곱하지 않으므로 겹치지 않는다.
+		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		double total = 1.0;
 		for (String perkId : state.ownedPerks) {
 			Perk perk = PerkRegistry.byId(perkId).orElse(null);
 			if (perk == null) {
 				continue;
 			}
-			total *= takenSourceMultiplierOf(perk.effects(), source, waiver, perk);
+			total *= takenSourceMultiplierOf(perk.effects(), source, waiver, perk, relief);
 		}
 		// 세트가 건 배율에는 대가가 없다. 걸러 낼 것이 없으므로 판정기를 넘기지 않는다.
-		total *= takenSourceMultiplierOf(PerkSetEffects.activeEffectsOf(state), source, null, null);
-		return Double.isFinite(total) && total > 0.0 ? total : 1.0;
+		total *= takenSourceMultiplierOf(PerkSetEffects.activeEffectsOf(state), source, null, null,
+				null);
+		// 배율 0 은 「타지 않는 살갗」의 화염 면역이라 그대로 살린다. 예전에는 0 도 1.0 으로
+		// 물러나 면역이 통째로 사라지고 받는 피해 ×1.2 만 남았다. 음수와 무한대만 물러난다.
+		return Double.isFinite(total) && total >= 0.0 ? total : 1.0;
 	}
 
 	/**
@@ -452,10 +488,11 @@ public final class PerkDamage {
 	 *
 	 * @param waiver 대가를 건너뛸지 판정할 그릇. {@code null} 이면 전부 센다
 	 * @param owner  이 목록을 가진 증강. 판정을 빠르게 하려고 함께 넘긴다
+	 * @param relief 늘어난 몫을 덜어 낼 그릇. {@code null} 이면 그대로 센다
 	 */
 	private static double takenSourceMultiplierOf(@Nullable Iterable<PerkEffect> effects,
 			@Nullable DamageSource source, PerkDrawbacks.@Nullable Waiver waiver,
-			@Nullable Perk owner) {
+			@Nullable Perk owner, DamageIncreaseReliefEffect.@Nullable Relief relief) {
 		if (effects == null || source == null) {
 			return 1.0;
 		}
@@ -465,7 +502,8 @@ public final class PerkDamage {
 				if (waiver != null && waiver.waives(owner, effect)) {
 					continue;
 				}
-				total *= from.multiplierFor(source);
+				double multiplier = from.multiplierFor(source);
+				total *= relief == null ? multiplier : relief.ease(multiplier);
 			}
 		}
 		return total;

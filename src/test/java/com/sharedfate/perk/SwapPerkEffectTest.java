@@ -349,7 +349,7 @@ class SwapPerkEffectTest {
 	/**
 	 * 「소집의 조각」만 교환 시점 자체를 없앤다.
 	 *
-	 * <p>이것이 갈라지지 않으면 「뿌리내린 발」의 "원래 바뀔 시점마다 실명과 구속"이 사라지거나,
+	 * <p>이것이 갈라지지 않으면 「뿌리내린 발」을 가진 팀이 다른 증강의 교환 시점 효과까지 잃거나,
 	 * 반대로 조각을 가진 팀이 부수효과만 주기마다 계속 받는다.
 	 */
 	@Test
@@ -361,7 +361,7 @@ class SwapPerkEffectTest {
 				"조용한 막힘도 막힘이다");
 
 		assertFalse(PerkSwapRules.silentSwapBlock(teamWith("sharedfate:rooted")),
-				"뿌리내린 발은 시점이 계속 찾아와야 대가가 성립한다");
+				"뿌리내린 발은 자리만 막고 교환 시점은 계속 찾아온다");
 		assertFalse(PerkSwapRules.silentSwapBlock(TeamState.fresh(20.0F)));
 	}
 
@@ -371,7 +371,7 @@ class SwapPerkEffectTest {
 
 		assertTrue(PerkSwapRules.silentSwapBlock(
 				teamWith("sharedfate:rooted", "sharedfate:shard")),
-				"교환 시점이 오지 않으므로 뿌리내린 발의 대가도 함께 멈춘다");
+				"교환 시점이 오지 않으므로 다른 증강의 교환 시점 효과도 함께 멈춘다");
 	}
 
 	@Test
@@ -549,12 +549,9 @@ class SwapPerkEffectTest {
 				      ] },
 				    { "id": "sharedfate:hurry", "rarity": "gold", "name": "조급함",
 				      "effects": [ { "type": "swap_interval", "multiplier": 0.4 } ] },
-				    { "id": "sharedfate:rooted", "rarity": "gold", "name": "뿌리내린 발",
+				    { "id": "sharedfate:rooted", "rarity": "prism", "name": "뿌리내린 발",
 				      "effects": [
-				        { "type": "swap_block" },
-				        { "type": "on_swap",
-				          "effects": [ { "type": "status_effect", "effect": "minecraft:blindness",
-				                         "duration": 5 } ] }
+				        { "type": "swap_block" }
 				      ] },
 				    { "id": "sharedfate:bound", "rarity": "prism", "name": "운명 공동체",
 				      "effects": [

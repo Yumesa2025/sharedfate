@@ -19,7 +19,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Slice;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
@@ -31,9 +30,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  *
  * <p>여기에 「완충」({@code spread_damage})의 지점들이 함께 붙어 있다. 피해를 미뤄 두는 곳은
  * 방패 판정({@code applyItemBlocking}) 바로 뒤이고, 나뉜 몫이 방패를 건너뛰는 곳은
- * {@code applyItemBlocking} 진입점, 나뉘어 들어오는 동안 회복을 막는 곳은 {@code heal} 진입점이다.
- * 회복 쪽은 피해와 상관없어 보이지만, <b>미뤄 둔 몫과 회복 금지는 한 몸</b>이라 갈라 두면 한쪽만
- * 고쳐지는 사고가 난다. 자세한 까닭은 {@link SpreadDamageManager} 머리말에 있다.
+ * {@code applyItemBlocking} 진입점이다. 자세한 까닭은 {@link SpreadDamageManager} 머리말에 있다.
+ * 나뉘어 들어오는 동안 자연 회복을 막는 대가는 여기 없다 — 예전에는 {@code heal} 진입점에서 모든
+ * 회복을 막았지만, 대가가 「자연 회복만」으로 좁혀진 뒤로는(2026-10-16) {@code no_natural_regen}
+ * 과 같은 {@link FoodDataNaturalRegenMixin} 이 막는다.
  *
  * <p>이 믹스인이 무는 것은 {@code LivingEntity.hurtServer(ServerLevel, DamageSource, float)}
  * <b>본문</b>이다. 「서버측 피해 진입점이 그 하나」라는 뜻이 <b>아니다</b> — 바닐라 공통 jar 에만
@@ -327,26 +327,6 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 			CallbackInfoReturnable<Float> callback) {
 		if (SpreadDamageManager.ignoresShield((LivingEntity) (Object) this)) {
 			callback.setReturnValue(0.0F);
-		}
-	}
-
-	/**
-	 * 피해를 나누어 받는 동안에는 회복되지 않는다. 「완충」이 치르는 대가다.
-	 *
-	 * <p>회복 진입점은 {@code LivingEntity.heal(float)} 하나라 — 공통 jar 을 통틀어 이 서술자를
-	 * 선언하는 클래스가 {@code LivingEntity} 뿐이다 — 자연 회복도 재생 상태이상도 금사과도 모두
-	 * 여기를 지난다. 그래서 한 지점만 막으면 대가가 성립한다.
-	 *
-	 * <p>취소해도 {@code heal} 은 {@code void} 라 호출자에게 아무 신호도 가지 않는다.
-	 * 재생 상태이상은 아이콘도 입자도 그대로 남고 회복량만 사라진다.
-	 *
-	 * <p>{@link SpreadDamageManager#blocksHealing} 은 미뤄 둔 몫이 하나도 없으면 첫 줄에서 곧바로
-	 * 거짓이므로, 평소 회복 경로에는 사실상 아무 부담도 얹히지 않는다.
-	 */
-	@Inject(method = "heal", at = @At("HEAD"), cancellable = true)
-	private void sharedfate$blockHealingWhileSpreading(float amount, CallbackInfo callback) {
-		if (SpreadDamageManager.blocksHealing((LivingEntity) (Object) this)) {
-			callback.cancel();
 		}
 	}
 

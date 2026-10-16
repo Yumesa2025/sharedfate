@@ -72,7 +72,7 @@ public abstract class ExpandedMerchantMenuMixin {
 	 * 추가 칸에서 쉬프트 클릭했을 때만 손본다.
 	 *
 	 * <p>바닐라는 그 번호를 아예 모르므로 아무 일도 일어나지 않는다. 바닐라가 인벤토리
-	 * 세 줄에서 핫바로 보내는 것과 같이 <b>핫바를 먼저</b> 본다. 값 칸은 바닐라도
+	 * 세 줄에서 핫바로 보내는 것과 같이 <b>핫바로</b> 보낸다. 값 칸은 바닐라도
 	 * 쉬프트 클릭으로 채우지 않으므로 여기서도 건드리지 않는다.
 	 */
 	@Inject(method = "quickMoveStack", at = @At("HEAD"), cancellable = true)
@@ -97,7 +97,7 @@ public abstract class ExpandedMerchantMenuMixin {
 		ItemStack stack = slot.getItem();
 		ItemStack original = stack.copy();
 		if (!ExpandedInventoryMoves.move(
-				menu, stack, ExpandedInventoryMoves.hotbarFirstOrder(playerStart), false)) {
+				menu, stack, ExpandedInventoryMoves.hotbarOrder(playerStart), false)) {
 			cir.setReturnValue(ItemStack.EMPTY);
 			return;
 		}

@@ -3,6 +3,7 @@ package com.sharedfate.net;
 import com.sharedfate.perk.MobPerkModifiers;
 import com.sharedfate.perk.PerkDamage;
 import com.sharedfate.sync.DifficultyEscalation;
+import com.sharedfate.sync.SpreadDamageManager;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -112,7 +113,8 @@ public final class StatSnapshotBroadcaster {
 		}
 		return new StatSnapshotPayload(
 				(float) attribute.getBaseValue(), (float) attribute.getValue(),
-				(float) PerkDamage.takenMultiplier(player), mobHealth, mobDamage);
+				(float) PerkDamage.takenMultiplier(player), mobHealth, mobDamage,
+				SpreadDamageManager.expectedLoss(player));
 	}
 
 	/** 한 사람의 기록을 버린다. 접속이 끊길 때 부른다. */

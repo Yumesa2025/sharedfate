@@ -64,7 +64,8 @@ class DefaultPerkSetTypesTest {
 		}
 
 		long none = PerkRegistry.all().stream().filter(p -> p.setTypes().isEmpty()).count();
-		assertEquals(11, none, "무유형");
+		// 「굳은살」(실버, 무유형)이 들어오며 11 → 12.
+		assertEquals(12, none, "무유형");
 	}
 
 	/**

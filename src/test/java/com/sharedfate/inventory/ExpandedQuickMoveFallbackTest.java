@@ -280,7 +280,98 @@ class ExpandedQuickMoveFallbackTest {
 
 		assertTrue(moved);
 		assertEquals(3, totalCount(menu, Items.DIAMOND), "복제가 있으면 6이 된다");
-		assertTrue(menu.getSlot(extra).getItem().isEmpty(), "플레이어 36칸으로 올라가야 한다");
+		assertTrue(menu.getSlot(extra).getItem().isEmpty(), "플레이어 쪽으로 나가야 한다");
+		assertEquals(3, menu.getSlot(player + ExpandedInventoryManager.EXTRA_SIZE)
+				.getItem().getCount(), "핫바 첫 칸으로 가야 한다");
+	}
+
+	/**
+	 * 신호기·양조대의 마지막 갈래를 바닐라 범위 그대로 두면 <b>위 세 줄부터</b> 채워진다.
+	 * 위 세 줄에 같은 아이템이 있으면 핫바가 비어 있어도 그리로 합쳐져 올라갔다.
+	 */
+	@Test
+	void 플레이어_36칸_전체로_보내는_호출도_추가_칸에서는_핫바로만_간다() {
+		Inventory inventory = openInventory();
+		ChestMenu menu = ChestMenu.threeRows(1, inventory);
+		int extra = extraStart(menu);
+		int player = playerStart(menu);
+		menu.getSlot(player).set(new ItemStack(Items.COBBLESTONE, 10));
+		menu.getSlot(extra).set(new ItemStack(Items.COBBLESTONE, 20));
+
+		boolean moved = ((AbstractContainerMenuInvoker) menu).sharedfate$invokeMoveItemStackTo(
+				menu.getSlot(extra).getItem(), player, player + 36, false);
+
+		assertTrue(moved);
+		assertEquals(10, menu.getSlot(player).getItem().getCount(), "위 세 줄로 합쳐지면 안 된다");
+		assertEquals(20, menu.getSlot(player + ExpandedInventoryManager.EXTRA_SIZE)
+				.getItem().getCount(), "핫바 첫 칸으로 가야 한다");
+		assertEquals(30, totalCount(menu, Items.COBBLESTONE));
+	}
+
+	@Test
+	void 플레이어_36칸_전체로_보내는_호출도_핫바가_차면_추가_칸에_남는다() {
+		Inventory inventory = openInventory();
+		ChestMenu menu = ChestMenu.threeRows(1, inventory);
+		int extra = extraStart(menu);
+		int player = playerStart(menu);
+		int hotbar = player + ExpandedInventoryManager.EXTRA_SIZE;
+		for (int index = hotbar; index < hotbar + ExpandedInventoryManager.EXTRA_COLUMNS; index++) {
+			menu.getSlot(index).set(new ItemStack(Items.STONE, 64));
+		}
+		menu.getSlot(extra).set(new ItemStack(Items.DIAMOND, 3));
+
+		boolean moved = ((AbstractContainerMenuInvoker) menu).sharedfate$invokeMoveItemStackTo(
+				menu.getSlot(extra).getItem(), player, player + 36, false);
+
+		assertFalse(moved);
+		assertEquals(3, menu.getSlot(extra).getItem().getCount());
+		assertTrue(menu.getSlot(player).getItem().isEmpty(), "위 세 줄로 올라가면 안 된다");
+	}
+
+	/** 공통 자리도 같다 — 위 세 줄의 같은 아이템보다 빈 핫바가 먼저다. */
+	@Test
+	void 공통_자리는_위_세_줄의_같은_아이템보다_빈_핫바로_보낸다() {
+		for (Map.Entry<String, Function<Inventory, AbstractContainerMenu>> screen
+				: deadEndScreens().entrySet()) {
+			ExpandedInventoryManager.clearRuntimeState();
+			AbstractContainerMenu menu = screen.getValue().apply(openInventory());
+			String name = screen.getKey();
+			int extra = extraStart(menu);
+			int player = playerStart(menu);
+			menu.getSlot(player).set(new ItemStack(Items.COBBLESTONE, 10));
+			menu.getSlot(extra).set(new ItemStack(Items.COBBLESTONE, 20));
+
+			shiftClick(menu, extra);
+
+			assertEquals(10, menu.getSlot(player).getItem().getCount(),
+					name + ": 위 세 줄로 합쳐지면 안 된다");
+			assertEquals(20, menu.getSlot(player + ExpandedInventoryManager.EXTRA_SIZE)
+					.getItem().getCount(), name + ": 핫바 첫 칸으로 가야 한다");
+		}
+	}
+
+	@Test
+	void 공통_자리도_핫바가_가득_차면_제자리에_두고_빈_스택을_돌려준다() {
+		for (Map.Entry<String, Function<Inventory, AbstractContainerMenu>> screen
+				: deadEndScreens().entrySet()) {
+			ExpandedInventoryManager.clearRuntimeState();
+			AbstractContainerMenu menu = screen.getValue().apply(openInventory());
+			String name = screen.getKey();
+			int extra = extraStart(menu);
+			int hotbar = playerStart(menu) + ExpandedInventoryManager.EXTRA_SIZE;
+			for (int index = hotbar;
+					index < hotbar + ExpandedInventoryManager.EXTRA_COLUMNS; index++) {
+				menu.getSlot(index).set(new ItemStack(Items.STONE, 64));
+			}
+			menu.getSlot(extra).set(new ItemStack(Items.DIAMOND, 3));
+
+			ItemStack result = shiftClick(menu, extra);
+
+			assertTrue(result.isEmpty(), name + ": 빈 스택이어야 반복이 끝난다");
+			assertEquals(3, menu.getSlot(extra).getItem().getCount(), name);
+			assertTrue(menu.getSlot(playerStart(menu)).getItem().isEmpty(),
+					name + ": 위 세 줄로 올라가면 안 된다");
+		}
 	}
 
 	/** 목적지 목록에 출발 칸이 섞여 들어와도 자기 자신과 합쳐지면 안 된다. */

@@ -181,10 +181,9 @@ public final class TemporaryPerkGrants {
 		}
 		for (PerkEffect effect : window.effects()) {
 			if (effect instanceof StatusEffectPerk status) {
-				Holder<MobEffect> resolved = status.resolvedEffect();
-				if (resolved != null) {
-					player.removeEffect(resolved);
-				}
+				// 종류째 지우면 다른 증강의 같은 종류 상시분까지 사라진다. 잠깐 건 층만 거둔다.
+				PerkStatusStack.revokeTimed(PerkStatusStack.of(player), status.resolvedEffect(),
+						status.amplifier());
 				continue;
 			}
 			TimedPerkEffects.cancel(player, effect);

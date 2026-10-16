@@ -110,12 +110,25 @@ public final class AttributeEffect implements PerkEffect {
 
 	@Override
 	public void apply(ServerPlayer player) {
+		apply(player, amount);
+	}
+
+	/**
+	 * 정의에 적힌 값 대신 {@code appliedAmount} 로 붙인다. 식별자는 같으므로 다음
+	 * {@link #apply(ServerPlayer)} 가 그대로 덮어쓴다.
+	 *
+	 * <p>「굳은살」이 낙하 피해 증가분을 덜어 낼 때 쓴다({@link DamageIncreaseReliefEffect}).
+	 */
+	public void apply(ServerPlayer player, double appliedAmount) {
 		AttributeInstance instance = instanceFor(player);
 		if (instance == null) {
 			return;
 		}
+		double safe = Double.isFinite(appliedAmount)
+				? Math.max(-MAX_ABS_AMOUNT, Math.min(MAX_ABS_AMOUNT, appliedAmount))
+				: amount;
 		instance.removeModifier(modifierId);
-		instance.addTransientModifier(new AttributeModifier(modifierId, amount, operation));
+		instance.addTransientModifier(new AttributeModifier(modifierId, safe, operation));
 		clampHealth(player);
 	}
 

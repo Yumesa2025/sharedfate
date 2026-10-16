@@ -260,8 +260,55 @@ class ExpandedInventoryMenuTest {
 		assertTrue(menu.getSlot(InventoryMenu.INV_SLOT_START).getItem().isEmpty());
 	}
 
+	/**
+	 * 사람이 겪은 버그 그대로다 — 아래 줄의 물건을 쉬프트 클릭했는데 핫바가 비어 있어도
+	 * 위 세 줄로 올라갔다. 위 세 줄에 <b>같은 아이템이 덜 찬 칸</b>이 있으면 합치기가 그쪽을
+	 * 먼저 골랐기 때문이다.
+	 */
 	@Test
-	void 핫바가_가득_차면_추가_슬롯의_쉬프트_클릭이_위_세_줄로_간다() {
+	void 위_세_줄에_같은_아이템이_있어도_추가_슬롯의_쉬프트_클릭은_핫바로_간다() {
+		ExpandedInventoryManager.extraFor(null).setClientActive(true);
+		Inventory inventory = new Inventory(null, new EntityEquipment());
+		InventoryMenu menu = new InventoryMenu(inventory, true, null);
+		menu.getSlot(InventoryMenu.INV_SLOT_START).set(new ItemStack(Items.COBBLESTONE, 10));
+		int extra = ExpandedInventoryManager.VANILLA_INVENTORY_MENU_SIZE;
+		menu.getSlot(extra).set(new ItemStack(Items.COBBLESTONE, 20));
+
+		// 실제 클릭과 같은 길 — doClick 의 공통 자리를 거쳐 InventoryMenu 로 간다.
+		ItemStack moved = ExpandedQuickMoveFallback.quickMove(
+				menu, null, extra, menu::quickMoveStack);
+
+		assertEquals(20, moved.getCount());
+		assertTrue(menu.getSlot(extra).getItem().isEmpty());
+		assertEquals(20, menu.getSlot(InventoryMenu.USE_ROW_SLOT_START).getItem().getCount(),
+				"핫바 첫 칸으로 가야 한다");
+		assertEquals(10, menu.getSlot(InventoryMenu.INV_SLOT_START).getItem().getCount(),
+				"위 세 줄의 같은 아이템에 합쳐지면 안 된다");
+	}
+
+	@Test
+	void 추가_슬롯의_쉬프트_클릭은_핫바의_같은_아이템에_먼저_합친다() {
+		ExpandedInventoryManager.extraFor(null).setClientActive(true);
+		Inventory inventory = new Inventory(null, new EntityEquipment());
+		InventoryMenu menu = new InventoryMenu(inventory, true, null);
+		int lastHotbar = InventoryMenu.USE_ROW_SLOT_END - 1;
+		menu.getSlot(lastHotbar).set(new ItemStack(Items.COBBLESTONE, 10));
+		int extra = ExpandedInventoryManager.VANILLA_INVENTORY_MENU_SIZE;
+		menu.getSlot(extra).set(new ItemStack(Items.COBBLESTONE, 20));
+
+		menu.quickMoveStack(null, extra);
+
+		assertEquals(30, menu.getSlot(lastHotbar).getItem().getCount());
+		assertTrue(menu.getSlot(InventoryMenu.USE_ROW_SLOT_START).getItem().isEmpty(),
+				"합칠 곳이 있으면 빈칸을 먼저 쓰지 않는다");
+	}
+
+	/**
+	 * 바닐라 세 줄도 핫바가 가득 차면 쉬프트 클릭해도 제자리에 남는다. 추가 세 줄도 같다.
+	 * 빈 스택을 돌려주어야 {@code doClick} 의 되풀이가 끝난다.
+	 */
+	@Test
+	void 핫바가_가득_차면_추가_슬롯의_물건은_제자리에_남는다() {
 		ExpandedInventoryManager.extraFor(null).setClientActive(true);
 		Inventory inventory = new Inventory(null, new EntityEquipment());
 		InventoryMenu menu = new InventoryMenu(inventory, true, null);
@@ -269,12 +316,76 @@ class ExpandedInventoryMenuTest {
 				index < InventoryMenu.USE_ROW_SLOT_END; index++) {
 			menu.getSlot(index).set(new ItemStack(Items.COBBLESTONE, 64));
 		}
-		menu.getSlot(46).set(new ItemStack(Items.DIAMOND, 3));
+		menu.getSlot(InventoryMenu.INV_SLOT_START).set(new ItemStack(Items.DIAMOND, 1));
+		int extra = ExpandedInventoryManager.VANILLA_INVENTORY_MENU_SIZE;
+		menu.getSlot(extra).set(new ItemStack(Items.DIAMOND, 3));
 
-		ItemStack moved = menu.quickMoveStack(null, 46);
+		ItemStack moved = ExpandedQuickMoveFallback.quickMove(
+				menu, null, extra, menu::quickMoveStack);
 
-		assertEquals(3, moved.getCount());
-		assertEquals(3, menu.getSlot(InventoryMenu.INV_SLOT_START).getItem().getCount());
+		assertTrue(moved.isEmpty(), "옮긴 것이 없으면 빈 스택이어야 반복이 끝난다");
+		assertEquals(3, menu.getSlot(extra).getItem().getCount());
+		assertEquals(1, menu.getSlot(InventoryMenu.INV_SLOT_START).getItem().getCount(),
+				"위 세 줄로 올라가면 안 된다");
+	}
+
+	@Test
+	void 핫바가_다_받지_못한_몫은_추가_슬롯에_남는다() {
+		ExpandedInventoryManager.extraFor(null).setClientActive(true);
+		Inventory inventory = new Inventory(null, new EntityEquipment());
+		InventoryMenu menu = new InventoryMenu(inventory, true, null);
+		for (int index = InventoryMenu.USE_ROW_SLOT_START;
+				index < InventoryMenu.USE_ROW_SLOT_END; index++) {
+			menu.getSlot(index).set(new ItemStack(Items.STONE, 64));
+		}
+		menu.getSlot(InventoryMenu.USE_ROW_SLOT_START).set(new ItemStack(Items.COBBLESTONE, 60));
+		int extra = ExpandedInventoryManager.VANILLA_INVENTORY_MENU_SIZE;
+		menu.getSlot(extra).set(new ItemStack(Items.COBBLESTONE, 10));
+
+		ItemStack moved = menu.quickMoveStack(null, extra);
+
+		assertEquals(10, moved.getCount(), "옮겼으면 원본 사본을 돌려준다");
+		assertEquals(64, menu.getSlot(InventoryMenu.USE_ROW_SLOT_START).getItem().getCount());
+		assertEquals(6, menu.getSlot(extra).getItem().getCount());
+		assertTrue(menu.getSlot(InventoryMenu.INV_SLOT_START).getItem().isEmpty());
+	}
+
+	/** 반대 방향은 바닐라 그대로 — 위 세 줄은 핫바로만 가고 추가 칸의 같은 아이템과 합치지 않는다. */
+	@Test
+	void 위_세_줄의_쉬프트_클릭은_추가_칸을_건드리지_않고_핫바로_간다() {
+		ExpandedInventoryManager.extraFor(null).setClientActive(true);
+		Inventory inventory = new Inventory(null, new EntityEquipment());
+		// 플레이어 화면의 바닐라 갈래는 살아 있는 플레이어를 요구하므로 제작대로 본다.
+		CraftingMenu menu = new CraftingMenu(1, inventory);
+		for (int index = 1; index < 10; index++) {
+			menu.getSlot(index).set(new ItemStack(Items.STONE, 64));
+		}
+		menu.getSlot(10).set(new ItemStack(Items.COBBLESTONE, 5));
+		menu.getSlot(46).set(new ItemStack(Items.COBBLESTONE, 10));
+
+		ItemStack moved = ExpandedQuickMoveFallback.quickMove(menu, null, 10, menu::quickMoveStack);
+
+		assertEquals(5, moved.getCount());
+		assertEquals(5, menu.getSlot(37).getItem().getCount(), "핫바 첫 칸으로 가야 한다");
+		assertEquals(10, menu.getSlot(46).getItem().getCount(), "추가 칸은 그대로여야 한다");
+	}
+
+	@Test
+	void 제작대_추가_슬롯의_쉬프트_클릭도_격자가_차면_핫바로만_간다() {
+		ExpandedInventoryManager.extraFor(null).setClientActive(true);
+		Inventory inventory = new Inventory(null, new EntityEquipment());
+		CraftingMenu menu = new CraftingMenu(1, inventory);
+		for (int index = 1; index < 10; index++) {
+			menu.getSlot(index).set(new ItemStack(Items.STONE, 64));
+		}
+		menu.getSlot(10).set(new ItemStack(Items.COBBLESTONE, 10));
+		menu.getSlot(46).set(new ItemStack(Items.COBBLESTONE, 20));
+
+		menu.quickMoveStack(null, 46);
+
+		assertEquals(20, menu.getSlot(37).getItem().getCount(), "핫바 첫 칸으로 가야 한다");
+		assertEquals(10, menu.getSlot(10).getItem().getCount(), "위 세 줄로 합쳐지면 안 된다");
+		assertTrue(menu.getSlot(46).getItem().isEmpty());
 	}
 
 	// --------------------------------------------------------- 장비 쉬프트 클릭

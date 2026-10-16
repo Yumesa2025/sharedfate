@@ -30,6 +30,7 @@
     "LivingEntityPerkDamageMixin",
     "LivingEntitySharedHealMixin",
     "MobEffectInstanceSharedTickMixin",
+    "MobEffectInstanceAccessor",
     "PlayerSharedExhaustionMixin",
     "ExpandedCraftingMenuMixin",
     "ExpandedFurnaceMenuMixin",

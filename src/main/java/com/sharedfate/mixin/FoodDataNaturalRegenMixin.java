@@ -2,6 +2,7 @@ package com.sharedfate.mixin;
 
 import com.sharedfate.perk.PerkRegenRules;
 import com.sharedfate.sync.SharedNaturalRegen;
+import com.sharedfate.sync.SpreadDamageManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.food.FoodData;
 import org.spongepowered.asm.mixin.Mixin;
@@ -37,6 +38,12 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * <p>{@link PerkRegenRules} 는 팀 미소속·증강 미사용을 먼저 걸러 내므로, 증강을 쓰지 않는
  * 서버에서는 이 우회가 원래 {@code isHurt} 를 그대로 돌려준다. 즉 바닐라와 완전히 같다.
  *
+ * <h2>「완충」의 대가도 같은 자리다</h2>
+ * <p>피해를 나누어 받는 동안 자연 회복이 막히는 것이 「완충」의 대가다
+ * ({@link SpreadDamageManager#blocksNaturalRegen}). {@code no_natural_regen} 과 막는 범위가 같아
+ * 같은 우회에 얹었다. 재생 상태이상·금사과는 여기를 지나지 않으므로 그대로 든다. 세트 「방어
+ * 3단계」를 켠 팀이면 그쪽이 거짓을 돌려줘 자연 회복도 그대로 돈다.
+ *
  * <h2>같은 자리가 「인원수만큼 곱해지는 회복」도 막는다</h2>
  * <p>허기와 포만감이 공유라 회복 조건이 <b>팀원 전원에게 같은 틱에</b> 성립한다. 그대로 두면
  * 네 명이 각자 회복해 공유 체력이 4인분씩 차오른다. {@link SharedNaturalRegen} 이 대표 한 명만
@@ -50,6 +57,7 @@ public abstract class FoodDataNaturalRegenMixin {
 	private boolean sharedfate$blockNaturalRegen(ServerPlayer player) {
 		return player.isHurt()
 				&& !PerkRegenRules.blocksNaturalRegen(player)
+				&& !SpreadDamageManager.blocksNaturalRegen(player)
 				&& !SharedNaturalRegen.isDuplicate(player);
 	}
 }

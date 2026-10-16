@@ -72,11 +72,13 @@ class SpreadDamageKillClearTest {
 	}
 
 	/**
-	 * 회복 금지는 {@code SpreadDamageManager.blocksHealing} 이 {@link SpreadDamageManager#isSpreading}
-	 * 에게 묻는다. 큐를 닫으면 그 물음이 거짓이 되므로 따로 걷어낼 상태가 없다.
+	 * 자연 회복 금지는 {@code SpreadDamageManager.blocksNaturalRegen} 이
+	 * {@link SpreadDamageManager#isSpreading} 에게 묻는다. 큐를 닫으면 그 물음이 거짓이 되므로 따로
+	 * 걷어낼 상태가 없다.
 	 *
-	 * <p>{@code blocksHealing} 자체는 {@code ServerPlayer} 를 요구해 여기서 부를 수 없다. 그 함수가
-	 * 다른 판단을 하지 않고 이 값만 돌려준다는 것은 코드에서 확인했다.
+	 * <p>{@code ServerPlayer} 를 받는 쪽은 여기서 부를 수 없다. 그 함수는 이 값과 팀 상태를 순수
+	 * 판정 {@code blocksNaturalRegen(boolean, TeamState)} 에 넘길 뿐이고, 그쪽 시험은
+	 * {@code DefenseSetRewardTest} 에 있다.
 	 */
 	@Test
 	void 남은_몫을_지우면_회복_금지도_함께_풀린다() {

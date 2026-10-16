@@ -51,8 +51,8 @@ import java.util.UUID;
  *
  * <h2>세 물음은 서로를 막지 않는다</h2>
  * <p>{@code swap_block} 이 참이어도 {@link #nextRemainingTicks} 와 {@link #grantOnSwap} 은
- * 그대로 쓴다. 막히는 것은 자리를 바꾸는 한 자리뿐이고, 주기와 시점은 계속 흘러야
- * 「뿌리내린 발」의 "원래 바뀔 시점마다 디버프"가 성립한다.
+ * 그대로 쓴다. 막히는 것은 자리를 바꾸는 한 자리뿐이고, 주기와 시점은 계속 흐른다.
+ * 그래서 「뿌리내린 발」을 가진 팀도 다른 증강의 교환 시점 효과는 그대로 받는다.
  */
 public final class PerkSwapRules {
 	/**
@@ -90,8 +90,8 @@ public final class PerkSwapRules {
 	 * 문서에 있다.
 	 *
 	 * <p>{@link #blocksSwap} 이 참인 팀 중 일부만 이것도 참이다. 둘 다 가진 팀(「뿌리내린 발」 +
-	 * 「소집의 조각」)은 조용한 쪽이 이긴다 — 교환 시점이 오지 않으므로 「뿌리내린 발」의 대가도
-	 * 함께 멈춘다.
+	 * 「소집의 조각」)은 조용한 쪽이 이긴다 — 교환 시점이 오지 않으므로 다른 증강의 교환 시점
+	 * 효과도 함께 멈춘다.
 	 */
 	public static boolean silentSwapBlock(@Nullable TeamState state) {
 		if (!usesPerks(state)) {

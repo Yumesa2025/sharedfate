@@ -108,8 +108,8 @@ public final class PositionSwapManager {
 	 * 자리가 바뀔 시점이 왔다. 증강이 끼어드는 자리는 여기 다섯 곳이다.
 	 *
 	 * <p>순서가 중요하다. {@code swap_block} 이 막는 것은 <b>순간이동 한 자리</b>뿐이고,
-	 * {@code on_swap} 은 막혔든 아니든 그대로 발동한다. 그래야 「뿌리내린 발」의 "원래 바뀔
-	 * 시점마다 실명과 구속"이 성립한다. 주기 배율도 마찬가지로 막힘과 무관하게 먹인다.
+	 * {@code on_swap} 은 막혔든 아니든 그대로 발동한다. 「뿌리내린 발」을 가진 팀도 다른 증강의
+	 * 교환 시점 효과는 주기마다 받는다. 주기 배율도 마찬가지로 막힘과 무관하게 먹인다.
 	 *
 	 * <p>{@code swap_rally}(정거장)가 {@code staggered_swap}(시차)보다 먼저다. 한 팀이 둘 다
 	 * 가진 경우에도 판정 순서가 늘 같아야 한다({@link PerkSwapRules#rallyPoint} 문서 참고).

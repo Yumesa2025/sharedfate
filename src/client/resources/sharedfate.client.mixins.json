@@ -12,6 +12,7 @@
     "CreativeModeInventoryScreenMixin",
     "DeathScreenAccessor",
     "EnchantmentScreenMixin",
+    "HudPendingDamageMixin",
     "InventoryScreenTeamButtonMixin",
     "KeyMappingUnknownKeyMixin",
     "MultiPlayerGameModeMixin",

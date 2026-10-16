@@ -8,6 +8,7 @@ import com.sharedfate.perk.ConditionalPerkManager;
 import com.sharedfate.perk.PerkEffect;
 import com.sharedfate.perk.PerkEffectType;
 import com.sharedfate.perk.PerkHolderManager;
+import com.sharedfate.perk.PerkStatusStack;
 import com.sharedfate.perk.TimedPerkEffects;
 import com.sharedfate.team.TeamState;
 import net.minecraft.core.Holder;
@@ -699,10 +700,9 @@ public final class HolderEffect implements PerkEffect {
 
 	private static void revokePass(ServerPlayer player, OnKillEffect.Grant grant) {
 		if (grant.effect() instanceof StatusEffectPerk status) {
-			Holder<MobEffect> resolved = status.resolvedEffect();
-			if (resolved != null) {
-				player.removeEffect(resolved);
-			}
+			// 종류째 지우면 다른 증강의 같은 종류 상시분까지 사라진다. 잠깐 건 층만 거둔다.
+			PerkStatusStack.revokeTimed(PerkStatusStack.of(player), status.resolvedEffect(),
+					status.amplifier());
 			return;
 		}
 		TimedPerkEffects.cancel(player, grant.effect());

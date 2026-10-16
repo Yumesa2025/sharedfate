@@ -2,6 +2,7 @@ package com.sharedfate.sync;
 
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.PerkChoiceSession;
+import com.sharedfate.perk.PerkStatusStack;
 import com.sharedfate.perk.PerkSwapRules;
 import com.sharedfate.perk.effect.RallyShardEffect;
 import com.sharedfate.perk.effect.SwapExplosionEffect;
@@ -228,7 +229,8 @@ public final class RallyShardManager {
 			return false;
 		}
 
-		target.removeEffect(MobEffects.SLOWNESS);
+		// 굳히려고 건 구속만 거둔다. 종류째 지우면 증강이 건 상시 구속까지 함께 사라진다.
+		PerkStatusStack.revokeTimed(PerkStatusStack.of(target), MobEffects.SLOWNESS, FREEZE_AMPLIFIER);
 		for (SwapExplosionEffect explosion : summon.explosions) {
 			PositionSwapManager.scheduleSwapExplosion(origin,
 					Set.of(target.getUUID(), summoner.getUUID()), explosion);

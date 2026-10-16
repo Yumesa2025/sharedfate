@@ -3,6 +3,7 @@ package com.sharedfate.perk;
 import com.google.gson.JsonObject;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.config.SharedFateConfig;
+import com.sharedfate.perk.effect.DamageIncreaseReliefEffect;
 import com.sharedfate.perk.effect.MobActionSpeedEffect;
 import com.sharedfate.perk.effect.MobDamageEffect;
 import com.sharedfate.perk.effect.MobHealthEffect;
@@ -109,7 +110,7 @@ public final class MobPerkModifiers {
 	 * <p>{@link #SPEED} 는 이동 속도 <b>속성</b>이고 {@link #ACTION_SPEED} 는 <b>틱 수</b>다.
 	 * 이름이 비슷하지만 붙는 자리가 전혀 다르다.
 	 */
-	private enum Kind {
+	enum Kind {
 		HEALTH,
 		DAMAGE,
 		SPEED,
@@ -549,9 +550,22 @@ public final class MobPerkModifiers {
 		};
 	}
 
-	/** 한 팀이 보유한 증강들의 배율을 모두 곱한 값. */
-	private static double teamMultiplier(TeamState state, EntityType<?> type, boolean hostile,
+	/**
+	 * 한 팀이 보유한 증강들의 배율을 모두 곱한 값.
+	 *
+	 * <p>세트 「방어 3단계」를 켠 팀은 방어 증강이 대가로 건 배율(「철벽」·「버티는 방패」의 몹
+	 * 체력)을 곱하지 않는다. <b>그 팀의 몫만</b> 빠진다 — 서버 전체 값은 팀들 중 센 쪽을 따르므로
+	 * ({@link #stronger}) 다른 팀이 같은 증강을 들고 세트를 안 켰으면 그쪽 값은 그대로 걸린다.
+	 *
+	 * <p>세트가 켜지거나 풀리는 것은 언제나 보유 목록이 바뀔 때라 {@link #computeSignature} 가
+	 * 달라지고, 다음 훑기에 이미 올라와 있는 몹까지 다시 계산된다.
+	 */
+	static double teamMultiplier(TeamState state, EntityType<?> type, boolean hostile,
 			Kind kind) {
+		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
+		// 「굳은살」은 몹 공격력을 올리는 몫(「유리 세계」·「암살자」 등)만 덜어 낸다. 이 팀 몫에만
+		// 걸리고, 서버 전체 값은 여전히 팀들 중 센 쪽을 따른다.
+		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		double total = 1.0;
 		for (String perkId : state.ownedPerks) {
 			Perk perk = PerkRegistry.byId(perkId).orElse(null);
@@ -559,13 +573,43 @@ public final class MobPerkModifiers {
 				continue;
 			}
 			for (PerkEffect effect : perk.effects()) {
-				total *= contribution(effect, type, hostile, kind);
+				if (waiver.waives(perk, effect)) {
+					continue;
+				}
+				double value = contribution(effect, type, hostile, kind);
+				total *= kind == Kind.DAMAGE ? relief.ease(value) : value;
 			}
 		}
 		return total;
 	}
 
+	/** 한 팀 몫의 몹 최대 체력 배율. 월드 없이 팀 상태만으로 계산하므로 시험이 쓴다. */
+	static double teamHealthMultiplier(TeamState state, EntityType<?> type, boolean hostile) {
+		return teamMultiplier(state, type, hostile, Kind.HEALTH);
+	}
+
 	private static double contribution(PerkEffect effect, EntityType<?> type, boolean hostile,
+			Kind kind) {
+		return sparingDragon(type, rawContribution(effect, type, hostile, kind));
+	}
+
+	/**
+	 * 증강이 <b>엔더 드래곤을 강하게 만드는 몫</b>을 지운다. 1 보다 큰 배율이면 1.0, 아니면 그대로.
+	 *
+	 * <p>체력·공격력·이동 속도·행동 속도 네 갈래가 모두 여기를 지난다. 정의 파일의
+	 * {@code excludes} 에 드래곤을 적어 두는 것과 별개로, 적는 것을 잊은 증강이 새로 들어와도
+	 * 드래곤은 강해지지 않는다(사람 결정 2026-10-16). 드래곤 시련 자체의 강화(팀 인원 비례 체력
+	 * 등)는 증강이 아니라 이 길을 지나지 않는다.
+	 *
+	 * <p><b>약하게 하는 쪽은 정의대로 둔다.</b> 드래곤을 약하게 하는 증강을 막을지는 정의의
+	 * {@code excludes} 가 정한다 — 지금은 「유리 세계」·「거인 사냥꾼」의 몹 체력 감소가 드래곤을
+	 * 빼고 있다.
+	 */
+	static double sparingDragon(EntityType<?> type, double value) {
+		return type == EntityTypes.ENDER_DRAGON && value > 1.0 ? 1.0 : value;
+	}
+
+	private static double rawContribution(PerkEffect effect, EntityType<?> type, boolean hostile,
 			Kind kind) {
 		return switch (kind) {
 			case HEALTH -> effect instanceof MobHealthEffect mobHealth

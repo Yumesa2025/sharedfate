@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.PerkEffect;
 import com.sharedfate.perk.PerkEffectType;
+import com.sharedfate.perk.PerkStatusStack;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -19,6 +20,10 @@ import java.util.Optional;
  *
  * <p>지속시간은 무한으로 두고, 증강을 잃을 때 {@link #remove}로 걷어낸다.
  * 등급은 정의에 적힌 {@code amplifier} 그대로다.
+ *
+ * <p>붙이고 떼는 일은 {@link PerkStatusStack} 을 거친다. 같은 종류를 여러 출처가 줄 때 가장 센
+ * 것이 남고, 그것이 사라지면 그다음 센 것이 남는다. 종류째 {@code removeEffect} 하면 다른 증강이나
+ * 포션이 준 같은 종류까지 함께 사라진다.
  *
  * <p>상태이상 자체는 처음 적용할 때 찾는다. 정의를 읽는 시점에는 레지스트리가 아직
  * 준비되지 않았을 수 있기 때문이다.
@@ -65,10 +70,7 @@ public final class StatusEffectPerk implements PerkEffect {
 		if (player == null) {
 			return;
 		}
-		MobEffectInstance granted = grantedInstance();
-		if (granted != null) {
-			player.addEffect(granted);
-		}
+		PerkStatusStack.grant(PerkStatusStack.of(player), this);
 	}
 
 	/**
@@ -99,10 +101,7 @@ public final class StatusEffectPerk implements PerkEffect {
 		if (player == null) {
 			return;
 		}
-		Holder<MobEffect> resolved = resolve();
-		if (resolved != null) {
-			player.removeEffect(resolved);
-		}
+		PerkStatusStack.revoke(PerkStatusStack.of(player), this);
 	}
 
 	public Identifier effectId() {

@@ -127,26 +127,37 @@ public abstract class ExpandedStandardMenuMixin implements ExpandedMenuLayout {
 	 * <b>추가 칸부터</b> 채워, 상자에서 쉬프트 클릭한 물건이 핫바가 아니라 아래 칸으로
 	 * 날아간다.
 	 *
-	 * <h2>출발이 추가 칸이면 손대지 않는다</h2>
+	 * <h2>출발이 추가 칸이면 핫바로만 보낸다</h2>
 	 *
 	 * <p>신호기와 양조대는 「어느 갈래에도 걸리지 않은 번호」를 마지막에
 	 * {@code moveItemStackTo(플레이어 시작, 플레이어 시작 + 36)} 으로 흘려보낸다. 추가 칸
 	 * 번호가 바로 그 경우다. 여기서 목록에 추가 27칸을 끼워 넣으면 <b>출발 칸이 목적지에
-	 * 섞여</b> 자기 자신과 합쳐지고, 아이템이 두 배로 늘어난다. 그런 호출은 바닐라 범위
-	 * 그대로 두면 물건이 플레이어 36칸으로 제대로 올라간다.
+	 * 섞여</b> 자기 자신과 합쳐지고, 아이템이 두 배로 늘어난다.
+	 *
+	 * <p>그렇다고 바닐라 범위 그대로 두면 <b>위 세 줄부터</b> 채워져, 핫바가 비어 있어도 물건이
+	 * 위로 올라간다. 그래서 그 호출만은 다른 화면들과 같이 <b>핫바 아홉 칸</b>으로 바꾼다 —
+	 * 추가 칸이 목록에 없으니 복제도 생기지 않는다.
 	 */
 	@Inject(method = "moveItemStackTo", at = @At("HEAD"), cancellable = true)
 	private void sharedfate$moveAcrossExpandedInventory(
 			ItemStack stack, int start, int end, boolean reverse,
 			CallbackInfoReturnable<Boolean> cir) {
 		if (sharedfate$playerStart < 0 || sharedfate$extraStart < 0 || stack.isEmpty()
-				|| start != sharedfate$playerStart
-				|| sharedfate$livesInExtraSlot(stack)) {
+				|| start != sharedfate$playerStart) {
 			return;
 		}
 		int extraSize = ExpandedInventoryManager.EXTRA_SIZE;
 		int mainEnd = sharedfate$playerStart + extraSize;
 		int hotbarEnd = mainEnd + ExpandedInventoryManager.EXTRA_COLUMNS;
+
+		if (sharedfate$livesInExtraSlot(stack)) {
+			if (end == hotbarEnd) {
+				cir.setReturnValue(ExpandedInventoryMoves.move(
+						(AbstractContainerMenu) (Object) this, stack,
+						ExpandedInventoryMoves.hotbarOrder(sharedfate$playerStart), reverse));
+			}
+			return;
+		}
 
 		int[] order;
 		if (end == hotbarEnd || end == sharedfate$extraStart

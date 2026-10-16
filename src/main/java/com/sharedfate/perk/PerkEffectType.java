@@ -13,6 +13,7 @@ import com.sharedfate.perk.effect.CustomEffect;
 import com.sharedfate.perk.effect.ExperienceBonusEffect;
 import com.sharedfate.perk.effect.DamageDealtEffect;
 import com.sharedfate.perk.effect.DamageTakenEffect;
+import com.sharedfate.perk.effect.DamageIncreaseReliefEffect;
 import com.sharedfate.perk.effect.DamageTakenBlockingEffect;
 import com.sharedfate.perk.effect.DamageTakenFromEffect;
 import com.sharedfate.perk.effect.HungerOnDamageEffect;
@@ -161,6 +162,7 @@ public enum PerkEffectType {
 	NO_NATURAL_REGEN("no_natural_regen", NoNaturalRegenEffect::fromJson),
 	DAMAGE_TAKEN_FROM("damage_taken_from", DamageTakenFromEffect::fromJson),
 	DAMAGE_TAKEN_BLOCKING("damage_taken_blocking", DamageTakenBlockingEffect::fromJson),
+	DAMAGE_INCREASE_RELIEF("damage_increase_relief", DamageIncreaseReliefEffect::fromJson),
 	HUNGER_ON_DAMAGE("hunger_on_damage", HungerOnDamageEffect::fromJson),
 	NO_SLEEP("no_sleep", NoSleepEffect::fromJson),
 	TIME_LOCK("time_lock", TimeLockEffect::fromJson),

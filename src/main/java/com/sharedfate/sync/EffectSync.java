@@ -3,6 +3,7 @@ package com.sharedfate.sync;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.PerkManager;
 import com.sharedfate.perk.PerkStatusEffects;
+import com.sharedfate.perk.PerkStatusStack;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamLookup;
 import com.sharedfate.team.TeamManager;
@@ -157,6 +158,8 @@ public final class EffectSync {
 			return;
 		}
 		PENDING_PERK_REFRESH.remove(player.getUUID());
+		// 증강분도 함께 지워졌다. 출처 기록을 남기면 잃은 증강의 등급이 나중에 되살아난다.
+		PerkStatusStack.forget(player.getUUID());
 		propagating = true;
 		try {
 			player.removeAllEffects();
@@ -167,6 +170,8 @@ public final class EffectSync {
 
 	public static void clearPersistedDetachedPlayer(ServerPlayer player) {
 		PENDING_PERK_REFRESH.remove(player.getUUID());
+		// 증강분도 함께 지워졌다. 출처 기록을 남기면 잃은 증강의 등급이 나중에 되살아난다.
+		PerkStatusStack.forget(player.getUUID());
 		propagating = true;
 		try {
 			player.removeAllEffects();
@@ -213,6 +218,23 @@ public final class EffectSync {
 		}
 	}
 
+	/**
+	 * 이 안에서 붙이고 떼는 상태이상은 팀 공유로 흘려보내지 않는다.
+	 *
+	 * <p>{@link com.sharedfate.perk.PerkStatusStack} 이 한 종류의 층을 다시 쌓을 때 쓴다. 겉모습이
+	 * 그대로인 포션 층을 지웠다 붙이는 일이 팀원에게 퍼지면, 팀원의 같은 종류 증강분까지 함께
+	 * 지워진다. 이미 막혀 있는 자리에서 불러도 끝난 뒤 원래대로 돌아간다.
+	 */
+	public static void withoutSharing(Runnable action) {
+		boolean previous = propagating;
+		propagating = true;
+		try {
+			action.run();
+		} finally {
+			propagating = previous;
+		}
+	}
+
 	/** 서버가 내려갈 때 남은 예약을 비운다. 다음 서버가 이전 실행의 잔여를 물려받지 않게 한다. */
 	public static void reset() {
 		PENDING_PERK_REFRESH.clear();
@@ -232,6 +254,8 @@ public final class EffectSync {
 				if (player != null) {
 					player.removeAllEffects();
 				}
+				// 증강분도 함께 지워졌다. 다시 붙일 것은 refreshPlayer 가 처음부터 다시 적는다.
+				PerkStatusStack.forget(member);
 			}
 		} finally {
 			propagating = false;

@@ -70,7 +70,7 @@ public abstract class ExpandedInventoryMenuMixin {
 	 * <ol>
 	 *   <li>입을 수 있는 방어구이고 그 방어구 칸이 비어 있으면 <b>그 칸</b></li>
 	 *   <li>왼손 물건이고 왼손 칸이 비어 있으면 <b>왼손 칸</b></li>
-	 *   <li>아니면 <b>핫바 → 위 세 줄</b></li>
+	 *   <li>아니면 <b>핫바</b> — 핫바가 다 받지 못하면 나머지는 제자리에 남는다</li>
 	 * </ol>
 	 *
 	 * <p>장비 칸으로 보내다 막히면 바닐라와 같이 <b>아무 데도 보내지 않고</b> 끝낸다.
@@ -123,6 +123,6 @@ public abstract class ExpandedInventoryMenuMixin {
 				&& !menu.getSlot(InventoryMenu.SHIELD_SLOT).hasItem()) {
 			return new int[] {InventoryMenu.SHIELD_SLOT};
 		}
-		return ExpandedInventoryMoves.hotbarFirstOrder(PLAYER_SLOT_START);
+		return ExpandedInventoryMoves.hotbarOrder(PLAYER_SLOT_START);
 	}
 }

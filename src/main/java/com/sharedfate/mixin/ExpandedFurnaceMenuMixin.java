@@ -47,7 +47,7 @@ public abstract class ExpandedFurnaceMenuMixin {
 			// 바닐라도 화로 화면에서 「인벤토리 세 줄 → 핫바」로 보낸다. 추가 세 줄은
 			// 화면에서 세 줄 바로 아래에 있는 인벤토리 줄이므로 같은 쪽으로 가야 한다.
 			moved = ExpandedInventoryMoves.move(menu, stack,
-					ExpandedInventoryMoves.hotbarFirstOrder(FURNACE_SLOTS), false);
+					ExpandedInventoryMoves.hotbarOrder(FURNACE_SLOTS), false);
 		}
 		if (!moved) {
 			cir.setReturnValue(ItemStack.EMPTY);

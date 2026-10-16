@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StatSnapshotSyncTest {
 
 	private static StatSnapshotPayload snapshot(float base, float current) {
-		return new StatSnapshotPayload(base, current, 1.0F, 1.0F, 1.0F);
+		return new StatSnapshotPayload(base, current, 1.0F, 1.0F, 1.0F, 0.0F);
 	}
 
 	@BeforeAll
@@ -64,11 +64,11 @@ class StatSnapshotSyncTest {
 	void 배율이_달라져도_다시_보낸다() {
 		StatSnapshotPayload sent = snapshot(1.0F, 7.0F);
 
-		assertTrue(new StatSnapshotPayload(1.0F, 7.0F, 2.5F, 1.0F, 1.0F).differsFrom(sent),
+		assertTrue(new StatSnapshotPayload(1.0F, 7.0F, 2.5F, 1.0F, 1.0F, 0.0F).differsFrom(sent),
 				"받는 피해 배율");
-		assertTrue(new StatSnapshotPayload(1.0F, 7.0F, 1.0F, 1.15F, 1.0F).differsFrom(sent),
+		assertTrue(new StatSnapshotPayload(1.0F, 7.0F, 1.0F, 1.15F, 1.0F, 0.0F).differsFrom(sent),
 				"몹 최대 체력 배율");
-		assertTrue(new StatSnapshotPayload(1.0F, 7.0F, 1.0F, 1.0F, 1.15F).differsFrom(sent),
+		assertTrue(new StatSnapshotPayload(1.0F, 7.0F, 1.0F, 1.0F, 1.15F, 0.0F).differsFrom(sent),
 				"몹 공격력 배율");
 	}
 
@@ -113,10 +113,39 @@ class StatSnapshotSyncTest {
 	@Test
 	void 이상한_배율은_100퍼센트로_눕힌다() {
 		StatSnapshotPayload payload =
-				new StatSnapshotPayload(1.0F, 1.0F, 0.0F, -2.0F, Float.NaN);
+				new StatSnapshotPayload(1.0F, 1.0F, 0.0F, -2.0F, Float.NaN, 0.0F);
 
 		assertEquals(1.0F, payload.damageTaken());
 		assertEquals(1.0F, payload.mobHealth());
 		assertEquals(1.0F, payload.mobDamage());
 	}
+
+	// ------------------------------------------------------------------ 「완충」 남은 피해
+
+	private static StatSnapshotPayload pending(float amount) {
+		return new StatSnapshotPayload(1.0F, 7.0F, 1.0F, 1.0F, 1.0F, amount);
+	}
+
+	/** 나눠 받기가 시작되거나 끝나는 순간은 아무리 작은 값이어도 보낸다. 안 보내면 칸이 남는다. */
+	@Test
+	void 남은_피해가_생기거나_사라지면_보낸다() {
+		assertTrue(pending(0.05F).differsFrom(pending(0.0F)));
+		assertTrue(pending(0.0F).differsFrom(pending(0.05F)));
+	}
+
+	/** 몫이 하나 들어갈 때마다 값이 줄고, 그때마다 화면이 따라와야 한다. */
+	@Test
+	void 남은_피해가_줄면_다시_보낸다() {
+		assertTrue(pending(6.0F).differsFrom(pending(8.0F)));
+		assertFalse(pending(8.0F + StatSnapshotPayload.PENDING_STEP / 2).differsFrom(pending(8.0F)),
+				"소수점 부스러기로는 보내지 않는다");
+	}
+
+	@Test
+	void 이상한_남은_피해는_0으로_눕힌다() {
+		assertEquals(0.0F, pending(Float.NaN).spreadPending());
+		assertEquals(0.0F, pending(-3.0F).spreadPending());
+		assertEquals(0.0F, pending(Float.POSITIVE_INFINITY).spreadPending());
+	}
 }
+

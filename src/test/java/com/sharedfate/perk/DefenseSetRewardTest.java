@@ -8,6 +8,7 @@ import com.sharedfate.perk.effect.ConditionalEffect;
 import com.sharedfate.perk.effect.MobHealthEffect;
 import com.sharedfate.perk.effect.NoDefenseDrawbacksEffect;
 import com.sharedfate.perk.effect.OnTeamHurtEffect;
+import com.sharedfate.perk.effect.SpreadDamageEffect;
 import com.sharedfate.perk.effect.StatusEffectPerk;
 import com.sharedfate.team.TeamState;
 import net.minecraft.core.Holder;
@@ -44,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@link PerkDrawbacks} 다.
  *
  * <h2>이 시험이 가장 힘주어 지키는 것</h2>
- * <p><b>표시가 없는 효과는 지금과 똑같이 동작한다.</b> 증강 여든두 개 중 표시가 붙은 것은 다섯
+ * <p><b>표시가 없는 효과는 지금과 똑같이 동작한다.</b> 증강 중 표시가 붙은 것은 방어 증강 일곱
  * 뿐이고, 나머지는 이 기능이 들어오기 전과 한 톨도 다르지 않아야 한다. 그래서 이 파일은
  * 「사라진다」보다 「안 사라진다」를 더 많이 확인한다.
  *
@@ -397,6 +398,31 @@ class DefenseSetRewardTest {
 		assertEquals(0.75, PerkDamage.takenSourceMultiplier(state, explosion()), 1.0e-9);
 	}
 
+	/**
+	 * 효과 안에 묶인 대가({@link PerkDrawbacks#builtInWaived})는 그 형을 가진 증강이 <b>전부</b>
+	 * 방어 유형일 때만 면제된다. 방어가 아닌 증강이 같은 형을 들고 있으면 형으로는 둘을 가를 수
+	 * 없으므로 대가를 남기는 쪽으로 물러선다.
+	 */
+	@Test
+	void 묶인_대가는_방어가_아닌_증강이_같은_형을_들면_남는다(@TempDir Path dir) throws IOException {
+		write(dir, PERKS.replace("""
+				  { "id": "sharedfate:plain", "rarity": "silver", "name": "무유형",""", """
+				  { "id": "sharedfate:def_cushion", "rarity": "prism", "name": "완충",
+				    "set_types": [ "defense" ],
+				    "effects": [ { "type": "spread_damage", "seconds": 8 } ] },
+				  { "id": "sharedfate:power_cushion", "rarity": "prism", "name": "화력 완충",
+				    "set_types": [ "power" ],
+				    "effects": [ { "type": "spread_damage", "seconds": 4 } ] },
+				  { "id": "sharedfate:plain", "rarity": "silver", "name": "무유형","""));
+		TeamState state = teamWith("sharedfate:def_shield", "sharedfate:def_arrow",
+				"sharedfate:def_hurt", "sharedfate:def_cushion");
+		assertTrue(PerkDrawbacks.builtInWaived(state, SpreadDamageEffect.class), "방어 완충뿐이면 사라진다");
+
+		state.ownedPerks.add("sharedfate:power_cushion");
+		assertFalse(PerkDrawbacks.builtInWaived(state, SpreadDamageEffect.class),
+				"화력 유형이 같은 형을 들고 있으면 대가가 남는다");
+	}
+
 	// ------------------------------------------------------------------ 되돌아가기
 
 	/**
@@ -475,13 +501,15 @@ class DefenseSetRewardTest {
 	// ------------------------------------------------------------------ 기본 풀
 
 	/**
-	 * 번들 기본 풀에서 대가로 표시된 것은 <b>정확히 다섯</b>이고, 전부 방어 유형 증강의 것이다.
+	 * 번들 기본 풀에서 대가로 표시된 것은 <b>정확히 일곱</b>이고, 전부 방어 유형 증강의 것이다.
 	 *
-	 * <p>표시를 하나 더 붙이거나 엉뚱한 증강에 붙이면 여기서 잡힌다. 증강 여든두 개 중 나머지
-	 * 일흔일곱 개는 이 기능이 들어오기 전과 완전히 같다는 뜻이기도 하다.
+	 * <p>표시를 하나 더 붙이거나 엉뚱한 증강에 붙이면 여기서 잡힌다. 「철벽」·「버티는 방패」의
+	 * 몹 체력은 2026-10-16 에 사람이 대가로 넣기로 정했다. 「완충」의 자연 회복 금지와 「버티는
+	 * 방패」의 방패 마모는 효과 안에 묶여 있어 표시가 아니라
+	 * {@link PerkDrawbacks#builtInWaived} 로 끈다 — {@code DefenseDrawbackCoverageTest} 참고.
 	 */
 	@Test
-	void 기본_풀의_대가는_방어_증강_다섯_개뿐이다(@TempDir Path dir) throws IOException {
+	void 기본_풀의_대가는_방어_증강_일곱_개뿐이다(@TempDir Path dir) throws IOException {
 		loadBundled(dir);
 
 		List<String> owners = new ArrayList<>();
@@ -502,28 +530,31 @@ class DefenseSetRewardTest {
 						"sharedfate:shared_suffering",
 						"sharedfate:arrow_guard",
 						"sharedfate:bare_skin_resolve",
-						"sharedfate:unbroken"),
-				owners, "표시가 붙은 증강은 이 다섯뿐이다");
+						"sharedfate:iron_wall",
+						"sharedfate:unbroken",
+						"sharedfate:grounded_guard"),
+				owners, "표시가 붙은 증강은 이 일곱뿐이다");
 	}
 
 	/**
-	 * 「버티는 방패」와 「철벽」의 몹 체력은 <b>표시하지 않았다.</b>
+	 * 「버티는 방패」와 「철벽」의 몹 체력은 <b>대가로 표시했다.</b>
 	 *
-	 * <p>몹 체력은 팀이 아니라 <b>월드에 걸리는</b> 값이라 다른 대가와 성격이 다르다. 이미 스폰된
-	 * 몹까지 되돌리면 체력 표시가 튀고, 두 증강을 함께 가진 팀에서는 세트를 켜는 순간 월드의 모든
-	 * 몹이 1.725 배에서 1 배로 내려앉는다.
+	 * <p>몹 체력은 팀이 아니라 월드에 걸리는 값이라 처음에는 표시하지 않았다. 그런데 설명에
+	 * 「대신」으로 적힌 대가가 세트를 켜도 안 사라지는 것이 사람이 겪은 어긋남이었고, 세트를 켠
+	 * 팀의 몫만 빼기로 정했다(2026-10-16). 이득 쪽(방어력·넉백 저항·낙하 면역)에는 표시가 없다.
 	 */
 	@Test
-	void 몹_체력은_대가로_표시하지_않았다(@TempDir Path dir) throws IOException {
+	void 몹_체력은_대가로_표시했다(@TempDir Path dir) throws IOException {
 		loadBundled(dir);
 
 		for (String perkId : List.of("sharedfate:grounded_guard", "sharedfate:iron_wall")) {
 			Perk perk = PerkRegistry.byId(perkId).orElseThrow();
 			assertTrue(perk.hasSetType(PerkSetType.DEFENSE));
-			assertFalse(PerkDrawbacks.anyDrawback(perk.effects()),
-					perkId + " 에는 표시가 하나도 없어야 한다");
-			assertTrue(perk.effects().stream().anyMatch(MobHealthEffect.class::isInstance),
-					perkId + " 의 몹 체력 대가는 그대로 남아 있다");
+			for (PerkEffect effect : perk.effects()) {
+				assertEquals(effect instanceof MobHealthEffect, PerkDrawbacks.isDrawback(effect),
+						perkId + " 의 " + effect.getClass().getSimpleName()
+								+ " — 몹 체력만 대가로 표시돼 있어야 한다");
+			}
 		}
 	}
 

@@ -53,7 +53,7 @@ public abstract class ExpandedCraftingMenuMixin {
 			// 바닐라도 제작대 화면에서 「인벤토리 세 줄 → 핫바」로 보낸다. 추가 세 줄은
 			// 화면에서 세 줄 바로 아래에 있는 인벤토리 줄이므로 같은 쪽으로 가야 한다.
 			moved = ExpandedInventoryMoves.move(menu, stack,
-					ExpandedInventoryMoves.hotbarFirstOrder(PLAYER_SLOT_START), false);
+					ExpandedInventoryMoves.hotbarOrder(PLAYER_SLOT_START), false);
 		}
 		if (!moved) {
 			cir.setReturnValue(ItemStack.EMPTY);

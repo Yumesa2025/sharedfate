@@ -87,8 +87,15 @@ public abstract class AnvilMenuQuickMoveMixin {
 			sharedfate$finishQuickMove(player, cir, menu, slot, stack, new int[] {diamondSlot});
 			return;
 		}
-		// 다이아몬드 칸이나 추가 칸에서 온 것은 플레이어 인벤토리로 돌려보낸다.
-		if (fromDiamondSlot || fromExtra) {
+		// 추가 칸에서 온 것은 바닐라 세 줄처럼 핫바로만 보낸다. 위 세 줄을 섞으면 같은
+		// 아이템이 덜 찬 칸으로 합쳐져 위로 올라간다.
+		if (fromExtra) {
+			sharedfate$finishQuickMove(player, cir, menu, slot, stack,
+					ExpandedInventoryMoves.hotbarOrder(PLAYER_SLOT_START));
+			return;
+		}
+		// 다이아몬드 칸에서 온 것은 플레이어 인벤토리로 돌려보낸다.
+		if (fromDiamondSlot) {
 			sharedfate$finishQuickMove(player, cir, menu, slot, stack,
 					ExpandedInventoryMoves.order(
 							PLAYER_SLOT_START, extraSize,

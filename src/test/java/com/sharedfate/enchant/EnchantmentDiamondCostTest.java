@@ -275,6 +275,22 @@ class EnchantmentDiamondCostTest {
 		assertEquals(7, menu.getSlot(2).getItem().getCount(), "플레이어 인벤토리 첫 칸으로 와야 한다");
 	}
 
+	@Test
+	void 추가_칸에서_쉬프트_클릭하면_위_세_줄이_아니라_핫바로_간다() throws Exception {
+		Player player = hollowPlayer(false);
+		ExpandedInventoryManager.extraFor(player).setClientActive(true);
+		EnchantmentMenu menu = readyMenu(player, 0);
+		// 플레이어 2~28 세 줄, 29~37 핫바, 38~ 추가 칸.
+		menu.getSlot(2).set(new ItemStack(Items.COBBLESTONE, 10));
+		menu.getSlot(38).set(new ItemStack(Items.COBBLESTONE, 20));
+
+		menu.quickMoveStack(player, 38);
+
+		assertEquals(20, menu.getSlot(29).getItem().getCount(), "핫바 첫 칸으로 가야 한다");
+		assertEquals(10, menu.getSlot(2).getItem().getCount(), "위 세 줄로 합쳐지면 안 된다");
+		assertTrue(menu.getSlot(38).getItem().isEmpty());
+	}
+
 	// ------------------------------------------------------------- 레벨 소모
 
 	@Test

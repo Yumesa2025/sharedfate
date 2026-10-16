@@ -25,6 +25,8 @@ public final class ClientStatSnapshot {
 	private static double damageTaken = 1.0;
 	private static double mobHealth = 1.0;
 	private static double mobDamage = 1.0;
+	/** 「완충」이 앞으로 깎을 체력. 체력바가 곧 깎일 만큼을 겹쳐 그린다. 없으면 0. */
+	private static float spreadPending;
 
 	private ClientStatSnapshot() {
 	}
@@ -41,6 +43,7 @@ public final class ClientStatSnapshot {
 		damageTaken = payload.damageTaken();
 		mobHealth = payload.mobHealth();
 		mobDamage = payload.mobDamage();
+		spreadPending = payload.spreadPending();
 	}
 
 	/** 월드에서 나갈 때 부른다. */
@@ -51,6 +54,7 @@ public final class ClientStatSnapshot {
 		damageTaken = 1.0;
 		mobHealth = 1.0;
 		mobDamage = 1.0;
+		spreadPending = 0.0F;
 	}
 
 	/** 서버가 값을 알려 준 적이 있는가. 거짓이면 화면은 이 값들의 줄을 그리지 않는다. */
@@ -81,5 +85,13 @@ public final class ClientStatSnapshot {
 	/** 적대적 몹이 주는 피해의 배율. */
 	public static double mobDamage() {
 		return mobDamage;
+	}
+
+	/**
+	 * 「완충」으로 미뤄 둔 몫이 앞으로 깎을 체력(흡수 포함). 방어구 계산을 지난 예상치다.
+	 * 나누어 받는 중이 아니거나 서버가 아직 말해 주지 않았으면 0.
+	 */
+	public static float spreadPending() {
+		return spreadPending;
 	}
 }

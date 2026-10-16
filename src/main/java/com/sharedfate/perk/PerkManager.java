@@ -3,6 +3,7 @@ package com.sharedfate.perk;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkSyncPayload;
+import com.sharedfate.perk.effect.DamageIncreaseReliefEffect;
 import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.NoSilverOffersEffect;
 import com.sharedfate.perk.effect.PrismRerollEffect;
@@ -60,6 +61,8 @@ public final class PerkManager {
 		PerkChoiceSession.reset();
 		// 세트는 저장하지 않는 파생 상태다. 붙여 준 기록도 함께 비운다.
 		PerkSetEffects.reset();
+		// 증강 상태이상의 출처 기록도 메모리에만 있다. 다음 서버로 새어 나가지 않게 비운다.
+		PerkStatusStack.reset();
 	}
 
 	/** 서버가 켜질 때. 이전 실행에서 얼려 둔 시간이 남아 있지 않은지 확인한다. */
@@ -326,6 +329,7 @@ public final class PerkManager {
 	public static void onPlayerLeave(ServerPlayer player) {
 		// 다시 들어오면 refreshPlayer 가 처음부터 다시 붙인다.
 		PerkSetEffects.forget(player.getUUID());
+		PerkStatusStack.forget(player.getUUID());
 		MinecraftServer server = player.level().getServer();
 		if (server == null) {
 			return;
@@ -809,6 +813,9 @@ public final class PerkManager {
 		// 세트 「무기 3단계」를 켠 팀에서는 공격력을 깎는 효과를 붙이지 않는다. 이쪽은 표시가
 		// 아니라 효과가 실제로 하는 일을 보고 가리므로 앞으로 새로 넣는 증강도 함께 걸린다.
 		NoAttackDamageLossEffect.Gate gate = NoAttackDamageLossEffect.gateFor(state);
+		// 「굳은살」을 가진 팀에서는 「허공답보」의 낙하 피해 +0.2 처럼 늘리는 수정자를 덜어 낸
+		// 값으로 붙인다. 없으면 평소의 apply 와 같다.
+		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		for (String perkId : state.ownedPerks) {
 			Perk perk = PerkRegistry.byId(perkId).orElse(null);
 			if (perk == null) {
@@ -822,7 +829,7 @@ public final class PerkManager {
 						// 결과가 같아서 이 자리는 그대로 멱등하다.
 						effect.remove(player);
 					} else {
-						effect.apply(player);
+						relief.apply(player, effect);
 						// conditional·holder·periodic 은 자기 하위를 스스로 붙인다. 부모를 통째로
 						// 건너뛰면 같은 묶음의 공격력 증가까지 사라지므로, 붙인 직후에 감소만
 						// 골라 걷어낸다. 세트가 꺼져 있으면 아무 일도 하지 않는다.
@@ -947,6 +954,9 @@ public final class PerkManager {
 		}
 		// 증강이 꺼지면 세트도 함께 꺼진다.
 		PerkSetEffects.removeAll(player);
+		// 위에서 하나씩 뗐으니 비어 있어야 맞다. 정의가 사라진 증강처럼 떼지 못한 출처가
+		// 남아 있으면, 나중에 같은 종류를 다시 쌓을 때 잃은 증강의 등급이 되살아난다.
+		PerkStatusStack.forget(player.getUUID());
 	}
 
 	private static void applyToTeam(MinecraftServer server, ShareTeam team, TeamState state) {
@@ -988,6 +998,17 @@ public final class PerkManager {
 		}
 		// 조건부 증강은 배율 조회에 플레이어 인자가 없어 대상을 따로 알려 줘야 한다.
 		ConditionalPerkManager.beginMultiplierLookup(player);
+		return multiplierOf(state, dealt);
+	}
+
+	/**
+	 * 팀 상태만으로 배율을 모은다. 배율 문맥({@link ConditionalPerkManager#beginMultiplierLookup})은
+	 * 부르는 쪽이 먼저 세운다. 살아 있는 플레이어 없이 시험이 이 길을 쓴다.
+	 */
+	static double multiplierOf(TeamState state, boolean dealt) {
+		if (state == null || state.ownedPerks.isEmpty()) {
+			return 1.0;
+		}
 		// 「불굴」의 체력이 가득 찼을 때 받는 피해 ×1.1 이 이 길로 들어온다. 같은 증강의 이득
 		// (체력 절반 이하일 때 ×0.7)도 이 길이지만 대가 표시가 없어 건너뛰지 않는다.
 		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
@@ -995,6 +1016,9 @@ public final class PerkManager {
 		// 무기 3단계를 켠 팀에서는 그 한 줄만 곱하지 않는다. 받는 피해 쪽은 공격력과 무관하므로
 		// 주는 피해를 모을 때만 본다.
 		NoAttackDamageLossEffect.Gate gate = NoAttackDamageLossEffect.gateFor(state);
+		// 「굳은살」은 받는 피해를 늘리는 배율만 덜어 낸다. 면제된 대가는 위에서 건너뛰므로
+		// 겹치지 않는다. 조건부·보유자는 지금 걸린 배율 전체를 하나로 보고 덜어 낸다.
+		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		double total = 1.0;
 		for (String perkId : state.ownedPerks) {
 			Perk perk = PerkRegistry.byId(perkId).orElse(null);
@@ -1010,7 +1034,7 @@ public final class PerkManager {
 				}
 				total *= dealt
 						? effect.damageDealtMultiplier()
-						: effect.damageTakenMultiplier();
+						: relief.ease(effect.damageTakenMultiplier());
 			}
 		}
 		// 세트가 건 배율도 같은 곱에 들어간다. 세트가 없으면 빈 목록이라 값이 그대로다.
