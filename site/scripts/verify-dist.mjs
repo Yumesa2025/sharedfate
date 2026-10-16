@@ -12,6 +12,9 @@ const json = (path) => JSON.parse(readFileSync(resolve(ROOT, path), 'utf-8'));
 
 const perks = json('src/main/resources/sharedfate-perks-default.json').perks;
 const sets = json('src/main/resources/sharedfate-sets-default.json').sets;
+// 시련 카드는 아직 JSON 이 아니라 코드에 있다. 이름만 뽑아 쓴다.
+const trialSource = readFileSync(resolve(ROOT, 'src/main/java/com/sharedfate/sync/TrialCatalog.java'), 'utf-8');
+const trialNames = [...trialSource.matchAll(/new Trial\("[^"]+",\s*"([^"]+)"/g)].map((match) => match[1]);
 
 const problems = [];
 const check = (ok, message) => { if (!ok) problems.push(message); };
@@ -43,6 +46,19 @@ for (const tab of ['install', 'start', 'perks', 'sets', 'economy', 'commands']) 
   }
 }
 
+// 4-1. 드래곤 시련 페이지가 나왔고 카드 이름이 코드와 맞는다.
+let trialCount = 0;
+try {
+  const trialPage = read('trials/index.html');
+  check(trialNames.length > 0, '시련 카드 이름을 코드에서 하나도 못 읽었다.');
+  for (const name of trialNames) {
+    if (trialPage.includes(name)) trialCount += 1;
+    else problems.push(`시련 카드 「${name}」 이 드래곤 시련 페이지에 없다.`);
+  }
+} catch {
+  problems.push('드래곤 시련 페이지가 안 나왔다.');
+}
+
 // 5. 랜딩에 정의 파일에서 온 숫자가 찍혀 있다.
 const home = read('index.html');
 check(home.includes(String(perks.length)), `랜딩에 증강 개수 ${perks.length} 가 없다.`);
@@ -52,6 +68,7 @@ const PAGES = [
   'index.html',
   'perks/index.html',
   'sets/index.html',
+  'trials/index.html',
   'guide/index.html',
   'guide/install/index.html',
   'guide/start/index.html',
@@ -74,4 +91,4 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`결과물 확인 통과 — 증강 ${cards}장 · 세트 ${sections}유형 · 가이드 6꼭지`);
+console.log(`결과물 확인 통과 — 증강 ${cards}장 · 세트 ${sections}유형 · 가이드 6꼭지 · 시련 카드 ${trialCount}장`);

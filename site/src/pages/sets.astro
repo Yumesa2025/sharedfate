@@ -13,7 +13,7 @@ const owned = (type: string) => perks.filter((perk) => perk.setTypes.includes(ty
 const typeless = perks.filter((perk) => perk.setTypes.length === 0);
 const RARITY_NAME = { silver: '실버', gold: '골드', prism: '프리즘' } as const;
 ---
-<Base title="세트 — SharedFate" description="SharedFate 의 세트 13유형과 단계별 효과 전체 표.">
+<Base title="세트 — SharedFate" description={`SharedFate 의 세트 ${sets.length}유형과 단계별 효과 전체 표.`}>
   <div class="wrap">
     <h1>세트</h1>
     <p class="lead">

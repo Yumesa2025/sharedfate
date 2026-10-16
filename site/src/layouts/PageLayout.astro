@@ -1,0 +1,28 @@
+---
+import Base from './Base.astro';
+
+// 가이드 탭 밖의 독립 마크다운 페이지. 머리말의 title·description 만 읽는다.
+const { frontmatter } = Astro.props;
+const { title, description } = frontmatter;
+---
+<Base title={`${title} — SharedFate`} description={description}>
+  <div class="wrap">
+    <article class="prose">
+      <h1>{title}</h1>
+      {description && <p class="lead">{description}</p>}
+      <slot />
+    </article>
+  </div>
+</Base>
+
+<style>
+  .lead { color: var(--muted); }
+  /*
+   * 넓은 화면에서는 표의 앞 칸(자리·이름)을 꺾지 않고 설명인 마지막 칸만 줄을 바꾼다.
+   * 좁은 화면에서 이것을 걸면 설명 칸이 한 글자 폭으로 짓눌리므로 걸지 않는다.
+   */
+  @media (min-width: 640px) {
+    .prose :global(th:not(:last-child)),
+    .prose :global(td:not(:last-child)) { white-space: nowrap; }
+  }
+</style>

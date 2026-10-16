@@ -10,6 +10,7 @@ const isGuide = path.includes('/guide');
       <a href={href('/guide/install')} class:list={[{ on: isGuide }]}>가이드</a>
       <a href={href('/perks')} class:list={[{ on: path.includes('/perks') }]}>증강</a>
       <a href={href('/sets')} class:list={[{ on: path.includes('/sets') }]}>세트</a>
+      <a href={href('/trials')} class:list={[{ on: path.includes('/trials') }]}>드래곤 시련</a>
     </nav>
   </div>
 </header>
@@ -19,7 +20,13 @@ const isGuide = path.includes('/guide');
   .bar { display: flex; align-items: center; gap: 1.2rem; height: 52px; }
   .brand { color: var(--text); font-weight: 600; text-decoration: none; }
   nav { display: flex; gap: 1rem; margin-left: auto; }
-  nav a { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 0.92rem; white-space: nowrap; }
+  /* 탭이 넷이 되어 좁은 화면에서는 간격을 줄여 한 줄에 둔다. */
+  @media (max-width: 420px) {
+    .bar { gap: 0.8rem; }
+    nav { gap: 0.75rem; }
+    nav a { font-size: 0.86rem; }
+  }
   nav a:hover { color: var(--text); }
   nav a.on { color: var(--accent-text); }
 </style>

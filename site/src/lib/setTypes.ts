@@ -15,6 +15,7 @@ export const SET_TYPE_NAMES: Record<string, string> = {
   gamble: '도박',
   mobility: '기동',
   blessing: '가호',
+  pioneer: '개척',
   bond: '결속',
 };
 
