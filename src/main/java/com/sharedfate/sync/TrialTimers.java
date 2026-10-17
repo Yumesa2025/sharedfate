@@ -105,6 +105,11 @@ public final class TrialTimers {
 	static final String LIGHTNING_ID = "last_stand:lightning";
 	/** 최후의 저항 — 오브젝트 파도 줄의 열쇠. */
 	static final String OBJECTS_ID = "last_stand:objects";
+	/**
+	 * 최후의 저항 — 오브젝트 파도 줄의 <b>화면 이름</b>. 2026-10-18 사람 지시로 「오브젝트 파도」에서
+	 * 「회복 크리스탈 소환」으로 바꿨다. 열쇠({@link #OBJECTS_ID})와 코드 이름은 그대로다.
+	 */
+	static final String OBJECTS_LABEL = "회복 크리스탈 소환";
 
 	/** 시전 바 — 진입 보호막 구간의 제목. */
 	static final String SHIELD_TITLE = "최후의 저항 · 보호막";
@@ -579,6 +584,9 @@ public final class TrialTimers {
 	 * 기준은 앞 문턱이고, 첫 문턱의 앞은 진입 직후 체력(진입 문턱 30% + 연출이 채우는 20%p)이다.
 	 * 문턱을 다 쓰면(25 → 10 → 없음) 줄이 사라진다. 파도가 서 있는 동안은 「진행 중 · N개」와 남은
 	 * 크리스탈 비율이다.
+	 *
+	 * <p>화면 이름은 {@link #OBJECTS_LABEL}「회복 크리스탈 소환」이다 — 2026-10-18 사람 지시로
+	 * 「오브젝트 파도」에서 바꿨다. 코드 이름(objects · 파도)은 그대로 둔다.
 	 */
 	static @Nullable Entry objectsEntry(@Nullable ObjectsView objects, float healthRatio) {
 		if (objects == null) {
@@ -586,7 +594,7 @@ public final class TrialTimers {
 		}
 		if (objects.running()) {
 			float fill = objects.slots() <= 0 ? 0.0F : (float) objects.live() / objects.slots();
-			return Entry.health(OBJECTS_ID, "오브젝트 파도", Kind.HEAL,
+			return Entry.health(OBJECTS_ID, OBJECTS_LABEL, Kind.HEAL,
 					"진행 중 · " + objects.live() + "개", fill);
 		}
 		float[] thresholds = DragonLastStandObjects.THRESHOLDS;
@@ -599,7 +607,7 @@ public final class TrialTimers {
 				: thresholds[objects.firedWaves() - 1];
 		float span = upper - next;
 		float fill = span > 0.0F ? (healthRatio - next) / span : 0.0F;
-		return Entry.health(OBJECTS_ID, "오브젝트 파도", Kind.HEAL,
+		return Entry.health(OBJECTS_ID, OBJECTS_LABEL, Kind.HEAL,
 				"체력 " + Math.round(next * 100.0F) + "%", fill);
 	}
 
@@ -646,11 +654,14 @@ public final class TrialTimers {
 		};
 	}
 
-	/** 패턴 이름. */
+	/**
+	 * 패턴 이름. 2026-10-18 사람 지시로 둘을 바꿨다 — {@code WING_BEAT} 「날개 퍼덕이기」 →
+	 * 「폭풍 날갯짓」, {@code CONE_BREATH} 「부채꼴 브레스」 → 「공허 브레스」. 코드 이름은 그대로다.
+	 */
 	static String nameOf(DragonLastStand.Pattern pattern) {
 		return switch (pattern) {
-			case WING_BEAT -> "날개 퍼덕이기";
-			case CONE_BREATH -> "부채꼴 브레스";
+			case WING_BEAT -> "폭풍 날갯짓";
+			case CONE_BREATH -> "공허 브레스";
 			case VOID_SUCTION -> "공허 흡입";
 			case CROSS_FISSURE -> "십자 균열";
 		};
@@ -666,13 +677,13 @@ public final class TrialTimers {
 		};
 	}
 
-	/** 시전 바 아래 대처법 한 줄. 문구는 승인된 화면 그대로다. */
+	/** 시전 바 아래 대처법 한 줄. 문구는 2026-10-18 사람이 정한 문구다. */
 	static String hintOf(DragonLastStand.Pattern pattern) {
 		return switch (pattern) {
-			case WING_BEAT -> "0.6초마다 넉백 8번 · 피해 없음";
-			case CONE_BREATH -> "머리 방향 90° · 한 대에 전멸 — 옆으로";
-			case VOID_SUCTION -> "반대로 달리기 · 불 결계 안은 계속 아픔";
-			case CROSS_FISSURE -> "빨간 바닥 사이 틈으로 · 두 번째 십자 대비";
+			case WING_BEAT -> "넉백 버티기";
+			case CONE_BREATH -> "즉사급 정면 브레스";
+			case VOID_SUCTION -> "흡입에 저항하기 · 결계 속 피해";
+			case CROSS_FISSURE -> "바닥 주의";
 		};
 	}
 

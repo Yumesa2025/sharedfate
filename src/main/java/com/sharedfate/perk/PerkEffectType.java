@@ -26,6 +26,7 @@ import com.sharedfate.perk.effect.NoSleepEffect;
 import com.sharedfate.perk.effect.TimeLockEffect;
 import com.sharedfate.perk.effect.EchoMiningEffect;
 import com.sharedfate.perk.effect.EquipBanEffect;
+import com.sharedfate.perk.effect.FoodCapacityEffect;
 import com.sharedfate.perk.effect.FoodNutritionEffect;
 import com.sharedfate.perk.effect.HungerDrainEffect;
 import com.sharedfate.perk.effect.ItemBanEffect;
@@ -64,11 +65,12 @@ import com.sharedfate.perk.effect.OnTeamHurtEffect;
 import com.sharedfate.perk.effect.OreExchangeEffect;
 import com.sharedfate.perk.effect.GatherEffect;
 import com.sharedfate.perk.effect.OnSwapEffect;
+import com.sharedfate.perk.effect.InvulnerableEffect;
 import com.sharedfate.perk.effect.ProximityEffect;
 import com.sharedfate.perk.effect.RarityGrantEffect;
 import com.sharedfate.perk.effect.RarityRerollEffect;
 import com.sharedfate.perk.effect.SwapBlockEffect;
-import com.sharedfate.perk.effect.StaggeredSwapEffect;
+import com.sharedfate.perk.effect.SwapSkipChanceEffect;
 import com.sharedfate.perk.effect.SwapRallyEffect;
 import com.sharedfate.perk.effect.SwapIntervalEffect;
 import com.sharedfate.perk.effect.SwapExplosionEffect;
@@ -145,11 +147,12 @@ public enum PerkEffectType {
 	MINING_SPEED("mining_speed", MiningSpeedEffect::fromJson),
 	ON_TEAM_HURT("on_team_hurt", OnTeamHurtEffect::fromJson),
 	SWAP_INTERVAL("swap_interval", SwapIntervalEffect::fromJson),
-	STAGGERED_SWAP("staggered_swap", StaggeredSwapEffect::fromJson),
+	SWAP_SKIP_CHANCE("swap_skip_chance", SwapSkipChanceEffect::fromJson),
 	SWAP_RALLY("swap_rally", SwapRallyEffect::fromJson),
 	SWAP_EXPLOSION("swap_explosion", SwapExplosionEffect::fromJson),
 	SWAP_BLOCK("swap_block", SwapBlockEffect::fromJson),
 	ON_SWAP("on_swap", OnSwapEffect::fromJson),
+	INVULNERABLE("invulnerable", InvulnerableEffect::fromJson),
 	GATHER("gather", GatherEffect::fromJson),
 	PROXIMITY("proximity", ProximityEffect::fromJson),
 	ON_CRITICAL("on_critical", OnCriticalEffect::fromJson),
@@ -212,6 +215,7 @@ public enum PerkEffectType {
 	COMPASS_TOGGLE("compass_toggle", CompassToggleEffect::fromJson),
 	VILLAGER_TRADE("villager_trade", VillagerTradeEffect::fromJson),
 	RUIN_SURVEY("ruin_survey", RuinSurveyEffect::fromJson),
+	FOOD_CAPACITY("food_capacity", FoodCapacityEffect::fromJson),
 	CUSTOM("custom", CustomEffect::fromJson);
 
 	/** 효과 하나를 만드는 팩토리. 정의가 잘못됐으면 {@code null}을 돌려준다. */

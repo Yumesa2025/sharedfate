@@ -4,6 +4,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.util.Util;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -13,6 +15,7 @@ import net.minecraft.world.level.block.IronBarsBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,7 +33,8 @@ import java.util.List;
  * <ul>
  *   <li>{@code arrowImmune} — {@link CrystalWatch} 의 깃발을 세운다. 실제로 막는 일은
  *       {@code EndCrystalGuardMixin} 이 크리스탈 쪽에서 한다.</li>
- *   <li>{@code restoreCage} — 남은 크리스탈에 쇠창살 우리를 다시 세운다.</li>
+ *   <li>{@code restoreCage} — 카드를 받은 순간 남은 크리스탈 중 무작위 {@value #CAGE_COUNT}개에
+ *       쇠창살 우리를 <b>한 번만</b> 세운다(아래 「2026-10-18」 절).</li>
  *   <li>{@code digSlowdown} — 팀 전원의 <b>채굴 속도를 깎는다</b>
  *       ({@link #DIG_SLOWDOWN_MULTIPLIER}). ⚠⚠ <b>2026-10-01 현재 이것을 켜는 카드가 하나도
  *       없다.</b> 길만 살아 있다 — 걷은 경위와 되살리는 법은 그 상수 설명에 있다.</li>
@@ -57,16 +61,26 @@ import java.util.List;
  *
  * <p>쇠창살은 전투가 끝나도 남는다. 그건 괜찮다 — 바닐라에도 원래 우리가 있는 탑이 있다.
  * 괜찮지 <b>않은</b> 것은 남의 것을 덮는 일이라, 놓을 자리가 <b>공기일 때만</b> 놓는다.
- * 기둥의 흑요석도, 사람이 쌓아 올린 발판도, 이미 서 있는 쇠창살도 건드리지 않는다. 덕분에
- * 「부서진 것만 채운다」가 저절로 성립한다.
+ * 기둥의 흑요석도, 사람이 쌓아 올린 발판도, 이미 서 있는 쇠창살도 건드리지 않는다.
  *
  * <p>사람이 손에 들고 다니며 터뜨리는 크리스탈에까지 우리를 세우면 아레나가 쇠창살 밭이
- * 되므로, <b>기둥 위의 크리스탈만</b> 고른다. 판별은 {@link #onSpike} 에 적어 두었다.
+ * 되므로, <b>기둥 위의 크리스탈만</b> 고른다. 판별은 {@link #spikeTop} 에 적어 두었다.
  *
- * <h2>주기를 두는 이유</h2>
+ * <h2>⚠⚠ 2026-10-18 — 한 번만, 다섯 곳에만 세운다</h2>
  *
- * <p>매 틱 블록 75칸 × 크리스탈 10개를 훑으면 전투 내내 헛일을 한다. 크리스탈을 세는 엔티티
- * 조회조차 주기 안으로 넣어 두었으므로, 발동 틱이 아닌 틱에는 깃발 한 번 쓰는 것이 전부다.
+ * <p>사람 말: <b>「다시 선 쇠창살 시련, 모든 크리스탈이 아니라 크리스탈 5개에. 그리고 계속
+ * 생기는데 이거 버그임? 부숴도 부숴도 계속 생기던데」</b>.
+ *
+ * <p>계속 생긴 것은 버그가 아니라 <b>설계</b>였다. 예전에는 받은 틱부터 2초
+ * ({@code CAGE_REPAIR_INTERVAL} 40틱)마다 남은 크리스탈 <b>전부</b>의 우리를 훑어 공기인 칸을
+ * 다시 채웠다 — 「부서진 것만 채운다」가 그 설계의 자랑이었고, 그래서 부숴도 2초 뒤에 돌아왔다.
+ * 사람이 고른 답은 「한 번만 세우기」다. 이제는 카드를 받은 순간 남은 기둥 위 크리스탈 중
+ * <b>무작위 {@value #CAGE_COUNT}개</b>(그 이하면 전부)에 한 번 세우고({@link #pickCaged}),
+ * 그 뒤로는 다시 채우는 길이 <b>없다</b> — 부순 쇠창살은 부순 채로 남는다.
+ *
+ * <p>「한 번」은 {@link #CAGED} 에 카드 열쇠를 적어 지킨다. 서버가 다시 켜지면 그 기억이
+ * 비므로, 받은 지 {@value #CAGE_GRACE_TICKS}틱이 넘은 카드는 아예 세우지 않는다
+ * ({@link #cagesNow}) — 재시작이 「다시 채움」의 뒷문이 되지 않게.
  */
 public final class TrialCrystalGuard {
 
@@ -155,8 +169,22 @@ public final class TrialCrystalGuard {
 	 */
 	static final int DIG_LAPSE_TICKS = 60;
 
-	/** 우리를 살피는 간격(틱). 2초. 사람이 깨는 속도보다 훨씬 빠르다. */
-	static final int CAGE_REPAIR_INTERVAL = 40;
+	/**
+	 * 우리를 세우는 크리스탈 수. 남은 기둥 위 크리스탈이 이보다 많으면 <b>무작위로</b> 이만큼.
+	 *
+	 * <p>2026-10-18 사람 지시(「모든 크리스탈이 아니라 크리스탈 5개에」). 예전에는 전부였다.
+	 */
+	public static final int CAGE_COUNT = 5;
+
+	/**
+	 * 받은 뒤 이만큼 안에서만 우리를 세운다(틱). 5초.
+	 *
+	 * <p>보통은 카드를 받은 다음 틱에 세운다. 이 여유는 그 틱을 놓친 경우(팀원이 모두 잠깐
+	 * 나가 있어 {@code TrialRisks.tick} 이 이 실행기를 부르지 않은 틱)를 받아 주는 몫이다. 길게
+	 * 잡으면 <b>서버 재시작</b>이 {@link #CAGED} 를 비운 뒤 다시 세우게 되므로 짧게 둔다 — 그
+	 * 짧은 틈의 재시작에서만 한 번 더 설 수 있다.
+	 */
+	static final int CAGE_GRACE_TICKS = 100;
 
 	/**
 	 * 우리의 반폭. 중심에서 ±2칸이라 5×5 가 된다.
@@ -191,6 +219,14 @@ public final class TrialCrystalGuard {
 	 */
 	private static final java.util.Map<java.util.UUID, Long> BLUNTED = new java.util.HashMap<>();
 
+	/**
+	 * 이미 우리를 세운 카드들 — {@code 위험 열쇠 + '@' + 받은 틱}.
+	 *
+	 * <p>받은 틱까지 열쇠에 넣는 것은 다음 판에서 같은 카드를 다시 받았을 때 「이미 세웠다」로
+	 * 읽히지 않게 하려는 것이다. {@link #clearState()} 가 비운다.
+	 */
+	private static final java.util.Set<String> CAGED = new java.util.HashSet<>();
+
 	private TrialCrystalGuard() {
 	}
 
@@ -222,10 +258,16 @@ public final class TrialCrystalGuard {
 			CrystalWatch.setArrowImmune(true);
 		}
 
-		boolean cageDue = risk.restoreCage() && refreshesAt(now, granted, CAGE_REPAIR_INTERVAL);
+		String cageKey = key + "@" + granted;
+		boolean cageDue = risk.restoreCage() && cagesNow(CAGED.contains(cageKey), now, granted);
 		boolean digDue = risk.digSlowdown() && refreshesAt(now, granted, DIG_REFRESH_INTERVAL);
 		if (!cageDue && !digDue) {
 			return;
+		}
+		if (cageDue) {
+			// 세울 크리스탈이 없어도 한 번으로 친다. 남겨 두면 나중에 「부활」이 되살린 크리스탈에
+			// 예고 없이 우리가 선다 — 사람이 걷은 「다시 채움」이 다른 문으로 들어오는 꼴이다.
+			CAGED.add(cageKey);
 		}
 
 		// 여기서만 엔티티를 훑는다. 발동 틱이 아니면 위에서 이미 돌아갔다.
@@ -238,7 +280,13 @@ public final class TrialCrystalGuard {
 		}
 
 		if (cageDue) {
+			List<EndCrystal> onSpikes = new ArrayList<>();
 			for (EndCrystal crystal : crystals) {
+				if (spikeTop(end, crystal) != null) {
+					onSpikes.add(crystal);
+				}
+			}
+			for (EndCrystal crystal : pickCaged(onSpikes, CAGE_COUNT, end.getRandom())) {
 				restoreCage(end, crystal);
 			}
 		}
@@ -314,6 +362,7 @@ public final class TrialCrystalGuard {
 	public static void clearState() {
 		CrystalWatch.setArrowImmune(false);
 		BLUNTED.clear();
+		CAGED.clear();
 	}
 
 	// ------------------------------------------------------------------ 쇠창살 우리
@@ -322,7 +371,8 @@ public final class TrialCrystalGuard {
 	 * 크리스탈 하나에 우리를 세운다. 이미 서 있는 것은 건드리지 않는다.
 	 *
 	 * <p>바닐라는 <b>우리가 있는 탑과 없는 탑</b>을 섞어 만든다({@code EndSpike.isGuarded}).
-	 * 이 카드는 <b>없던 탑에도</b> 세운다 — 그것이 카드 이름이 약속하는 바다.
+	 * 이 카드는 <b>없던 탑에도</b> 세운다 — 그것이 카드 이름이 약속하는 바다. 이름은
+	 * 「다시 선」이지만 지금은 카드당 <b>한 번</b>만 불린다(클래스 설명의 2026-10-18 절).
 	 */
 	private static void restoreCage(ServerLevel end, EndCrystal crystal) {
 		BlockPos base = spikeTop(end, crystal);
@@ -380,8 +430,7 @@ public final class TrialCrystalGuard {
 	 *
 	 * <p>{@link TrialRisks#firesAt} 와 달리 <b>받은 그 틱에 곧바로 참</b>이다. 그쪽은 예고
 	 * 없이 터지는 것을 막으려고 첫 주기를 비우지만, 이 카드는 피해를 주지 않으므로 예고할
-	 * 것이 없다. 오히려 늦게 걸리면 「쇠창살이 생긴다」고 읽은 직후 2초 동안 아무 일도 일어나지
-	 * 않아 카드가 고장 난 것처럼 보인다.
+	 * 것이 없다. 지금은 채굴 무뎌짐 갈래만 쓴다(쇠창살은 {@link #cagesNow} 로 한 번만).
 	 *
 	 * <p>주기를 {@code granted} 에서 세는 이유는 {@code TrialRisks} 와 같다 — 월드 시간으로
 	 * 세면 카드마다 위상이 겹치고, 복원 직후 {@code now < granted} 일 때 음수로 떨어진다.
@@ -391,6 +440,34 @@ public final class TrialCrystalGuard {
 			return false;
 		}
 		return TrialRisks.elapsedSinceGrant(now, granted) % interval == 0L;
+	}
+
+	/**
+	 * 이번 틱에 우리를 세우는가 — 아직 안 세웠고, 받은 지 {@value #CAGE_GRACE_TICKS}틱 안이면.
+	 *
+	 * <p>세운 뒤로는 다시 참이 되는 길이 없다. 그것이 사람이 고른 「한 번만 세우기」다.
+	 */
+	static boolean cagesNow(boolean alreadyCaged, long now, long granted) {
+		return !alreadyCaged && TrialRisks.elapsedSinceGrant(now, granted) <= CAGE_GRACE_TICKS;
+	}
+
+	/**
+	 * 우리를 세울 크리스탈을 고른다. {@code count} 이하면 <b>전부</b>, 넘치면 <b>무작위로</b>
+	 * {@code count} 개.
+	 *
+	 * <p>앞에서 자르지 않고 섞는다 — 엔티티 목록 순서는 늘 비슷해서, 자르면 매 판 같은 기둥에
+	 * 우리가 선다. {@code TrialCrystalRevive.pickSeats} 와 같은 판단이다.
+	 */
+	static <T> List<T> pickCaged(List<T> candidates, int count, RandomSource random) {
+		if (count <= 0) {
+			return List.of();
+		}
+		if (candidates.size() <= count) {
+			return List.copyOf(candidates);
+		}
+		List<T> shuffled = new ArrayList<>(candidates);
+		Util.shuffle(shuffled, random);
+		return List.copyOf(shuffled.subList(0, count));
 	}
 
 	/**

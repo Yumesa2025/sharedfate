@@ -285,7 +285,17 @@ public final class SharedFateNetworking {
 	//     못한다. 35 와 같은 경우라 악수 단계에서 걸러지도록 번호를 올린다. 올려도 된다는 것은
 	//     사람이 확인했다(2026-10-16).
 	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다.
-	public static final int PROTOCOL_VERSION = 38;
+	// 39: 실버 「먹방」 — PerkClientFeaturesPayload 에 허기 상한(foodCapacity) 칸 하나.
+	//
+	//     사람이 정한 것(2026-10-18) — 「실버로 음식을 허기에 상관없이 먹을 수 있고 중첩할 수 있게
+	//     (최대 100). 100 넘어도 계속 먹을 수 있게」, 20 을 넘은 허기는 막대 옆에 「57/100」 으로.
+	//     허기 값 자체는 바닐라 ClientboundSetHealthPacket 이 VarInt 로 그대로 나르므로 칸이 필요한
+	//     것은 상한뿐이다. 그런데 먹는 동작은 클라이언트가 먼저 Player.canEat 을 묻고 시작하므로,
+	//     상한을 모르는 클라이언트는 배가 부를 때 우클릭해도 먹지 못하고 숫자도 안 뜬다.
+	//     칸이 하나 늘어 형식 자체가 바뀌었으므로 옛 클라이언트는 이 묶음을 읽지 못한다. 올려도
+	//     된다는 것은 사람이 확인했다(2026-10-18).
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다.
+	public static final int PROTOCOL_VERSION = 39;
 
 	private SharedFateNetworking() {
 	}

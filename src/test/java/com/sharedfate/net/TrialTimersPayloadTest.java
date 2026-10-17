@@ -67,7 +67,7 @@ class TrialTimersPayloadTest {
 		return new TrialTimersPayload(true, true, List.of(
 				Entry.active("last_stand:zone", "안전지대 축소 중 → 22칸", Kind.ZONE, 40, 100),
 				Entry.countdown("last_stand:lightning", "상시 번개", Kind.LIGHTNING, 90, 156, 60),
-				Entry.health("last_stand:objects", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.6F)),
+				Entry.health("last_stand:objects", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.6F)),
 				Optional.of(new Cast("부채꼴 브레스", Kind.DAMAGE, Cast.STATE_WARNING, 50, 80,
 						"머리 방향 90° · 한 대에 전멸 — 옆으로")));
 	}

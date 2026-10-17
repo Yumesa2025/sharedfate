@@ -305,6 +305,9 @@ public final class PerkManager {
 		ShareTeam team = manager.teamOf(player.getUUID());
 		TeamState state = manager.stateOf(player.getUUID());
 		if (team == null || state == null) {
+			// 「먹방」 팀에 있다가 접속을 끊은 사이 팀을 잃었으면 저장에 20 넘는 허기가 남아 있다.
+			// 팀이 있으면 공유 풀이 덮어쓰므로 팀이 없을 때만 깎는다.
+			PerkFoodCapacity.settleWithoutTeam(player);
 			return;
 		}
 		refreshPlayer(player);
@@ -330,6 +333,9 @@ public final class PerkManager {
 		// 다시 들어오면 refreshPlayer 가 처음부터 다시 붙인다.
 		PerkSetEffects.forget(player.getUUID());
 		PerkStatusStack.forget(player.getUUID());
+		// 잠깐 건 속성 수정자는 저장되지 않지만 예약은 남는다. 남겨 두면 다시 들어온 뒤 첫 발동이
+		// 「이미 걸려 있다」로 보여 아무것도 붙지 않는다.
+		TimedPerkEffects.revokeAll(player);
 		MinecraftServer server = player.level().getServer();
 		if (server == null) {
 			return;
@@ -813,7 +819,7 @@ public final class PerkManager {
 		// 세트 「무기 3단계」를 켠 팀에서는 공격력을 깎는 효과를 붙이지 않는다. 이쪽은 표시가
 		// 아니라 효과가 실제로 하는 일을 보고 가리므로 앞으로 새로 넣는 증강도 함께 걸린다.
 		NoAttackDamageLossEffect.Gate gate = NoAttackDamageLossEffect.gateFor(state);
-		// 「굳은살」을 가진 팀에서는 「허공답보」의 낙하 피해 +0.2 처럼 늘리는 수정자를 덜어 낸
+		// 「굳은살」을 가진 팀에서는 낙하 피해 +0.2 처럼 늘리는 수정자를 덜어 낸
 		// 값으로 붙인다. 없으면 평소의 apply 와 같다.
 		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		for (String perkId : state.ownedPerks) {
@@ -954,6 +960,9 @@ public final class PerkManager {
 		}
 		// 증강이 꺼지면 세트도 함께 꺼진다.
 		PerkSetEffects.removeAll(player);
+		// 처치·치명타 등으로 잠깐 건 것도 걷어낸다. 팀 상태가 이미 사라져 위에서 하나씩 떼지
+		// 못한 경우에도 사람 쪽 예약은 남아 있으므로 여기서 함께 비운다.
+		TimedPerkEffects.revokeAll(player);
 		// 위에서 하나씩 뗐으니 비어 있어야 맞다. 정의가 사라진 증강처럼 떼지 못한 출처가
 		// 남아 있으면, 나중에 같은 종류를 다시 쌓을 때 잃은 증강의 등급이 되살아난다.
 		PerkStatusStack.forget(player.getUUID());

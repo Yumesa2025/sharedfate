@@ -179,6 +179,9 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 	 *       버린다. 체력이 공유라 한 명만 죽어도 팀이 전멸하는데, 아직 시작도 안 한 회차 때문에
 	 *       월드가 지워지는 일도 하드코어에서 관전자로 갇히는 일도 없어야 한다. 자세한 까닭은
 	 *       {@link com.sharedfate.sync.GameStartManager#blocksDamage} 에 있다.</li>
+	 *   <li><b>증강 무적</b> — {@code invulnerable}(「본진이 바뀐다」·교환 세트 3단계)이 걸린 동안
+	 *       피해를 버린다. 바닐라 무적처럼 {@code #bypasses_invulnerability}(공허·{@code /kill})는
+	 *       통과시킨다. {@link com.sharedfate.perk.PerkInvulnerability} 참고.</li>
 	 *   <li><b>방패를 든 채 착지</b> — {@code shield_fall_immunity} 를 가진 팀원이 방패로 막는
 	 *       중에 받는 낙하 피해는 통째로 버린다. 배율을 0 으로 깎지 않고 여기서 버리는 이유는
 	 *       {@link com.sharedfate.perk.effect.ShieldFallImmunityEffect} 에 있다. 낙하가 아닌
@@ -216,6 +219,12 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 		// 4초 사이에 용암·낙하·불이 그대로 들어온다 — 증강 선택과 같은 이유로 여기서 버린다.
 		if (PerkChoiceSession.blocksDamage(self) || GameStartManager.blocksDamage(self)
 				|| com.sharedfate.sync.TrialFreeze.blocksDamage(self)) {
+			callback.setReturnValue(false);
+			return;
+		}
+		// 증강 무적(「본진이 바뀐다」·교환 세트 3단계). 위의 멈춤들과 달리 공허·/kill 은 통과시킨다.
+		// 방패를 깎거나 「호위」를 쓰기 전이어야 한다 — 어차피 안 들어갈 피해다.
+		if (com.sharedfate.perk.PerkInvulnerability.blocksDamage(self, source)) {
 			callback.setReturnValue(false);
 			return;
 		}

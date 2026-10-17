@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import com.sharedfate.TestBootstrap;
 import com.sharedfate.perk.effect.AttributeEffect;
 import com.sharedfate.perk.effect.BonusDropEffect;
+import com.sharedfate.perk.effect.InvulnerableEffect;
 import com.sharedfate.perk.effect.LifestealEffect;
 import com.sharedfate.perk.effect.MaxHealthBonusEffect;
 import com.sharedfate.perk.effect.OnSwapEffect;
@@ -291,7 +292,11 @@ class DefaultPerkSetValuesTest {
 	 * 교환 3단계도 <b>10초</b>다. 2단계와 길이를 맞춰 둔다.
 	 *
 	 * <p>둘이 어긋나면 「교환 직후 얼마 동안 세냐」가 단계마다 달라져서, 실제로 받는 사람이
-	 * 언제까지 안전한지 알 수 없게 된다. 저항 IV 는 사실상 완전 무적이라 더 그렇다.
+	 * 언제까지 안전한지 알 수 없게 된다.
+	 *
+	 * <p>저항이 아니라 <b>무적</b>({@code invulnerable})이어야 한다. 저항은 겹치면 긴 쪽 하나만
+	 * 남아 「본진이 바뀐다」의 3초가 이 10초에 묻힌다. 무적은 시간이 합쳐져 둘을 함께 가지면
+	 * 13초다({@link PerkInvulnerability}).
 	 */
 	@Test
 	void 교환_3단계도_10초다(@TempDir Path dir) throws IOException {
@@ -300,6 +305,8 @@ class DefaultPerkSetValuesTest {
 
 		assertEquals(1, onSwap.grants().size());
 		assertEquals(200, onSwap.grants().get(0).durationTicks(), "10초 = 200틱");
+		assertInstanceOf(InvulnerableEffect.class, onSwap.grants().get(0).effect(),
+				"저항이면 「본진이 바뀐다」의 3초와 합쳐지지 않는다");
 	}
 
 	/**

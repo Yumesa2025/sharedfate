@@ -458,8 +458,11 @@ public final class TrialRisks {
 	 * <p>이 깃발은 <b>로그도 빌드도 알려 주지 않는</b> 종류의 것이다. 판을 올릴 때 메서드가 사라지면
 	 * 피해가 두 배가 된 채로 굴러가므로 {@code TrialRisksTest} 가 클래스 파일에서 직접 찾아 둔다.
 	 *
-	 * <p>소리와 파티클을 덧붙이지 않는다. 번개 엔티티가 스스로 천둥과 착탄음을 내는데 그 위에 폭발
-	 * 파티클을 뿌리는 것이 지금 TNT 처럼 보였던 이유다.
+	 * <p>파티클을 덧붙이지 않는다. 폭발 파티클을 뿌리는 것이 지금 TNT 처럼 보였던 이유다.
+	 *
+	 * <p>⚠ 2026-10-18 — 사람 말 「번개 소리 자체를 30프로 줄여 봐」. 천둥과 착탄음은 번개 엔티티가
+	 * 클라이언트에서 스스로 내던 것인데, 그 개체를 조용히 띄우고 같은 두 소리를 70% 로 서버가 낸다
+	 * ({@link TrialThunder#muffle}). 바닐라 날씨 번개는 그대로다.
 	 */
 	private static void strikeLightning(ServerLevel end, Vec3 at) {
 		LightningBolt bolt = EntityTypes.LIGHTNING_BOLT.create(end, EntitySpawnReason.TRIGGERED);
@@ -469,6 +472,8 @@ public final class TrialRisks {
 		bolt.setVisualOnly(true);
 		// 표식을 그린 바로 그 자리에 세운다. 블록 중앙으로 맞추면 고리와 번개가 어긋난다.
 		bolt.snapTo(at);
+		// addFreshEntity 앞이다 — 조용함이 개체를 처음 보내는 꾸러미에 실려야 한다.
+		TrialThunder.muffle(end, bolt, at);
 		end.addFreshEntity(bolt);
 	}
 

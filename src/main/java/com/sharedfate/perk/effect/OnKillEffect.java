@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.PerkEffect;
 import com.sharedfate.perk.PerkEffectType;
+import com.sharedfate.perk.TimedPerkEffects;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffect;
@@ -35,8 +36,10 @@ import java.util.List;
  * 무한 지속이 아니라 {@code duration} 초 동안만 걸린다. {@code duration} 을 적지 않으면
  * {@link #DEFAULT_DURATION_SECONDS} 초다.
  *
- * <p>{@code status_effect} 가 아닌 하위 효과는 {@link PerkEffect#apply} 를 그대로 부른다.
- * 그런 효과들({@code attribute} 등)은 걷어낼 시점이 없어 처치 순간에 영구히 붙어 버린다.
+ * <p>{@code status_effect} 가 아닌 하위 효과({@code attribute} 등)는 스스로 만료되지 않으므로
+ * {@link TimedPerkEffects} 에 맡겨 {@code duration} 초 뒤에 걷어낸다. 상태이상과 달리 팀
+ * 공유를 타지 않아 <b>처치한 사람에게만</b> 붙는다. 증강을 잃으면 {@link #remove} 가, 접속을
+ * 끊거나 부활하면 {@link TimedPerkEffects#revokeAll} 이 남은 것을 곧바로 걷어낸다.
  */
 public final class OnKillEffect implements PerkEffect {
 	/** 허기는 20 이 최대다. 그 이상 적어도 의미가 없다. */
@@ -63,7 +66,7 @@ public final class OnKillEffect implements PerkEffect {
 	 * 처치 순간에 잠깐 얹을 하위 효과 하나.
 	 *
 	 * @param effect        재귀적으로 읽어 낸 효과
-	 * @param durationTicks {@code status_effect} 일 때 유지할 시간. 그 외 타입에는 쓰이지 않는다
+	 * @param durationTicks 얹은 뒤 유지할 시간. 상태이상은 지속시간으로, 그 밖의 효과는 걷어낼 예약으로 쓴다
 	 */
 	public record Grant(PerkEffect effect, int durationTicks) {
 	}
@@ -150,8 +153,9 @@ public final class OnKillEffect implements PerkEffect {
 
 	private static void grantOne(ServerPlayer killer, Grant grant) {
 		if (!(grant.effect() instanceof StatusEffectPerk status)) {
-			// 붙였다 떼는 보통의 효과다. 그대로 적용한다.
-			grant.effect().apply(killer);
+			// 속성처럼 스스로 만료되지 않는 효과다. 걷어낼 시점을 예약해 둔다. 연달아 처치하면
+			// 다시 붙이지 않고 만료 시각만 미룬다.
+			TimedPerkEffects.grant(killer, grant.effect(), grant.durationTicks());
 			return;
 		}
 		Holder<MobEffect> resolved = status.resolvedEffect();
@@ -161,6 +165,22 @@ public final class OnKillEffect implements PerkEffect {
 		// 무한 지속이 아니라 정해진 시간만 걸어야 "처치 순간에 잠깐"이 된다.
 		killer.addEffect(new MobEffectInstance(
 				resolved, grant.durationTicks(), status.amplifier(), false, false, true));
+	}
+
+	/**
+	 * 상시로 붙는 것이 없으므로 {@link #apply} 는 재정의하지 않는다. 대신 증강을 잃을 때는
+	 * 마침 걸려 있던 속성 수정자를 걷어내야 한다. 상태이상 쪽은 유한 지속이라 스스로 끝난다.
+	 */
+	@Override
+	public void remove(ServerPlayer player) {
+		if (player == null) {
+			return;
+		}
+		for (Grant grant : grants) {
+			if (!(grant.effect() instanceof StatusEffectPerk)) {
+				TimedPerkEffects.cancel(player, grant.effect());
+			}
+		}
 	}
 
 	public int food() {

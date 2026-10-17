@@ -8,11 +8,11 @@ import com.sharedfate.perk.effect.GatherEffect;
 import com.sharedfate.perk.effect.OnKillEffect;
 import com.sharedfate.perk.effect.OnSwapEffect;
 import com.sharedfate.perk.effect.StatusEffectPerk;
-import com.sharedfate.perk.effect.StaggeredSwapEffect;
 import com.sharedfate.perk.effect.SwapBlockEffect;
 import com.sharedfate.perk.effect.SwapExplosionEffect;
 import com.sharedfate.perk.effect.SwapIntervalEffect;
 import com.sharedfate.perk.effect.SwapRallyEffect;
+import com.sharedfate.perk.effect.SwapSkipChanceEffect;
 import com.sharedfate.team.TeamState;
 import net.minecraft.resources.Identifier;
 import org.junit.jupiter.api.AfterEach;
@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -147,15 +148,43 @@ class SwapPerkEffectTest {
 		assertSame(first, second);
 	}
 
-	// ------------------------------------------------------------------ staggered_swap
+	// ------------------------------------------------------------------ swap_skip_chance
 
 	@Test
-	void 시차는_필드가_없고_인스턴스를_돌려쓴다() {
-		PerkEffect first = create(PerkEffectType.STAGGERED_SWAP, "{ \"type\": \"staggered_swap\" }");
-		PerkEffect second = create(PerkEffectType.STAGGERED_SWAP, "{ \"type\": \"staggered_swap\" }");
+	void 제자리_확률을_읽고_없으면_50퍼센트다() {
+		SwapSkipChanceEffect written = assertInstanceOf(SwapSkipChanceEffect.class, create(
+				PerkEffectType.SWAP_SKIP_CHANCE, "{ \"type\": \"swap_skip_chance\", \"chance\": 0.25 }"));
+		SwapSkipChanceEffect omitted = assertInstanceOf(SwapSkipChanceEffect.class, create(
+				PerkEffectType.SWAP_SKIP_CHANCE, "{ \"type\": \"swap_skip_chance\" }"));
 
-		assertSame(StaggeredSwapEffect.INSTANCE, first);
-		assertSame(first, second);
+		assertEquals(0.25, written.chance(), 1.0e-9);
+		assertEquals(SwapSkipChanceEffect.DEFAULT_CHANCE, omitted.chance(), 1.0e-9);
+		assertEquals(0.5, SwapSkipChanceEffect.DEFAULT_CHANCE, 1.0e-9);
+	}
+
+	@Test
+	void 제자리_확률이_범위를_벗어나면_버린다() {
+		assertNull(create(PerkEffectType.SWAP_SKIP_CHANCE, "{ \"type\": \"swap_skip_chance\", \"chance\": 0 }"),
+				"0 이면 아무 일도 안 하는 증강이다");
+		assertNull(create(PerkEffectType.SWAP_SKIP_CHANCE, "{ \"type\": \"swap_skip_chance\", \"chance\": 1.5 }"));
+		assertNull(create(PerkEffectType.SWAP_SKIP_CHANCE, "{ \"type\": \"swap_skip_chance\", \"chance\": \"반\" }"));
+	}
+
+	@Test
+	void 제자리_판정은_확률대로_갈린다() {
+		Random random = new Random(20261016L);
+		int stays = 0;
+		int trials = 10_000;
+		for (int index = 0; index < trials; index++) {
+			if (PerkSwapRules.rollSkip(0.5, random)) {
+				stays++;
+			}
+		}
+		// 10,000번이면 표준편차가 50이다. 넉넉히 ±5% 안에 들어야 한다.
+		assertTrue(stays > 4_500 && stays < 5_500, "50% 언저리여야 한다: " + stays);
+
+		assertFalse(PerkSwapRules.rollSkip(0.0, random), "확률이 없으면 언제나 교환");
+		assertTrue(PerkSwapRules.rollSkip(1.0, random), "확률이 1 이면 언제나 제자리");
 	}
 
 	// ------------------------------------------------------------------ swap_rally
@@ -442,12 +471,18 @@ class SwapPerkEffectTest {
 	}
 
 	@Test
-	void 시차_보유_여부를_판정한다(@TempDir Path dir) throws IOException {
+	void 제자리_확률을_팀에서_모은다(@TempDir Path dir) throws IOException {
 		loadPool(dir);
 
-		assertFalse(PerkSwapRules.staggered(TeamState.fresh(20.0F)));
-		assertFalse(PerkSwapRules.staggered(teamWith("sharedfate:homeswap")), "관련 없는 증강만 가지면 거짓");
-		assertTrue(PerkSwapRules.staggered(teamWith("sharedfate:stagger")));
+		assertEquals(0.0, PerkSwapRules.swapSkipChance(TeamState.fresh(20.0F)), 1.0e-9);
+		assertEquals(0.0, PerkSwapRules.swapSkipChance(teamWith("sharedfate:homeswap")), 1.0e-9,
+				"관련 없는 증강만 가지면 0");
+		assertEquals(0.5, PerkSwapRules.swapSkipChance(teamWith("sharedfate:maybe")), 1.0e-9);
+
+		TeamState off = teamWith("sharedfate:maybe");
+		off.perksEnabled = false;
+		assertEquals(0.0, PerkSwapRules.swapSkipChance(off), 1.0e-9, "증강을 끈 팀은 0");
+		assertFalse(PerkSwapRules.skipsSwap(off, new Random(1L)));
 	}
 
 	@Test
@@ -563,9 +598,9 @@ class SwapPerkEffectTest {
 				      "effects": [
 				        { "type": "swap_explosion", "radius": 3.0 }
 				      ] },
-				    { "id": "sharedfate:stagger", "rarity": "silver", "name": "시차",
+				    { "id": "sharedfate:maybe", "rarity": "silver", "name": "본진이 바뀔까?",
 				      "effects": [
-				        { "type": "staggered_swap" }
+				        { "type": "swap_skip_chance", "chance": 0.5 }
 				      ] },
 				    { "id": "sharedfate:rally", "rarity": "gold", "name": "정거장",
 				      "effects": [

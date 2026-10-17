@@ -64,14 +64,10 @@ public final class PositionSwapManager {
 			if (state == null || !state.positionSwapEnabled() || !state.runStarted) {
 				continue;
 			}
-			// 시차가 걸음을 진행하는 동안에는 다음 주기 자체를 세지 않는다. 정거장은 이
-			// 얼림을 쓰지 않는다 — 복귀 대기 중에 새 주기가 오면 그 대기를 버리고 새로 모인다.
-			if (StaggeredSwapManager.hasActiveSequence(team.teamId())) {
-				continue;
-			}
 			// 「소집의 조각」은 자동 교환을 통째로 없앤다. 주기를 세지도, 예고하지도, on_swap 을
 			// 발동하지도 않는다. 자리를 바꾸는 일만 막으면 부수효과가 주기마다 계속 돌아
-			// 「시차」는 공짜 버프가 되고 「정거장」은 대가만 남는다(PerkSwapRules.silentSwapBlock).
+			// 「본진이 바뀐다」는 공짜 무적이 되고 「정거장」은 대가만 남는다
+			// (PerkSwapRules.silentSwapBlock).
 			if (PerkSwapRules.silentSwapBlock(state)) {
 				continue;
 			}
@@ -111,8 +107,17 @@ public final class PositionSwapManager {
 	 * {@code on_swap} 은 막혔든 아니든 그대로 발동한다. 「뿌리내린 발」을 가진 팀도 다른 증강의
 	 * 교환 시점 효과는 주기마다 받는다. 주기 배율도 마찬가지로 막힘과 무관하게 먹인다.
 	 *
-	 * <p>{@code swap_rally}(정거장)가 {@code staggered_swap}(시차)보다 먼저다. 한 팀이 둘 다
-	 * 가진 경우에도 판정 순서가 늘 같아야 한다({@link PerkSwapRules#rallyPoint} 문서 참고).
+	 * <h2>갈림길의 우선순위</h2>
+	 * <ol>
+	 *   <li><b>막힘</b>({@code swap_block}, 「뿌리내린 발」) — 언제나 제자리라 아래 판정을 굴리지
+	 *       않는다. 폭발도 없다(아무도 자리를 비우지 않았다).</li>
+	 *   <li><b>제자리 확률</b>({@code swap_skip_chance}, 「본진이 바뀔까?」) — 걸리면 모두 제자리다.
+	 *       정거장을 함께 가졌어도 모이지 않는다. 막힘과 달리 「폭발 교환」은 각자 서 있는 자리에서
+	 *       터진다({@link #stayInPlace}).</li>
+	 *   <li><b>정거장</b>({@code swap_rally}) — 순열 교환 대신 한 자리로 모았다가 되돌린다.</li>
+	 *   <li><b>순열 교환</b> — 기본.</li>
+	 * </ol>
+	 * <p>어느 갈래든 {@code on_swap}·열외 보너스·다음 주기 계산은 똑같이 거친다.
 	 *
 	 * <h2>명단이 둘이다</h2>
 	 * <p>{@code movers} 는 <b>자리를 바꾸는 사람들</b>이고 {@code online} 은 <b>팀 전원</b>이다.
@@ -120,31 +125,22 @@ public final class PositionSwapManager {
 	 * 전부 {@code movers} 로, 알림과 {@code on_swap} 은 {@code online} 으로 간다 — 열외는 자리를
 	 * 바꾸지 않을 뿐 여전히 팀원이라, 교환 시점에 팀에 걸리는 효과는 그대로 받아야 한다.
 	 *
-	 * <p>열외의 이동 속도 보너스는 <b>갈림길보다 먼저</b> 준다. 시차는 아래에서 곧바로 돌아가
-	 * 버리므로 뒤에 두면 시차 팀의 열외만 영영 못 받는다.
+	 * <p>열외의 이동 속도 보너스는 <b>갈림길보다 먼저</b> 준다. 어느 갈래로 가든 받는다.
 	 *
 	 * <p>{@code TeamState.advancePositionSwapTick} 이 이미 남은 틱을 주기 그대로 채워 넣은
 	 * 뒤라, 마지막에 덮어쓰는 것으로 배율이 걸린다. 배율이 없으면 같은 값을 다시 쓰는 셈이라
 	 * 아무 일도 일어나지 않는다.
-	 *
-	 * <h2>시차는 여기서 끝나지 않는다</h2>
-	 * <p>{@code swap_rally}·순열 교환·막힘은 이 메서드 안에서 즉시 끝나 {@code on_swap}과
-	 * 다음 주기 계산까지 곧바로 이어진다. 반면 {@code staggered_swap}은 이동 자체가 여러 틱에
-	 * 걸쳐 일어나므로, {@link StaggeredSwapManager#beginSequence}를 부른 뒤 곧바로 돌아간다 —
-	 * {@code on_swap}과 다음 주기 계산은 마지막 걸음이 끝난 뒤 그쪽에서 한다.
 	 */
 	private static void swapMoment(List<ServerPlayer> online, List<ServerPlayer> movers,
 			ShareTeam team, TeamState state) {
 		PerkSwapRules.grantSwapExemptBonus(state, online);
 		if (PerkSwapRules.blocksSwap(state)) {
 			announceBlockedSwap(online);
+		} else if (PerkSwapRules.skipsSwap(state, ThreadLocalRandom.current())) {
+			stayInPlace(online, movers, PerkSwapRules.swapExplosions(state));
 		} else if (PerkSwapRules.rallyPoint(state) && movers.size() >= MIN_SWAP_MEMBERS) {
 			RallyPointManager.beginGather(team, movers, ThreadLocalRandom.current(),
 					PerkSwapRules.swapExplosions(state));
-		} else if (PerkSwapRules.staggered(state) && movers.size() >= MIN_SWAP_MEMBERS) {
-			StaggeredSwapManager.beginSequence(team, state, movers, ThreadLocalRandom.current(),
-					PerkSwapRules.swapExplosions(state));
-			return;
 		} else {
 			swapTeamPositions(movers, ThreadLocalRandom.current(), PerkSwapRules.swapExplosions(state));
 		}
@@ -162,6 +158,39 @@ public final class PositionSwapManager {
 		TitleMessenger.showTitle(players,
 				Component.literal("제자리").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD),
 				Component.literal("「뿌리내린 발」이 위치 교환을 막았습니다").withStyle(ChatFormatting.WHITE),
+				0, SWAP_TITLE_STAY_TICKS, SWAP_TITLE_FADE_OUT_TICKS);
+	}
+
+	/**
+	 * 「본진이 바뀔까?」의 판정에 걸려 이번 교환 시점에는 아무도 옮기지 않는다.
+	 *
+	 * <p>교환 때 나오는 효과는 그대로다. {@code on_swap}·열외 보너스·다음 주기는 부르는 쪽
+	 * ({@link #swapMoment})이 갈래와 상관없이 거치고, 여기서는 「폭발 교환」만 챙긴다.
+	 *
+	 * <h2>폭발은 서 있는 자리에서</h2>
+	 * <p>순열 교환은 <b>방금 비운 자리</b>에서 터뜨린다. 제자리면 비운 자리가 없으므로 자리를 바꿀
+	 * 뻔했던 사람({@code movers}) 각자가 <b>지금 서 있는 자리</b>에서 같은 0.5초 뒤에 터뜨린다.
+	 * 면역도 순열 교환과 같이 이 교환에 참여한 전원({@code movers})이다 — 자기 발밑에서 터지는
+	 * 폭발에 면역이 아니면 그대로 죽는다. 기본 풀의 「폭발 교환」은 블록을 부수지 않으므로
+	 * ({@code break_blocks=false}) 발밑이 파이지도 않는다.
+	 */
+	private static void stayInPlace(List<ServerPlayer> online, List<ServerPlayer> movers,
+			List<SwapExplosionEffect> explosions) {
+		if (!explosions.isEmpty() && !movers.isEmpty()) {
+			Set<UUID> immune = new HashSet<>();
+			for (ServerPlayer player : movers) {
+				immune.add(player.getUUID());
+			}
+			for (ServerPlayer player : movers) {
+				Position here = Position.capture(player);
+				for (SwapExplosionEffect explosion : explosions) {
+					scheduleSwapExplosion(here, immune, explosion);
+				}
+			}
+		}
+		TitleMessenger.showTitle(online,
+				Component.literal("제자리").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD),
+				Component.literal("이번엔 본진이 그대로입니다").withStyle(ChatFormatting.WHITE),
 				0, SWAP_TITLE_STAY_TICKS, SWAP_TITLE_FADE_OUT_TICKS);
 	}
 
@@ -210,7 +239,7 @@ public final class PositionSwapManager {
 	 * 접속해 살아 있는 팀원 전원.
 	 *
 	 * <p>여기서는 아무도 빼지 않는다. 「열외」를 빼는 일은 {@link PerkSwapRules#swapParticipants}
-	 * 가 이 결과를 받아서 하고, 그 결과가 순열 교환·시차·정거장 셋 모두에 그대로 넘어간다.
+	 * 가 이 결과를 받아서 하고, 그 결과가 순열 교환·정거장·제자리 폭발 모두에 그대로 넘어간다.
 	 */
 	private static List<ServerPlayer> onlineMembers(MinecraftServer server, ShareTeam team) {
 		List<ServerPlayer> result = new ArrayList<>();
@@ -299,9 +328,8 @@ public final class PositionSwapManager {
 	 * <p>즉시 터뜨리지 않는 이유와 {@code immuneParticipants}에 누가 들어가야 하는지는
 	 * {@link SwapExplosionScheduler}의 클래스 문서에 있다.
 	 *
-	 * <p>이 클래스의 순열 교환뿐 아니라 {@link StaggeredSwapManager}(시차의 각 걸음)와
-	 * {@link RallyPointManager}(정거장이 모이는 순간, 복귀 순간은 제외)도 같은 자리에서 이
-	 * 메서드를 부른다.
+	 * <p>이 클래스의 순열 교환·제자리({@link #stayInPlace})뿐 아니라 {@link RallyPointManager}
+	 * (정거장이 모이는 순간, 복귀 순간은 제외)도 같은 자리에서 이 메서드를 부른다.
 	 */
 	static void scheduleSwapExplosion(Position origin, Set<UUID> immuneParticipants,
 			SwapExplosionEffect definition) {
@@ -400,8 +428,8 @@ public final class PositionSwapManager {
 		/**
 		 * 엔드 전투 중에 엔드 밖으로 내보내는 이동인가. 그렇다면 옮기지 않고 당사자에게 알린다.
 		 *
-		 * <p><b>이 자리가 마지막 방어선이다.</b> 사람을 옮기는 길은 다섯이고(순열 교환·집합·
-		 * 정거장·시차·소집) 전부 이 레코드를 지난다. 부르는 쪽을 하나라도 빠뜨려도 여기서
+		 * <p><b>이 자리가 마지막 방어선이다.</b> 사람을 옮기는 길은 넷이고(순열 교환·집합·
+		 * 정거장·소집) 전부 이 레코드를 지난다. 부르는 쪽을 하나라도 빠뜨려도 여기서
 		 * 걸린다 — 이 저장소가 「한쪽만 막으면 반드시 샌다」를 여러 번 겪은 까닭이다.
 		 *
 		 * <p>막힌 것을 <b>실패로 돌려주지 않는다.</b> {@code false} 를 돌려주면
@@ -410,8 +438,7 @@ public final class PositionSwapManager {
 		 * 사고가 아니라 규칙이므로 부르는 쪽은 하던 일을 그대로 마쳐야 한다.
 		 *
 		 * <p>그 대신 「옮겼다」는 알림이 거짓말이 되지 않게, 알림을 내보내는 쪽
-		 * ({@link #swapTeamPositions}·{@link StaggeredSwapManager}·{@link RallyPointManager}·
-		 * {@link RallyShardManager})은 부르기 <b>전에</b> {@link EndFightTeleportLock#blocks}
+		 * ({@link #swapTeamPositions}·{@link RallyPointManager}·{@link RallyShardManager})은 부르기 <b>전에</b> {@link EndFightTeleportLock#blocks}
 		 * 로 한 번 더 가려낸다.
 		 */
 		private boolean refusedByEndFight(ServerPlayer player) {

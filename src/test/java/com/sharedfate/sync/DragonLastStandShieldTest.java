@@ -289,8 +289,13 @@ class DragonLastStandShieldTest {
 				"나눠 그리기가 딱 떨어지지 않으면 위상에 따라 한 점 더 나간다 — 셈을 다시 할 것");
 		assertTrue(DragonLastStandShield.DOME_STRIDE < 8,
 				"먼지 수명(최소 8틱)보다 길게 나누면 막이 영영 안 닫힌다");
-		assertEquals(54, DragonLastStandShield.worstShieldTickPoints(),
-				"반구 36 + 막힘 불꽃 6 + 하강 궤적 12 — 값을 바꿨으면 클래스 설명의 표도 고칠 것");
+		assertEquals(84, DragonLastStandShield.worstShieldTickPoints(),
+				"반구 36 + 막힘 불꽃 6 + 하강 궤적·흰 나선 12 + 띠 10 + 파동 고리 16 + 돌풍 4"
+						+ " — 값을 바꿨으면 클래스 설명의 표도 고칠 것");
+		// 2026-10-18 — 빨간 기둥 벽(진입부터 한 틱 39점)을 걷은 몫으로 띠·파동 고리·돌풍·흰 나선을 더했다.
+		// 옛 「보호막 54 + 벽 39 = 93」 안에 머문다.
+		assertTrue(DragonLastStandShield.worstShieldTickPoints() <= 54 + 39,
+				"벽이 쓰던 39점보다 많이 더했다 — 실제 " + DragonLastStandShield.worstShieldTickPoints());
 		assertTrue(DragonLastStandShield.worstShieldTickPoints() <= 400);
 
 		int shatterTick = DragonLastStandPatterns.worstCasePointsPerTick()
@@ -335,6 +340,104 @@ class DragonLastStandShieldTest {
 		assertTrue(stand.contains("shielded"), "판정을 DragonLastStand 쪽에 복사했다");
 		assertTrue(stand.contains("shatter"), "걷힐 때 깨지는 소리가 없다");
 		assertTrue(stand.contains("firstPatternAt"), "걷히는 틱을 실제로 고른 틱으로 안 적는다");
+	}
+
+	// ------------------------------------------------------------------ 밀어내기 (2026-10-18)
+
+	/**
+	 * ⚠ <b>막 둘레만 밀고, 미는 끝이 첫 보더 안이다.</b>
+	 *
+	 * <p>사람 말 「잠깐 사잇페 때 유저들을 용 주위에서 밀치기를 계속하고」. 반구(9)보다 밖까지 잡되
+	 * 밀린 사람이 진입 데려오기 줄(39)·첫 보더(42) 근처까지 가면 벽에 붙는다.
+	 */
+	@Test
+	void 막_둘레만_밀고_미는_끝이_지대_안이다() {
+		assertTrue(DragonLastStandShield.REPEL_RADIUS > DragonLastStandShield.DOME_RADIUS,
+				"막보다 안쪽만 밀면 막에 붙어 선 사람이 안 밀린다");
+		assertTrue(DragonLastStandShield.REPEL_TO > DragonLastStandShield.REPEL_RADIUS,
+				"밀린 끝이 미는 반경 안이면 다음 박자에 또 밀린다");
+		assertTrue(DragonLastStandShield.REPEL_TO + 3.0 < DragonLastStandEntry.innerEdge(),
+				"밀린 끝이 진입 데려오기 줄에 붙는다");
+		assertTrue(DragonLastStandShield.REPEL_TO < TrialEnderStorm.pushLimitRadius(),
+				"밀린 끝이 넉백 천장(반경 32) 밖이다");
+
+		assertEquals(DragonLastStandShield.REPEL_TO, DragonLastStandShield.repelWanted(0.0, 0.0), 1.0E-9,
+				"드래곤 밑에 선 사람이 도착 거리까지 안 밀린다");
+		assertEquals(DragonLastStandShield.REPEL_TO - DragonLastStandShield.REPEL_RADIUS,
+				DragonLastStandShield.repelWanted(DragonLastStandShield.REPEL_RADIUS, 0.0), 1.0E-9);
+		assertEquals(0.0, DragonLastStandShield.repelWanted(DragonLastStandShield.REPEL_RADIUS + 0.01, 0.0),
+				"반경 밖 사람을 밀었다");
+		// 하강 2초 동안 막은 드래곤과 함께 공중에 있다 — 그 밑 땅의 사람은 「막 둘레」가 아니다.
+		assertEquals(0.0, DragonLastStandShield.repelWanted(2.0, -10.0), "막 한참 아래 사람을 밀었다");
+		assertEquals(0.0, DragonLastStandShield.repelWanted(2.0,
+				DragonLastStandShield.DOME_RADIUS + DragonLastStandShield.REPEL_VERTICAL_SLACK + 0.1),
+				"막 한참 위 사람을 밀었다");
+		assertTrue(DragonLastStandShield.repelWanted(2.0, 1.5) > 0.0, "막 안에 선 사람을 안 밀었다");
+	}
+
+	/**
+	 * ⚠ <b>매 틱 밀지 않는다.</b> 매 틱 {@code syncVelocity} 는 사람 입력을 지운다(6장). 박자는 보호막이
+	 * 선 틱에서 센다.
+	 */
+	@Test
+	void 미는_박자가_매_틱이_아니다() {
+		assertTrue(DragonLastStandShield.REPEL_PULSE_TICKS >= 10, "사이에 사람 입력이 살아 있어야 한다");
+		long began = 1_003L;
+		int beats = 0;
+		for (long now = began; now < began + 100L; now++) {
+			if (DragonLastStandShield.repelBeat(began, now)) {
+				beats++;
+			}
+		}
+		assertEquals(100 / DragonLastStandShield.REPEL_PULSE_TICKS, beats);
+		assertTrue(DragonLastStandShield.repelBeat(began, began), "보호막이 선 첫 틱에 안 민다");
+	}
+
+	/** 파동 고리가 박자 틱부터 막 밑동에서 미는 반경까지 <b>바깥으로</b> 번지고 그 뒤로는 없다. */
+	@Test
+	void 파동_고리가_바깥으로_번진다() {
+		long began = 500L;
+		double previous = DragonLastStandShield.DOME_RADIUS;
+		for (int phase = 0; phase < DragonLastStandShield.WAVE_TICKS; phase++) {
+			double radius = DragonLastStandShield.waveRadius(began, began + phase);
+			assertTrue(radius > previous, phase + "틱의 고리가 안 번진다");
+			previous = radius;
+		}
+		assertEquals(DragonLastStandShield.REPEL_RADIUS, previous, 1.0E-9, "마지막 고리가 미는 반경이 아니다");
+		for (int phase = DragonLastStandShield.WAVE_TICKS; phase < DragonLastStandShield.REPEL_PULSE_TICKS;
+				phase++) {
+			assertTrue(DragonLastStandShield.waveRadius(began, began + phase) < 0.0, phase + "틱에 고리가 남았다");
+		}
+		assertTrue(DragonLastStandShield.WAVE_TICKS < DragonLastStandShield.REPEL_PULSE_TICKS);
+	}
+
+	/** 띠가 반구 표면 위에서 오르내린다 — 밑동(0)이나 꼭대기(1)에 붙으면 띠가 아니라 점이 된다. */
+	@Test
+	void 띠가_반구_위에서_오르내린다() {
+		double low = 1.0;
+		double high = 0.0;
+		for (long now = 0L; now < DragonLastStandShield.BAND_BOB_TICKS; now++) {
+			double lift = DragonLastStandShield.bandLift(0L, now);
+			low = Math.min(low, lift);
+			high = Math.max(high, lift);
+		}
+		assertTrue(low > 0.1 && high < 0.9, "띠가 반구 끝에 붙는다: " + low + " ~ " + high);
+		assertTrue(high - low > 0.3, "띠가 거의 안 움직인다 — 맥동으로 안 읽힌다");
+		assertTrue(DragonLastStandShield.BAND_STRIDE < 8, "먼지 수명(최소 8틱)보다 길게 나누면 띠가 끊긴다");
+	}
+
+	/**
+	 * ⚠ 밀기가 <b>넉백 천장 둘 · 공중 비율 · 세로 배달 막기</b>를 그대로 지나고 <b>피해가 없다</b>.
+	 * 새 밀치기를 만들면 둘 다 지나게 할 것(5장).
+	 */
+	@Test
+	void 밀기가_천장을_지나고_피해가_없다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("pushDistance"), "반경 32 천장을 안 지난다");
+		assertTrue(bytes.contains("groundedReach"), "땅이 끊기는 천장을 안 지난다");
+		assertTrue(bytes.contains("shoveSpeed"), "공중 비율을 안 지난다 — 점프 중에 밀리면 날아간다");
+		assertTrue(bytes.contains("syncedVertical"), "세로를 안 자르면 바닐라가 쌓은 값을 배달한다");
+		assertFalse(bytes.contains("hurtServer"), "보호막이 사람을 때린다");
 	}
 
 	// ------------------------------------------------------------------ 도우미

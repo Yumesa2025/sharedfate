@@ -47,7 +47,7 @@ public final class ShieldFallImmunityEffect implements PerkEffect {
 	/**
 	 * 이 팀이 이 효과를 가졌는가.
 	 *
-	 * <p>훑는 방식은 {@code PerkSwapRules.staggered} 와 같다. 팀이 없거나, 증강을 껐거나, 아직
+	 * <p>훑는 방식은 {@code PerkSwapRules.rallyPoint} 와 같다. 팀이 없거나, 증강을 껐거나, 아직
 	 * 아무 증강도 없으면 곧바로 거짓이다. 풀에서 사라진 id 는 건너뛴다.
 	 */
 	public static boolean heldBy(@Nullable TeamState state) {

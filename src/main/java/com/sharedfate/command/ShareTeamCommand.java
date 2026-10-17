@@ -799,7 +799,9 @@ public final class ShareTeamCommand {
 				// 이미 회차가 굴러가는 줄 안다.
 				+ "\n회차 — " + runLine(state, self.getUUID().equals(team.leader()))
 				+ "\n체력 " + String.format(java.util.Locale.ROOT, "%.1f/%.1f", state.health, state.maxHealth)
-				+ ", 허기 " + state.foodLevel + "/20, 경험치 " + state.totalExperience
+				// 「먹방」 팀이면 허기 상한이 100 이다.
+				+ ", 허기 " + state.foodLevel + "/" + com.sharedfate.perk.PerkFoodCapacity.capacityOf(state)
+				+ ", 경험치 " + state.totalExperience
 				+ "\n공유: 6줄 인벤토리=" + (config.mainInventoryRows == 6)
 				+ ", 엔더상자=" + config.shareEnderChest
 				+ ", 경험치=" + config.shareExperience

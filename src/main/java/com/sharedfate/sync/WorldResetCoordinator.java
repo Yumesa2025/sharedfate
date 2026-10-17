@@ -40,7 +40,7 @@ import java.nio.file.StandardOpenOption;
  * <ul>
  *   <li><b>피해</b> — {@link GameStartManager#blocksDamage} 가 {@link #countingDown()} 을 보고
  *       모든 피해를 버린다. 이미 예약된 「폭발 교환」이 종료 직전에 터져도 아무 일도 없다.</li>
- *   <li><b>위치 교환·시차·정거장</b> — 각 {@code tick} 이 건너뛴다. 종료 직전에 자리가 뒤바뀌면
+ *   <li><b>위치 교환·정거장</b> — 각 {@code tick} 이 건너뛴다. 종료 직전에 자리가 뒤바뀌면
  *       월드를 지우는 서버에서는 뜻이 없고, 지우지 않는 서버에서는 벽 속에 박힌 채 저장된다.</li>
  *   <li><b>난이도 상승 시간</b> — 세지 않는다. 회차는 이미 끝났다.</li>
  * </ul>

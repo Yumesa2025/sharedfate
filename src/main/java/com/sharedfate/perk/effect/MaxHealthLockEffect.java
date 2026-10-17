@@ -8,14 +8,15 @@ import com.sharedfate.perk.PerkHealthRules;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
- * 팀의 최대 체력을 정해진 값으로 못 박는다.
+ * 팀의 기본 최대 체력을 정해진 값으로 못 박는다. 증강 보너스는 그 위에 얹힌다.
  *
  * <p>정의는 {@code { "type": "max_health_lock", "value": 10.0 }} 하나뿐이다. 프리즘 1 고행자가
  * "허기가 떨어지지 않는다"의 대가로 이 타입을 쓴다.
  *
- * <h2>이 증강이 이긴다</h2>
- * <p>{@code /shareteam health} 로 올려도, 최대 체력을 올리는 다른 증강({@code max_health_bonus})을
- * 함께 가져도 결과는 {@code value} 다. 작성표에 그렇게 정해져 있다. 그 우선순위를 정하는 자리는
+ * <h2>기본값을 갈아 끼운다</h2>
+ * <p>{@code /shareteam health} 로 정한 값 대신 {@code value} 가 기본값이 된다. 최대 체력을 올리는
+ * 다른 증강({@code max_health_bonus})은 그 위에 그대로 얹힌다 — 예전에는 그것까지 무시했지만
+ * 2026-10-16 사람 결정으로 「다른 증강으로도 오르지 않는다」를 걷어냈다. 그 우선순위를 정하는 자리는
  * {@link PerkHealthRules#effectiveMaxHealth} 하나뿐이다. 그래서 한 번 붙이고 끝내지 않고
  * {@link PerkHealthRules} 가 1초마다 다시 확인해 되돌린다. 다른 곳에서 값을 바꿀 수 있는 이상,
  * 붙이는 시점 한 번만으로는 "고정"이 되지 않는다.
@@ -63,8 +64,8 @@ public final class MaxHealthLockEffect implements PerkEffect {
 	/**
 	 * 고른 즉시, 그리고 접속·부활할 때마다 한 번씩 맞춘다.
 	 *
-	 * <p>여기서 끝나지 않는다. 나중에 고른 {@code max_health_bonus} 증강이 상한을 다시 올리려
-	 * 할 수 있고, 명령으로도 바뀔 수 있다. 그 뒤처리는 {@link PerkHealthRules} 의 주기 점검이
+	 * <p>여기서 끝나지 않는다. 나중에 고른 {@code max_health_bonus} 증강이 상한을 다시 옮길 수
+	 * 있고, 명령으로도 바뀔 수 있다. 그 뒤처리는 {@link PerkHealthRules} 의 주기 점검이
 	 * 맡는다.
 	 */
 	@Override

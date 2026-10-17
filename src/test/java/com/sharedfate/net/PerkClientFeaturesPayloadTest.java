@@ -44,6 +44,28 @@ class PerkClientFeaturesPayloadTest {
 		assertEquals(0.0, PerkClientFeaturesPayload.NONE.doubleJumpPower());
 		assertTrue(PerkClientFeaturesPayload.NONE.hiddenHudElements().isEmpty());
 		assertTrue(PerkClientFeaturesPayload.NONE.hidden().isEmpty());
+		assertEquals(20, PerkClientFeaturesPayload.NONE.foodCapacity(), "증강이 없으면 바닐라 허기 상한");
+	}
+
+	@Test
+	void 허기_상한이_직렬화를_그대로_통과한다() {
+		PerkClientFeaturesPayload decoded = roundTrip(PerkClientFeaturesPayload.of(
+				false, 0.0, EnumSet.noneOf(HideHudEffect.Element.class), 100));
+
+		assertEquals(100, decoded.foodCapacity());
+	}
+
+	@Test
+	void 허기_상한이_달라지면_다르다고_나온다() {
+		// 「먹방」을 얻거나 잃은 것이 전해지지 않으면 배가 부를 때 먹는 동작이 막히거나 열린 채 남는다.
+		assertNotEquals(PerkClientFeaturesPayload.NONE, PerkClientFeaturesPayload.of(
+				false, 0.0, EnumSet.noneOf(HideHudEffect.Element.class), 100));
+	}
+
+	@Test
+	void 이상한_허기_상한은_뜻_있는_범위로_맞춘다() {
+		assertEquals(20, new PerkClientFeaturesPayload(false, 0.0, List.of(), -5).foodCapacity());
+		assertEquals(100, new PerkClientFeaturesPayload(false, 0.0, List.of(), 9999).foodCapacity());
 	}
 
 	@Test
@@ -106,7 +128,7 @@ class PerkClientFeaturesPayloadTest {
 	void 모르는_칸_이름이_섞여_와도_아는_것만_읽는다() {
 		// 새 서버가 늘린 이름이 옛 클라이언트에 닿는 경우다. 패킷을 버리지 않고 아는 것만 쓴다.
 		PerkClientFeaturesPayload payload =
-				new PerkClientFeaturesPayload(false, 0.0, List.of("health", "경험치"));
+				new PerkClientFeaturesPayload(false, 0.0, List.of("health", "경험치"), 20);
 
 		assertEquals(EnumSet.of(HideHudEffect.Element.HEALTH), payload.hidden());
 	}

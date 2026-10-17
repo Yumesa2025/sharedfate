@@ -18,8 +18,8 @@ import java.util.List;
  * <h2>"나무"의 범위</h2>
  * <p>{@code #minecraft:logs} 태그를 그대로 쓴다 — 원목 · 나무(6면 나무껍질 블록) · 벗긴 원목 ·
  * 벗긴 나무 · 네더 줄기/균사까지 전부 포함하고, 판자는 빠진다. 판자를 넣지 않은 이유는 원목
- * 1개가 판자 4개가 되므로, 판자까지 받아 주면 사실상 나무 8개 남짓으로 광물을 뽑는 셈이 되어
- * 30개라는 대가가 무의미해지기 때문이다.
+ * 1개가 판자 4개가 되므로, 판자까지 받아 주면 사실상 나무 6개 남짓으로 광물을 뽑는 셈이 되어
+ * 25개라는 대가가 무의미해지기 때문이다.
  *
  * <h2>무엇을 주는가</h2>
  * <p>실제 채광 결과와 맞춘다 — 철·금·구리는 제련 전 원석({@code raw_iron} 등, 채굴하면 그대로
@@ -36,7 +36,7 @@ public final class OreExchangeEffect implements PerkEffect {
 	 *
 	 * <p>실행부와 안내 문구가 모두 이 값을 읽으므로 여기만 고치면 된다.
 	 */
-	public static final int WOOD_COST = 30;
+	public static final int WOOD_COST = 25;
 
 	/** 이 도구를 주 손에 들고 우클릭해야 한다. */
 	public static final Identifier TOOL = Identifier.withDefaultNamespace("wooden_axe");

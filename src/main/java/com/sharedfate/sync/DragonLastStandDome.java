@@ -23,6 +23,13 @@ import net.minecraft.world.phys.Vec3;
  * 「최후의 저항」의 <b>반구 블록 파괴</b>. 드래곤 주변 반경 25칸 반구 안에서 <b>포디움보다 높은
  * 블록</b>을 계속 부순다.
  *
+ * <p>⚠⚠ <b>2026-10-18 — 자연 블록도 부숴 평평하게.</b> 사람 말 <b>「반구 블록 파괴 효과 있잖아, 이거 섬
+ * 표면보다 높은, 유저가 설치하지 않은 벽도 없애 버려서 평평하게 만들고 싶어」</b>. 전에는
+ * {@code DRAGON_IMMUNE}(엔드석 · 흑요석 등)을 못 부숴 훑기 바닥 위의 엔드석 둔덕과 사람이 쌓은 흑요석
+ * 벽이 남았다. 사람이 「부술 수 있는 블록 전부」를 골랐으므로 지금 남기는 것은 <b>포디움 좌표</b>
+ * ({@link #podiumPart})와 <b>원래 못 부수는 블록</b>({@link #unbreakable}) 둘뿐이다. 아래 「두 겹」과
+ * 표는 그에 맞춰 고쳤다.
+ *
  * <h2>패턴이 아니다 — 상시 규칙이다</h2>
  *
  * <p>{@link DragonLastStand.Pattern} 으로 뽑히지 않는다. {@link DragonLastStandZone}(안전지대)와
@@ -34,11 +41,11 @@ import net.minecraft.world.phys.Vec3;
  * 것</b>이다. 부채꼴 브레스도 번개도 공허 흡입도 지붕 한 장으로 무력화되면 이 페이즈가 성립하지
  * 않는다.
  *
- * <h2>⚠⚠ 바닥은 <b>절대</b> 부수지 않는다 — 두 겹으로 막았다</h2>
+ * <h2>⚠⚠ 바닥은 <b>절대</b> 부수지 않는다 — 2026-10-18 부터 <b>한 겹</b>이다</h2>
  *
  * <p>엔드 중앙 섬에 구멍이 나면 <b>허공 낙사</b>이고, 공유 체력이라 한 사람이 떨어지면 팀 전멸
- * → 월드 삭제다. 사람이 <b>「바닥은 안 부수고」</b>라고 못박았다. 그래서 막는 것이 둘이고,
- * <b>한 겹만으로도 섬이 안전하다.</b>
+ * → 월드 삭제다. 사람이 <b>「바닥은 안 부수고」</b>라고 못박았다. 막는 것이 둘이었는데 ②가
+ * 2026-10-18 에 사람 지시로 빠져 <b>섬 바닥을 지키는 것은 ① 하나</b>다.
  *
  * <ol>
  *   <li><b>훑기 바닥보다 낮은 칸은 아예 읽지 않는다.</b> {@link #sweepFloorY} 가 <b>섬 표면 위의
@@ -51,11 +58,11 @@ import net.minecraft.world.phys.Vec3;
  *       <b>한 칸이라도 더 내리면 섬 표면이 범위에 들어온다</b> — 그때 섬을 지키는 것은 아래 ②
  *       하나뿐이 되고 {@link #sweepFloorY} 의 하이트맵 거름망도 함께 죽는다. <b>더 내리지
  *       말 것.</b></li>
- *   <li><b>{@code BlockTags.DRAGON_IMMUNE} 을 존중한다.</b> 26.3 의 그 태그를 풀어 읽었더니
- *       <b>{@code end_stone} 과 {@code bedrock} 이 들어 있다</b> — 섬을 이루는 블록이 그 둘이므로
- *       설령 위의 ①이 틀리더라도 섬은 한 칸도 안 없어진다. 같은 태그가 <b>흑요석 · 기반암 ·
- *       엔드 포털 · 엔드 게이트웨이 · 포털 틀 · 쇠창살</b>까지 들고 있어 기둥과 출구 포털도 함께
- *       지켜진다(아래 「확인한 사실」)</li>
+ *   <li><s>{@code BlockTags.DRAGON_IMMUNE} 을 존중한다.</s> ⚠ <b>2026-10-18 에 걷었다.</b> 그 태그에
+ *       {@code end_stone} 이 있어 ①이 틀려도 섬이 안 없어지는 둘째 겹이었는데, 사람이 <b>훑기 바닥 위의
+ *       엔드석을 평평하게</b> 부수라고 했으므로 엔드석이 부술 수 있는 블록이 됐다. 곧 <b>①을 한 칸이라도
+ *       내리면 섬 표면에 바로 구멍이 난다.</b> 기반암 · 엔드 포털 · 포털 틀 · 게이트웨이는 이제
+ *       {@link #unbreakable}(파괴 시간 −1)이 지키고, 포디움은 {@link #podiumPart} 가 좌표로 뺀다</li>
  * </ol>
  *
  * <h2>확인한 사실 — 26.3 바이트코드와 태그 파일을 직접 읽었다</h2>
@@ -64,22 +71,26 @@ import net.minecraft.world.phys.Vec3;
  *   <caption>지켜야 하는 것과 그것을 지키는 근거</caption>
  *   <tr><th>지켜야 하는 것</th><th>근거</th></tr>
  *   <tr><td><b>섬 바닥</b>({@code end_stone})</td>
- *       <td>훑기 바닥 아래다(맨 위 블록이 {@code sweepFloorY − 1} 이다) +
- *           {@code DRAGON_IMMUNE} 에 {@code minecraft:end_stone} 이 있다</td></tr>
+ *       <td>훑기 바닥 아래다(맨 위 블록이 {@code sweepFloorY − 1} 이다). ⚠ 2026-10-18 부터 <b>이것
+ *           하나</b>다 — 훑기 바닥 <u>위</u>의 엔드석(둔덕)은 사람 지시로 부순다</td></tr>
  *   <tr><td><b>기반암 포디움 · 출구 포털</b></td>
  *       <td>⚠ <b>2026-10-01 부터 훑기 바닥 <u>위</u>다.</b> {@code EndPodiumFeature.place} 의
  *           바이트코드에서 확인한 자리는 기반암 기둥이
  *           {@code sweepFloorY … sweepFloorY + 3}, 포디움 테두리 기반암과 엔드 포털이
- *           {@code sweepFloorY} 다 — 곧 <b>넷 다 새 범위 안</b>이다. 그래서 여기서는
- *           <b>태그 한 겹이 전부</b>이고, {@code DRAGON_IMMUNE} 에
- *           {@code bedrock}·{@code end_portal}·{@code end_portal_frame}·{@code end_gateway} 가
- *           있어 {@link #breakable} 이 첫 물음에서 거짓을 돌려준다(태그 파일을 다시 읽어
- *           확인했다). <b>한 칸도 안 없어진다</b></td></tr>
+ *           {@code sweepFloorY} 다 — 곧 <b>넷 다 새 범위 안</b>이다. 2026-10-18 부터 <b>두 겹</b>이
+ *           지킨다 — {@link #podiumPart} 가 그 자리를 <b>좌표로</b> 건너뛰고(블록을 읽지도 않는다),
+ *           설령 좌표가 틀려도 {@code bedrock}·{@code end_portal} 은 {@link #unbreakable} 이다.
+ *           <b>한 칸도 안 없어진다</b></td></tr>
  *   <tr><td><b>흑요석 기둥과 쇠창살 우리</b></td>
- *       <td>기둥이 중앙에서 <b>40칸 넘게</b> 떨어져 있어 반경 {@value #RADIUS} 에 <b>닿지
- *           않는다</b>. 그래도 {@code DRAGON_IMMUNE} 에 {@code obsidian}·{@code iron_bars} 가
- *           있어 반경을 올리는 사람이 실수해도 안전하다</td></tr>
+ *       <td>기둥이 중앙에서 <b>40칸 넘게</b> 떨어져 있어(기둥 중심 42 − 가장 굵은 기둥 반경 5 = 37)
+ *           반경 {@value #RADIUS} 에 <b>닿지 않는다</b>. ⚠ 2026-10-18 부터 <b>이 거리 하나</b>가
+ *           지킨다 — {@code obsidian}·{@code iron_bars} 도 이제 부술 수 있는 블록이라 반경을 올리는 사람이
+ *           실수하면 기둥이 깎인다</td></tr>
  * </table>
+ *
+ * <p>⚠ <b>2026-10-18 — 아래 「벽 횃불 넷」은 이제 지켜진다</b>({@link #podiumPart} 가 횃불 자리를 좌표로
+ * 뺀다. 문단이 말한 「포디움 XZ 를 제외」를 칸 단위로 한 것이라 포디움 위에 쌓은 발판은 여전히 부순다).
+ * 아래는 그 전의 기록이다.
  *
  * <p>⚠ <b>포디움에서 지켜지지 <u>않는</u> 것 하나를 적어 둔다 — 벽 횃불 넷.</b>
  * {@code EndPodiumFeature.place} 가 기둥 옆 네 방향
@@ -105,7 +116,10 @@ import net.minecraft.world.phys.Vec3;
  *   <li>{@code BlockTags.DRAGON_TRANSPARENT} 는 건너뛴다(26.3 에서 그 태그의 내용은
  *       {@code #wither_immune} 과 같은 꼴의 한 줄이고, 바닐라 드래곤이 「지나가도 되는 것」으로
  *       치는 목록이다)</li>
- *   <li>{@code BlockTags.DRAGON_IMMUNE} 은 건너뛴다</li>
+ *   <li><s>{@code BlockTags.DRAGON_IMMUNE} 은 건너뛴다</s> — ⚠ 2026-10-18 에 사람 지시로 <b>여기만
+ *       바닐라와 갈라졌다</b>. 대신 <b>원래 못 부수는 블록</b>({@link #unbreakable})과 <b>포디움
+ *       좌표</b>({@link #podiumPart})를 건너뛴다. 바닐라 드래곤이 몸으로 못 부수는 엔드석·흑요석을 반구는
+ *       부순다</li>
  *   <li>⚠ <b>{@code mobGriefing} 게임룰을 본다.</b> 아래 「게임룰」을 볼 것</li>
  *   <li><b>{@code removeBlock(pos, false)}</b> 로 지운다 — {@code false} 가 <b>드롭 없음</b>이고
  *       사람이 <b>「아니 파괴」</b>라고 정한 것이 그것이다</li>
@@ -232,9 +246,10 @@ import net.minecraft.world.phys.Vec3;
  * {@code removeBlock}({@code UPDATE_ALL}) 을 지난다 — 거기서 이웃을 안 깨우면 지붕 밑 모래가
  * 안 떨어지고 횃불이 허공에 남는다. <b>두 갈래를 한 줄로 합치지 말 것.</b>
  *
- * <p>⚠ <b>남는 구멍 하나.</b> {@code DRAGON_IMMUNE} 블록 안에 잠긴 물은 {@link #breakable} 이
- * 먼저 거짓을 돌려주므로 살아남는다. 반경 {@value #RADIUS} 안의 그런 블록은 포디움 기반암과 엔드
- * 포털뿐이고 <b>둘 다 {@code waterlogged} 성질이 없다</b>(26.3 에서 확인했다) — 곧 실제로는 닿지
+ * <p>⚠ <b>남는 구멍 하나.</b> 부수지 않는 블록(2026-10-18 부터 {@link #unbreakable} 과 포디움 자리)
+ * 안에 잠긴 물은 {@link #breakable} 이 먼저 거짓을 돌려주므로 살아남는다. 반경 {@value #RADIUS} 안의
+ * 그런 블록은 포디움 기반암과 엔드 포털이고 <b>둘 다 {@code waterlogged} 성질이 없다</b>(26.3 에서
+ * 확인했다 — 사람이 놓은 배리어라면 잠길 수 있지만 서바이벌에서는 못 놓는다) — 곧 실제로는 닿지
  * 않는 구멍이다. <b>용암 쪽에는 이 구멍이 아예 없다</b> — 바닐라에 「용암에 잠긴 블록」이라는
  * 성질이 없어({@code BlockStateProperties} 에 {@code WATERLOGGED} 하나뿐이다) 용암은 언제나
  * {@code LiquidBlock} 으로 홀로 서 있다.
@@ -591,7 +606,8 @@ public final class DragonLastStandDome {
 				// domeTop 은 최소가 origin 이고 origin = sweepFloor + PODIUM_PILLAR_HEIGHT 이므로
 				// highest 가 바닥보다 낮아지는 일은 없다. top 도 위에서 걸러 sweepFloor 이상이다.
 				broken += sweepColumn(end, chunk, sweepFloor, Math.min(top,
-						Math.min(ceiling, domeTop(origin, flat))), x, z, at, budget - broken);
+						Math.min(ceiling, domeTop(origin, flat))), x, z,
+						x - Mth.floor(center.x), z - Mth.floor(center.z), at, budget - broken);
 			}
 		}
 		return broken;
@@ -615,17 +631,24 @@ public final class DragonLastStandDome {
 	 *
 	 * @param sweepFloor 열의 아래끝. <b>기하 원점이 아니라 훑기 바닥</b>이다
 	 * @param highest    이 열에서 부술 수 있는 가장 높은 칸
+	 * @param podiumDx   포디움 원점에서 이 열까지의 x 차이({@link #podiumPart})
+	 * @param podiumDz   같은 z 차이
 	 * @return 부순 수
 	 */
 	private static int sweepColumn(ServerLevel end, LevelChunk chunk, int sweepFloor,
-			int highest, int x, int z, BlockPos.MutableBlockPos at, int budget) {
+			int highest, int x, int z, int podiumDx, int podiumDz,
+			BlockPos.MutableBlockPos at, int budget) {
 		int broken = 0;
 		int puffAt = Integer.MIN_VALUE;
 		for (int y = highest; y >= sweepFloor && broken < budget; y--) {
+			// ⚠ 2026-10-18 부터 포디움은 <b>좌표로</b> 뺀다. 아래 네 칸에 포디움(기반암 기둥·테두리·
+			// 엔드 포털·횃불)이 들어오고, 사람이 엔드석까지 부수라고 해서 DRAGON_IMMUNE 을 더는 안
+			// 묻는다 — 알 자리까지 여기서 지킨다(클래스 설명의 표).
+			if (podiumPart(podiumDx, y - sweepFloor, podiumDz)) {
+				continue;
+			}
 			at.set(x, y, z);
 			BlockState state = chunk.getBlockState(at);
-			// 2026-10-01 부터 아래 네 칸에 포디움(기반암 기둥·테두리·엔드 포털)이 들어온다.
-			// 여기서 걸러진다 — 넷 다 DRAGON_IMMUNE 이다(클래스 설명의 표).
 			if (!breakable(state)) {
 				continue;
 			}
@@ -849,17 +872,16 @@ public final class DragonLastStandDome {
 	 * <ol>
 	 *   <li><b>섬 표면을 한 번도 읽지 않는다.</b> 섬 표면의 맨 위 블록은 {@code p.y − 1} 이므로
 	 *       <b>바닥보다 한 칸 아래</b>다. 남은 여유가 한 칸이라 <b>더 내리면 바닥을 읽기
-	 *       시작한다</b>(그때도 {@code end_stone} 이 {@code DRAGON_IMMUNE} 이라 부서지지는 않지만,
-	 *       겹이 하나로 줄고 아래 ②가 죽는다)</li>
+	 *       시작한다</b>(⚠ 2026-10-18 부터는 엔드석도 부수므로 <b>그 자리에서 섬에 구멍이 난다</b> — 전에는
+	 *       {@code DRAGON_IMMUNE} 이 막아 주던 둘째 겹이 없다. 아래 ②도 함께 죽는다)</li>
 	 *   <li><b>하이트맵 거름망이 맨손 아레나에서 모든 열을 거른다.</b> {@link #sweepChunk} 의
 	 *       {@code top < sweepFloor} 가 {@code (p.y − 1) < p.y} 로 <b>참</b>이다. 이 성질이 이
 	 *       클래스 성능의 전부다(클래스 설명의 「성능」)</li>
 	 * </ol>
 	 *
 	 * <p>⚠ 새 범위에는 <b>포디움 구조물이 들어온다</b>(기반암 기둥 {@code p.y..p.y + 3} · 테두리
-	 * 기반암 {@code p.y} · 엔드 포털 {@code p.y}). 전부 {@code DRAGON_IMMUNE} 이라 한 칸도 안
-	 * 부서진다 — 목록과 근거는 클래스 설명의 표에 있고, 거기 <b>지켜지지 않는 것(벽 횃불 넷)</b>도
-	 * 함께 적어 두었다.
+	 * 기반암 {@code p.y} · 엔드 포털 {@code p.y}). 2026-10-18 부터 {@link #podiumPart} 가 그 자리(벽 횃불
+	 * 넷과 알 자리까지)를 좌표로 빼므로 한 칸도 안 부서진다 — 근거는 클래스 설명의 표에 있다.
 	 */
 	static int sweepFloorY(Vec3 center) {
 		return domeOriginY(center) - PODIUM_PILLAR_HEIGHT;
@@ -896,32 +918,80 @@ public final class DragonLastStandDome {
 	}
 
 	/**
-	 * 이 블록을 부숴도 되는가. <b>바닐라 {@code EnderDragon.checkWalls} 와 같은 세 물음이다.</b>
+	 * 이 블록을 부숴도 되는가. 바닐라 {@code EnderDragon.checkWalls} 의 세 물음에서 <b>하나를 갈아
+	 * 끼웠다.</b>
 	 *
-	 * <p>{@code DRAGON_IMMUNE} 이 이 저장소의 「부수면 안 되는 것」 목록을 <b>대신 들고 있다</b> —
-	 * 클래스 설명의 표를 볼 것. 우리 목록을 따로 적으면 판이 올라 바닐라가 한 줄 더할 때
-	 * 우리만 뒤처진다.
+	 * <p>⚠ 2026-10-18 까지는 {@code DRAGON_IMMUNE} 이 「부수면 안 되는 것」 목록을 대신 들고 있었다. 사람이
+	 * 「유저가 설치하지 않은 벽도 없애 버려서 평평하게」를 말하고 「부술 수 있는 블록 전부」를 골라 지금은
+	 * {@link #unbreakable}(파괴 시간 −1)이 그 자리에 있다 — 판이 올라 바닐라가 못 부수는 블록을 더해도
+	 * 블록 값을 묻는 것이라 우리만 뒤처지지 않는다. 포디움은 이 함수가 아니라 {@link #podiumPart} 가
+	 * 좌표로 지킨다.
 	 *
 	 * <p>⚠ <b>물도 용암도 이 셋을 전부 통과해 참이 된다.</b> 26.3 태그 파일을 둘 다 다시 읽었고
 	 * {@code water} 도 {@code lava} 도 어느 쪽에도 없다 — 곧 <b>2026-10-04 의 「물이 안 부서진다」와
 	 * 「용암도 안 부서진다」가 둘 다 이 함수의 탓이 아니었다.</b> 걸린 자리는 {@link #clear} 이고
 	 * 근거는 클래스 설명에 있다. <b>그래서 용암까지 넓히면서 이 함수를 한 글자도 고치지 않았다.</b>
 	 *
-	 * <p>⚠ 반대로 이 함수가 거짓을 돌려주면 {@link #clear} 가 불리지 않으므로 <b>{@code
-	 * DRAGON_IMMUNE} 블록 안에 잠긴 물은 살아남는다.</b> 반경 {@value #RADIUS} 안에 그런 블록이
-	 * 없다는 근거는 클래스 설명의 「남는 구멍 하나」에 적어 두었다.
+	 * <p>⚠ 반대로 이 함수가 거짓을 돌려주면 {@link #clear} 가 불리지 않으므로 <b>못 부수는 블록 안에
+	 * 잠긴 물은 살아남는다.</b> 반경 {@value #RADIUS} 안에 그런 블록이 없다는 근거는 클래스 설명의
+	 * 「남는 구멍 하나」에 적어 두었다.
 	 *
-	 * <p>⚠⚠ <b>이 순서가 섬 바닥과 출구 포털을 지킨다.</b> {@link #sweepColumn} 이 이 함수를
-	 * <b>{@link #clear} 보다 먼저</b> 묻는다 — 곧 {@code end_stone}·{@code bedrock}·
-	 * {@code end_portal} 은 유체 갈래에 <b>닿지도 않는다.</b> 2026-10-04 에 유체 갈래가 두 번
-	 * 넓어졌지만 <b>이 관문 뒤에서만 넓어졌다</b>(시험이 그 셋이 유체로 읽히지 않는다는 것도 함께
-	 * 못박는다). <b>두 물음의 순서를 바꾸지 말 것</b> — 바꾸면 {@code FLUID_CLEAR_FLAGS} 가
-	 * {@code DRAGON_IMMUNE} 을 지나 섬에 닿는다.
+	 * <p>⚠⚠ <b>이 순서가 출구 포털을 지킨다.</b> {@link #sweepColumn} 이 이 함수를
+	 * <b>{@link #clear} 보다 먼저</b> 묻는다 — 곧 {@code bedrock}·{@code end_portal} 은 유체 갈래에
+	 * <b>닿지도 않는다.</b> 2026-10-04 에 유체 갈래가 두 번 넓어졌지만 <b>이 관문 뒤에서만 넓어졌다</b>
+	 * (시험이 그 둘이 유체로 읽히지 않는다는 것도 함께 못박는다). <b>두 물음의 순서를 바꾸지 말 것.</b>
+	 * ⚠ {@code end_stone} 은 2026-10-18 부터 이 관문을 <b>지난다</b> — 훑기 바닥 위의 엔드석은 사람 지시로
+	 * 부수는 것이고, 바닥 아래는 {@link #sweepColumn} 이 읽지도 않는다.
 	 */
 	static boolean breakable(BlockState state) {
+		// ⚠ unbreakable 을 태그보다 먼저 묻는다 — 기반암·포털은 태그에 닿기 전에 거짓이 된다.
 		return !state.isAir()
-				&& !state.is(BlockTags.DRAGON_TRANSPARENT)
-				&& !state.is(BlockTags.DRAGON_IMMUNE);
+				&& !unbreakable(state)
+				&& !state.is(BlockTags.DRAGON_TRANSPARENT);
+	}
+
+	/**
+	 * <b>원래 못 부수는 블록</b>인가 — 파괴 시간이 음수(바닐라 {@code strength(-1, …)})다. 기반암 ·
+	 * 엔드 포털 · 포털 틀 · 엔드 게이트웨이 · 배리어 · 명령 블록 · 구조물 블록 · 지그소 · 움직이는 피스톤.
+	 *
+	 * <p>2026-10-18 에 {@code DRAGON_IMMUNE} 을 이것으로 갈아 끼웠다. 사람 말 <b>「섬 표면보다 높은,
+	 * 유저가 설치하지 않은 벽도 없애 버려서 평평하게」</b>이고 사람이 고른 범위가 <b>「부술 수 있는 블록
+	 * 전부」</b>다 — 엔드석뿐 아니라 사람이 쌓은 흑요석 · 우는 흑요석 · 리스폰 정박기 · 쇠창살 · 강화된
+	 * 심층암도 부순다(26.3 {@code dragon_immune} 의 나머지). 남기는 것은 이 함수와 포디움 좌표
+	 * ({@link #podiumPart}) 둘뿐이다. 태그가 아니라 블록 값이라 시험 환경에서도 물을 수 있다.
+	 */
+	static boolean unbreakable(BlockState state) {
+		return state.getBlock().defaultDestroyTime() < 0.0F;
+	}
+
+	/**
+	 * <b>출구 포털 포디움</b>의 칸인가. 포디움 원점 {@code p}(= 훑기 바닥 · 기둥 밑동)에서 잰 차이로
+	 * 묻는다 — {@code dy = y − sweepFloorY}.
+	 *
+	 * <p>26.3 {@code EndPodiumFeature.place} 바이트코드에서 읽은 자리 그대로다.
+	 *
+	 * <ul>
+	 *   <li>{@code dy == 0} · {@code dx² + dz² < 3.5²} — 테두리 기반암({@code 2.5 ≤ r < 3.5})과 엔드 포털
+	 *       ({@code r < 2.5}, 닫혀 있으면 빈 칸). {@code BlockPos.closerThan} 이 정수 좌표의 거리 제곱으로
+	 *       잰다</li>
+	 *   <li>{@code dx == dz == 0} · {@code 0 ≤ dy < 4} — 기반암 기둥({@code p.above(0..3)})</li>
+	 *   <li>{@code dx == dz == 0} · {@code dy == 4} — <b>용 알 자리</b>. 바닐라가 처치 뒤
+	 *       {@code MOTION_BLOCKING} 하이트맵 자리, 곧 기둥 바로 위에 놓는다</li>
+	 *   <li>{@code dy == 2} · {@code |dx| + |dz| == 1} — 벽 횃불 넷({@code p.above(2)} 의 수평 이웃)</li>
+	 * </ul>
+	 *
+	 * <p>⚠ 기반암과 포털은 {@link #unbreakable} 로도 남지만 <b>좌표로 한 번 더 뺀다</b> — 알과 횃불은
+	 * 부술 수 있는 블록이라 좌표가 아니면 못 지킨다. 포디움 위 빈 칸({@code dy ≥ 1}, 기둥 · 횃불 · 알 밖)에
+	 * 사람이 쌓은 것은 그대로 부순다.
+	 */
+	static boolean podiumPart(int dx, int dy, int dz) {
+		if (dy == 0) {
+			return dx * dx + dz * dz < 3.5 * 3.5;
+		}
+		if (dx == 0 && dz == 0) {
+			return dy > 0 && dy <= PODIUM_PILLAR_HEIGHT;
+		}
+		return dy == 2 && Math.abs(dx) + Math.abs(dz) == 1;
 	}
 
 	// ------------------------------------------------------------------ 시험이 세는 값

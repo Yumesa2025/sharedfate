@@ -26,13 +26,15 @@ import java.util.UUID;
  * 클라이언트가 있어야 성립하는 증강의 서버 쪽 자리.
  *
  * <p>"무엇을 할 수 있는가"는 전부 여기서 답하고, 클라이언트는 그 답을 받아 그리거나 입력을
- * 알릴 뿐이다. 두 가지 증강이 여기를 지난다.
+ * 알릴 뿐이다. 세 가지 증강이 여기를 지난다.
  *
  * <ul>
  *   <li>{@link DoubleJumpEffect} — 서버는 공중 점프 입력을 볼 수 없으므로 클라이언트가
  *       스스로 뛰고 요청을 보낸다. 여기서는 그 요청을 검증해 <b>한 번 뜬 동안 한 번</b>을
  *       세고, 증강이 없는데 뛴 것이면 되돌린다.</li>
  *   <li>{@link HideHudEffect} — 서버에는 그릴 화면이 없으므로 "무엇을 가릴지"만 내려보낸다.</li>
+ *   <li>{@link com.sharedfate.perk.effect.FoodCapacityEffect} — 허기 상한만 내려보낸다. 먹을 수
+ *       있는가는 클라이언트도 판정하고, 실제로 얼마나 찼는가는 서버가 정해 바닐라 패킷으로 보낸다.</li>
  * </ul>
  *
  * <h2>클라이언트를 믿지 않는다</h2>
@@ -128,7 +130,8 @@ public final class PerkClientRules {
 				}
 			}
 		}
-		return PerkClientFeaturesPayload.of(doubleJump, power, hidden);
+		return PerkClientFeaturesPayload.of(doubleJump, power, hidden,
+				PerkFoodCapacity.capacityOf(active));
 	}
 
 	/** 이 팀원이 지금 받아야 할 내용. 서버의 팀원이 아니면 {@code NONE}. */

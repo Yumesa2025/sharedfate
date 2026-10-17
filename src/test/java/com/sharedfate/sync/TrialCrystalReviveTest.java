@@ -1,6 +1,7 @@
 package com.sharedfate.sync;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,8 +32,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TrialCrystalReviveTest {
 
-	/** 실제 카드 값. 시험이 현실과 붙어 있어야 값을 바꿀 때 여기가 먼저 운다. */
-	private static final int COUNT = 10;
+	/**
+	 * 실제 카드 값. 시험이 현실과 붙어 있어야 값을 바꿀 때 여기가 먼저 운다.
+	 *
+	 * <p>2026-10-18 에 10 에서 5 로 줄었다(사람 말: 「이것도 5개만 부활하게. 모든이 아니라」).
+	 */
+	private static final int COUNT = 5;
+	/**
+	 * 기둥 수 — 입장 연출이 세우는 자리 수다. 점 예산과 그리는 차례는 <b>가장 많이 서는 쪽</b>
+	 * (입장 연출의 열 자리)으로 잰다. 카드가 다섯으로 줄어도 같은 실행기가 열 자리를 그린다.
+	 */
+	private static final int SEATS = 10;
 	private static final int SHOW_TICKS = 100;
 	private static final long GRANTED = 1000L;
 
@@ -178,19 +188,41 @@ class TrialCrystalReviveTest {
 	void 빈_자리가_없으면_아무_일도_없다() {
 		List<Vec3> seats = seats(10);
 		assertTrue(TrialCrystalRevive.openSeats(seats, seats).isEmpty());
-		assertTrue(TrialCrystalRevive.pickSeats(TrialCrystalRevive.openSeats(seats, seats), COUNT)
-				.isEmpty(), "전부 살아 있는데 발동하면 카드가 아무 뜻도 없다");
+		assertTrue(TrialCrystalRevive.pickSeats(TrialCrystalRevive.openSeats(seats, seats), COUNT,
+				RandomSource.create(1L)).isEmpty(), "전부 살아 있는데 발동하면 카드가 아무 뜻도 없다");
 	}
 
 	@Test
 	void count_가_빈_자리보다_많으면_빈_자리_수만큼만() {
 		List<Vec3> seats = seats(3);
-		assertEquals(3, TrialCrystalRevive.pickSeats(seats, COUNT).size(),
-				"없는 열한 번째 기둥을 집으려다 터지면 안 된다");
-		assertEquals(2, TrialCrystalRevive.pickSeats(seats, 2).size());
-		assertTrue(TrialCrystalRevive.pickSeats(seats, 0).isEmpty());
-		assertTrue(TrialCrystalRevive.pickSeats(seats, -4).isEmpty());
-		assertTrue(TrialCrystalRevive.pickSeats(List.of(), COUNT).isEmpty());
+		RandomSource random = RandomSource.create(7L);
+		assertEquals(seats, TrialCrystalRevive.pickSeats(seats, COUNT, random),
+				"다섯 이하만 부서졌으면 전부 되살린다 — 없는 기둥을 집으려다 터지면 안 된다");
+		assertEquals(2, TrialCrystalRevive.pickSeats(seats, 2, random).size());
+		assertTrue(TrialCrystalRevive.pickSeats(seats, 0, random).isEmpty());
+		assertTrue(TrialCrystalRevive.pickSeats(seats, -4, random).isEmpty());
+		assertTrue(TrialCrystalRevive.pickSeats(List.of(), COUNT, random).isEmpty());
+	}
+
+	/**
+	 * 부서진 자리가 다섯보다 많으면 <b>다섯만</b>, 그것도 <b>무작위로</b> 되살린다.
+	 *
+	 * <p>사람 말(2026-10-18): 「이것도 5개만 부활하게. 모든이 아니라」. 목록 앞에서 자르면 매번 같은
+	 * 기둥이 살아나 「부활하는 기둥」을 외우게 되므로, 여러 번 굴려 다른 조합이 나오는지까지 본다.
+	 */
+	@Test
+	void 부서진_자리가_많으면_무작위_다섯만_되살린다() {
+		List<Vec3> seats = seats(10);
+		RandomSource random = RandomSource.create(42L);
+		java.util.Set<List<Vec3>> seen = new java.util.HashSet<>();
+		for (int roll = 0; roll < 40; roll++) {
+			List<Vec3> picked = TrialCrystalRevive.pickSeats(seats, COUNT, random);
+			assertEquals(COUNT, picked.size(), "다섯이어야 한다");
+			assertEquals(COUNT, new java.util.HashSet<>(picked).size(), "같은 자리를 두 번 집었다");
+			assertTrue(seats.containsAll(picked), "부서진 자리 밖을 집었다");
+			seen.add(picked);
+		}
+		assertTrue(seen.size() > 1, "매번 같은 다섯이다 — 무작위가 아니다");
 	}
 
 	// ------------------------------------------------------------------ 사람을 죽이지 않는다
@@ -441,13 +473,60 @@ class TrialCrystalReviveTest {
 				"기둥 위에서 내려올 시간은 줘야 한다 — 밀어내지 않고 건너뛰는 것이 이 카드의 약속이다");
 	}
 
+	/**
+	 * 카드는 드래곤을 <b>붙들지 않는다</b> — 붙드는 것은 입장 연출뿐이다.
+	 *
+	 * <p>사람 말(2026-10-18): 「드래곤이 중앙 상공에서 그것을 지켜봅니다를 없애고」. 붙드는 줄이 카드
+	 * 실행기에 되돌아오면 카드가 다시 「못 때리는 시간」이 된다. 반대로 입장 연출에서 빠지면 「중앙위에서
+	 * 생긴다음 크리스탈 부활」이 깨진다. 컴파일된 클래스에서 두 쪽을 함께 본다.
+	 */
+	@Test
+	void 카드는_드래곤을_붙들지_않고_입장_연출만_붙든다() {
+		assertFalse(callsIn(TrialCrystalRevive.class, "show").contains("hold"),
+				"「부활」 실행기가 드래곤을 다시 붙든다 — 사람이 걷은 대가가 돌아왔다");
+		assertFalse(callsIn(TrialCrystalRevive.class, "tick").contains("hold"),
+				"「부활」 실행기가 드래곤을 다시 붙든다 — 사람이 걷은 대가가 돌아왔다");
+		assertTrue(callsIn(TrialEntrance.class, "tick").contains("hold"),
+				"입장 연출이 3단계에서 드래곤을 붙들지 않는다 — 「중앙위에서」 부활이 깨진다");
+	}
+
+	/** 메서드 하나가 부르는 메서드 이름들. 클래스를 불러오지 않고 자원으로 읽는다. */
+	private static List<String> callsIn(Class<?> owner, String methodName) {
+		List<String> calls = new ArrayList<>();
+		try (java.io.InputStream in = TrialCrystalReviveTest.class
+				.getResourceAsStream("/" + owner.getName().replace('.', '/') + ".class")) {
+			assertNotNull(in, owner.getName() + " 의 클래스 파일을 찾지 못했다");
+			new org.objectweb.asm.ClassReader(in.readAllBytes()).accept(
+					new org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {
+						@Override
+						public org.objectweb.asm.MethodVisitor visitMethod(int access, String name,
+								String descriptor, String signature, String[] exceptions) {
+							if (!name.equals(methodName)) {
+								return null;
+							}
+							return new org.objectweb.asm.MethodVisitor(org.objectweb.asm.Opcodes.ASM9) {
+								@Override
+								public void visitMethodInsn(int opcode, String callOwner,
+										String callName, String callDescriptor, boolean isInterface) {
+									calls.add(callName);
+								}
+							};
+						}
+					}, org.objectweb.asm.ClassReader.SKIP_DEBUG);
+		} catch (java.io.IOException failed) {
+			throw new AssertionError(failed);
+		}
+		assertFalse(calls.isEmpty(), owner.getSimpleName() + "." + methodName + " 을 못 찾았다");
+		return calls;
+	}
+
 	// ------------------------------------------------------------------ 점 예산
 
 	@Test
 	void 한_틱에_쓰는_점이_예산_안이다() {
 		// 전에는 4틱마다 열 자리를 한꺼번에 그려 그 틱에만 640점이었다. 한 카드 상한을 넘는 수라
 		// 입장 연출이 같은 코드를 부르는 지금은 엔드에 들어갈 때마다 그 틱이 왔다.
-		int worst = TrialCrystalRevive.tickPoints(COUNT);
+		int worst = TrialCrystalRevive.tickPoints(SEATS);
 		assertEquals(128, worst, "자리 두 곳 × (고리 40 + 덧칠 24) 이다");
 		assertTrue(worst <= DragonFireBarrage.MARK_MAX_POINTS,
 				"한 카드가 쓸 수 있는 점을 넘는다: " + worst);
@@ -462,7 +541,7 @@ class TrialCrystalReviveTest {
 		// 전에 첫 점이 죽어 그 자리가 깜빡인다 — 「보이는 것」이 상하는 유일한 길이 이것이다.
 		assertTrue(TrialCrystalRevive.SEAT_STRIDE < 8,
 				"먼지가 죽은 뒤에 덧칠하면 열 자리가 동시에 보이지 않는다");
-		for (int index = 0; index < COUNT; index++) {
+		for (int index = 0; index < SEATS; index++) {
 			int drawn = 0;
 			for (long now = GRANTED; now < GRANTED + TrialCrystalRevive.SEAT_STRIDE; now++) {
 				if (TrialCrystalRevive.drawsSeat(index, TrialCrystalRevive.seatPhase(now, GRANTED))) {
@@ -480,7 +559,7 @@ class TrialCrystalReviveTest {
 		int whole = 0;
 		for (long now = GRANTED; now < GRANTED + TrialCrystalRevive.SEAT_STRIDE; now++) {
 			int phase = TrialCrystalRevive.seatPhase(now, GRANTED);
-			for (int index = 0; index < COUNT; index++) {
+			for (int index = 0; index < SEATS; index++) {
 				if (TrialCrystalRevive.drawsSeat(index, phase)) {
 					// 자리 하나 몫이 곧 tickPoints(1) 이다 — 고리 40 + 덧칠 24.
 					whole += TrialCrystalRevive.tickPoints(1);

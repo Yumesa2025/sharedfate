@@ -122,6 +122,10 @@ import java.util.List;
  *   <li><b>켜져 있는 동안</b> — {@link #drawDome}. 드래곤 발밑을 중심으로 한 반경
  *       {@value #DOME_RADIUS} 반구를 옅은 하늘색 먼지 {@value #DOME_POINTS}점으로 긋는다</li>
  *   <li><b>걷힐 때</b> — {@link #shatter}. 유리 깨지는 소리 한 번과 파편 꾸러미 둘</li>
+ *   <li><b>밀어낼 때</b>(2026-10-18) — {@link #REPEL_PULSE_TICKS}틱마다 막 둘레({@link #REPEL_RADIUS})의
+ *       사람을 {@link #REPEL_TO} 까지 피해 없이 민다. 그 박자에 막 밑동에서 파동 고리가 번지고, 막 표면에는
+ *       흰 띠가 돌며 오르내린다. 사람 말 「잠깐 사잇페 때 유저들을 용 주위에서 밀치기를 계속하고 …
+ *       좀 멋있게 더 꾸며 봐」</li>
  * </ul>
  *
  * <h2>점 예산 — 5장의 400~440</h2>
@@ -135,9 +139,15 @@ import java.util.List;
  *   <tr><th>무엇</th><th>점</th></tr>
  *   <tr><td>반구 한 틱 몫({@value #DOME_POINTS} ÷ {@value #DOME_STRIDE})</td><td>{@value #DOME_POINTS_PER_TICK}</td></tr>
  *   <tr><td>막힘 불꽃(한 틱 한 번)</td><td>{@value #DEFLECT_POINTS}</td></tr>
- *   <tr><td>진입 연출 하강 궤적({@code DragonLastStandEntry.WORST_TICK_POINTS})</td><td>12</td></tr>
- *   <tr><td><b>합</b></td><td><b>{@code worstShieldTickPoints()} = 54</b></td></tr>
+ *   <tr><td>진입 연출 하강 궤적 또는 흰 나선({@code DragonLastStandEntry.WORST_TICK_POINTS})</td><td>12</td></tr>
+ *   <tr><td>표면을 도는 띠({@value #BAND_POINTS} ÷ {@value #BAND_STRIDE})</td><td>{@value #BAND_POINTS_PER_TICK}</td></tr>
+ *   <tr><td>파동 고리(밀어내는 박자부터 {@value #WAVE_TICKS}틱)</td><td>{@value #WAVE_POINTS}</td></tr>
+ *   <tr><td>밀린 사람 자리의 돌풍(팀원 넷)</td><td>{@value #REPEL_GUST_POINTS}</td></tr>
+ *   <tr><td><b>합</b></td><td><b>{@code worstShieldTickPoints()} = 84</b></td></tr>
  * </table>
+ *
+ * <p>2026-10-18 — 띠 · 파동 고리 · 돌풍 · 흰 나선은 <b>빨간 기둥 벽을 걷은 몫</b>(진입부터 언제나 한 틱
+ * 39점)으로 더했다. 옛 「보호막 54 + 벽 39 = 93」 안이다.
  *
  * <p>걷히는 틱은 첫 패턴이 시작하는 틱이라 그쪽 최악({@code DragonLastStandPatterns
  * .worstCasePointsPerTick} 322)과 겹친다. 그 틱에 반구는 이미 안 그리고 파편은 개수를 세는
@@ -219,6 +229,71 @@ public final class DragonLastStandShield {
 	 * 깨지는 소리 음높이. 1.0 보다 낮춰 「유리컵」이 아니라 「큰 막」이 깨지는 소리로 들리게 한다.
 	 */
 	private static final float SHATTER_PITCH = 0.6F;
+
+	// ------------------------------------------------------------------ 밀어내기와 꾸밈 (2026-10-18)
+
+	/**
+	 * 이 반경(칸, 드래곤에서 수평) 안의 사람을 밀어낸다. 반구({@value #DOME_RADIUS})보다 3칸 밖이다.
+	 *
+	 * <p>사람 말(2026-10-18): <b>「2페이지 시작할 때 용이 보호막 생기고 무적되고 잠깐 사잇페 때 유저들을
+	 * 용 주위에서 밀치기를 계속하고, 사용할 수 있는 이펙트 자리가 남아 있으면 좀 멋있게 더 꾸며 봐」</b>.
+	 * 반구에 딱 맞추면 막에 붙어 선 사람(머리를 노리는 자리)이 밀리다 말다 한다 — 3칸 밖까지 잡아
+	 * 「막 둘레는 서 있을 수 없는 자리」로 읽히게 한다. 보라 신호기(반변 10, 모서리 14.1)와 겹치는 것은
+	 * 괜찮다 — 신호기는 디스플레이 개체라 사람을 막지 않는다.
+	 */
+	static final double REPEL_RADIUS = DOME_RADIUS + 3.0;
+
+	/**
+	 * 밀린 사람이 멈추는 거리(칸, 드래곤에서 수평). 반경 안 어디에 있든 이 거리까지만 민다.
+	 *
+	 * <p>세기를 상수로 두지 않고 <b>도착 거리</b>로 정했다 — 가까이 붙은 사람일수록 세게, 가장자리의
+	 * 사람은 살짝 밀려 모두 같은 줄(반경 {@value #REPEL_TO})에 선다. 진입 데려오기의 39 · 첫 보더 42 보다
+	 * 한참 안이라 벽에 닿지 않고, 넉백 천장({@code TrialEnderStorm.pushDistance} 의 반경 32 ·
+	 * {@code groundedReach})을 그대로 지나므로 섬 밖으로 날아가지 않는다.
+	 */
+	static final double REPEL_TO = REPEL_RADIUS + 3.0;
+
+	/**
+	 * 밀어내는 간격(틱). 0.5초.
+	 *
+	 * <p>⚠ <b>매 틱 밀지 않는다</b>(6장 「매 틱 {@code syncVelocity} 는 사람 입력을 지웁니다」). 10틱이면
+	 * 사이 9틱 동안 사람 입력이 살아 있다 — 날개 퍼덕이기의 12틱과 같은 판단이다.
+	 */
+	static final int REPEL_PULSE_TICKS = 10;
+
+	/**
+	 * 드래곤 높이에서 이만큼 아래 · (반구 높이 + 이만큼) 위까지만 민다(칸).
+	 *
+	 * <p>하강 2초 동안 막은 드래곤과 함께 공중에 있다 — 그 밑 땅에 선 사람은 「막 둘레」가 아니다.
+	 */
+	static final double REPEL_VERTICAL_SLACK = 3.0;
+
+	/** 밀 때 맞은 사람 자리에 찍는 돌풍. 사람마다 한 장이고 팀원 넷까지 센다. */
+	static final int REPEL_GUST_POINTS = 4;
+
+	/**
+	 * 파동 고리 — 밀어내는 순간 반구 밑동에서 밀어내는 반경까지 <b>바깥으로 번지는</b> 고리의 점 수.
+	 * 한 틱에 한 고리이고 {@value #WAVE_TICKS}틱에 걸쳐 번진다.
+	 */
+	static final int WAVE_POINTS = 16;
+	/** 파동 고리가 번지는 틱. 반구(9)에서 밀어내는 반경(12)까지 4틱에 간다. */
+	static final int WAVE_TICKS = 4;
+
+	/**
+	 * 표면을 도는 띠의 점 수. 반구 표면의 위도선 하나가 <b>돌면서 오르내린다</b>(맥동).
+	 * {@value #BAND_STRIDE}틱에 나눠 긋는다.
+	 */
+	static final int BAND_POINTS = 20;
+	/** 띠를 몇 틱에 나눠 긋는가. 먼지 수명(8틱 이상)보다 짧아야 띠가 끊기지 않는다. */
+	static final int BAND_STRIDE = 2;
+	/** 한 틱에 긋는 띠 점의 상한. */
+	static final int BAND_POINTS_PER_TICK = (BAND_POINTS + BAND_STRIDE - 1) / BAND_STRIDE;
+	/** 띠가 한 번 오르내리는 틱. 2초. */
+	static final int BAND_BOB_TICKS = 40;
+	/** 띠가 한 바퀴 도는 틱. 3초. */
+	static final int BAND_TURN_TICKS = 60;
+	/** 띠 색. 반구보다 밝은 흰 하늘색 — 같은 막의 「빛나는 줄」로 읽힌다. */
+	static final int BAND_COLOR = 0xE8FFFF;
 
 	/**
 	 * 맥박이 이만큼 넘게 끊기면 꺼진 것으로 읽는다(서버 틱).
@@ -321,7 +396,51 @@ public final class DragonLastStandShield {
 	 * <p>진입 연출과만 겹친다 — 까닭은 클래스 설명의 「점 예산」.
 	 */
 	static int worstShieldTickPoints() {
-		return DOME_POINTS_PER_TICK + DEFLECT_POINTS + DragonLastStandEntry.WORST_TICK_POINTS;
+		return DOME_POINTS_PER_TICK + DEFLECT_POINTS + DragonLastStandEntry.WORST_TICK_POINTS
+				+ BAND_POINTS_PER_TICK + WAVE_POINTS + REPEL_GUST_POINTS;
+	}
+
+	/**
+	 * 이 틱이 밀어내는 박자인가. 원점은 보호막이 선 틱이다({@code now % 간격} 이면 다른 시계와 몰린다).
+	 */
+	static boolean repelBeat(long beganAt, long now) {
+		return Math.floorMod(now - beganAt, (long) REPEL_PULSE_TICKS) == 0L;
+	}
+
+	/**
+	 * 이 틱의 파동 고리 반경. 번지는 틱이 아니면 음수다.
+	 *
+	 * <p>밀어내는 박자 틱부터 {@value #WAVE_TICKS}틱 동안 반구 밑동({@value #DOME_RADIUS})에서
+	 * {@link #REPEL_RADIUS} 까지 고르게 번진다 — 첫 틱이 반구 바로 밖이고 마지막 틱이 밀어내는 반경이다.
+	 */
+	static double waveRadius(long beganAt, long now) {
+		long phase = Math.floorMod(now - beganAt, (long) REPEL_PULSE_TICKS);
+		if (phase >= WAVE_TICKS) {
+			return -1.0;
+		}
+		return DOME_RADIUS + (REPEL_RADIUS - DOME_RADIUS) * (phase + 1) / WAVE_TICKS;
+	}
+
+	/**
+	 * 이 사람을 <b>얼마나</b> 밀어야 하는가(칸). 밀 대상이 아니면 0 이다. 월드 없이 시험이 굴린다.
+	 *
+	 * @param horizontal 드래곤에서의 수평 거리
+	 * @param rise       드래곤 높이에서 사람 발까지의 높이(위가 양수)
+	 */
+	static double repelWanted(double horizontal, double rise) {
+		if (horizontal > REPEL_RADIUS) {
+			return 0.0;
+		}
+		if (rise < -REPEL_VERTICAL_SLACK || rise > DOME_RADIUS + REPEL_VERTICAL_SLACK) {
+			return 0.0;
+		}
+		return REPEL_TO - horizontal;
+	}
+
+	/** 띠의 이번 높이(반구 반경에 대한 비율). 0.25 ~ 0.75 사이를 오르내린다. */
+	static double bandLift(long beganAt, long now) {
+		double phase = Math.PI * 2.0 * Math.floorMod(now - beganAt, (long) BAND_BOB_TICKS) / BAND_BOB_TICKS;
+		return 0.5 + 0.25 * Math.sin(phase);
 	}
 
 	// ------------------------------------------------------------------ 믹스인이 묻는 것
@@ -402,16 +521,124 @@ public final class DragonLastStandShield {
 	 *
 	 * @param up      이 틱에 보호막이 서 있어야 하는가({@link #shielded} 의 답)
 	 * @param beganAt 보호막을 세운 판이 시작한 틱. 반구를 나눠 긋는 위상의 원점이다
+	 * @param members 밀어낼 팀원. 판이 얼어 있는 틱({@code DragonLastStand.holdShield})은 빈 목록이다
 	 * @param now     받은 틱. {@code getGameTime} 을 다시 읽지 않는다
 	 */
 	static void tick(MinecraftServer server, ServerLevel end, EnderDragon dragon, boolean up,
-			long beganAt, long now) {
+			long beganAt, List<ServerPlayer> members, long now) {
 		nowTick = now;
 		raisedAtServerTick = server.getTickCount();
 		raised = up;
 		if (up && now != domeDrawnAt) {
+			// 같은 now 로 두 번 불려도(얼어 있는 판) 긋기도 밀기도 한 번뿐이다 — 밀기가 되풀이되면
+			// 얼어 있는 동안 매 서버 틱 syncVelocity 가 나가 사람 입력을 지운다.
 			domeDrawnAt = now;
-			drawDome(end, dragon.position(), beganAt, now);
+			Vec3 center = dragon.position();
+			drawDome(end, center, beganAt, now);
+			drawBand(end, center, beganAt, now);
+			drawWave(end, center, beganAt, now);
+			if (repelBeat(beganAt, now)) {
+				repel(end, members, center);
+			}
+		}
+	}
+
+	/**
+	 * 반구 표면을 <b>돌면서 오르내리는 띠</b>. 이번 틱 몫을 긋는다.
+	 *
+	 * <p>위도선 하나(높이 {@link #bandLift} × 반경)를 {@value #BAND_POINTS}점으로 긋고, 한 바퀴
+	 * {@value #BAND_TURN_TICKS}틱으로 돌린다. 막이 「살아 숨쉰다」로 읽히게 하는 맥동이다.
+	 */
+	private static void drawBand(ServerLevel end, Vec3 center, long beganAt, long now) {
+		double lift = bandLift(beganAt, now) * DOME_RADIUS;
+		double ring = Math.sqrt(Math.max(0.0, DOME_RADIUS * DOME_RADIUS - lift * lift));
+		double spin = Math.PI * 2.0 * Math.floorMod(now - beganAt, (long) BAND_TURN_TICKS) / BAND_TURN_TICKS;
+		int phase = (int) Math.floorMod(now - beganAt, (long) BAND_STRIDE);
+		ParticleOptions dust = new DustParticleOptions(BAND_COLOR, DOME_DUST_SCALE);
+		for (int index = phase; index < BAND_POINTS; index += BAND_STRIDE) {
+			double angle = spin + Math.PI * 2.0 * index / BAND_POINTS;
+			end.sendParticles(dust, true, false,
+					center.x + Math.cos(angle) * ring, center.y + DOME_LIFT + lift,
+					center.z + Math.sin(angle) * ring, 1, 0.0, 0.0, 0.0, 0.0);
+		}
+	}
+
+	/** 밀어내는 박자마다 반구 밑동에서 바깥으로 번지는 <b>파동 고리</b>. 바닥 높이에 긋는다. */
+	private static void drawWave(ServerLevel end, Vec3 center, long beganAt, long now) {
+		double radius = waveRadius(beganAt, now);
+		if (radius < 0.0) {
+			return;
+		}
+		ParticleOptions dust = new DustParticleOptions(DOME_COLOR, DOME_DUST_SCALE);
+		for (int index = 0; index < WAVE_POINTS; index++) {
+			double angle = Math.PI * 2.0 * index / WAVE_POINTS;
+			end.sendParticles(dust, true, false,
+					center.x + Math.cos(angle) * radius, center.y + DOME_LIFT,
+					center.z + Math.sin(angle) * radius, 1, 0.0, 0.0, 0.0, 0.0);
+		}
+	}
+
+	/**
+	 * 막 둘레의 사람을 <b>피해 없이</b> 바깥으로 민다.
+	 *
+	 * <p>날개 퍼덕이기({@code DragonLastStandPatterns.shove})와 <b>같은 길</b>을 지난다 — 새 밀치기를
+	 * 만들면 천장 둘을 다 지나게 할 것(5장 「넉백에는 천장이 있습니다」).
+	 *
+	 * <ol>
+	 *   <li>{@code TrialEnderStorm.pushDistance} — 목적지가 반경 32 안</li>
+	 *   <li>{@code TrialLandingShock.groundedReach} — 땅이 끊기기 전에서 멈춘다</li>
+	 *   <li>{@code DragonLastStandPatterns.shoveSpeed} — 공중이면 바닥과 같은 거리만 가게 깎는다</li>
+	 *   <li>수평은 <b>덮어쓰고</b> 세로는 {@link TrialVelocity#syncedVertical} 를 지난다(6장 「배달」)</li>
+	 * </ol>
+	 *
+	 * <p>피해원이 없다 — 보호막은 막는 것이지 때리는 것이 아니다. 관전자는 밀지 않는다.
+	 */
+	private static void repel(ServerLevel end, List<ServerPlayer> members, Vec3 center) {
+		if (members.isEmpty()) {
+			return;
+		}
+		TrialEnderPulse.Ground ground = null;
+		for (ServerPlayer member : members) {
+			if (member.isSpectator() || member.level() != end) {
+				continue;
+			}
+			double dx = member.getX() - center.x;
+			double dz = member.getZ() - center.z;
+			double from = Math.sqrt(dx * dx + dz * dz);
+			double wanted = repelWanted(from, member.getY() - center.y);
+			if (!(wanted > 0.0) || !(from > 1.0E-4)) {
+				// 드래곤과 정확히 겹쳐 있으면 「바깥쪽」이 없다. 방향을 지어내지 않는다.
+				continue;
+			}
+			if (ground == null) {
+				ground = new TrialEnderPulse.Ground();
+			}
+			TrialEnderPulse.Ground probe = ground;
+			double stepX = dx / from;
+			double stepZ = dz / from;
+			double distance = TrialEnderStorm.pushDistance(member.getX(), member.getZ(),
+					new Vec3(stepX, 0.0, stepZ), wanted);
+			distance = TrialLandingShock.groundedReach(
+					(x, z) -> probe.surfaceAt(end, x, z) != TrialEnderPulse.NO_GROUND,
+					member.getX(), member.getZ(), stepX, stepZ, distance);
+			if (!(distance > 0.0)) {
+				continue;
+			}
+			double speed = DragonLastStandPatterns.shoveSpeed(distance,
+					DragonLastStandPatterns.isAirborne(end, probe, member));
+			Vec3 motion = member.getDeltaMovement();
+			member.setDeltaMovement(stepX * speed,
+					TrialVelocity.syncedVertical(motion.y, member.getKnownMovement().y),
+					stepZ * speed);
+			// 켜지 않으면 서버 혼자 민 것이 되어 잠시 뒤 제자리로 되돌아간다.
+			member.syncVelocity = true;
+			end.sendParticles(ParticleTypes.GUST, true, false,
+					member.getX(), member.getY() + 0.1, member.getZ(), 1, 0.0, 0.0, 0.0, 0.0);
+			// entity.breeze.wind_burst = mob/breeze/wind_burst1~3 이다(sounds.json 에서 확인했다).
+			// 드래곤 시련에서 이 파일을 쓰는 자리가 없다 — 「엔더폭풍」의 BREEZE_JUMP 와도 다르다.
+			// 밀린 사람에게만 들린다.
+			TrialWarning.playEach(end, List.of(member), SoundEvents.BREEZE_WIND_CHARGE_BURST,
+					0.8F, 1.3F);
 		}
 	}
 

@@ -42,7 +42,7 @@ class TrialTimersHudViewTest {
 		DragonLastStand.Pattern breath = DragonLastStand.Pattern.CONE_BREATH;
 		Cast cast = TrialTimers.castOf(running(breath, 3000L), 3085L).orElseThrow();
 		assertEquals(Cast.STATE_RUNNING, cast.state());
-		assertEquals("부채꼴 브레스 · 진행 중", TrialTimerRows.castTitle(cast));
+		assertEquals("공허 브레스 · 진행 중", TrialTimerRows.castTitle(cast));
 	}
 
 	@Test
@@ -50,7 +50,7 @@ class TrialTimersHudViewTest {
 		DragonLastStand.Pattern breath = DragonLastStand.Pattern.CONE_BREATH;
 		Cast cast = TrialTimers.castOf(running(breath, 3000L), 3030L).orElseThrow();
 		assertEquals(Cast.STATE_WARNING, cast.state());
-		assertEquals("부채꼴 브레스", TrialTimerRows.castTitle(cast));
+		assertEquals("공허 브레스", TrialTimerRows.castTitle(cast));
 		assertEquals("2.5초 뒤 발동", TrialTimerRows.castTimeText(cast.state(), cast.remainingTicks()));
 		assertEquals(30.0F / 80.0F,
 				TrialTimerRows.castRatio(cast.state(), cast.remainingTicks(), cast.totalTicks()),

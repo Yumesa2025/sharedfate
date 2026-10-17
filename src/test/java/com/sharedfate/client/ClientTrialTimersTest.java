@@ -139,7 +139,7 @@ class ClientTrialTimersTest {
 	@Test
 	void 체력형_줄은_줄이지_않는다() {
 		ClientTrialTimers.update(new TrialTimersPayload(true, false,
-				List.of(Entry.health("o", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.6F)),
+				List.of(Entry.health("o", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.6F)),
 				Optional.empty()));
 		for (int i = 0; i < 30; i++) {
 			ClientTrialTimers.tick(false);

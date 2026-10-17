@@ -7,6 +7,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.RandomSource;
+import net.minecraft.util.Util;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -94,15 +96,19 @@ import java.util.Set;
  *
  * <p>먼지 파티클은 같은 선 위에 겹쳐 덧칠만 한다. 이번에는 <b>긴 거리 깃발을 켜서</b> 보낸다.
  *
- * <h2>연출 동안 왜 무적 깃발로 드래곤을 지키지 않는가</h2>
+ * <h2>⚠⚠ 2026-10-18 — 카드는 드래곤을 붙들지 않는다</h2>
  *
- * <p>이 카드의 대가는 「되살아난 크리스탈을 다시 깨야 한다」가 아니라 <b>그 동안 드래곤을 때릴
- * 수 없다</b>는 것이다. 그것을 무적 깃발로 구현하면 <b>때려도 아무 일이 없다</b> — 검이 지나가고
- * 화살이 박히는데 체력이 안 깎이는 것은 플레이어 눈에 언제나 버그다. 대신 드래곤을 <b>가장 높은
- * 기둥보다 더 위, 중앙 상공으로 끌어올린다.</b> 못 때리는 이유가 화면에 그대로 보이고, 그래도
- * 닿은 한 발은 정직하게 들어간다.
+ * <p>사람 말: <b>「부활 시련, 드래곤이 중앙 상공에서 그것을 지켜봅니다를 없애고 이것도 5개만
+ * 부활하게. 모든이 아니라」</b>. 전에는 연출 동안 드래곤을 중앙 상공으로 끌어올려 <b>못 때리는
+ * 시간</b>을 대가로 삼았는데, 그 대가를 통째로 걷었다. 이제 {@link #show} 는 드래곤을 건드리지
+ * 않고(위상도 자리도 무적도), 드래곤은 연출 내내 바닐라대로 난다. 되살리는 수도 카드 값
+ * ({@code count} 5)에서 <b>부서진 자리 중 무작위</b>로 집는다({@link #pickSeats}).
  *
- * <h2>위상(phase)을 바꾸지 않는다</h2>
+ * <p>{@link #hold} 와 {@link #perchOver} 는 그대로 남는다. <b>카드가 아니라 연출이 쓴다</b> —
+ * {@link TrialEntrance} 의 입장 연출이 3단계에서 드래곤을 직접 붙들고, {@code DragonLastStandEntry}
+ * 도 같은 당기기를 빌려 쓴다. 아래 두 절은 그 함수의 설명이다.
+ *
+ * <h2>{@link #hold} 는 위상(phase)을 바꾸지 않는다</h2>
  *
  * <p>{@code EnderDragonPhase.HOVERING} 으로 바꾸면 <b>우리가 되돌려 놓아야 한다.</b> 그런데
  * 연출 도중에 드래곤이 죽을 수도, 서버가 내려갈 수도, 팀이 전멸해 월드가 갈릴 수도 있다. 되돌릴
@@ -221,7 +227,7 @@ public final class TrialCrystalRevive {
 	enum Step {
 		/** 이 카드는 이미 썼다. */
 		NOTHING,
-		/** 연출 중. 드래곤을 상공에 붙들고, 크리스탈을 세우고, 선을 긋는다. */
+		/** 연출 중. 크리스탈을 세우고 선을 긋는다(드래곤은 붙들지 않는다 — 클래스 설명). */
 		SHOW,
 		/** 연출을 끝낸다 — <b>무적과 빔을 걷는 자리</b>. 카드당 딱 한 틱만 나온다. */
 		REVIVE
@@ -312,7 +318,7 @@ public final class TrialCrystalRevive {
 	// ------------------------------------------------------------------ 연출
 
 	/**
-	 * 연출 한 틱. 드래곤을 상공에 붙들고, 첫 틱에 크리스탈을 세우고, 자리마다 선과 고리를 그린다.
+	 * 연출 한 틱. 첫 틱에 크리스탈을 세우고, 자리마다 선과 고리를 그린다. 드래곤은 건드리지 않는다.
 	 *
 	 * <p>경고의 세 층은 {@link TrialWarning} 의 것을 그대로 쓴다. 이 카드만 다른 신호를 쓰면
 	 * 플레이어가 카드 수만큼 새 언어를 배워야 한다. 다만 여기서 세 층이 뜻하는 것은 「맞는다」가
@@ -328,10 +334,9 @@ public final class TrialCrystalRevive {
 	 */
 	private static void show(ServerLevel end, @Nullable EnderDragon dragon, Key key, long granted,
 			long now, TrialCatalog.Risk.CrystalRevive risk) {
+		// 드래곤은 붙들지 않는다(2026-10-18 — 클래스 설명). 중앙 상공은 드래곤이 없을 때 빔이
+		// 향할 자리로만 쓴다. 입장 연출은 3단계에서 제가 직접 붙든다(TrialEntrance.tick).
 		Vec3 perch = perchOver(end);
-		if (dragon != null && dragon.isAlive() && perch != null) {
-			hold(dragon, perch);
-		}
 
 		List<EndCrystal> raised = RAISED.get(key);
 		if (raised == null) {
@@ -344,8 +349,6 @@ public final class TrialCrystalRevive {
 			prune(raised, bystanders(end));
 		}
 
-		// 되살릴 자리가 하나도 없어도 드래곤은 올라가 있다 — 연출 길이만큼 못 때리는 것이 이
-		// 카드의 대가이고, 그 대가는 결과와 무관하게 치러야 앞뒤가 맞는다.
 		if (raised.isEmpty()) {
 			return;
 		}
@@ -413,7 +416,7 @@ public final class TrialCrystalRevive {
 	 *   <li><b>부위를 함께 민다.</b> 드래곤의 히트박스는 제 몸이 아니라
 	 *       {@code EnderDragonPart} 여덟 개다. 그것들은 {@code EnderDragon.aiStep} 의
 	 *       {@code tickPart} 에서만 따라오므로, 우리가 몸만 옮기면 <b>보이는 곳에 없는데 맞는</b>
-	 *       한 틱이 생긴다. 못 때리는 것이 이 카드의 대가라 그 한 틱이 곧 구멍이다.</li>
+	 *       한 틱이 생긴다. 붙들린 드래곤을 못 때리는 것이 연출의 약속이라 그 한 틱이 곧 구멍이다.</li>
 	 *   <li><b>{@code syncPosition} 을 세운다.</b> 26.3 {@code ServerEntity.sendChanges} 는
 	 *       {@code needsSync || updateInterval.test(...) || 데이터 변경} 일 때만 위치를 내보내고,
 	 *       드래곤의 갱신 주기는 기본값(3틱)이다. {@code setPos} 는 두 깃발 중 무엇도 세우지
@@ -496,11 +499,11 @@ public final class TrialCrystalRevive {
 		return born;
 	}
 
-	/** 지금 되살릴 수 있는 자리들 — 비어 있고, 사람이 서 있지 않은 곳에서 개수만큼. */
+	/** 지금 되살릴 수 있는 자리들 — 비어 있고, 사람이 서 있지 않은 곳에서 개수만큼(무작위). */
 	private static List<Vec3> openSeatsFor(ServerLevel end, int count) {
 		return pickSeats(withoutOccupied(
 				openSeats(EndPillars.crystalSeats(end), livingCrystals(end)), bystanders(end)),
-				count);
+				count, end.getRandom());
 	}
 
 	/**
@@ -728,8 +731,8 @@ public final class TrialCrystalRevive {
 	 * 두 번 돌려주는 순간 크리스탈이 스무 개가 되고, 그 사고는 실제 전투에서만 드러난다.
 	 *
 	 * <p>자리가 하나도 비어 있지 않아 실제로 아무것도 서지 않아도 카드는 소모된다. 연출은 이미
-	 * 돌았고 드래곤은 그 시간 동안 하늘에 있었다 — 대가를 치렀으면 카드도 끝난 것이다. 남겨 두면
-	 * 한참 뒤 사람이 크리스탈을 깨는 순간 예고 없이 되살아난다.
+	 * 돌았다 — 카드가 터진 것이다. 남겨 두면 한참 뒤 사람이 크리스탈을 깨는 순간 예고 없이
+	 * 되살아난다.
 	 */
 	static Step step(long granted, long now, TrialCatalog.Risk.CrystalRevive risk) {
 		Key key = new Key(granted, risk);
@@ -836,15 +839,22 @@ public final class TrialCrystalRevive {
 	/**
 	 * 되살릴 자리를 개수만큼 집는다.
 	 *
-	 * <p>고르지 않고 목록 순서대로 집는다. 지금 카드는 기둥 수만큼(10) 되살리므로 고를 일 자체가
-	 * 없다. <b>개수가 적은 카드를 만들 때 여기에 고르는 규칙을 더하라.</b> 물건을 첫 틱에 세우게
-	 * 되었으니 이제는 저절로 카드당 한 번만 굴리게 된다.
+	 * <p>빈 자리가 {@code count} 이하면 <b>전부</b>, 목록 순서 그대로다(입장 연출의 열 자리가 이
+	 * 길이다). 넘치면 <b>무작위로</b> {@code count} 곳만 집는다 — 2026-10-18 에 「부활」이 「모든」에서
+	 * 「5개만」으로 줄면서 생긴 갈래다(사람 말: 「이것도 5개만 부활하게. 모든이 아니라」). 목록
+	 * 앞에서 자르면 매번 같은 기둥이 살아나 「부활하는 기둥」을 외우게 된다. 물건을 첫 틱에 세우므로
+	 * 카드당 한 번만 굴린다.
 	 */
-	static List<Vec3> pickSeats(List<Vec3> open, int count) {
+	static List<Vec3> pickSeats(List<Vec3> open, int count, RandomSource random) {
 		if (count <= 0) {
 			return List.of();
 		}
-		return List.copyOf(open.subList(0, Math.min(count, open.size())));
+		if (open.size() <= count) {
+			return List.copyOf(open);
+		}
+		List<Vec3> shuffled = new ArrayList<>(open);
+		Util.shuffle(shuffled, random);
+		return List.copyOf(shuffled.subList(0, count));
 	}
 
 	/**

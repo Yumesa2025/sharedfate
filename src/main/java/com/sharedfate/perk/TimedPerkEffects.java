@@ -103,6 +103,29 @@ public final class TimedPerkEffects {
 	}
 
 	/**
+	 * 이 사람에게 걸린 예약을 모두 취소하고 곧바로 걷어낸다.
+	 *
+	 * <p>접속을 끊을 때·부활할 때·팀에서 빠질 때 부른다. 예약이 남아 있으면 그 사이 몸에서
+	 * 수정자가 사라졌는데도 {@link #grant} 가 "이미 걸려 있다"고 보고 시각만 미뤄, 다음 발동이
+	 * 아무것도 붙이지 않는다. 걷어내는 쪽은 언제나 안전하므로 몸에 남아 있든 없든 떼어 둔다.
+	 */
+	public static void revokeAll(@Nullable ServerPlayer player) {
+		if (player == null || EXPIRY.isEmpty()) {
+			return;
+		}
+		UUID id = player.getUUID();
+		Iterator<Map.Entry<Key, Long>> entries = EXPIRY.entrySet().iterator();
+		while (entries.hasNext()) {
+			Map.Entry<Key, Long> entry = entries.next();
+			if (!entry.getKey().player().equals(id)) {
+				continue;
+			}
+			entries.remove();
+			safeRemove(entry.getKey().effect(), player);
+		}
+	}
+
+	/**
 	 * 한 틱 지났다. 만료된 예약을 걷어낸다.
 	 *
 	 * <p>서버 틱 한가운데서 불리므로 어떤 예외도 밖으로 내보내지 않는다. 예약이 하나도 없으면

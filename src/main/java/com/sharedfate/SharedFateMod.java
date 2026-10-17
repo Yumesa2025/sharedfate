@@ -105,11 +105,16 @@ public class SharedFateMod implements ModInitializer {
 		// 비행 허가는 저장보다 먼저 걷어내야 한다. SERVER_STOPPED 는 이미 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(
 				com.sharedfate.perk.PerkFlightCharm::onServerStopping);
-		// 최후의 저항의 부채꼴·십자 빨간 면과 연출 개체를 월드가 살아 있을 때 거둔다. 전에는 안전지대
-		// (엔드 월드 보더)를 저장보다 먼저 되돌리는 것이 이 줄의 첫 일이었는데, 2026-10-04 에 지대가
-		// 보더를 버리고 「나갈 수 있는 원」이 되어 그 일은 없어졌다.
+		// 드래곤 시련의 엔드 월드 보더를 저장보다 먼저 되돌리고(2026-10-18 에 안전지대가 다시 보더가 되며
+		// 돌아온 일), 최후의 저항의 부채꼴·십자 빨간 면과 연출 개체를 월드가 살아 있을 때 거둔다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(
 				com.sharedfate.sync.DragonLastStand::onServerStopping);
+		// 「밤의 군세」가 불러온 엔더맨을 저장보다 먼저 지운다. 그래도 디스크에 남은 것(강제 종료 ·
+		// 청크와 함께 내려간 개체)은 올라오는 순간 표로 알아보고 다음 틱 끝에 지운다.
+		ServerLifecycleEvents.SERVER_STOPPING.register(
+				com.sharedfate.sync.TrialNightHost::onServerStopping);
+		ServerEntityEvents.ENTITY_LOAD.register(com.sharedfate.sync.TrialNightHost::onEntityLoad);
+		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.sync.TrialNightHost::sweepStrays);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			TeamLookup.setServer(null);
 			ExpandedInventoryManager.clearRuntimeState();
@@ -136,7 +141,7 @@ public class SharedFateMod implements ModInitializer {
 			com.sharedfate.sync.ShockwaveManager.reset();
 			com.sharedfate.sync.SanctuaryManager.reset();
 			com.sharedfate.sync.AuraDamageManager.reset();
-			com.sharedfate.sync.StaggeredSwapManager.reset();
+			com.sharedfate.perk.PerkInvulnerability.reset();
 			com.sharedfate.sync.RallyPointManager.reset();
 			com.sharedfate.sync.RallyShardManager.reset();
 			com.sharedfate.sync.RallyShardCooldown.reset();
@@ -214,6 +219,8 @@ public class SharedFateMod implements ModInitializer {
 			if (team != null && state != null) {
 				StatMirror.syncPlayerNow(team.teamId(), state, newPlayer);
 			}
+			// 처치 등으로 잠깐 건 속성 수정자는 죽으면 끝난다. 예약을 비워야 다음 발동이 새로 붙는다.
+			TimedPerkEffects.revokeAll(newPlayer);
 			PerkManager.refreshPlayer(newPlayer);
 		});
 		ServerPlayerEvents.LEAVE.register(player -> {
@@ -239,8 +246,8 @@ public class SharedFateMod implements ModInitializer {
 		ServerLivingEntityEvents.AFTER_DEATH.register(PerkKillRewards::onDeath);
 		// 보유자형 증강(holder)의 보유자가 죽으면 즉시 다른 팀원에게 넘기는 지점.
 		ServerLivingEntityEvents.AFTER_DEATH.register(PerkHolderManager::onDeath);
-		// 시차·정거장이 진행·대기 중이던 상태를 팀 전멸 때 지우는 지점.
-		ServerLivingEntityEvents.AFTER_DEATH.register(com.sharedfate.sync.StaggeredSwapManager::onDeath);
+		// 증강 무적(invulnerable)·정거장이 들고 있던 상태를 팀 전멸 때 지우는 지점.
+		ServerLivingEntityEvents.AFTER_DEATH.register(com.sharedfate.perk.PerkInvulnerability::onDeath);
 		ServerLivingEntityEvents.AFTER_DEATH.register(com.sharedfate.sync.RallyPointManager::onDeath);
 		ServerLivingEntityEvents.AFTER_DEATH.register(com.sharedfate.sync.RallyShardManager::onDeath);
 		ServerLivingEntityEvents.AFTER_DEATH.register(com.sharedfate.sync.SpreadDamageManager::onDeath);
@@ -328,7 +335,6 @@ public class SharedFateMod implements ModInitializer {
 		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.command.RunResetCommand::tick);
 		ServerTickEvents.END_SERVER_TICK.register(RunProgressManager::tick);
 		ServerTickEvents.END_SERVER_TICK.register(PositionSwapManager::tick);
-		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.sync.StaggeredSwapManager::tick);
 		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.sync.RallyPointManager::tick);
 		// 「소집의 조각」이 굳힌 팀원을 소환자에게 끌어오는 지점.
 		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.sync.RallyShardManager::tick);

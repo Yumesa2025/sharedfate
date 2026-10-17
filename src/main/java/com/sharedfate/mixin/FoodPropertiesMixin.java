@@ -1,5 +1,6 @@
 package com.sharedfate.mixin;
 
+import com.sharedfate.perk.PerkFoodCapacity;
 import com.sharedfate.perk.PerkFoodRules;
 import com.sharedfate.sync.FoodOverflowBuffer;
 import net.minecraft.server.level.ServerPlayer;
@@ -75,7 +76,8 @@ public abstract class FoodPropertiesMixin {
 	 * 이긴다.</b> 배수의 대상 자체가 0 이라 몇 배를 곱해도 0 이기 때문이다.
 	 *
 	 * <p>배율을 먹인 정의를 건네도 부르는 것은 바닐라의 {@code eat} 그대로다. 20 상한도,
-	 * 포만감이 허기를 넘지 못하는 규칙도 바닐라가 계산한다.
+	 * 포만감이 허기를 넘지 못하는 규칙도 바닐라가 계산한다. 「먹방」({@code food_capacity})을
+	 * 가진 팀만 예외로, 상한이 20 위라 {@link PerkFoodCapacity#feed} 가 같은 순서로 대신 계산한다.
 	 *
 	 * <p>클라이언트에서는 팀 상태를 볼 수 없어 판정이 언제나 "해당 없음"이라 바닐라처럼 먹기를
 	 * 미리 그린다. 막았을 때는 서버 쪽 허기가 바뀌지 않아 화면이 한 틱 동안 어긋나는데,
@@ -92,6 +94,13 @@ public abstract class FoodPropertiesMixin {
 			PerkFoodRules.resyncFoodDisplay(entity);
 			return;
 		}
-		foodData.eat(PerkFoodRules.scaleNutrition(properties, entity));
+		FoodProperties scaled = PerkFoodRules.scaleNutrition(properties, entity);
+		// 「먹방」을 가진 팀이면 20 위로 채운다. 바닐라 eat 은 20 에서 자르므로 직접 계산한다.
+		int capacity = PerkFoodCapacity.capacityOf(entity);
+		if (PerkFoodCapacity.eatsWhenFull(capacity)) {
+			PerkFoodCapacity.feed(foodData, scaled.nutrition(), scaled.saturation(), capacity);
+			return;
+		}
+		foodData.eat(scaled);
 	}
 }

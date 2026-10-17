@@ -352,7 +352,7 @@ class BlockBreakPerkTest {
 		assertEquals("욕심 많은 곡괭이", greedy.name());
 		assertEquals(1, greedy.effects().size());
 		BonusDropEffect bonus = assertInstanceOf(BonusDropEffect.class, greedy.effects().get(0));
-		assertEquals(0.15, bonus.chanceFor(), 1.0e-9);
+		assertEquals(0.3, bonus.chanceFor(), 1.0e-9);
 		assertEquals(1, bonus.extraDurability());
 		assertTrue(bonus.appliesTo(state(Blocks.ANCIENT_DEBRIS)), "직접 적은 블록은 태그 없이도 걸린다");
 

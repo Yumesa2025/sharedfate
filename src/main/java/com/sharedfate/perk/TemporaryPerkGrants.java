@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sharedfate.SharedFateMod;
+import com.sharedfate.perk.effect.InvulnerableEffect;
 import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.OnKillEffect;
 import com.sharedfate.perk.effect.StatusEffectPerk;
@@ -186,6 +187,11 @@ public final class TemporaryPerkGrants {
 						status.amplifier());
 				continue;
 			}
+			if (effect instanceof InvulnerableEffect) {
+				// 무적은 사람마다 「언제까지」 하나라 누구 몫인지 가를 수 없다. 길어야 십수 초이므로
+				// 다른 증강·세트가 함께 걸어 둔 몫까지 지우지 않게 저절로 끝나도록 둔다.
+				continue;
+			}
 			TimedPerkEffects.cancel(player, effect);
 		}
 	}
@@ -199,6 +205,11 @@ public final class TemporaryPerkGrants {
 			// 무한이 아니라 정해진 시간만 걸어야 PerkStatusEffects 가 증강분으로 오해하지 않는다.
 			player.addEffect(new MobEffectInstance(
 					resolved, durationTicks, status.amplifier(), false, false, true));
+			return;
+		}
+		// 무적은 상태이상도 속성도 아니다. 겹치면 시간이 합쳐져야 해서 따로 센다(PerkInvulnerability).
+		if (effect instanceof InvulnerableEffect) {
+			PerkInvulnerability.grant(player, durationTicks);
 			return;
 		}
 		// 속성처럼 스스로 만료되지 않는 효과다. 걷어낼 시점을 예약해 둔다.

@@ -195,6 +195,51 @@ class DragonLastStandEntryTest {
 		}
 	}
 
+	/**
+	 * ⚠ <b>흰 나선이 기둥을 감으며 오른다.</b> 사람 말(2026-10-18) 「그 4개에 스프링 모양으로 하얀색
+	 * 이펙트가 빙빙 돌면서 위로 올라가게」.
+	 *
+	 * <p>가닥 머리가 언제나 기둥에서 같은 거리(감긴다)이고, 한 바퀴에 몇 칸 오르며(스프링 — 고리 사이가
+	 * 촘촘), 정한 높이를 넘지 않고 밑동부터 다시 오른다.
+	 */
+	@Test
+	void 흰_나선이_기둥을_감으며_오른다() {
+		for (int pillar = 0; pillar < DragonLastStandEntry.BEACON_COUNT; pillar++) {
+			for (int strand = 0; strand < DragonLastStandEntry.SPIRAL_STRANDS; strand++) {
+				for (int lit = 0; lit < DragonLastStandEntry.CHARGE_TICKS; lit++) {
+					Vec3 at = DragonLastStandEntry.spiralOffset(lit, pillar, strand);
+					assertEquals(DragonLastStandEntry.SPIRAL_RADIUS, Math.hypot(at.x, at.z), 1.0E-9,
+							"나선이 기둥에서 벗어났다");
+					assertTrue(at.y >= 0.0 && at.y < DragonLastStandEntry.SPIRAL_HEIGHT,
+							"나선이 정한 높이 밖이다: " + at.y);
+				}
+			}
+		}
+		// 한 바퀴(SPIRAL_TURN_TICKS) 뒤 같은 각도이고 그만큼 높다 — 스프링의 한 고리다.
+		Vec3 first = DragonLastStandEntry.spiralOffset(0, 0, 0);
+		Vec3 turned = DragonLastStandEntry.spiralOffset(DragonLastStandEntry.SPIRAL_TURN_TICKS, 0, 0);
+		assertEquals(first.x, turned.x, 1.0E-9);
+		assertEquals(first.z, turned.z, 1.0E-9);
+		double pitch = turned.y - first.y;
+		assertTrue(pitch > 1.0 && pitch < 5.0, "고리 사이가 " + pitch + "칸 — 스프링으로 안 읽힌다");
+		assertTrue(DragonLastStandEntry.SPIRAL_RADIUS > DragonLastStandLights.PILLAR_WIDTH / 2.0,
+				"나선이 빛기둥 안에 묻힌다");
+		assertTrue(DragonLastStandEntry.SPIRAL_HEIGHT < DragonLastStandEntry.BEACON_HEIGHT,
+				"나선이 빛기둥보다 높이 올라간다");
+		// 빛이 서 있는 동안 적어도 한 번은 끝까지 오른다.
+		assertTrue(DragonLastStandEntry.SPIRAL_RISE_PER_TICK * DragonLastStandEntry.CHARGE_TICKS
+				>= DragonLastStandEntry.SPIRAL_HEIGHT, "빛이 꺼지기 전에 나선이 꼭대기에 못 닿는다");
+	}
+
+	/** 나선은 하강 궤적과 한 틱에 겹치지 않으므로 이 파일의 최악은 둘 가운데 큰 쪽이다. */
+	@Test
+	void 나선_점이_예산_안이다() {
+		assertEquals(DragonLastStandEntry.BEACON_COUNT * DragonLastStandEntry.SPIRAL_STRANDS,
+				DragonLastStandEntry.SPIRAL_POINTS_PER_TICK);
+		assertTrue(DragonLastStandEntry.WORST_TICK_POINTS >= DragonLastStandEntry.SPIRAL_POINTS_PER_TICK);
+		assertTrue(classBytes().contains("END_ROD"), "흰 나선이 END_ROD 가 아니다 — 꼬리가 안 남는다");
+	}
+
 	/** 충전음이 낮은 데서 시작해 1.0 을 넘긴다. 안 넘기면 「올라갔다」가 안 들린다. */
 	@Test
 	void 충전음이_올라간다() {
@@ -219,8 +264,10 @@ class DragonLastStandEntryTest {
 		assertTrue(edge > 0.0);
 		assertEquals(DragonLastStandZone.START_RADIUS - DragonLastStandEntry.WALL_MARGIN, edge,
 				1.0E-9, "값에서 직접 나와야 지대 시작값을 고치는 사람이 여기를 안 고친다");
-		assertTrue(DragonLastStandEntry.WALL_MARGIN > DragonLastStandZoneWall.POST_GAP,
-				"경계에서 기둥 간격보다 안쪽이어야 「내가 안인가」가 흔들리지 않는다");
+		// 2026-10-18 에 지대가 다시 보더가 됐다. 26.3 Entity.collide 는 「안에 있고 벽에서 2칸 안」이면
+		// 보더 충돌 형상을 얹으므로 2칸보다 안쪽이어야 도착한 사람이 벽에 끼이지 않는다.
+		assertTrue(DragonLastStandEntry.WALL_MARGIN > 2.0,
+				"보더 충돌이 걸리는 2칸 안에 내려놓는다 — 도착한 사람이 벽에 낀다");
 		for (int degrees = 0; degrees < 360; degrees++) {
 			double radians = Math.toRadians(degrees);
 			double x = Math.cos(radians) * edge;

@@ -49,10 +49,11 @@ public final class TrialTimerRows {
 	/** 일반 전투의 패널 제목. */
 	public static final String HEADER_FIGHT = "다가오는 패턴";
 	/**
-	 * 최후의 저항의 패널 제목. 거기 줄은 패턴이 아니라 안전지대 · 번개 · 오브젝트 파도라서 사람 화면이
-	 * 「다가오는 것」으로 바꿔 적었다.
+	 * 최후의 저항의 패널 제목. 거기 줄은 패턴이 아니라 안전지대 · 번개 · 회복 크리스탈 소환이라서 사람
+	 * 화면이 처음에 「다가오는 것」으로 바꿔 적었고, 2026-10-18 사람 지시로 「패턴 타이머」가 됐다
+	 * (사람 말: 「다가오는 것에서 패턴 타이머로 변경」). 일반 전투의 {@link #HEADER_FIGHT} 는 그대로다.
 	 */
-	public static final String HEADER_LAST_STAND = "다가오는 것";
+	public static final String HEADER_LAST_STAND = "패턴 타이머";
 
 	/** 시전 바 「진행 중」 제목에 붙는 말. 서버({@code TrialTimers.RUNNING_SUFFIX})와 같은 글자다. */
 	static final String RUNNING_SUFFIX = " · " + TAG_ACTIVE;
@@ -241,7 +242,7 @@ public final class TrialTimerRows {
 		return state == Cast.STATE_WARNING ? seconds + " 뒤 발동" : seconds;
 	}
 
-	/** 패널 제목. 최후의 저항(시전 바가 있는 판)이면 「다가오는 것」. */
+	/** 패널 제목. 최후의 저항(시전 바가 있는 판)이면 「패턴 타이머」. */
 	public static String header(boolean lastStand) {
 		return lastStand ? HEADER_LAST_STAND : HEADER_FIGHT;
 	}

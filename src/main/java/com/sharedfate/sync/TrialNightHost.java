@@ -1,18 +1,25 @@
 package com.sharedfate.sync;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityReference;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,11 +31,38 @@ import java.util.Set;
  *
  * <h2>무엇을 해야 하는가</h2>
  *
- * <p><b>한 번만</b> 터진다. 팀원에게서 20칸({@code radius}) 안에 있는 엔더맨을 가까운 순으로
- * <b>다섯 마리까지</b>({@code maxMobs}) 골라 20초({@code hostileTicks}) 동안 적대로 만든다 —
- * 쳐다보지 않아도 달려온다. 20초가 지나면 원래대로 돌아간다.
+ * <p><b>한 번만</b> 터진다. 팀원 누구에게서도 20칸({@code radius}) <b>밖</b>, 섬의 엔드 돌
+ * 위에 엔더맨을 <b>다섯 마리</b>({@code maxMobs}) <b>새로 불러</b> 20초({@code hostileTicks})
+ * 동안 적대로 만든다 — 쳐다보지 않아도 달려온다. 20초가 지나면 불러온 다섯이 <b>사라진다</b>
+ * (드롭·경험치 없이). 원래 엔드에 있던 엔더맨은 건드리지 않는다.
  *
- * <h2>「전부」에서 「가까운 몇 마리」로 바뀌었다</h2>
+ * <h2>⚠⚠ 2026-10-18 — 「깨운다」에서 「불러온다」로 바뀌었다</h2>
+ *
+ * <p>사람 말: <b>「밤의 군세 — 주위 20블록 밖에 엔더맨들 5마리를 소환하고 이 개체들만 적대가
+ * 되어 달려오게」</b>. 사람 결정: 적대는 20초만, 20초가 지나면 <b>소환한 다섯은 사라진다.</b>
+ * 그 전에 잡히면 바닐라대로 죽는다(엔더 진주·경험치도 바닐라대로 — 싸워 이긴 몫이다).
+ *
+ * <p>전에는 팀 주위 20칸 <b>안</b>의 엔더맨을 가까운 순으로 다섯까지 골랐다. 그 길({@code wake}
+ * 의 차원 훑기)은 걷었다. 아래 절들 가운데 「고른다」라는 말은 이제 「불러온다」로 읽으면 된다 —
+ * 얼린 명단 · 매 틱 못 박기 · 조건 없이 풀기는 불러온 다섯에게 그대로 쓴다.
+ *
+ * <h2>불러온 개체가 남지 않게 — 네 겹</h2>
+ *
+ * <ul>
+ *   <li><b>창이 닫히는 틱</b>(20초 · 드래곤 처치) — {@link #tick} 이 명단 전부를 {@code discard}
+ *       한다. {@code discard} 는 죽음이 아니라 제거라 드롭도 경험치도 없다</li>
+ *   <li><b>전투 종료 · 팀 해체 · 판 리셋 · {@code trialtest clear}</b> — 전부
+ *       {@code TrialRisks.clearState} 를 지나 {@link #clearState()} 가 같은 일을 한다. 팀이
+ *       해체돼도 다른 팀이 아직 싸우고 있으면 그 팀 전투가 끝날 때다</li>
+ *   <li><b>서버 종료</b> — {@link #onServerStopping} 이 <b>저장보다 먼저</b> 지운다.
+ *       {@code SERVER_STOPPED} 의 {@code clearState} 는 이미 저장된 뒤라 늦다</li>
+ *   <li><b>그래도 디스크에 남은 것</b>(강제 종료 · 청크와 함께 내려간 개체) — 불러올 때
+ *       {@link #SUMMONED_TAG} 를 달아 두었으므로, 다시 올라오는 순간 {@link #onEntityLoad} 가
+ *       알아보고 다음 틱 끝에 {@link #sweepStrays} 가 지운다. 불러오는 콜백 안에서 바로 지우지
+ *       않는 것은 엔티티를 등록하는 도중에 빼는 일이 되기 때문이다</li>
+ * </ul>
+ *
+ * <h2>「전부」에서 「가까운 몇 마리」로 바뀌었다(2026-10-18 이전의 이야기)</h2>
  *
  * <p>처음에는 <b>엔드에 있는 엔더맨 전부</b>였다. 사람이 플레이해 보고 「전원은 너무 빡세다」고
  * 했다 — 엔드는 엔더맨이 끝없이 깔린 곳이라 <b>「전부」가 사실상 무한</b>이었고, 공유 체력 20
@@ -49,11 +83,12 @@ import java.util.Set;
  * 허용된 적이 없는 카드가 된다.
  *
  * <ul>
- *   <li><b>20초가 지나면 반드시 원래대로.</b> 한 마리라도 적대로 남으면 조건이 깨진다</li>
+ *   <li><b>20초가 지나면 반드시 사라진다.</b> 한 마리라도 적대로 남으면 조건이 깨진다</li>
  *   <li><b>되풀이 금지.</b> 20초 뒤 다시 켜지는 코드를 넣지 말 것</li>
- *   <li><b>드래곤이 죽거나 전투가 끝나거나 판이 리셋되면 그 자리에서 푼다</b></li>
- *   <li><b>엔더맨을 새로 소환하지 않는다.</b> 이미 엔드에 있는 것을 적대로 만드는 카드이지
- *       수를 늘리는 카드가 아니다</li>
+ *   <li><b>드래곤이 죽거나 전투가 끝나거나 판이 리셋되면 그 자리에서 지운다</b></li>
+ *   <li><b>불러온 개체만 적대다.</b> 2026-10-18 까지는 「새로 소환하지 않는다」가 이 자리였다 —
+ *       사람이 소환으로 바꾸면서 대신 <b>있던 엔더맨을 건드리지 않는다</b>가 되었다. 불러온
+ *       다섯은 20초 뒤에 남지 않으므로 「늘어난 놈이 남는다」는 옛 걱정은 위 네 겹이 막는다</li>
  *   <li><b>깨우는 수에 천장이 있다.</b> 사람이 카드를 되돌린 이유가 천장이 없다는 것 하나였다
  *       (아래 「전부에서 가까운 몇 마리로 바뀌었다」). 빈자리를 채우거나 도중에 더 거는 코드는
  *       천장을 없애는 코드다</li>
@@ -151,6 +186,10 @@ import java.util.Set;
  *
  * <h2>이미 화가 나 있던 놈도 조건 없이 푼다</h2>
  *
+ * <p>(2026-10-18 부터 명단은 우리가 불러온 개체뿐이고 창이 닫히면 지워지므로, 아래는 지우기
+ * 직전의 한 줄로만 남았다. 지우는 데 실패하는 길 — 청크와 함께 내려간 개체 — 에서 그놈이 분노를
+ * 들고 남지 않게 하는 몫이다.)
+ *
  * <p>창이 닫힐 때 명단의 <b>전부</b>에 {@code stopBeingAngry} 를 건다. 「원래 화나 있었나?」를
  * 기억하지 않는 것이 일부러다 — {@link TrialCrystalGuard#clearState()} 가 화살 면역 깃발에서
  * 내린 것과 같은 판단이다. 기억하는 순간 그 기억이 어긋날 길이 생기고, 여기서 어긋나면 남는
@@ -183,10 +222,13 @@ public final class TrialNightHost {
 	 *
 	 * <p>{@code ANGRY_VILLAGER} 는 바닐라가 「이놈이 너에게 화났다」로 쓰는 유일한 아이콘이다.
 	 * 보라색 포털 입자를 쓰지 않은 것이 일부러인데, 그쪽은 <b>엔더맨이 방금 순간이동해 왔다</b>는
-	 * 뜻으로 이미 배워져 있어서 <b>엔더맨이 늘어난 것처럼 보인다.</b> 이 카드는 한 마리도
-	 * 소환하지 않으므로 그렇게 보여서는 안 된다.
+	 * 뜻으로 이미 배워져 있어서 <b>엔더맨이 늘어난 것처럼 보인다.</b> (2026-10-18 부터는 실제로
+	 * 불러오지만, 「이놈이 너에게 화났다」가 여전히 전할 말이다 — 포털 입자는 사라질 때
+	 * {@link #vanish} 가 쓴다.)
 	 */
 	static final int FLARE_PARTICLES = 6;
+	/** 사라지는 엔더맨 하나에 찍는 포털 입자 수. 한 마리가 패킷 한 장이다({@link #vanish}). */
+	static final int VANISH_PARTICLES = 24;
 	/**
 	 * 터지는 틱에 표시를 붙이는 엔더맨 수의 상한. 곧 그 틱에 나가는 <b>패킷 수</b>다.
 	 *
@@ -204,6 +246,31 @@ public final class TrialNightHost {
 	 * 일어났다」는 상한과 무관하게 전해진다.
 	 */
 	static final int FLARE_MAX_MOBS = 64;
+
+	/**
+	 * 불러온 엔더맨에 다는 표(엔티티 태그). 디스크에서 다시 올라온 개체를 알아보는 유일한 길이다.
+	 *
+	 * <p>태그는 엔티티와 함께 저장된다. 서버가 강제로 꺼지거나 청크가 내려가 우리 손을 떠난 개체도
+	 * 다시 올라오는 순간 이 표로 걸러진다({@link #onEntityLoad}).
+	 */
+	static final String SUMMONED_TAG = "sharedfate.night_host";
+
+	/**
+	 * 팀원에게서 {@code radius} 밖으로 <b>얼마나 더</b> 나가서 부르는가(블록). 21~28칸이 된다.
+	 *
+	 * <p>사람 말이 「20블록 밖」이다. 너무 멀면 달려오는 데 20초를 다 쓰고, 바로 경계에 붙이면
+	 * 「밖」이 화면에서 안 보인다. 엔더맨은 16칸 밖의 표적에게 순간이동으로 붙으므로
+	 * ({@code EndermanLookForPlayerGoal}) 28칸이어도 금방 온다.
+	 */
+	static final double SPAWN_BAND = 8.0;
+
+	/**
+	 * 한 마리를 세울 땅을 찾는 시도 횟수. 넘기면 그 자리는 비운다.
+	 *
+	 * <p>섬 가장자리에 선 팀이면 바깥쪽 절반이 허공이라 몇 번은 빗나간다. 명단이 빈 동안에만
+	 * 도는 조회이므로({@link #tick} 의 {@code waking}) 보통 한 판에 한 번이다.
+	 */
+	static final int SPAWN_TRIES_PER_MOB = 12;
 
 	// ------------------------------------------------------------------ 상태
 
@@ -243,6 +310,12 @@ public final class TrialNightHost {
 	 */
 	private record Key(long granted, TrialCatalog.Risk.NightHost risk) {
 	}
+
+	/**
+	 * 디스크에서 다시 올라온, 우리 손을 떠난 불러온 개체들. 다음 틱 끝에 {@link #sweepStrays} 가
+	 * 지운다.
+	 */
+	private static final List<Enderman> STRAYS = new ArrayList<>();
 
 	private TrialNightHost() {
 	}
@@ -291,9 +364,10 @@ public final class TrialNightHost {
 			// 지난다 — 다음 틱부터는 host 가 없어 아무 일도 하지 않는다.
 			if (host != null) {
 				NIGHTS.remove(nightKey);
-				// 명단이 비는 것은 calm 이 하는 일이므로 「알릴 것이 있었는가」를 먼저 묻는다.
+				// 명단이 비는 것은 dismiss 가 하는 일이므로 「알릴 것이 있었는가」를 먼저 묻는다.
 				boolean woke = !host.isEmpty();
-				calm(host);
+				vanish(end, host);
+				dismiss(host);
 				if (woke) {
 					signalCalm(end, members);
 				}
@@ -310,7 +384,7 @@ public final class TrialNightHost {
 		// 틱에 울린다. 명단이 얼어붙는 자리도 여기다: 비어 있는 동안만 다시 고른다.
 		boolean waking = host.isEmpty();
 		if (waking) {
-			wake(end, members, host, risk);
+			summon(end, members, host, risk);
 		}
 		hold(members, host, calmAt(now, elapsed, risk.hostileTicks()));
 		if (waking && !host.isEmpty()) {
@@ -321,18 +395,73 @@ public final class TrialNightHost {
 	/**
 	 * 월드가 바뀌거나 서버가 내려갈 때.
 	 *
-	 * <p><b>적대를 반드시 여기서 되돌린다.</b> 20초가 지나기 전에 판이 끝나면 되돌릴 기회가
-	 * 여기뿐이고, 놓치면 다음 판의 엔더맨이 이유 없이 달려든다 — 컴파일도 시험도 조용한 사고다.
+	 * <p><b>불러온 개체를 반드시 여기서 지운다.</b> 20초가 지나기 전에 판이 끝나면 지울 기회가
+	 * 여기뿐이고, 놓치면 다음 판에 이유 없는 엔더맨이 남는다 — 컴파일도 시험도 조용한 사고다.
 	 *
-	 * <p>월드를 만지지 않는다. 명단에 든 엔티티에 {@code stopBeingAngry} 를 걸 뿐이라 서버가
-	 * 이미 내려간 뒤에 불려도 터질 것이 없다 — 그 호출이 실제로 {@code SERVER_STOPPED} 에서
-	 * 온다({@code SharedFateMod} 의 {@code DragonTrialManager.clearState}).
+	 * <p>월드를 받지 않는다. 명단에 든 엔티티에 {@code stopBeingAngry} 와 {@code discard} 를 걸
+	 * 뿐이라 서버가 이미 내려간 뒤에 불려도 터질 것이 없다 — 그 호출이 실제로
+	 * {@code SERVER_STOPPED} 에서 온다({@code SharedFateMod} 의
+	 * {@code DragonTrialManager.clearState}). 그때는 이미 저장된 뒤라 디스크의 사본은
+	 * {@link #onServerStopping} 이 먼저 막고, 그래도 남은 것은 {@link #onEntityLoad} 가 거둔다.
 	 */
 	public static void clearState() {
 		for (Set<Enderman> host : NIGHTS.values()) {
-			calm(host);
+			dismiss(host);
 		}
 		NIGHTS.clear();
+		STRAYS.clear();
+	}
+
+	/**
+	 * 서버가 내려가기 시작할 때 — <b>저장보다 먼저</b> 불러온 개체를 지운다.
+	 *
+	 * <p>{@code SERVER_STOPPED} 는 청크를 다 저장한 뒤라, 거기서 지워도 디스크에는 남는다. 이
+	 * 자리에서 지우면 청크에서 빠진 채 저장된다.
+	 */
+	public static void onServerStopping(net.minecraft.server.MinecraftServer server) {
+		clearState();
+	}
+
+	/**
+	 * 엔티티가 월드에 올라올 때. 우리 표가 붙었는데 <b>명단에 없는</b> 엔더맨이면 지울 차례에
+	 * 올린다.
+	 *
+	 * <p>여기서 곧바로 {@code discard} 하지 않는다. 이 콜백은 엔티티를 등록하는 <b>도중</b>에
+	 * 불리므로({@code PersistentEntitySectionManager.addEntity} 의 추적 시작), 그 자리에서 빼면
+	 * 등록의 뒷부분이 지워진 개체를 다룬다. 다음 틱 끝에 {@link #sweepStrays} 가 지운다.
+	 *
+	 * <p>방금 불러온 개체도 이 길을 지나지만, {@link #summon} 이 명단에 먼저 넣고 띄우므로
+	 * 걸리지 않는다.
+	 */
+	public static void onEntityLoad(net.minecraft.world.entity.Entity entity, ServerLevel level) {
+		if (entity instanceof Enderman enderman && enderman.entityTags().contains(SUMMONED_TAG)
+				&& !held(enderman)) {
+			STRAYS.add(enderman);
+		}
+	}
+
+	/** 매 틱 끝. 디스크에서 돌아온 불러온 개체를 지운다. 대개 비어 있어 바로 돌아간다. */
+	public static void sweepStrays(net.minecraft.server.MinecraftServer server) {
+		if (STRAYS.isEmpty()) {
+			return;
+		}
+		List<Enderman> due = List.copyOf(STRAYS);
+		STRAYS.clear();
+		for (Enderman enderman : due) {
+			if (!held(enderman)) {
+				enderman.discard();
+			}
+		}
+	}
+
+	/** 지금 열린 밤 어느 하나의 명단에 들어 있는가. */
+	private static boolean held(Enderman enderman) {
+		for (Set<Enderman> host : NIGHTS.values()) {
+			if (host.contains(enderman)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -361,38 +490,105 @@ public final class TrialNightHost {
 	// ------------------------------------------------------------------ 적대로 만들기
 
 	/**
-	 * 명단을 <b>딱 한 번</b> 고른다. 새로 소환하지 않는다.
+	 * 엔더맨을 <b>새로 불러</b> 명단에 넣는다. 명단이 빈 동안에만 불린다.
 	 *
-	 * <p>고르는 조건이 둘이다 — <b>팀원 아무에게서 {@code radius} 안</b>이고,
-	 * <b>가까운 순으로 {@code maxMobs} 마리까지</b>. 거리는 <b>노릴 수 있는 사람</b>까지만 잰다
-	 * ({@link #huntable}). 관전자 옆에 선 엔더맨을 「가깝다」고 뽑아 봐야 바닐라가 그 틱에
-	 * 분노를 지운다.
+	 * <p>자리는 노릴 수 있는 팀원 하나를 골라 그 사람에게서 {@link #spawnDistance} (21~28칸)
+	 * 떨어진 곳을 굴린다. 그 자리가 <b>모든</b> 팀원에게서 {@code radius} 밖이어야 하고
+	 * ({@link #inReach} 의 반대 — 시험이 보는 그 함수다), 아래가 다 맞아야 선다.
 	 *
-	 * <p>차원 전체를 훑는다. {@code ServerLevel} 에 상자로 좁히는 조회
-	 * ({@code getEntities(EntityTypeTest, AABB, Predicate)})가 26.3 에 <b>없고</b>,
-	 * {@code getEntitiesOfClass} 로 사람마다 상자를 치면 겹치는 자리의 엔더맨이 두 번 나와
-	 * 합치는 일이 새로 생긴다. 어차피 <b>명단이 빌 동안에만</b> 도는 조회라 보통 한 판에 한 번
-	 * 뿐이다 — 전에는 이것을 20초 내내 매 틱 돌렸다.
+	 * <ul>
+	 *   <li><b>이미 올라와 있는 청크</b> — 자리를 고르자고 청크를 불러오지 않는다</li>
+	 *   <li><b>엔드 돌 위</b> — 허공이면 하이트맵이 월드 바닥을 돌려주고, 기둥(흑요석)·포디움
+	 *       (기반암)·사람이 쌓은 블록 위에는 세우지 않는다. 사람 말의 「섬 위 안전한 땅」이다</li>
+	 *   <li><b>몸이 들어갈 빈칸</b> — 엔더맨은 2.9칸이다. 블록 속에 세우면 질식해 죽는다</li>
+	 *   <li><b>월드 보더 안</b> — 최후의 저항이 보더를 좁혀 두었을 수 있다</li>
+	 * </ul>
 	 *
-	 * <p>가까운 순으로 자르는 것이 사람 말의 「20블럭 + 5마리 최대」다. 아무 다섯이나 고르면
-	 * 20칸 끝의 놈이 뽑히고 발밑의 놈이 빠지는 판이 생겨, <b>「가까이 있는 것이 깨어난다」</b>가
-	 * 화면에서 성립하지 않는다.
+	 * <p>모자라면 모자란 대로 둔다. 빈자리를 채우지 않는 규칙(클래스 설명)은 그대로다 — 한
+	 * 마리도 못 세웠을 때만 다음 틱에 다시 시도한다.
+	 *
+	 * <p><b>명단에 먼저 넣고 띄운다.</b> {@code addFreshEntity} 가 그 자리에서
+	 * {@link #onEntityLoad} 를 부르는데, 명단에 없으면 방금 부른 놈을 「돌아온 떠돌이」로 읽는다.
 	 */
-	private static void wake(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host,
+	private static void summon(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host,
 			TrialCatalog.Risk.NightHost risk) {
-		List<Nearby> candidates = new ArrayList<>();
-		for (Enderman enderman : end.getEntities(EntityTypes.ENDERMAN, Enderman::isAlive)) {
-			double distance = nearestSqr(members, enderman);
-			// 시험이 보는 것과 같은 함수로 자른다. 여기에 부등식을 다시 적으면 둘이 갈라진다.
-			if (inReach(distance, risk.radius())) {
-				candidates.add(new Nearby(enderman, distance));
+		List<ServerPlayer> anchors = new ArrayList<>();
+		for (ServerPlayer member : members) {
+			if (huntable(member) && member.level() == end) {
+				anchors.add(member);
 			}
 		}
-		candidates.sort(Comparator.comparingDouble(Nearby::distanceSqr));
-		int wanted = wakeCount(candidates.size(), risk.maxMobs());
-		for (int index = 0; index < wanted; index++) {
-			host.add(candidates.get(index).mob());
+		if (anchors.isEmpty()) {
+			return;
 		}
+		RandomSource random = end.getRandom();
+		List<Vec3> spots = new ArrayList<>();
+		int tries = risk.maxMobs() * SPAWN_TRIES_PER_MOB;
+		for (int attempt = 0; attempt < tries && spots.size() < risk.maxMobs(); attempt++) {
+			ServerPlayer anchor = anchors.get(random.nextInt(anchors.size()));
+			double angle = random.nextDouble() * Math.PI * 2.0;
+			double distance = spawnDistance(random.nextDouble(), risk.radius());
+			Vec3 spot = groundAt(end, anchor.getX() + Math.cos(angle) * distance,
+					anchor.getZ() + Math.sin(angle) * distance);
+			if (spot == null || inReach(nearestSqr(members, spot), risk.radius())
+					|| !end.getWorldBorder().isWithinBounds(spot)
+					|| !end.noCollision(EntityTypes.ENDERMAN.getSpawnAABB(spot.x, spot.y, spot.z))
+					|| crowded(spots, spot)) {
+				continue;
+			}
+			spots.add(spot);
+		}
+		// 천장은 이 한 줄이다 — 시험이 같은 함수로 묻는다.
+		int wanted = wakeCount(spots.size(), risk.maxMobs());
+		for (int index = 0; index < wanted; index++) {
+			Vec3 spot = spots.get(index);
+			Enderman enderman = EntityTypes.ENDERMAN.create(end, EntitySpawnReason.MOB_SUMMONED);
+			if (enderman == null) {
+				return;
+			}
+			enderman.snapTo(spot.x, spot.y, spot.z, random.nextFloat() * 360.0F, 0.0F);
+			enderman.finalizeSpawn(end, end.getCurrentDifficultyAt(BlockPos.containing(spot)),
+					EntitySpawnReason.MOB_SUMMONED, null);
+			enderman.addTag(SUMMONED_TAG);
+			host.add(enderman);
+			if (!end.addFreshEntity(enderman)) {
+				host.remove(enderman);
+			}
+		}
+	}
+
+	/** 이미 고른 자리와 두 칸 안이면 참. 한 칸에 둘이 겹쳐 서면 한 마리로 보인다. */
+	private static boolean crowded(List<Vec3> spots, Vec3 spot) {
+		for (Vec3 taken : spots) {
+			if (taken.distanceToSqr(spot) < 4.0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * 이 자리의 땅 위 한 칸. 세울 수 없으면 {@code null}.
+	 *
+	 * <p>청크를 불러오지 않는다({@code getChunkNow} — {@code TrialEnderPulse} 의 땅 찾기와 같다).
+	 * 꼭대기 블록이 <b>엔드 돌</b>일 때만 땅으로 본다.
+	 */
+	private static @Nullable Vec3 groundAt(ServerLevel end, double x, double z) {
+		int blockX = Mth.floor(x);
+		int blockZ = Mth.floor(z);
+		LevelChunk chunk = end.getChunkSource().getChunkNow(blockX >> 4, blockZ >> 4);
+		if (chunk == null) {
+			return null;
+		}
+		int top = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, blockX, blockZ);
+		// 바닥까지 통째로 허공이면 하이트맵이 월드 바닥을 돌려준다. 거기는 땅이 아니다.
+		if (top < end.getMinY()) {
+			return null;
+		}
+		if (!chunk.getBlockState(new BlockPos(blockX, top, blockZ)).is(Blocks.END_STONE)) {
+			return null;
+		}
+		return new Vec3(blockX + 0.5, top + 1.0, blockZ + 0.5);
 	}
 
 	/**
@@ -408,7 +604,7 @@ public final class TrialNightHost {
 	 * 까닭과 이득은 클래스 설명의 「만료 시각을 매 틱 다시 못 박는 이유」에 있다.
 	 *
 	 * <p>죽었거나 노릴 사람이 없는 놈은 건너뛸 뿐 <b>명단에서 빼지 않는다.</b> 빼면 그놈에게
-	 * {@link #calm} 이 안 가고, 「죽은 줄 알았는데 살아 있었다」 한 번이면 적대가 남는다 —
+	 * {@link #dismiss} 가 안 가고, 「죽은 줄 알았는데 살아 있었다」 한 번이면 적대가 남는다 —
 	 * 명단은 <b>손댄 적이 있는 놈 전부</b>의 목록이어야 한다.
 	 *
 	 * @param calmAt 우리가 푸는 바로 그 틱. 여기까지가 분노의 수명이다
@@ -436,23 +632,16 @@ public final class TrialNightHost {
 		}
 	}
 
-	/** 고를 때 쓰는 한 쌍. 거리를 함께 들어 두어야 정렬하며 매번 다시 재지 않는다. */
-	private record Nearby(Enderman mob, double distanceSqr) {
-	}
-
 	/**
 	 * 노릴 수 있는 팀원 중 가장 가까운 사람까지의 거리(제곱).
 	 *
-	 * <p>노릴 사람이 하나도 없으면 {@link Double#MAX_VALUE} 라 어떤 {@code radius} 로도 안
-	 * 걸린다 — 전부 관전인 팀 옆에서 엔더맨이 깨어나는 일이 없다.
+	 * <p>관전자도 「팀원」이라 함께 잰다 — 관전자 발밑에 불러내도 그 사람에게는 「20블록 밖」이
+	 * 아니다. 노릴 사람이 하나도 없으면 {@link #summon} 이 먼저 돌아간다.
 	 */
-	private static double nearestSqr(List<ServerPlayer> members, Enderman enderman) {
+	private static double nearestSqr(List<ServerPlayer> members, Vec3 spot) {
 		double best = Double.MAX_VALUE;
 		for (ServerPlayer member : members) {
-			if (!huntable(member)) {
-				continue;
-			}
-			best = Math.min(best, enderman.distanceToSqr(member));
+			best = Math.min(best, member.distanceToSqr(spot));
 		}
 		return best;
 	}
@@ -494,7 +683,12 @@ public final class TrialNightHost {
 	// ------------------------------------------------------------------ 되돌리기
 
 	/**
-	 * 명단을 통째로 푼다. <b>조건을 달지 말 것.</b>
+	 * 명단을 통째로 풀고 <b>지운다</b>. <b>조건을 달지 말 것.</b>
+	 *
+	 * <p>2026-10-18 부터 명단은 불러온 개체뿐이라 푼 다음 {@code discard} 한다. 죽음이 아니라
+	 * 제거라 드롭도 경험치도 남지 않는다(사람 결정 — 「20초가 지나면 소환한 다섯은 사라진다」).
+	 * 이미 죽었거나 청크와 함께 내려간 개체에 걸어도 해가 없고, 내려간 개체의 디스크 사본은
+	 * {@link #onEntityLoad} 가 다시 올라올 때 거둔다.
 	 *
 	 * <p>{@code NeutralMob.stopBeingAngry} 하나가 네 가지를 한꺼번에 끈다 — 맞은 기억
 	 * ({@code lastHurtByMob}), 분노 대상, 표적, 분노 만료 시각. 하나만 끄면 나머지에서 되살아
@@ -505,11 +699,35 @@ public final class TrialNightHost {
 	 * 않으므로 청크가 내려갔는지 알 필요도 없다 — 「못 찾아서 예외가 나고 그 틱의 다른 시련까지
 	 * 멈춘다」는 길이 이 함수에는 없다.
 	 */
-	private static void calm(Set<Enderman> host) {
+	private static void dismiss(Set<Enderman> host) {
 		for (Enderman enderman : host) {
 			enderman.stopBeingAngry();
+			enderman.discard();
 		}
 		host.clear();
+	}
+
+	/**
+	 * 사라지는 자리에 포털 입자를 한 번 뿌린다. 아무 일 없이 몸이 꺼지면 버그로 보인다.
+	 *
+	 * <p>살아 있는 놈만, 한 마리에 패킷 한 장이다(다섯이면 다섯 장). {@link #flare} 와 같은 긴
+	 * 형태로 보낸다.
+	 */
+	private static void vanish(ServerLevel end, Set<Enderman> host) {
+		int packets = flarePackets(host.size());
+		int drawn = 0;
+		for (Enderman enderman : host) {
+			if (drawn >= packets) {
+				break;
+			}
+			if (!enderman.isAlive() || enderman.level() != end) {
+				continue;
+			}
+			end.sendParticles(ParticleTypes.PORTAL, true, false,
+					enderman.getX(), enderman.getY() + 1.4, enderman.getZ(),
+					VANISH_PARTICLES, 0.3, 0.8, 0.3, 0.4);
+			drawn++;
+		}
 	}
 
 	// ------------------------------------------------------------------ 알리기
@@ -599,10 +817,10 @@ public final class TrialNightHost {
 	}
 
 	/**
-	 * 범위 안에 {@code candidates} 마리가 있을 때 실제로 깨우는 수.
+	 * 설 자리를 {@code candidates} 곳 찾았을 때 실제로 불러오는 수.
 	 *
-	 * <p>「최대 몇 마리인가」를 <b>숫자로 물을 수 있는</b> 유일한 자리다. 엔드의 엔더맨 수는
-	 * 우리가 정하지 않으므로, 여기가 없으면 「사람이 정한 다섯이 지켜지는가」에 답이 없다.
+	 * <p>「최대 몇 마리인가」를 <b>숫자로 물을 수 있는</b> 유일한 자리다. 이름은 「깨우던」 때의
+	 * 것이다(2026-10-18 전에는 범위 안의 엔더맨 수가 여기로 들어왔다).
 	 */
 	static int wakeCount(int candidates, int maxMobs) {
 		if (candidates <= 0 || maxMobs <= 0) {
@@ -622,6 +840,18 @@ public final class TrialNightHost {
 	 */
 	static boolean inReach(double distanceSqr, double radius) {
 		return radius > 0.0 && distanceSqr <= radius * radius;
+	}
+
+	/**
+	 * 기준 팀원에게서 몇 칸 떨어진 곳에 부르는가. {@code roll} 은 0~1 의 굴림이다.
+	 *
+	 * <p>{@code radius + 1} 부터 {@code radius + SPAWN_BAND} 까지 — 지금 카드로 21~28칸이다.
+	 * 경계에서 한 칸 띄우는 것은 블록 가운데로 옮기며 생기는 반 칸 오차가 「밖」을 「안」으로
+	 * 만들지 않게 하려는 것이고, 그래도 다른 팀원에게 가까우면 {@link #summon} 이 버린다.
+	 */
+	static double spawnDistance(double roll, double radius) {
+		double clamped = Math.min(1.0, Math.max(0.0, roll));
+		return radius + 1.0 + clamped * (SPAWN_BAND - 1.0);
 	}
 
 	/**

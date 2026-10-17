@@ -931,7 +931,12 @@ class DragonLastStandPatternsTest {
 
 	// ------------------------------------------------------------------ ③ 상시 번개
 
-	/** 사람이 정한 값 — <b>열 개</b> · 반경 2.55(낙뢰의 85%) · 피해 35(낙뢰와 같은 값). */
+	/**
+	 * 사람이 정한 값 — <b>열 개</b> · 반경 2.55(낙뢰의 85%) · 피해 <b>24.5</b>.
+	 *
+	 * <p>피해는 전에 「낙뢰」와 같은 35 였고 2026-10-18 에 사람이 상시 번개만 30% 내렸다(「2페이지 상시
+	 * 번개 딜 지금보다 30프로 내리고 싶어」). 카드 「낙뢰」는 35 그대로라 <b>둘이 같아지면 사고다.</b>
+	 */
 	@Test
 	void 번개가_사람이_정한_값을_지킨다() {
 		assertEquals(10, DragonLastStandPatterns.LIGHTNING_COUNT, "사람이 5 → 10 으로 올렸다");
@@ -941,21 +946,26 @@ class DragonLastStandPatternsTest {
 				(TrialCatalog.Risk.DelayedStrike) storm.risks().getFirst();
 		assertEquals(strike.radius() * 0.85, DragonLastStandPatterns.LIGHTNING_RADIUS, 0.0001,
 				"「낙뢰」의 3칸보다 15% 작아야 한다 — 한쪽을 고치면 다른 쪽도 함께 볼 것");
-		assertEquals(strike.damage(), DragonLastStand.LIGHTNING_DAMAGE, 0.0001F,
-				"「낙뢰」와 같은 값이어야 한다");
+		assertEquals(24.5F, DragonLastStand.LIGHTNING_DAMAGE, 0.0001F, "사람이 35 에서 30% 내렸다");
+		assertNotEquals(strike.damage(), DragonLastStand.LIGHTNING_DAMAGE, 0.0001F,
+				"「낙뢰」와 같은 값으로 돌아갔다 — 사람은 2페이지 번개만 내리라고 했다");
 		assertEquals(TrialCatalog.Risk.Impact.LIGHTNING, strike.impact(),
 				"「낙뢰와 같은 방식」이라 연출도 같아야 한다");
 	}
 
-	/** 피해원도 「낙뢰」와 같다. 무장 기준 세 대에 전멸에 그대로 얹힌다. */
+	/**
+	 * 피해원은 「낙뢰」와 같다. ⚠ 2026-10-18 부터 값이 24.5 라 <b>무장 기준 세 대에 전멸에서 빠졌다</b> —
+	 * 한 대 3.92(30% 가 아니라 약 43% 줄었다. 방어도 셈이 피해에 따라 휜다), 전멸은 여섯 대다.
+	 */
 	@Test
 	void 번개_피해원이_낙뢰와_같다() {
 		assertTrue(classBytes().contains("lightningBolt"),
 				"「낙뢰와 같은 방식」이면 피해원도 같아야 한다");
 		float perHit = GearedDamage.afterGear(DragonLastStand.LIGHTNING_DAMAGE,
 				GearedDamage.Source.LIGHTNING_BOLT);
-		assertTrue(GearedDamage.wipesInThree(perHit),
-				"무장 기준 세 대에 전멸이어야 한다 — 실제 한 대 " + perHit);
+		assertEquals(3.92F, perHit, 0.02F, "무장 기준 한 대");
+		assertFalse(GearedDamage.wipesInThree(perHit),
+				"세 대에 전멸이면 사람이 내린 값이 다시 올라간 것이다 — 실제 한 대 " + perHit);
 	}
 
 	/**
@@ -974,8 +984,10 @@ class DragonLastStandPatternsTest {
 	 * ⚠⚠ <b>겹침을 허용한다 — 그래서 {@code break} 가 유일한 안전장치다.</b>
 	 *
 	 * <p>사람이 「겹침을 허용함」을 골랐다. 그러면 <b>3겹 자리가 거의 매 볼리에 생기고</b>
-	 * (20만 볼리에서 92.43%) 그 자리에 서 있으면 무장 기준 20.79 로 전멸이다. 그것이 실제로
-	 * 일어나지 않는 이유는 {@code strikeLightning} 이 <b>첫 발에서 빠져나오기</b> 때문뿐이다.
+	 * (20만 볼리에서 92.43%) 피해가 35 이던 때는 그 자리에 서 있으면 무장 기준 20.79 로 전멸이었다.
+	 * 그것이 일어나지 않는 이유는 {@code strikeLightning} 이 <b>첫 발에서 빠져나오기</b> 때문뿐이다.
+	 * 2026-10-18 에 피해가 24.5 로 내려 3겹이어도 11.77 이지만, 다른 패턴과 한 틱에 겹치는 몫이
+	 * 세 배가 되는 것은 그대로라 그 한 줄을 지우지 말 것.
 	 */
 	@Test
 	void 겹침을_허용하고_한_사람은_한_발만_받는다() {
@@ -986,30 +998,32 @@ class DragonLastStandPatternsTest {
 				"겹침 금지 목록에 들어가면 열 곳이 조용히 몇 곳으로 줄고 「낙뢰」까지 반토막 난다");
 		assertFalse(bytes.contains("releaseSpots"),
 				"양쪽 다 끈 상태여야 한다 — 한쪽만 되돌리면 겹침은 남고 자리만 줄어든다");
-		// break 가 살아 있는지. 세 발 맞으면 전멸인 값이라 이 한 줄이 안전장치 전부다.
+		// 2026-10-18 에 24.5 로 내려 세 발 겹침도 전멸이 아니다. 다시 올라가 세 발이 전멸이 되면
+		// break 한 줄이 다시 안전장치 전부가 된다 — 그때 위의 경고를 다시 쓸 것.
 		float perHit = GearedDamage.afterGear(DragonLastStand.LIGHTNING_DAMAGE,
 				GearedDamage.Source.LIGHTNING_BOLT);
-		assertTrue(perHit * 3.0F >= GearedDamage.TEAM_HEALTH,
-				"세 발이 전멸이 아니면 위의 경고를 다시 쓸 것");
+		assertTrue(perHit * 3.0F < GearedDamage.TEAM_HEALTH,
+				"세 발이 전멸이면 위의 경고를 다시 쓸 것 — 사람이 2026-10-18 에 24.5 로 내렸다");
 		assertTrue(perHit * 2.0F < GearedDamage.TEAM_HEALTH, "두 발로는 안 죽는다");
 	}
 
 	/**
-	 * ⚠ 열 곳이 전부 <b>마지막 안전지대(반경 12) 안</b>에 든다.
+	 * ⚠ 열 곳이 전부 <b>마지막 안전지대(반변 18 보더의 내접원) 안</b>에 든다.
 	 *
-	 * <p>보더는 정사각형이라 모서리가 17칸이지만 <b>내접원(12)</b>으로 재야 안전하다. 밖에
+	 * <p>보더는 정사각형이라 모서리가 25칸이지만 <b>내접원(18)</b>으로 재야 안전하다. 밖에
 	 * 떨어지면 「지대에서 나가야 피할 수 있는 번개」가 되어 두 장치가 서로를 죽인다.
 	 *
 	 * <p>자리 굴리는 반경을 <b>지대 − 반경</b>으로 적어 두었으므로 이것은 구조적으로 참이다.
-	 * 시험은 그 식이 지켜지는지와 실제 굴림이 그 안에 드는지를 함께 본다.
+	 * 시험은 그 식이 지켜지는지와 실제 굴림이 그 안에 드는지를 함께 본다. ⚠ 2026-10-18 에 끝값이
+	 * 12 → 18 이 되어 9.45 → 15.45 다 — 사람이 「상시 번개 자리만 18 을 따라 넓힌다」를 골랐다.
 	 */
 	@Test
-	void 번개_열_곳이_반경_12_안에_든다() {
+	void 번개_열_곳이_마지막_지대_안에_든다() {
 		double zone = DragonLastStandZone.RADII[DragonLastStandZone.RADII.length - 1];
 		assertEquals(zone - DragonLastStandPatterns.LIGHTNING_RADIUS,
 				DragonLastStandPatterns.LIGHTNING_FIELD_RADIUS, 1.0E-9,
 				"자리 반경을 지대에서 뽑지 않으면 지대를 고칠 때 한쪽만 따라간다");
-		assertEquals(9.45, DragonLastStandPatterns.LIGHTNING_FIELD_RADIUS, 1.0E-9);
+		assertEquals(15.45, DragonLastStandPatterns.LIGHTNING_FIELD_RADIUS, 1.0E-9);
 		for (int one = 0; one <= 40; one++) {
 			for (int other = 0; other <= 40; other++) {
 				Vec3 offset = DragonLastStandPatterns.lightningOffset(one / 40.0, other / 40.0);
@@ -1034,7 +1048,10 @@ class DragonLastStandPatternsTest {
 	}
 
 	/**
-	 * ⚠ 번개가 <b>패턴이 아니다.</b> 진입 3초 뒤부터 <b>7.8초마다</b> 저 혼자 돈다.
+	 * ⚠ 번개가 <b>패턴이 아니다.</b> 진입 3초 뒤부터 <b>10초마다</b> 저 혼자 돈다(2026-10-18 에 7.8초 →
+	 * 10초. 사람 말 「2페이지 번개 쿨타임을 10초로」).
+	 *
+	 * <h2>(옛 기록) 7.8초이던 까닭</h2>
 	 *
 	 * <p>사람 말: <b>「번개 주기를 30프로 내리고」</b>. 「주기를 내린다」가 두 뜻으로 읽히는데
 	 * 확인한 답이 <b>「덜 자주」</b>였다 — 120 × 1.3 = <b>156</b>, 6초 → <b>7.8초</b>다.
@@ -1054,20 +1071,25 @@ class DragonLastStandPatternsTest {
 	 * </ol>
 	 *
 	 * <p>개수(열 곳)는 <b>여전히 같은 값</b>이다. 바꾸라고 한 것은 주기 하나뿐이다.
+	 *
+	 * <h2>⚠ 2026-10-18 — 두 값이 <b>따로</b> 10초가 됐다</h2>
+	 *
+	 * <p>같은 날 사람이 「낙뢰」 카드 주기도 6초에서 <b>10초(200틱)</b>로 정해 지금은 두 값이 같다. 우연이
+	 * 아니라 사람이 둘을 <b>각각</b> 10초로 정한 것이다. 그래도 한 값에 묶인 것은 아니라(피해는 35 · 24.5 로
+	 * 갈라져 있다) 「같은가」도 「다른가」도 묻지 않고 <b>각자의 값</b>으로 붙든다.
+	 *
+	 * <p>⚠ <b>바닥이 깨끗한 틈(130틱)이 가장 짧은 패턴(100틱)보다 길어졌다</b> — 번개를 한 번도 안 보고
+	 * 지나가는 날개·브레스 한 판이 생긴다. 사람이 10초를 정해 받아들인 것이라 부등호를 뒤집어 붙든다.
 	 */
 	@Test
-	void 번개가_7_8초마다_저_혼자_돈다() {
-		assertEquals(156, DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS, "7.8초다");
+	void 번개가_10초마다_저_혼자_돈다() {
+		assertEquals(200, DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS, "10초다 — 사람이 정한 값이다");
 		TrialCatalog.Trial storm = TrialCatalog.byId("sharedfate:lightning_storm");
 		assertNotNull(storm);
 		TrialCatalog.Risk.DelayedStrike strike =
 				(TrialCatalog.Risk.DelayedStrike) storm.risks().getFirst();
-		assertEquals(120, strike.interval(),
-				"「낙뢰」 카드의 주기가 바뀌었다 — 사람이 내리라고 한 것은 최후의 저항 쪽뿐이고 "
-						+ "이 카드는 6초 그대로다");
-		assertNotEquals(strike.interval(), DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS,
-				"「낙뢰」와 같은 값으로 돌아갔다 — 둘은 일부러 갈라진 값이다. 「낙뢰」를 따라 "
-						+ "올렸거나 이쪽을 되돌렸다는 뜻이고, 둘 다 사람이 말한 것과 다르다");
+		assertEquals(200, strike.interval(),
+				"「낙뢰」 카드의 주기가 바뀌었다 — 사람이 2026-10-18 에 10초(200틱)로 정했다");
 		assertEquals(strike.count(), DragonLastStandPatterns.LIGHTNING_COUNT,
 				"「낙뢰」의 개수와 갈렸다 — 사람이 바꾸라고 한 것은 주기뿐이다");
 		// 한 볼리가 바닥을 쓰는 시간. 예고 60 + 여운 10 이다.
@@ -1082,17 +1104,18 @@ class DragonLastStandPatternsTest {
 		// 숫자로 다시 뽑는다 — 틈이 가장 짧은 패턴보다 길어지면 그 패턴을 통째로 번개 없이
 		// 지나가는 길이 생기고, 그때 번개는 「언제나 있는 배경」이 아니다.
 		int quiet = DragonLastStandPatterns.LIGHTNING_PERIOD_TICKS - busy;
-		assertEquals(86, quiet, "156 − 70 이다(4.3초)");
+		assertEquals(130, quiet, "200 − 70 이다(6.5초)");
 		int shortestPattern = Integer.MAX_VALUE;
 		for (DragonLastStand.Pattern pattern : DragonLastStand.Pattern.values()) {
 			shortestPattern = Math.min(shortestPattern, pattern.durationTicks());
 		}
 		assertEquals(100, shortestPattern,
-				"가장 짧은 패턴이 100틱이다 — 2026-10-04 부터 날개 · 부채꼴(80 + 20) · 십자(60 + 30 + 10)가 "
-						+ "셋 다 100틱이다");
-		assertTrue(quiet < shortestPattern,
-				"바닥이 깨끗한 틈이 가장 짧은 패턴보다 길다 — 번개를 한 번도 안 보고 지나가는 "
-						+ "패턴이 생기고, 그때는 「계속 터진다」가 아니라 「가끔 온다」다: 틈 "
+				"가장 짧은 패턴이 100틱이다 — 날개 · 부채꼴(80 + 20)이 100틱이다(십자는 2026-10-18 부터 160)");
+		// ⚠ 전에는 quiet < shortestPattern 을 붙들었다(「번개를 한 번도 안 보고 지나가는 패턴이
+		// 없다」). 사람이 10초를 정해 그 선을 알고 넘었으므로 거꾸로 붙든다 — 다시 뒤집히면 주기가
+		// 사람이 정한 값에서 움직인 것이다.
+		assertTrue(quiet > shortestPattern,
+				"사람이 2026-10-18 에 받아들인 「번개 없이 지나가는 한 판」이 사라졌다: 틈 "
 						+ quiet + "틱 대 패턴 " + shortestPattern + "틱");
 	}
 
@@ -1598,16 +1621,17 @@ class DragonLastStandPatternsTest {
 	// ------------------------------------------------------------------ ④ 십자 균열
 
 	/**
-	 * 사람이 정한 값 — 폭 3 · <b>두 회차 · 회차마다 십자 둘</b> · 3초 예고 · 1.5초 간격.
+	 * 사람이 정한 값 — 폭 3 · <b>네 회차 · 회차마다 십자 둘</b> · 3초 예고 · 1.5초 간격.
 	 *
 	 * <p>회차는 처음 셋(「3번 반복하는 패턴」)이었고 2026-10-04 에 사람이 <b>「그 두 십자를 한번에
-	 * 같이 발동시켜. 그리고 다음에도 두 개 같이 터지고」</b>라고 해서 둘 · 둘이다. 예고 구조(첫 3초 ·
-	 * 다음 1.5초)는 바꾸라고 하지 않아 그대로다.
+	 * 같이 발동시켜. 그리고 다음에도 두 개 같이 터지고」</b>라고 해서 둘 · 둘이었다. 2026-10-18 에
+	 * <b>「2번에서 4번으로」</b>가 되어 넷 · 둘이다. 예고 구조(첫 3초 · 다음 1.5초)는 바꾸라고 하지 않아
+	 * 그대로 이어 붙였다.
 	 */
 	@Test
-	void 십자는_폭_3에_두_회차_둘씩이다() {
+	void 십자는_폭_3에_네_회차_둘씩이다() {
 		assertEquals(3.0, DragonLastStandPatterns.CROSS_WIDTH, 1.0E-9, "사람이 정한 값이다");
-		assertEquals(2, DragonLastStandPatterns.CROSS_ROUNDS, "사람이 정한 값이다 — 셋에서 둘로");
+		assertEquals(4, DragonLastStandPatterns.CROSS_ROUNDS, "사람이 정한 값이다 — 2026-10-18 에 둘에서 넷으로");
 		assertEquals(2, DragonLastStandPatterns.CROSSES_PER_ROUND, "「그 두 십자를 한번에」다");
 		assertEquals(60, DragonLastStandPatterns.CROSS_FIRST_WARN_TICKS, "3초다 — 그대로다");
 		assertEquals(30, DragonLastStandPatterns.CROSS_GAP_TICKS, "1.5초다 — 그대로다");
@@ -1616,24 +1640,36 @@ class DragonLastStandPatternsTest {
 	}
 
 	/**
-	 * ⚠⚠ <b>네 십자가 모두 다른 모양이고, 한 회차 안의 둘은 45도 간격이다.</b>
+	 * ⚠⚠ <b>한 회차 안의 십자 넷이 모두 다른 모양이고 45도 간격이다. 이웃 회차는 22.5도 어긋난다.</b>
 	 *
 	 * <p>십자는 90도 대칭이므로 같은 모양인지는 90 으로 나눈 나머지로 본다. 처음에 사람이 「셋이 다
 	 * 다르게」를 골랐던 그 뜻(0 · 45 · 22.5)이 넷(+67.5)으로 이어진다. 그리고 바닥 면이 팔 여덟을
 	 * 45도마다 깔고 가운데를 팔각형으로 맞물리므로 <b>한 회차 안의 간격이 정확히 45도</b>여야 한다 —
 	 * 어긋나면 면이 판정과 갈린다.
+	 *
+	 * <p>2026-10-18 에 네 회차가 되면서 앞의 두 회차를 <b>되풀이</b>한다({@code A → B → A → B}). 한 회차의
+	 * 꼴은 45도마다 되풀이되므로 이웃 회차가 벌어질 수 있는 가장 큰 값이 22.5도이고, 모든 이음매가 그
+	 * 값이라야 「방금 터진 자리가 다음에 또 오는」 넓이가 가장 작다(이유는 {@code CROSS_ANGLES} 주석).
 	 */
 	@Test
-	void 십자_네_각도가_다_다르고_회차마다_45도_간격이다() {
+	void 십자_각도가_회차마다_45도_간격이고_이웃_회차는_22_5도_어긋난다() {
 		assertEquals(DragonLastStandPatterns.CROSS_ROUNDS,
 				DragonLastStandPatterns.CROSS_ANGLES.length,
-				"각도 배열과 회차 수가 갈라지면 둘째 회차가 배열 밖을 짚는다");
+				"각도 배열과 회차 수가 갈라지면 뒤 회차가 배열 밖을 짚는다");
 		assertArrayEquals(new double[] {0.0, 45.0}, DragonLastStandPatterns.CROSS_ANGLES[0], 1.0E-9,
 				"첫 회차 — + 와 × 를 함께");
 		assertArrayEquals(new double[] {22.5, 67.5}, DragonLastStandPatterns.CROSS_ANGLES[1], 1.0E-9,
 				"둘째 회차 — 첫 회차의 정확히 사이");
+		for (int round = 1; round < DragonLastStandPatterns.CROSS_ANGLES.length; round++) {
+			double previous = DragonLastStandPatterns.CROSS_ANGLES[round - 1][0];
+			double current = DragonLastStandPatterns.CROSS_ANGLES[round][0];
+			// 한 회차의 꼴은 45도마다 되풀이된다 — 45 로 나눈 나머지의 원둘레 거리가 어긋남이다.
+			double shift = Math.abs(((current - previous) % 45.0 + 45.0) % 45.0);
+			assertEquals(22.5, Math.min(shift, 45.0 - shift), 1.0E-9,
+					round + "번째 회차가 앞 회차와 22.5도 어긋나지 않는다 — 같은 자리가 연달아 온다");
+		}
 		Set<Double> shapes = new java.util.HashSet<>();
-		for (double[] round : DragonLastStandPatterns.CROSS_ANGLES) {
+		for (double[] round : java.util.Arrays.copyOf(DragonLastStandPatterns.CROSS_ANGLES, 2)) {
 			assertEquals(DragonLastStandPatterns.CROSSES_PER_ROUND, round.length,
 					"회차마다 십자 수가 같아야 한다");
 			for (int index = 1; index < round.length; index++) {
@@ -1651,10 +1687,12 @@ class DragonLastStandPatternsTest {
 
 	/** 터지는 시각과 예고가 값에서 나온다. 터지는 틱에 다음 예고가 <b>끊기지 않고</b> 시작한다. */
 	@Test
-	void 십자가_60_90틱에_터진다() {
+	void 십자가_60_90_120_150틱에_터진다() {
 		assertEquals(60, DragonLastStandPatterns.crossFireStep(0));
 		assertEquals(90, DragonLastStandPatterns.crossFireStep(1));
-		assertEquals(100, DragonLastStandPatterns.crossDurationTicks(), "60 + 30 + 여운 10 이다");
+		assertEquals(120, DragonLastStandPatterns.crossFireStep(2));
+		assertEquals(150, DragonLastStandPatterns.crossFireStep(3));
+		assertEquals(160, DragonLastStandPatterns.crossDurationTicks(), "60 + 30 × 3 + 여운 10 이다");
 
 		// 터지는 틱마다 정확히 한 회차가 터진다.
 		for (int round = 0; round < DragonLastStandPatterns.CROSS_ROUNDS; round++) {
@@ -1663,17 +1701,20 @@ class DragonLastStandPatternsTest {
 		}
 		assertEquals(-1, DragonLastStandPatterns.crossFiredRound(59));
 		assertEquals(-1, DragonLastStandPatterns.crossFiredRound(91));
-		assertEquals(-1, DragonLastStandPatterns.crossFiredRound(120), "셋째 회차는 없다");
+		assertEquals(-1, DragonLastStandPatterns.crossFiredRound(151));
+		assertEquals(-1, DragonLastStandPatterns.crossFiredRound(180), "다섯째 회차는 없다");
 
-		// 표식이 한 틱도 끊기지 않는다. 0..89 는 늘 누군가를 예고하고 있다.
-		for (int step = 0; step < 90; step++) {
+		// 표식이 한 틱도 끊기지 않는다. 0..149 는 늘 누군가를 예고하고 있다.
+		for (int step = 0; step < 150; step++) {
 			assertTrue(DragonLastStandPatterns.crossPendingRound(step) >= 0,
 					step + "틱에 예고 중인 회차가 없다 — 1.5초가 쉬는 시간으로 읽힌다");
 		}
 		assertEquals(0, DragonLastStandPatterns.crossPendingRound(0));
 		assertEquals(1, DragonLastStandPatterns.crossPendingRound(60),
 				"첫 회차가 터지는 그 틱에 둘째 예고가 시작해야 한다");
-		assertEquals(-1, DragonLastStandPatterns.crossPendingRound(90),
+		assertEquals(3, DragonLastStandPatterns.crossPendingRound(120),
+				"셋째가 터지는 그 틱에 넷째 예고가 시작해야 한다");
+		assertEquals(-1, DragonLastStandPatterns.crossPendingRound(150),
 				"마지막이 터진 뒤에는 예고할 것이 없다");
 
 		assertEquals(60, DragonLastStandPatterns.crossWarnTicks(0), "첫 예고는 3초다");
@@ -1778,8 +1819,9 @@ class DragonLastStandPatternsTest {
 	 * 「단순 피하기」라 <b>지대가 좁아져도 피할 곳이 남는다.</b>
 	 *
 	 * <p>브레스에 축소 잠금이 붙은 까닭은 「피할 곳이 두 번 사라진다」였다. 이 패턴에 그 잠금을
-	 * 걸지 않은 근거가 <b>여기서 재어지는 것</b>이다 — 마지막 지대(반변 12)의 내접원 절반(6칸)에서
-	 * 안전한 방향이 남는지 회차마다 훑는다.
+	 * 걸지 않은 근거가 <b>여기서 재어지는 것</b>이다 — 패턴 중심 원(반경 12)의 절반(6칸)에서
+	 * 안전한 방향이 남는지 회차마다 훑는다. ⚠ 2026-10-18 에 안전지대 끝값이 18 이 됐지만 사람이
+	 * 「십자 균열 셈은 옛 12 기준에 묶는다」를 골라 {@code PATTERN_CORE_RADIUS} 로 잰다.
 	 *
 	 * <p>⚠ 2026-10-04 에 십자가 둘씩 터지게 되어 <b>그 원에서 안전한 몫이 반 넘게에서 3분의 1 남짓</b>
 	 * (첫 회차 128도 · 둘째 136도)으로 줄었다. 쐐기 폭이 반경 6칸에서 1.7칸이라 사람 폭(0.6)보다
@@ -1787,7 +1829,7 @@ class DragonLastStandPatternsTest {
 	 */
 	@Test
 	void 십자는_마지막_지대에서도_피할_곳이_있다() {
-		double zone = DragonLastStandZone.RADII[DragonLastStandZone.RADII.length - 1];
+		double zone = DragonLastStandZone.PATTERN_CORE_RADIUS;
 		for (double[] round : DragonLastStandPatterns.CROSS_ANGLES) {
 			int safe = 0;
 			for (double angle = 0.0; angle < 360.0; angle += 1.0) {
@@ -1902,8 +1944,9 @@ class DragonLastStandPatternsTest {
 	 *
 	 * <p>12칸 낙하는 바닐라 피해 <b>9</b> 이고(맨몸 9 — 사람에게 알렸다), {@code minecraft:fall} 이
 	 * {@code #bypasses_armor} 라 다이아 풀셋이 한 점도 안 깎아 무장 기준 <b>3.24</b> 다. 그 3.24 는
-	 * {@code TrialRisks.worstCaseTickDamage} 가 <b>세지 않는 피해</b>이고, 한 판에 최대 두 대라 면제가
-	 * 빠지면 두 대가 <b>20.02 — 팀 체력 20 을 넘는다.</b> 셈에는 13.54 만 들어온다.
+	 * {@code TrialRisks.worstCaseTickDamage} 가 <b>세지 않는 피해</b>이고, 면제가 빠지면 두 대가
+	 * <b>20.02 — 팀 체력 20 을 넘는다.</b> 셈에는 13.54 만 들어온다. (2026-10-18 부터 한 판에 최대 네
+	 * 대라 세 대부터는 면제가 있어도 전멸이다 — 사람이 받아들였다.)
 	 *
 	 * <p>쓰는 것은 바닐라가 바로 이 일을 위해 들고 있는 장치다 —
 	 * {@code LivingEntity.setIgnoreFallDamageFromCurrentImpulse(boolean, Vec3)} 이고, 면제되는 양이
@@ -1929,12 +1972,17 @@ class DragonLastStandPatternsTest {
 		float gearedFall = rawFall * (1.0F - GearedDamage.PROTECTION_EPF / 25.0F);
 		assertEquals(3.24F, gearedFall, 0.01F,
 				"낙하는 방어도를 지나가므로 보호 IV 만 듣는다 — 9 × 0.36 이다");
-		// 한 판에 최대 두 대다(회차가 둘이고 한 회차에 한 번).
-		assertEquals(2, DragonLastStandPatterns.CROSS_ROUNDS);
-		float counted = perHit * DragonLastStandPatterns.CROSS_ROUNDS;
+		// ⚠ 2026-10-18 부터 한 판에 최대 네 대다(회차가 넷이고 한 회차에 한 번). 세 대부터는 면제가
+		// 있어도 전멸이다 — 사람이 받아들였다. 이 면제가 지키는 것은 「두 대까지는 산다」다.
+		assertEquals(4, DragonLastStandPatterns.CROSS_ROUNDS);
+		int survivable = 2;
+		float counted = perHit * survivable;
 		assertEquals(13.54F, counted, 0.01F, "적힌 값으로 잡아 둔 두 대가 13.54 다");
 		assertTrue(counted < GearedDamage.TEAM_HEALTH, "셈으로는 두 대에 안 죽는다");
-		float uncounted = (perHit + gearedFall) * DragonLastStandPatterns.CROSS_ROUNDS;
+		assertTrue(perHit * DragonLastStandPatterns.CROSS_ROUNDS > GearedDamage.TEAM_HEALTH,
+				"네 대를 다 맞으면 전멸이다 — 사람이 2026-10-18 에 받아들였다. 이 부등호가 뒤집혔으면 "
+						+ "CROSS_ROUNDS 의 경고를 다시 쓸 것");
+		float uncounted = (perHit + gearedFall) * survivable;
 		assertEquals(20.02F, uncounted, 0.02F,
 				"면제가 빠지면 두 번 다 맞은 사람이 20.02 를 받는다 — 셈 밖의 낙하가 팀을 끝낸다");
 		assertTrue(uncounted > GearedDamage.TEAM_HEALTH,

@@ -22,11 +22,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <b>웅크리는 동안만</b> 달리기 속도의 정해진 배수로 움직이게 한다.
  *
  * <pre>{@code
- * { "type": "sneak_speed", "sprint_multiplier": 1.35 }
+ * { "type": "sneak_speed", "sprint_multiplier": 1.5 }
  * }</pre>
  *
- * <p>{@code sprint_multiplier} 가 1.35 이면 웅크린 채 움직이는 속도가 <b>같은 순간의 달리기
- * 속도의 1.35배</b>가 된다. 서서 걷는 속도는 이 효과가 건드리지 않는다 — 웅크리지 않는 동안에는
+ * <p>{@code sprint_multiplier} 가 1.5 이면 웅크린 채 움직이는 속도가 <b>같은 순간의 달리기
+ * 속도의 1.5배</b>가 된다. 서서 걷는 속도는 이 효과가 건드리지 않는다 — 웅크리지 않는 동안에는
  * 수정자가 아예 붙어 있지 않기 때문이다. 그래서 같은 증강에 적힌 「서서 걷기 감소」 같은 대가와
  * 그대로 나란히 쓸 수 있다.
  *
@@ -52,7 +52,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 수정자를 뺀 {@code movement_speed} 에 달리기 배수를 곱한 값이라, 같은 증강의 대가든 다른
  * 증강의 이동 속도 증감이든 신속 물약이든 <b>모두 기준 쪽에도 똑같이 들어간다</b>. 즉 「웅크림
  * 속도 = 그 순간 달리기 속도 × {@code sprint_multiplier}」가 언제나 성립한다. 대가로 걷기가
- * 10% 느려졌다면 달리기도 10% 느려져 있고, 웅크림 속도는 그 느려진 달리기의 1.35배다.
+ * 10% 느려졌다면 달리기도 10% 느려져 있고, 웅크림 속도는 그 느려진 달리기의 1.5배다.
  *
  * <h2>웅크린 채로 달릴 수 있다</h2>
  * <p>26.2 의 {@code LocalPlayer.canStartSprinting} 은 {@code isMovingSlowly()} 면 달리기를
@@ -175,7 +175,7 @@ public final class SneakSpeedEffect implements PerkEffect {
 	/**
 	 * 그 값으로 수정자를 걸었을 때 웅크림 속도가 달리기 속도의 몇 배가 되는가.
 	 *
-	 * <p>{@link #crouchModifierAmount} 의 역이다. 시험이 「정말 1.35배인가」를 이쪽으로 확인한다.
+	 * <p>{@link #crouchModifierAmount} 의 역이다. 시험이 「정말 1.5배인가」를 이쪽으로 확인한다.
 	 */
 	public static double crouchSpeedRatio(double amount, double sneakingSpeed,
 			boolean sprinting, double sprintFactor) {

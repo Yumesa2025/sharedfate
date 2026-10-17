@@ -378,7 +378,8 @@ class TeamManagerTest {
 		state.maxHealth = Float.NaN;
 		state.health = Float.POSITIVE_INFINITY;
 		state.absorption = Float.NaN;
-		state.foodLevel = 100;
+		// 「먹방」 팀의 허기는 100 까지 저장되므로 그 위만 손상으로 본다.
+		state.foodLevel = 150;
 		state.saturation = -2.0F;
 		state.totalExperience = -10;
 		state.xpProgress = Float.NaN;
@@ -388,7 +389,7 @@ class TeamManagerTest {
 		assertEquals(40.0F, state.maxHealth);
 		assertEquals(40.0F, state.health);
 		assertEquals(0.0F, state.absorption);
-		assertEquals(20, state.foodLevel);
+		assertEquals(100, state.foodLevel);
 		assertEquals(0.0F, state.saturation);
 		assertEquals(0, state.totalExperience);
 		assertEquals(0.0F, state.xpProgress);

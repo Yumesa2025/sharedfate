@@ -5,6 +5,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.sharedfate.perk.PendingOffer;
+import com.sharedfate.perk.PerkFoodCapacity;
 import com.sharedfate.perk.PerkMilestones;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -326,9 +327,11 @@ public class TeamState {
 		this.baseMaxHealth = sanitizeMaximum(this.baseMaxHealth, safeMaximum);
 		health = Float.isFinite(health) ? Math.max(0.0F, Math.min(safeMaximum, health)) : safeMaximum;
 		absorption = Float.isFinite(absorption) ? Math.max(0.0F, Math.min(1024.0F, absorption)) : 0.0F;
-		foodLevel = Math.max(0, Math.min(20, foodLevel));
+		// 「먹방」 팀의 허기는 20 을 넘어 저장된다. 여기서는 그 팀인지 따지지 않고 가장 큰 상한까지
+		// 살려 둔다 — 증강이 없는 팀이면 다음 StatMirror 바퀴가 그 팀의 상한(20)으로 자른다.
+		foodLevel = Math.max(0, Math.min(PerkFoodCapacity.MAX_CAPACITY, foodLevel));
 		saturation = Float.isFinite(saturation)
-				? Math.max(0.0F, Math.min(foodLevel, saturation)) : 0.0F;
+				? Math.max(0.0F, Math.min(PerkFoodCapacity.saturationCeiling(foodLevel), saturation)) : 0.0F;
 		totalExperience = Math.max(0, totalExperience);
 		xpLevel = Math.max(0, xpLevel);
 		xpProgress = Float.isFinite(xpProgress)

@@ -434,16 +434,16 @@ class TrialTimersTest {
 		Cast warning = TrialTimers.castOf(view(false, 0L, 0L, breath, until), picked + 30)
 				.orElseThrow();
 		assertEquals(Cast.STATE_WARNING, warning.state());
-		assertEquals("부채꼴 브레스", warning.title());
+		assertEquals("공허 브레스", warning.title());
 		assertEquals(50, warning.remainingTicks(), "발동까지");
 		assertEquals(80, warning.totalTicks());
-		assertEquals("머리 방향 90° · 한 대에 전멸 — 옆으로", warning.hint());
+		assertEquals("즉사급 정면 브레스", warning.hint());
 		assertEquals(Kind.DAMAGE, warning.kind());
 
 		Cast running = TrialTimers.castOf(view(false, 0L, 0L, breath, until), picked + 85)
 				.orElseThrow();
 		assertEquals(Cast.STATE_RUNNING, running.state());
-		assertEquals("부채꼴 브레스 · 진행 중", running.title());
+		assertEquals("공허 브레스 · 진행 중", running.title());
 		assertEquals(breath.durationTicks() - 85, running.remainingTicks());
 		assertEquals(breath.durationTicks() - 80, running.totalTicks());
 	}
@@ -455,14 +455,15 @@ class TrialTimersTest {
 				.orElseThrow();
 		assertEquals(Cast.STATE_RUNNING, cast.state());
 		assertEquals(Kind.SHOVE, cast.kind());
-		assertEquals("0.6초마다 넉백 8번 · 피해 없음", cast.hint());
+		assertEquals("넉백 버티기", cast.hint());
 	}
 
+	/** 대처법 문구는 2026-10-18 사람이 정한 문구다. */
 	@Test
-	void 흡입과_십자의_대처법은_승인된_문구다() {
-		assertEquals("반대로 달리기 · 불 결계 안은 계속 아픔",
+	void 흡입과_십자의_대처법은_사람이_정한_문구다() {
+		assertEquals("흡입에 저항하기 · 결계 속 피해",
 				TrialTimers.hintOf(DragonLastStand.Pattern.VOID_SUCTION));
-		assertEquals("빨간 바닥 사이 틈으로 · 두 번째 십자 대비",
+		assertEquals("바닥 주의",
 				TrialTimers.hintOf(DragonLastStand.Pattern.CROSS_FISSURE));
 		assertEquals(Kind.DISRUPT, TrialTimers.kindOf(DragonLastStand.Pattern.VOID_SUCTION));
 	}
@@ -589,16 +590,26 @@ class TrialTimersTest {
 		assertTrue(TrialTimers.needsSend(a, 0L, 0, b, 3L, 3), "패턴을 골랐다");
 
 		TrialTimersPayload hp1 = new TrialTimersPayload(true, false,
-				List.of(Entry.health("o", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.8F)),
+				List.of(Entry.health("o", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.8F)),
 				Optional.empty());
 		TrialTimersPayload hp2 = new TrialTimersPayload(true, false,
-				List.of(Entry.health("o", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.7F)),
+				List.of(Entry.health("o", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.7F)),
 				Optional.empty());
 		assertFalse(TrialTimers.needsSend(hp1, 0L, 0, hp2, 3L, 3),
 				"맞을 때마다 보내지 않는다");
 		TrialTimersPayload hp3 = new TrialTimersPayload(true, false,
-				List.of(Entry.health("o", "오브젝트 파도", Kind.HEAL, "체력 10%", 1.0F)),
+				List.of(Entry.health("o", "회복 크리스탈 소환", Kind.HEAL, "체력 10%", 1.0F)),
 				Optional.empty());
 		assertTrue(TrialTimers.needsSend(hp1, 0L, 0, hp3, 3L, 3), "문턱이 바뀌었다");
+	}
+
+	/** 2026-10-18 사람 지시로 바꾼 화면 이름 셋. 코드 이름(WING_BEAT · CONE_BREATH · objects)은 그대로다. */
+	@Test
+	void 사람이_바꾼_화면_이름이_나간다() {
+		assertEquals("폭풍 날갯짓", TrialTimers.nameOf(DragonLastStand.Pattern.WING_BEAT),
+				"「날개 퍼덕이기」에서 바꿨다");
+		assertEquals("공허 브레스", TrialTimers.nameOf(DragonLastStand.Pattern.CONE_BREATH),
+				"「부채꼴 브레스」에서 바꿨다");
+		assertEquals("회복 크리스탈 소환", TrialTimers.OBJECTS_LABEL, "「오브젝트 파도」에서 바꿨다");
 	}
 }

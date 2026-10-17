@@ -4,6 +4,9 @@ import com.sharedfate.TestBootstrap;
 import com.sharedfate.perk.effect.AttributeEffect;
 import com.sharedfate.perk.effect.RallyShardEffect;
 import com.sharedfate.perk.effect.SwapBlockEffect;
+import com.sharedfate.perk.effect.InvulnerableEffect;
+import com.sharedfate.perk.effect.OnSwapEffect;
+import com.sharedfate.perk.effect.SwapSkipChanceEffect;
 import com.sharedfate.perk.effect.DropReplaceEffect;
 import com.sharedfate.perk.effect.ConditionalEffect;
 import com.sharedfate.perk.effect.DamageTakenEffect;
@@ -16,6 +19,7 @@ import com.sharedfate.perk.effect.MobDamageEffect;
 import com.sharedfate.perk.effect.NoDamageBoostEffect;
 import com.sharedfate.perk.effect.OnKillEffect;
 import com.sharedfate.perk.effect.OreExchangeEffect;
+import com.sharedfate.perk.effect.PeriodicEffect;
 import com.sharedfate.perk.effect.RarityGrantEffect;
 import com.sharedfate.perk.effect.StatusEffectPerk;
 import com.sharedfate.perk.effect.WeaponDamageEffect;
@@ -163,8 +167,8 @@ class DefaultPerkPoolValuesTest {
 		ConditionalEffect conditional = assertInstanceOf(ConditionalEffect.class, perk.effects().get(0));
 
 		assertEquals(ConditionalEffect.Condition.HEALTH_BELOW, conditional.condition());
-		assertEquals(0.75, conditional.threshold(), 1.0e-9);
-		assertEquals(3, conditional.whenTrue().size(), "힘 II·신속 I·저항 I 은 그대로다");
+		assertEquals(0.8, conditional.threshold(), 1.0e-9);
+		assertEquals(3, conditional.whenTrue().size(), "공격력·이동 속도·받는 피해 셋이다");
 
 		assertEquals(1, conditional.whenFalse().size(), "대가는 공격력 감소 하나뿐이다");
 		AttributeEffect penalty = assertInstanceOf(AttributeEffect.class,
@@ -176,6 +180,106 @@ class DefaultPerkPoolValuesTest {
 				penalty.modifierId(), "식별자가 고정이어야 두 번 붙지 않고 걷어낼 수 있다");
 		assertTrue(com.sharedfate.perk.effect.NoAttackDamageLossEffect.reduces(penalty),
 				"공격력 감소라 세트 「무기 3단계」가 걷어낸다");
+	}
+
+	/**
+	 * 포션 상태이상을 걸던 다섯 증강은 이제 <b>속성 수정자·피해 배율</b>로 같은 양을 준다.
+	 *
+	 * <p>바닐라 환산 그대로다 — 힘 I = 공격력 +3, 나약함 I = −4, 신속 I = 이동 속도 +20%,
+	 * 구속 I = −15%, 저항 I = 받는 피해 −20%. 상태이상은 팀 공유와 겹침 규칙
+	 * ({@link PerkStatusStack})을 타지만 수정자는 사람 몸에 고정 식별자로 붙고, 감싼 효과가
+	 * 걷어낼 때 같은 식별자로 떼어 낸다.
+	 */
+	@Test
+	void 포션을_걸던_다섯_증강은_수치로_준다(@TempDir Path dir) throws IOException {
+		loadDefaultPool(dir);
+		for (String id : new String[] {"sharedfate:overclock", "sharedfate:trophy_hunter",
+				"sharedfate:offbeat", "sharedfate:brink", "sharedfate:overload"}) {
+			Perk perk = PerkRegistry.byId(id).orElseThrow();
+			assertTrue(leavesOf(perk.effects()).stream().noneMatch(StatusEffectPerk.class::isInstance),
+					id + " 에 상태이상이 남았다");
+		}
+
+		// 오버클럭 — 30초마다 10초 +20%, 이어서 5초 −15%.
+		PeriodicEffect overclock = assertInstanceOf(PeriodicEffect.class,
+				PerkRegistry.byId("sharedfate:overclock").orElseThrow().effects().get(0));
+		assertEquals(600, overclock.periodTicks());
+		assertAttribute(overclock.phases().get(0).effects().get(0), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 0.2);
+		assertAttribute(overclock.phases().get(1).effects().get(0), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, -0.15);
+		assertEquals(200, overclock.phases().get(0).ticks());
+		assertEquals(100, overclock.phases().get(1).ticks());
+
+		// 전리품 사냥꾼 — 처치하면 3초간 +20%·+3.
+		OnKillEffect trophy = assertInstanceOf(OnKillEffect.class,
+				PerkRegistry.byId("sharedfate:trophy_hunter").orElseThrow().effects().get(0));
+		assertEquals(2, trophy.grants().size());
+		assertAttribute(trophy.grants().get(0).effect(), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 0.2);
+		assertAttribute(trophy.grants().get(1).effect(), "minecraft:attack_damage",
+				AttributeModifier.Operation.ADD_VALUE, 3.0);
+		for (OnKillEffect.Grant grant : trophy.grants()) {
+			assertEquals(3 * OnKillEffect.TICKS_PER_SECOND, grant.durationTicks());
+		}
+
+		// 엇박자 — 20초 주기 중 15초간 +3·+40%.
+		PeriodicEffect offbeat = assertInstanceOf(PeriodicEffect.class,
+				PerkRegistry.byId("sharedfate:offbeat").orElseThrow().effects().get(0));
+		assertEquals(400, offbeat.periodTicks());
+		assertEquals(300, offbeat.phases().get(0).ticks());
+		assertAttribute(offbeat.phases().get(0).effects().get(0), "minecraft:attack_damage",
+				AttributeModifier.Operation.ADD_VALUE, 3.0);
+		assertAttribute(offbeat.phases().get(0).effects().get(1), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 0.4);
+
+		// 벼랑 끝 — 체력 80% 이하에서 +6·+20%·받는 피해 ×0.8.
+		ConditionalEffect brink = assertInstanceOf(ConditionalEffect.class,
+				PerkRegistry.byId("sharedfate:brink").orElseThrow().effects().get(0));
+		assertAttribute(brink.whenTrue().get(0), "minecraft:attack_damage",
+				AttributeModifier.Operation.ADD_VALUE, 6.0);
+		assertAttribute(brink.whenTrue().get(1), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 0.2);
+		assertEquals(0.8, brink.damageTakenMultiplier(true), 1.0e-9);
+		assertEquals(1.0, brink.damageTakenMultiplier(false), 1.0e-9);
+
+		// 과부하 — 상시 +6·+40%, 30초마다 3초간 둘 다 꺼지고 −12·−15%.
+		PeriodicEffect overload = assertInstanceOf(PeriodicEffect.class,
+				PerkRegistry.byId("sharedfate:overload").orElseThrow().effects().get(0));
+		assertEquals(600, overload.periodTicks());
+		assertAttribute(overload.base().get(0), "minecraft:attack_damage",
+				AttributeModifier.Operation.ADD_VALUE, 6.0);
+		assertAttribute(overload.base().get(1), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 0.4);
+		assertEquals(60, overload.phases().get(0).ticks(), "대가는 8초가 아니라 3초다");
+		assertAttribute(overload.phases().get(0).effects().get(0), "minecraft:attack_damage",
+				AttributeModifier.Operation.ADD_VALUE, -12.0);
+		assertAttribute(overload.phases().get(0).effects().get(1), "minecraft:movement_speed",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, -0.15);
+		// 대가 구간에는 같은 속성의 상시분이 꺼져야 「둘 다 사라지고」가 된다.
+		assertEquals(overload.phases().get(0).effects(), overload.activeFor(0));
+		assertEquals(overload.base(), overload.activeFor(PeriodicEffect.NO_PHASE));
+	}
+
+	/**
+	 * 증강 하나 안의 속성 수정자 식별자는 모두 달라야 한다.
+	 *
+	 * <p>같은 식별자가 두 번 나오면 뒤에 붙은 것이 앞의 것을 덮고, 한쪽을 뗄 때 다른 쪽까지
+	 * 사라진다. 감싼 효과(periodic·conditional·on_kill)의 하위까지 모두 펼쳐서 본다.
+	 */
+	@Test
+	void 증강_안의_수정자_식별자는_겹치지_않는다(@TempDir Path dir) throws IOException {
+		loadDefaultPool(dir);
+		for (Perk perk : PerkRegistry.all()) {
+			java.util.Set<net.minecraft.resources.Identifier> seen = new java.util.HashSet<>();
+			for (PerkEffect effect : leavesOf(perk.effects())) {
+				if (!(effect instanceof AttributeEffect attribute)) {
+					continue;
+				}
+				assertTrue(seen.add(attribute.modifierId()),
+						perk.id() + " 에서 수정자 식별자가 겹친다: " + attribute.modifierId());
+			}
+		}
 	}
 
 	/**
@@ -259,18 +363,14 @@ class DefaultPerkPoolValuesTest {
 				"power 를 적지 않았을 때의 기본값도 같아야 한다");
 	}
 
-	/**
-	 * 낙하 피해는 1.2배다.
-	 *
-	 * <p>{@code add_multiplied_total} 이라 최종 배율은 {@code 1 + amount} 다. 1.2배를 만들려면
-	 * {@code amount} 가 0.2 여야 한다.
-	 */
+	/** 낙하 피해 ×1.2 대가는 2026-10-16 사람 결정으로 걷어냈다. */
 	@Test
-	void 허공답보의_낙하_피해는_1_2배다(@TempDir Path dir) throws IOException {
+	void 허공답보에는_낙하_피해_대가가_없다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:void_step");
-		AttributeEffect fall = attributeEffect(perk, "minecraft:fall_damage_multiplier");
 
-		assertEquals(0.2, fall.amount(), 1.0e-9);
+		assertTrue(perk.effects().stream().noneMatch(e -> e instanceof AttributeEffect attribute
+						&& attribute.attributeId().toString().equals("minecraft:fall_damage_multiplier")),
+				"낙하 피해 배율 수정자가 남아 있으면 안 된다");
 	}
 
 	@Test
@@ -408,6 +508,38 @@ class DefaultPerkPoolValuesTest {
 
 	// ------------------------------------------------------------------ 도우미
 
+	private static void assertAttribute(PerkEffect effect, String attributeId,
+			AttributeModifier.Operation operation, double amount) {
+		AttributeEffect attribute = assertInstanceOf(AttributeEffect.class, effect,
+				"상태이상이 아니라 속성 수정자여야 한다");
+		assertEquals(attributeId, attribute.attributeId().toString());
+		assertEquals(operation, attribute.operation());
+		assertEquals(amount, attribute.amount(), 1.0e-9);
+	}
+
+	/** 감싼 효과(periodic·conditional·on_kill)의 하위까지 펼쳐 맨 끝 효과만 모은다. */
+	private static List<PerkEffect> leavesOf(List<PerkEffect> effects) {
+		List<PerkEffect> found = new java.util.ArrayList<>();
+		for (PerkEffect effect : effects) {
+			if (effect instanceof PeriodicEffect periodic) {
+				found.addAll(leavesOf(periodic.base()));
+				for (PeriodicEffect.Phase phase : periodic.phases()) {
+					found.addAll(leavesOf(phase.effects()));
+				}
+			} else if (effect instanceof ConditionalEffect conditional) {
+				found.addAll(leavesOf(conditional.whenTrue()));
+				found.addAll(leavesOf(conditional.whenFalse()));
+			} else if (effect instanceof OnKillEffect onKill) {
+				for (OnKillEffect.Grant grant : onKill.grants()) {
+					found.addAll(leavesOf(List.of(grant.effect())));
+				}
+			} else {
+				found.add(effect);
+			}
+		}
+		return found;
+	}
+
 	private static AttributeEffect attributeEffect(Perk perk, String attributeId) {
 		return perk.effects().stream()
 				.filter(e -> e instanceof AttributeEffect attribute
@@ -462,9 +594,8 @@ class DefaultPerkPoolValuesTest {
 	 * 「소집의 조각」의 교환 막힘은 <b>조용한 쪽</b>이어야 한다.
 	 *
 	 * <p>{@code silent} 을 빠뜨려도 증강은 그대로 읽히고 개수 시험도 통과한다. 그런데 그러면
-	 * 자리만 안 바뀌고 부수효과는 주기마다 계속 돌아, 「시차」를 함께 가진 팀은 힘·재생만
-	 * 공짜로 받고 「정거장」을 함께 가진 팀은 나약함만 계속 문다. 코드가 아니라 <b>정의 한
-	 * 글자</b>로 갈리는 자리라 여기서 못박는다.
+	 * 자리만 안 바뀌고 부수효과는 주기마다 계속 돌아, 「본진이 바뀐다」를 함께 가진 팀은 무적만
+	 * 공짜로 받는다. 코드가 아니라 <b>정의 한 글자</b>로 갈리는 자리라 여기서 못박는다.
 	 */
 	@Test
 	void 소집의_조각은_조용한_막힘을_쓴다(@TempDir Path dir) throws IOException {
@@ -487,6 +618,44 @@ class DefaultPerkPoolValuesTest {
 	}
 
 	/**
+	 * 「본진이 바뀐다」는 교환 시점에 저항이 아니라 <b>무적 3초</b>를 건다.
+	 *
+	 * <p>저항으로 되돌리면 교환 세트 3단계(무적 10초)와 합쳐지지 않는다 — 사람이 기대하는
+	 * 13초가 10초로 줄어도 개수 시험은 그대로 통과한다.
+	 */
+	@Test
+	void 본진이_바뀐다는_무적_3초다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:shifting_home");
+
+		assertEquals(PerkRarity.SILVER, perk.rarity());
+		OnSwapEffect onSwap = perk.effects().stream()
+				.filter(OnSwapEffect.class::isInstance)
+				.map(OnSwapEffect.class::cast)
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("on_swap 이 없다"));
+		assertEquals(1, onSwap.grants().size());
+		assertSame(InvulnerableEffect.INSTANCE, onSwap.grants().get(0).effect());
+		assertEquals(60, onSwap.grants().get(0).durationTicks(), "3초 = 60틱");
+	}
+
+	/**
+	 * 「본진이 바뀔까?」(옛 「시차」)는 제자리 확률 50% <b>하나뿐</b>이다.
+	 *
+	 * <p>id 는 저장 호환을 위해 {@code sharedfate:staggered_swap} 그대로다. 예전의 힘·재생
+	 * {@code on_swap} 이 남아 있으면 설명에 없는 버프가 주기마다 몰래 걸린다.
+	 */
+	@Test
+	void 본진이_바뀔까는_제자리_확률_하나뿐이다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:staggered_swap");
+
+		assertEquals("본진이 바뀔까?", perk.name());
+		assertEquals(PerkRarity.SILVER, perk.rarity());
+		assertEquals(1, perk.effects().size(), "힘·재생 on_swap 은 빠졌다");
+		SwapSkipChanceEffect skip = assertInstanceOf(SwapSkipChanceEffect.class, perk.effects().get(0));
+		assertEquals(0.5, skip.chance(), 1.0e-9);
+	}
+
+	/**
 	 * 「뿌리내린 발」은 프리즘이고 <b>대가가 없다</b> — 자리를 막는 것 하나뿐이다.
 	 *
 	 * <p>예전에는 골드였고 원래 바뀔 시점마다 실명·구속({@code on_swap})을 물었다. 그 대가를
@@ -494,7 +663,7 @@ class DefaultPerkPoolValuesTest {
 	 * 주기마다 몰래 걸린다.
 	 *
 	 * <p>막힘은 여전히 <b>평범한 쪽</b>이다. 교환 시점은 계속 찾아와서 함께 가진 다른 증강
-	 * (「본진이 바뀐다」의 저항, 「정거장」의 나약함 등)의 교환 시점 효과는 그대로 돈다.
+	 * (「본진이 바뀐다」의 저항 등)의 교환 시점 효과는 그대로 돈다.
 	 */
 	@Test
 	void 뿌리내린_발은_대가_없이_자리만_막는다(@TempDir Path dir) throws IOException {
@@ -551,7 +720,7 @@ class DefaultPerkPoolValuesTest {
 	void 기본_풀은_하나도_버려지지_않고_읽힌다(@TempDir Path dir) throws IOException {
 		loadDefaultPool(dir);
 
-		assertEquals(97, PerkRegistry.all().size(),
+		assertEquals(98, PerkRegistry.all().size(),
 				"파일에 적힌 수와 읽힌 수가 다르면 효과 타입이 등록되지 않은 것이다");
 
 		long silver = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.SILVER).count();
@@ -559,8 +728,8 @@ class DefaultPerkPoolValuesTest {
 		long prism = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.PRISM).count();
 		// 세트 「개척」이 들어오며 실버 +1(유적 감별사) · 골드 +1(흥정의 달인) 이 됐다.
 		// 그 뒤 「아가미」가 실버 → 골드, 「뿌리내린 발」이 골드 → 프리즘으로 올라갔다.
-		// 「굳은살」이 들어오며 실버 +1.
-		assertEquals(35, silver, "실버");
+		// 「굳은살」이 들어오며 실버 +1. 「먹방」이 들어오며 실버 +1.
+		assertEquals(36, silver, "실버");
 		assertEquals(36, gold, "골드");
 		assertEquals(26, prism, "프리즘");
 
@@ -569,7 +738,7 @@ class DefaultPerkPoolValuesTest {
 				"sharedfate:diamond_sundial", "sharedfate:final_movement",
 				"sharedfate:rally_shard", "sharedfate:bloodlust",
 				"sharedfate:cushion", "sharedfate:haggling_master",
-				"sharedfate:ruin_appraiser", "sharedfate:callus"}) {
+				"sharedfate:ruin_appraiser", "sharedfate:callus", "sharedfate:mukbang"}) {
 			assertTrue(PerkRegistry.byId(id).isPresent(), id + " 가 풀에서 빠졌다");
 		}
 	}

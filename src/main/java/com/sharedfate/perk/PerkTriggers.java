@@ -282,14 +282,15 @@ public final class PerkTriggers {
 	/**
 	 * 허기를 공유 풀에 더한다.
 	 *
-	 * <p>허기는 20 까지다. 포만감은 건드리지 않는다 — {@code TeamState.sanitize} 가 포만감을
-	 * 허기 이하로 다시 맞춰 준다.
+	 * <p>허기는 팀의 허기 상한까지다(평소 20, 「먹방」이면 100). 포만감은 건드리지 않는다 —
+	 * {@code TeamState.sanitize} 가 포만감을 허기 이하로 다시 맞춰 준다.
 	 */
 	static void applyHungerToPool(TeamState state, int food) {
 		if (state == null || food <= 0) {
 			return;
 		}
-		state.foodLevel = Math.max(0, Math.min(MAX_FOOD, state.foodLevel + food));
+		// 「먹방」 팀이면 상한이 100 이다. 20 을 넘게 쌓인 허기를 20 으로 되깎지 않는다.
+		state.foodLevel = PerkFoodCapacity.raise(state.foodLevel, food, PerkFoodCapacity.capacityOf(state));
 	}
 
 	// ------------------------------------------------------------------ 치명타

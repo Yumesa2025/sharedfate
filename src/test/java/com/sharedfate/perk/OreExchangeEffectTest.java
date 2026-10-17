@@ -71,7 +71,7 @@ class OreExchangeEffectTest {
 
 	@Test
 	void 상수가_설명과_맞는다() {
-		assertEquals(30, OreExchangeEffect.WOOD_COST, "나무 30개를 소모한다");
+		assertEquals(25, OreExchangeEffect.WOOD_COST, "나무 25개를 소모한다");
 		assertEquals(Identifier.withDefaultNamespace("wooden_axe"), OreExchangeEffect.TOOL);
 	}
 
@@ -325,24 +325,24 @@ class OreExchangeEffectTest {
 	@Test
 	void 한_개짜리_문구는_예전_그대로다() {
 		Component message = PerkOreExchange.exchangeMessage(
-				30, new Result(id("raw_copper"), 30), Component.literal("원석 구리"));
+				25, new Result(id("raw_copper"), 30), Component.literal("원석 구리"));
 
-		assertEquals("[증강] 나무 30개를 원석 구리(으)로 바꿨습니다.", message.getString());
+		assertEquals("[증강] 나무 25개를 원석 구리(으)로 바꿨습니다.", message.getString());
 	}
 
 	@Test
 	void 여러_개짜리_문구는_개수를_붙인다() {
 		Component message = PerkOreExchange.exchangeMessage(
-				30, OreExchangeEffect.JACKPOT, Component.literal("다이아몬드"));
+				25, OreExchangeEffect.JACKPOT, Component.literal("다이아몬드"));
 
-		assertEquals("[증강] ★잭팟★ 나무 30개를 다이아몬드 128개로 바꿨습니다.", message.getString());
+		assertEquals("[증강] ★잭팟★ 나무 25개를 다이아몬드 128개로 바꿨습니다.", message.getString());
 	}
 
 	@Test
 	void 이름을_찾지_못하면_광물이라고_적는다() {
-		Component message = PerkOreExchange.exchangeMessage(30, new Result(id("coal"), 30), null);
+		Component message = PerkOreExchange.exchangeMessage(25, new Result(id("coal"), 30), null);
 
-		assertEquals("[증강] 나무 30개를 광물(으)로 바꿨습니다.", message.getString());
+		assertEquals("[증강] 나무 25개를 광물(으)로 바꿨습니다.", message.getString());
 	}
 
 	// ------------------------------------------------------------------ 나무 세기 경계값

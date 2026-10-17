@@ -1,6 +1,7 @@
 package com.sharedfate.client.perk;
 
 import com.sharedfate.net.PerkClientFeaturesPayload;
+import com.sharedfate.perk.PerkFoodCapacity;
 import com.sharedfate.perk.effect.HideHudEffect;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,6 +26,7 @@ import java.util.Set;
 public final class ClientPerkFeatures {
 	private static boolean doubleJump;
 	private static double doubleJumpPower;
+	private static int foodCapacity = PerkFoodCapacity.VANILLA_MAX_FOOD;
 	private static final Set<HideHudEffect.Element> HIDDEN =
 			EnumSet.noneOf(HideHudEffect.Element.class);
 
@@ -41,6 +43,7 @@ public final class ClientPerkFeatures {
 		doubleJumpPower = payload.doubleJumpPower();
 		HIDDEN.clear();
 		HIDDEN.addAll(payload.hidden());
+		foodCapacity = payload.foodCapacity();
 		if (!doubleJump) {
 			// 공중 점프가 꺼지면 남아 있던 사용 표시도 뜻이 없어진다.
 			DoubleJumpHandler.reset();
@@ -63,6 +66,16 @@ public final class ClientPerkFeatures {
 		return doubleJumpPower;
 	}
 
+	/**
+	 * 허기 상한. 「먹방」을 가진 팀이면 100, 아니면 20.
+	 *
+	 * <p>{@link PerkFoodCapacity#setClientCapacity} 로 공통 코드에 건네져 {@code Player.canEat} 이
+	 * 클라이언트에서도 「배가 불러도 먹을 수 있다」고 답하게 하고, 허기 막대 옆 숫자도 이 값을 본다.
+	 */
+	public static int foodCapacity() {
+		return foodCapacity;
+	}
+
 	/** 이 HUD 칸을 가려야 하는가. */
 	public static boolean isHidden(@Nullable HideHudEffect.Element element) {
 		return element != null && HIDDEN.contains(element);
@@ -73,5 +86,6 @@ public final class ClientPerkFeatures {
 		doubleJump = false;
 		doubleJumpPower = 0.0;
 		HIDDEN.clear();
+		foodCapacity = PerkFoodCapacity.VANILLA_MAX_FOOD;
 	}
 }

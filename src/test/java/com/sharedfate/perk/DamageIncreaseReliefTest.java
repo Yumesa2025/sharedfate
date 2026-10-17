@@ -250,13 +250,20 @@ class DamageIncreaseReliefTest {
 		TeamState state = teamWith("sharedfate:callus");
 		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 
-		// 「허공답보」의 낙하 피해 +0.2 → +0.1, 「가벼운 발걸음」의 −0.4 는 그대로.
-		AttributeEffect voidStep = fallAttribute("sharedfate:void_step");
+		// 낙하 피해 +0.2 → +0.1, 「가벼운 발걸음」의 −0.4 는 그대로. 기본 풀에서 낙하 피해를
+		// 늘리던 「허공답보」의 대가는 2026-10-16 에 걷어냈으므로 늘리는 쪽은 직접 만든다.
+		AttributeEffect raise = assertInstanceOf(AttributeEffect.class, create("""
+				{ "type": "attribute", "attribute": "minecraft:fall_damage_multiplier",
+				  "operation": "add_multiplied_total", "amount": 0.2 }
+				"""));
 		AttributeEffect lightStep = fallAttribute("sharedfate:light_step");
-		assertTrue(DamageIncreaseReliefEffect.raisesFallDamage(voidStep));
+		assertTrue(DamageIncreaseReliefEffect.raisesFallDamage(raise));
 		assertFalse(DamageIncreaseReliefEffect.raisesFallDamage(lightStep));
-		assertEquals(0.1, relief.easeAmount(voidStep, voidStep.amount()), 1.0e-9);
+		assertEquals(0.1, relief.easeAmount(raise, raise.amount()), 1.0e-9);
 		assertEquals(-0.4, relief.easeAmount(lightStep, lightStep.amount()), 1.0e-9);
+		assertTrue(PerkRegistry.byId("sharedfate:void_step").orElseThrow().effects().stream()
+						.noneMatch(DamageIncreaseReliefEffect::raisesFallDamage),
+				"허공답보에는 이제 낙하 피해 대가가 없다");
 
 		// 「불굴」은 조건부 전체를 하나로 본다. 가득 참 ×1.1 → ×1.05, 절반 이하 ×0.7 은 그대로.
 		Perk unbroken = PerkRegistry.byId("sharedfate:unbroken").orElseThrow();

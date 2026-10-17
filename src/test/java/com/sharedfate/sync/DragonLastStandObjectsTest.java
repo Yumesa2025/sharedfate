@@ -251,14 +251,17 @@ class DragonLastStandObjectsTest {
 	/**
 	 * ⚠⚠ <b>자리가 마지막 지대 안이다.</b>
 	 *
-	 * <p>값이 「지대 끝값 − 벽 여유」에서 나오므로 <b>구조적으로 참</b>이다. 지대가 줄어드는
-	 * 도중에 파도가 와도 오브젝트를 때리려고 벽 밖으로 나갈 일이 없다.
+	 * <p>값이 「패턴 중심 원 12 − 벽 여유」에서 나오고 그 원이 지대 끝값(18)보다 작으므로 <b>구조적으로
+	 * 참</b>이다. 지대가 줄어드는 도중에 파도가 와도 오브젝트를 때리려고 벽 밖으로 나갈 일이 없다.
+	 * ⚠ 2026-10-18 에 끝값이 12 → 18 이 되며 사람이 「회복 크리스탈 고리는 옛 12 기준에 묶는다」를 골랐다.
 	 */
 	@Test
 	void 자리가_마지막_지대_안이다() {
 		double last = DragonLastStandZone.RADII[DragonLastStandZone.RADII.length - 1];
-		assertEquals(last - DragonLastStandEntry.WALL_MARGIN, DragonLastStandObjects.RING_RADIUS,
-				1.0E-9, "값에서 직접 나와야 지대 끝값을 고치는 사람이 여기를 안 고친다");
+		assertTrue(DragonLastStandZone.PATTERN_CORE_RADIUS <= last, "패턴 중심 원이 마지막 지대보다 크다");
+		assertEquals(DragonLastStandZone.PATTERN_CORE_RADIUS - DragonLastStandEntry.WALL_MARGIN,
+				DragonLastStandObjects.RING_RADIUS,
+				1.0E-9, "값에서 직접 나와야 중심 원을 고치는 사람이 여기를 안 고친다");
 		assertEquals(9.0, DragonLastStandObjects.RING_RADIUS, 1.0E-9, "지금 9칸이다");
 		for (int count = 1; count <= 6; count++) {
 			for (int index = 0; index < count; index++) {

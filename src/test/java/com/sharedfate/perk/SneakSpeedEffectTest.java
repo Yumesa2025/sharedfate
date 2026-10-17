@@ -47,8 +47,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SneakSpeedEffectTest {
 
-	/** 「숨죽인 걸음」이 노리는 값. 웅크림 속도를 달리기의 1.35배로 만든다. */
-	private static final double TARGET = 1.35;
+	/** 「숨죽인 걸음」이 노리는 값. 웅크림 속도를 달리기의 1.5배로 만든다. */
+	private static final double TARGET = 1.5;
 
 	/** 같은 증강이 대가로 거는 서서 걷기 감소. {@code add_multiplied_total} 로 −10% 다. */
 	private static final double WALK_DRAWBACK = -0.1;
@@ -70,7 +70,7 @@ class SneakSpeedEffectTest {
 
 	@Test
 	void sprint_multiplier_를_그대로_읽는다() {
-		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.35 }");
+		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.5 }");
 
 		assertEquals(TARGET, effect.sprintMultiplier(), 1.0e-9);
 	}
@@ -87,7 +87,7 @@ class SneakSpeedEffectTest {
 
 	@Test
 	void 속성_두_개를_서로_다른_이름으로_건드린다() {
-		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.35 }");
+		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.5 }");
 
 		assertNotEquals(effect.speedModifierId(), effect.sneakModifierIdentifier(),
 				"이름이 같으면 한쪽이 다른 쪽을 덮어써 둘 중 하나가 조용히 사라진다");
@@ -95,9 +95,9 @@ class SneakSpeedEffectTest {
 
 	@Test
 	void 효과_순번마다_다른_수정자를_쓴다() {
-		SneakSpeedEffect first = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.35 }");
+		SneakSpeedEffect first = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.5 }");
 		SneakSpeedEffect second = assertInstanceOf(SneakSpeedEffect.class,
-				raw("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.35 }", 1));
+				raw("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.5 }", 1));
 
 		assertNotEquals(first.speedModifierId(), second.speedModifierId());
 		assertNotEquals(first.sneakModifierIdentifier(), second.sneakModifierIdentifier());
@@ -106,24 +106,24 @@ class SneakSpeedEffectTest {
 	// ------------------------------------------------------------------ 얼마를 얹는가
 
 	@Test
-	void 웅크림_속도가_달리기의_1_35배가_된다() {
+	void 웅크림_속도가_달리기의_1_5배가_된다() {
 		double amount = SneakSpeedEffect.crouchModifierAmount(
 				TARGET, 1.0, false, SneakSpeedEffect.SPRINT_FACTOR);
 
-		// 1.35 × 1.3 = 1.755 배. add_multiplied_total 은 (1 + 값) 을 곱하므로 0.755 다.
-		assertEquals(0.755, amount, 1.0e-9);
+		// 1.5 × 1.3 = 1.95 배. add_multiplied_total 은 (1 + 값) 을 곱하므로 0.95 다.
+		assertEquals(0.95, amount, 1.0e-9);
 		assertEquals(TARGET, SneakSpeedEffect.crouchSpeedRatio(
 				amount, 1.0, false, SneakSpeedEffect.SPRINT_FACTOR), 1.0e-9);
 	}
 
 	@Test
-	void 달리는_채로_웅크려도_1_35배를_넘지_않는다() {
+	void 달리는_채로_웅크려도_1_5배를_넘지_않는다() {
 		// 26.2 에서는 달리다 웅크리는 것을 막지 않는다. 달리기 수정자가 그대로 붙어 있으므로
 		// 그만큼 덜 얹어야 1.3 배가 겹치지 않는다.
 		double amount = SneakSpeedEffect.crouchModifierAmount(
 				TARGET, 1.0, true, SneakSpeedEffect.SPRINT_FACTOR);
 
-		assertEquals(0.35, amount, 1.0e-9);
+		assertEquals(0.5, amount, 1.0e-9);
 		assertEquals(TARGET, SneakSpeedEffect.crouchSpeedRatio(
 				amount, 1.0, true, SneakSpeedEffect.SPRINT_FACTOR), 1.0e-9);
 	}
@@ -162,7 +162,7 @@ class SneakSpeedEffectTest {
 	}
 
 	@Test
-	void 대가가_먼저_걸려도_웅크림은_그_달리기의_1_35배다() {
+	void 대가가_먼저_걸려도_웅크림은_그_달리기의_1_5배다() {
 		// 기준이 되는 「달리기」는 대가까지 먹은 뒤의 달리기다. 대가는 기준과 결과 양쪽에
 		// 똑같이 들어가므로 배수 자체는 흔들리지 않는다.
 		AttributeInstance speed = instance(Attributes.MOVEMENT_SPEED);
@@ -187,7 +187,7 @@ class SneakSpeedEffectTest {
 				id("drawback"), WALK_DRAWBACK, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
 		double walk = speed.getValue();
 		speed.addTransientModifier(new AttributeModifier(
-				id("sneak"), 0.755, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+				id("sneak"), 0.95, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
 		assertNotEquals(walk, speed.getValue(), 1.0e-9);
 
 		assertTrue(speed.removeModifier(id("sneak")));
@@ -199,7 +199,7 @@ class SneakSpeedEffectTest {
 
 	@Test
 	void 웅크림은_사람마다_따로_기억한다() {
-		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.35 }");
+		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.5 }");
 
 		assertNull(effect.appliedAmount(null));
 		assertNull(effect.appliedAmount(UUID.randomUUID()),
@@ -208,7 +208,7 @@ class SneakSpeedEffectTest {
 
 	@Test
 	void 플레이어가_없으면_아무것도_하지_않는다() {
-		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.35 }");
+		SneakSpeedEffect effect = create("{ \"type\": \"sneak_speed\", \"sprint_multiplier\": 1.5 }");
 
 		assertFalse(SneakSpeedEffect.movingSlowly(null));
 		assertFalse(effect.refresh(null));

@@ -23,7 +23,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * {@code rally_shard} 증강(프리즘 「소집의 조각」)의 집행부.
@@ -41,7 +40,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * {@code minecraft:use_cooldown} 컴포넌트가 그린다. 모드를 깔지 않은 클라이언트도 그대로 본다.
  *
  * <h2>실제로 끌어오는 일은 여기서 하지 않는다</h2>
- * <p>굳히기·파티클·순차 진행·폭발 예약은 {@link RallyShardManager} 가 여러 틱에 걸쳐 한다.
+ * <p>굳히기·파티클·폭발 예약은 {@link RallyShardManager} 가 여러 틱에 걸쳐 한다.
  * 이 클래스는 <b>쓸 수 있는 상황인지 가리고 한 번 시작시키는 것</b>까지만 한다.
  */
 public final class PerkRallyShard {
@@ -179,8 +178,7 @@ public final class PerkRallyShard {
 		}
 
 		boolean started = RallyShardManager.begin(team, user, targets, effect,
-				PerkSwapRules.staggered(state), PerkSwapRules.swapExplosions(state),
-				ThreadLocalRandom.current());
+				PerkSwapRules.swapExplosions(state));
 		if (!started) {
 			return InteractionResult.FAIL;
 		}

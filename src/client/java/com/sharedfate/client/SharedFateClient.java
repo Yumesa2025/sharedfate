@@ -61,6 +61,9 @@ import java.util.UUID;
 public class SharedFateClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		// 「먹방」 — 클라이언트의 Player.canEat 이 서버가 내려 준 허기 상한을 보게 한다. 먹는 동작은
+		// 클라이언트가 먼저 시작하므로 이것 없이는 배가 부를 때 우클릭해도 손이 움직이지 않는다.
+		com.sharedfate.perk.PerkFoodCapacity.setClientCapacity(ClientPerkFeatures::foodCapacity);
 		ClientConfigurationNetworking.registerGlobalReceiver(HandshakePayload.TYPE,
 				(payload, context) -> {
 					if (payload.protocolVersion() != SharedFateNetworking.PROTOCOL_VERSION) {

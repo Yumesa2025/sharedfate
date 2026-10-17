@@ -32,7 +32,7 @@ import org.jetbrains.annotations.Nullable;
  * <ul>
  *   <li>{@code damage_taken} — 최상위 효과의 배율이 1 보다 크면. {@code conditional}·
  *       {@code holder}·{@code periodic} 은 <b>지금 걸린 배율 전체</b>(하위의 곱)를 하나로 보고
- *       덜어 낸다. 「불굴」의 체력 가득 참 ×1.1, 「호위」의 나머지 팀원 ×1.1 이 이 길이다.</li>
+ *       덜어 낸다. 「불굴」의 체력 가득 참 ×1.1 이 이 길이다.</li>
  *   <li>{@code damage_taken_from} — 그 피해원에 걸린 배율이 1 보다 크면. 「화살막이」의 폭발
  *       ×1.2 가 이 길이다.</li>
  *   <li>{@code damage_taken_blocking} — 막는 중의 배율이 1 보다 크면. 지금은 쓰는 증강이 없다.</li>
@@ -41,7 +41,8 @@ import org.jetbrains.annotations.Nullable;
  *       「거인 사냥꾼」·「사냥꾼의 식사」가 이 길이다. 한 서버에 팀은 하나뿐이라 곧 그 팀이 받는
  *       피해다.</li>
  *   <li>{@code attribute} — 최상위의 {@code minecraft:fall_damage_multiplier} 에 <b>양수</b>를
- *       거는 것. 「허공답보」의 낙하 피해 +0.2 가 +0.1 로 붙는다.</li>
+ *       거는 것. +0.2 가 +0.1 로 붙는다. 지금 기본 풀에는 이 길을 타는 증강이 없다
+ *       (「허공답보」의 대가는 2026-10-16 에 걷어냈다).</li>
  * </ul>
  *
  * <p><b>줄이는 쪽은 절대 건드리지 않는다.</b> 1 이하의 배율과 음수 수정자는 판정에서 곧바로

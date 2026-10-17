@@ -286,7 +286,14 @@ class DragonLastStandDomeTest {
 	}
 
 	/**
-	 * ⚠⚠ <b>바닥을 부수지 않는다 — 두 겹 가운데 둘째.</b>
+	 * ⚠⚠ <b>(2026-10-18 에 뜻이 바뀌었다) 포털은 「못 부수는 블록」이 지키고, 엔드석·흑요석은 부순다.</b>
+	 *
+	 * <p>사람 말 <b>「섬 표면보다 높은, 유저가 설치하지 않은 벽도 없애 버려서 평평하게」</b> · 고른 범위
+	 * <b>「부술 수 있는 블록 전부」</b>. 그래서 {@code DRAGON_IMMUNE} 을 더는 안 보고
+	 * {@link DragonLastStandDome#unbreakable}(파괴 시간 −1)과 포디움 좌표만 남긴다. 아래는 그 전의 설명이고,
+	 * 태그 파일을 읽는 줄들은 <b>유체·{@code DRAGON_TRANSPARENT} 쪽 근거</b>로 남긴다.
+	 *
+	 * <p>(옛 설명) <b>바닥을 부수지 않는다 — 두 겹 가운데 둘째.</b>
 	 *
 	 * <p>26.3 {@code BlockTags.DRAGON_IMMUNE} 에 <b>{@code end_stone} 과 {@code bedrock} 이
 	 * 들어 있다.</b> 섬을 이루는 블록이 그 둘이므로, 설령 훑기 바닥 쪽 판단이 틀리더라도 섬은
@@ -308,34 +315,72 @@ class DragonLastStandDomeTest {
 	 * <b>태그 정의 파일을 그대로 읽어</b> 목록을 확인한다 — 어차피 그것이 태그의 근거이고, 서버가
 	 * 없어도 판이 올라 목록이 바뀌면 여기서 먼저 깨진다.
 	 *
-	 * <p>{@link DragonLastStandDome#breakable} 자체는 <b>공기</b>로만 굴려 볼 수 있다. 그 갈래가
-	 * 태그를 보기 전에 답하는 유일한 길이다.
+	 * <p>{@link DragonLastStandDome#breakable} 자체는 <b>태그를 보기 전에 답하는 갈래</b>(공기 · 못 부수는
+	 * 블록)로만 굴려 볼 수 있다. 부술 수 있는 블록은 {@link DragonLastStandDome#unbreakable} 로 묻는다.
+	 */
+	/**
+	 * ⚠⚠ <b>포디움은 좌표로 뺀다</b> — 2026-10-18. 엔드석을 부수게 되면서 태그가 지켜 주던 것을 칸 단위로
+	 * 적었다. 자리는 26.3 {@code EndPodiumFeature.place} 바이트코드 그대로다(포디움 원점 = 훑기 바닥).
 	 */
 	@Test
-	void 섬과_포털과_기둥이_태그로_지켜진다() {
+	void 포디움_구조를_좌표로_뺀다() {
+		// 테두리 기반암(2.5 ≤ r < 3.5)과 포털(r < 2.5) — 원점 높이 한 층.
+		int rim = 0;
+		for (int dx = -4; dx <= 4; dx++) {
+			for (int dz = -4; dz <= 4; dz++) {
+				if (DragonLastStandDome.podiumPart(dx, 0, dz)) {
+					rim++;
+				}
+			}
+		}
+		assertEquals(37, rim, "closerThan(p, 3.5) 의 칸 수다 — 바닐라 포디움 한 층");
+		assertTrue(DragonLastStandDome.podiumPart(3, 0, 0), "테두리 끝");
+		assertFalse(DragonLastStandDome.podiumPart(3, 0, 2), "3² + 2² = 13 ≥ 12.25 — 포디움 밖");
+		// 기둥 p.above(0..3)와 알 자리 p.above(4).
+		for (int dy = 0; dy <= EndPodiumFeature.PODIUM_PILLAR_HEIGHT; dy++) {
+			assertTrue(DragonLastStandDome.podiumPart(0, dy, 0), dy + "칸 — 기둥이나 알 자리다");
+		}
+		assertFalse(DragonLastStandDome.podiumPart(0, EndPodiumFeature.PODIUM_PILLAR_HEIGHT + 1, 0),
+				"알 위는 사람이 쌓은 것이다 — 부순다");
+		// 벽 횃불 넷 — p.above(2) 의 수평 이웃.
+		assertTrue(DragonLastStandDome.podiumPart(1, 2, 0));
+		assertTrue(DragonLastStandDome.podiumPart(-1, 2, 0));
+		assertTrue(DragonLastStandDome.podiumPart(0, 2, 1));
+		assertTrue(DragonLastStandDome.podiumPart(0, 2, -1));
+		assertFalse(DragonLastStandDome.podiumPart(1, 2, 1), "대각선은 횃불 자리가 아니다");
+		// 포디움 위 빈 칸에 쌓은 발판은 부순다 — 지키는 것은 포디움 구조뿐이다.
+		assertFalse(DragonLastStandDome.podiumPart(1, 1, 0));
+		assertFalse(DragonLastStandDome.podiumPart(2, 3, 2));
+		assertTrue(classBytes().contains("podiumPart"), "훑기가 포디움 좌표를 안 묻는다");
+	}
+
+	@Test
+	void 포털은_지키고_엔드석과_흑요석은_부순다() {
 		assertFalse(DragonLastStandDome.breakable(Blocks.AIR.defaultBlockState()),
 				"공기를 부수면 같은 자리를 매 훑기마다 다시 센다");
 
-		String immune = readTag("dragon_immune");
-		// 바닥을 지키는 둘째 겹. 이 둘이 빠지면 훑기 바닥 하나에만 목숨이 달린다.
-		assertTrue(immune.contains("\"minecraft:end_stone\""),
-				"end_stone 이 DRAGON_IMMUNE 에서 빠졌다 — 섬 바닥을 지키는 둘째 겹이 사라졌다");
-		assertTrue(immune.contains("\"minecraft:bedrock\""), "기반암 포디움이다");
-		// 판을 끝내는 길.
-		assertTrue(immune.contains("\"minecraft:end_portal\""),
-				"출구 포털을 지우면 판을 끝낼 수 없다");
-		assertTrue(immune.contains("\"minecraft:end_portal_frame\""));
-		assertTrue(immune.contains("\"minecraft:end_gateway\""));
-		// 기둥. 반경 25 에 닿지는 않지만 태그가 한 겹 더 막는다.
-		assertTrue(immune.contains("\"minecraft:obsidian\""));
-		assertTrue(immune.contains("\"minecraft:iron_bars\""), "기둥 위 쇠창살 우리다");
+		// 판을 끝내는 길과 포디움 · 게이트웨이 — 원래 못 부수는 블록이라 태그를 보기 전에 거짓이다.
+		for (Block kept : new Block[] {Blocks.BEDROCK, Blocks.END_PORTAL, Blocks.END_PORTAL_FRAME,
+				Blocks.END_GATEWAY, Blocks.BARRIER, Blocks.COMMAND_BLOCK}) {
+			assertTrue(DragonLastStandDome.unbreakable(kept.defaultBlockState()),
+					kept + " 가 부술 수 있는 블록으로 읽힌다 — 출구 포털이 지워질 수 있다");
+			assertFalse(DragonLastStandDome.breakable(kept.defaultBlockState()), kept + " 를 부순다");
+		}
+		// ⚠⚠ 2026-10-18 — 사람이 「평평하게」를 골라 이것들은 이제 부순다(훑기 바닥 위에서만).
+		for (Block flattened : new Block[] {Blocks.END_STONE, Blocks.OBSIDIAN, Blocks.CRYING_OBSIDIAN,
+				Blocks.IRON_BARS, Blocks.RESPAWN_ANCHOR}) {
+			assertFalse(DragonLastStandDome.unbreakable(flattened.defaultBlockState()),
+					flattened + " 를 못 부수면 사람이 말한 「평평하게」가 안 된다");
+		}
+		assertFalse(classBytes().contains("DRAGON_IMMUNE"),
+				"DRAGON_IMMUNE 을 다시 보면 엔드석 둔덕과 흑요석 벽이 남는다 — 사람이 2026-10-18 에 걷었다");
 
+		String immune = readTag("dragon_immune");
 		String transparent = readTag("dragon_transparent");
 
-		// ⚠ 포디움 벽 횃불은 지켜지지 않는다 — 바닥을 내려 범위에 들어왔는데 두 태그 어디에도
-		// 없다. 연출뿐이라 그대로 두기로 했고, 그 판단을 Dome 클래스 설명에 적어 두었다.
+		// 포디움 벽 횃불은 태그 어디에도 없다 — 2026-10-18 부터 podiumPart 가 좌표로 지킨다.
 		assertFalse(immune.contains("\"minecraft:wall_torch\""),
-				"횃불이 태그에 들어왔다 — Dome 클래스 설명의 「지켜지지 않는 것」을 고칠 것");
+				"횃불이 태그에 들어왔다 — Dome 클래스 설명의 횃불 문단을 고칠 것");
 		assertFalse(transparent.contains("wall_torch"),
 				"횃불이 DRAGON_TRANSPARENT 에 들어왔다 — 같은 문단을 고칠 것");
 
@@ -513,11 +558,12 @@ class DragonLastStandDomeTest {
 	 */
 	@Test
 	void 용암까지_넓혀도_섬_바닥과_포털은_그대로다() {
-		String immune = readTag("dragon_immune");
-		for (String kept : new String[] {"end_stone", "bedrock", "end_portal",
-				"end_portal_frame", "end_gateway"}) {
-			assertTrue(immune.contains("\"minecraft:" + kept + "\""),
-					kept + " 이 DRAGON_IMMUNE 에서 빠졌다 — 유체 갈래가 섬·포털에 닿는 길이 열렸다");
+		// 2026-10-18 부터 ②의 관문은 태그가 아니라 「못 부수는 블록」이다. 엔드석은 그 관문을 지나지만
+		// (훑기 바닥 위는 사람 지시로 부순다) 바닥 아래는 ③과 훑기 바닥이 지킨다.
+		for (Block kept : new Block[] {Blocks.BEDROCK, Blocks.END_PORTAL, Blocks.END_PORTAL_FRAME,
+				Blocks.END_GATEWAY}) {
+			assertTrue(DragonLastStandDome.unbreakable(kept.defaultBlockState()),
+					kept + " 가 관문을 지난다 — 유체 갈래가 포털에 닿는 길이 열렸다");
 		}
 
 		// ⚠ 유체 갈래가 못 보는 것들이라야 한다. 태그 관문이 틀려도 이 겹이 남는다.
@@ -794,7 +840,9 @@ class DragonLastStandDomeTest {
 	@Test
 	void 바닐라_드래곤과_같은_물음을_본다() {
 		String bytes = classBytes();
-		assertTrue(bytes.contains("DRAGON_IMMUNE"), "부수면 안 되는 것 목록을 안 본다");
+		// 2026-10-18 — DRAGON_IMMUNE 대신 「못 부수는 블록」(파괴 시간 −1)을 본다. 사람 지시로 여기만
+		// 바닐라와 갈라졌다.
+		assertTrue(bytes.contains("defaultDestroyTime"), "못 부수는 블록을 안 본다 — 포털이 지워질 수 있다");
 		assertTrue(bytes.contains("DRAGON_TRANSPARENT"),
 				"바닐라 드래곤이 「지나가도 되는 것」으로 치는 목록을 안 본다");
 		assertTrue(bytes.contains("MOB_GRIEFING"),

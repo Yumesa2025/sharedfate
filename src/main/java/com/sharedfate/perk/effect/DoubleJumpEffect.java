@@ -30,8 +30,8 @@ import org.jetbrains.annotations.Nullable;
  * 물어볼 대상이 사라져 공중 점프도 저절로 막힌다.
  *
  * <h2>낙하 피해는 여기서 다루지 않는다</h2>
- * <p>「허공답보」의 대가인 낙하 피해 1.5배는 기존 {@code attribute} 타입에
- * {@code minecraft:fall_damage_multiplier} 를 걸어 처리한다. 이 효과는 미는 일만 한다.
+ * <p>낙하 피해를 바꾸려면 기존 {@code attribute} 타입에 {@code minecraft:fall_damage_multiplier}
+ * 를 건다. 이 효과는 미는 일만 한다. 「허공답보」의 낙하 피해 대가는 2026-10-16 에 걷어냈다.
  */
 public final class DoubleJumpEffect implements PerkEffect {
 	/**

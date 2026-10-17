@@ -38,7 +38,7 @@ import java.util.random.RandomGenerator;
  * 폭발이 사실상 두 배가 된다.
  *
  * <h2>주기 타이머를 얼리지 않는다</h2>
- * <p>{@link StaggeredSwapManager}와 달리 복귀를 기다리는 동안에도
+ * <p>복귀를 기다리는 동안에도
  * {@code TeamState.advancePositionSwapTick}은 평소대로 흐른다. 그래서 복귀 대기 중에 다음
  * 교환 주기가 먼저 오면, {@link #beginGather}를 다시 부르는 것만으로 이전 복귀 예약이
  * 새 모임으로 덮여 사라진다({@link #PENDING}의 같은 키에 새로 넣으면 끝이다) — "복귀를

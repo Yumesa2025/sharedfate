@@ -76,6 +76,18 @@ public final class FoodOverflowBuffer extends SavedData {
 		return result.foodLevel() - currentFood;
 	}
 
+	/**
+	 * 완충을 거치지 않고 관측한 변화량을 그대로 돌려준다. 허기 상한이 20 위로 열린 팀(「먹방」)이 쓴다.
+	 *
+	 * <p>그런 팀은 먹은 만큼 허기 자체가 차므로 남는 몫을 모아 둘 까닭이 없다. 이번 바퀴에 적힌 영양
+	 * 기록은 버린다 — 남겨 두면 증강을 잃은 다음 바퀴에 「잘린 영양」으로 잘못 읽혀 완충에 쌓인다.
+	 * 이미 쌓인 완충은 건드리지 않는다. 증강을 잃으면 {@link #apply} 가 다시 그것을 쓴다.
+	 */
+	public static int bypass(UUID teamId, int observedDelta) {
+		PENDING_NUTRITION.remove(teamId);
+		return observedDelta;
+	}
+
 	static Result calculate(int currentFood, int observedDelta, int intendedNutrition, float previousReserve) {
 		int safeCurrent = Math.max(0, Math.min(20, currentFood));
 		int positiveObserved = Math.max(0, observedDelta);

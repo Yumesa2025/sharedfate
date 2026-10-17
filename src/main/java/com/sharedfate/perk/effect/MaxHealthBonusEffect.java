@@ -29,10 +29,9 @@ import net.minecraft.server.level.ServerPlayer;
  * 그래서 이 보너스를 몇 번을 다시 적용해도 {@code 기본값 + 보너스} 라는 답은 달라지지 않는다.
  * 보너스를 {@code maxHealth} 에 직접 더했다면 접속할 때마다 상한이 불어났을 것이다.
  *
- * <h2>고정이 이긴다</h2>
- * <p>{@code max_health_lock}(고행자)을 함께 가진 팀에서는 이 보너스가 무시된다. 작성표에
- * "다른 증강으로도 오르지 않는다"고 정해 뒀다. 판정은 {@link PerkHealthRules#effectiveMaxHealth}
- * 한 곳에서만 내린다.
+ * <h2>고정과 함께면</h2>
+ * <p>{@code max_health_lock}(고행자)을 함께 가진 팀에서는 기본값 자리에 고정값이 들어가고, 이
+ * 보너스는 그 위에 얹힌다. 판정은 {@link PerkHealthRules#effectiveMaxHealth} 한 곳에서만 내린다.
  */
 public final class MaxHealthBonusEffect implements PerkEffect {
 	/** 터무니없는 값으로 게임을 깨뜨리지 않도록 두는 상한. {@code AttributeEffect} 와 같은 값이다. */

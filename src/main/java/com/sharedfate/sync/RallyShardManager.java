@@ -27,26 +27,23 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.random.RandomGenerator;
 
 /**
  * 프리즘 「소집의 조각」의 실행부. 조각을 우클릭한 사람의 자리로 나머지 팀원을 불러 모은다.
  *
  * <h2>도착 지점은 실시간으로 따라간다</h2>
  * <p>목적지는 <b>끌려가는 그 순간의 소환자 위치</b>다. 우클릭한 자리를 기억해 두지 않는다.
- * 그래서 소환자가 걸어가면 팀원은 그 뒤를 따라 도착하고, 순차 소환(시차)이면 한 명씩 다른
- * 자리에 떨어진다. 소환자가 나가거나 죽으면 남은 걸음을 버린다 — 기억해 둔 좌표가 없으므로
- * 「주인 없는 소환」이 성립하지 않는다.
+ * 소환자가 굳는 동안 걸어가면 팀원은 그 뒤를 따라 도착한다. 소환자가 나가거나 죽으면 소환을
+ * 버린다 — 기억해 둔 좌표가 없으므로 「주인 없는 소환」이 성립하지 않는다.
  *
- * <h2>「시차」를 가지면 순차가 된다</h2>
- * <p>기본은 전원이 동시에 굳었다가 동시에 끌려온다. {@code staggered_swap} 을 가진 팀은
- * <b>한 명씩</b> 굳고 끌려오기를 되풀이한다 — 굳는 시간 자체가 걸음 사이의 간격이 되므로
- * {@link StaggeredSwapManager} 의 5~10초 간격은 쓰지 않는다.
+ * <h2>전원이 함께 굳고 함께 끌려온다</h2>
+ * <p>예전에는 「시차」({@code staggered_swap})를 가진 팀이 한 명씩 굳고 끌려왔다. 그 증강이
+ * 「본진이 바뀔까?」(교환 시점의 제자리 확률)로 바뀌며 순차 소환도 함께 없어졌다 — 소집은 자동
+ * 교환이 아니므로 제자리 확률도 걸리지 않는다.
  *
- * <h2>교환 효과는 도착하는 사람에게 그때그때 건다</h2>
+ * <h2>교환 효과는 도착한 사람에게 건다</h2>
  * <p>{@link PerkSwapRules#grantOnSwap} 이 증강의 {@code on_swap} 과 <b>교환 세트 2·3단계</b>를
- * 같은 길로 태운다. 순차 소환에서 마지막에 한꺼번에 걸면 먼저 도착한 사람이 그동안 무방비가
- * 되므로, 도착하는 사람에게 즉시 건다. 소환자는 마지막 걸음이 끝날 때 함께 받는다.
+ * 같은 길로 태운다. 실제로 도착한 사람에게 걸고, 소환자도 함께 받는다.
  *
  * <h2>굳힘은 완전한 고정이 아니다</h2>
  * <p>26.2 에 「움직임을 서버에서 못박는」 방법이 없다. 서버가 매 틱 위치를 되돌리면 클라이언트
@@ -102,8 +99,7 @@ public final class RallyShardManager {
 	 * @return 실제로 시작했으면 true
 	 */
 	public static boolean begin(ShareTeam team, ServerPlayer summoner, List<ServerPlayer> targets,
-			RallyShardEffect effect, boolean staggered, List<SwapExplosionEffect> explosions,
-			RandomGenerator random) {
+			RallyShardEffect effect, List<SwapExplosionEffect> explosions) {
 		if (team == null || summoner == null || targets.isEmpty() || effect == null) {
 			return false;
 		}
@@ -111,15 +107,11 @@ public final class RallyShardManager {
 			return false;
 		}
 
-		List<UUID> order = new ArrayList<>(targets.stream().map(ServerPlayer::getUUID).toList());
-		if (staggered && order.size() > 1) {
-			shuffle(order, random);
-		}
-		Summon summon = new Summon(summoner.getUUID(), List.copyOf(order), staggered,
+		List<UUID> order = targets.stream().map(ServerPlayer::getUUID).toList();
+		Summon summon = new Summon(summoner.getUUID(), List.copyOf(order),
 				effect.freezeTicks(), List.copyOf(explosions));
 		ACTIVE.put(team.teamId(), summon);
 
-		// 첫 굳힘. 동시 소환이면 전원, 순차면 첫 사람 하나다.
 		freezeCurrent(summoner.level().getServer(), summon);
 		announceStart(summoner, targets, summon);
 		return true;
@@ -148,7 +140,7 @@ public final class RallyShardManager {
 		TeamState state = manager.stateByTeamId(teamId);
 		ServerPlayer summoner = server.getPlayerList().getPlayer(summon.summonerId);
 		if (team == null || state == null || !alive(summoner)) {
-			// 소환자가 사라지면 목적지가 없다. 기억해 둔 좌표가 없으므로 남은 걸음을 버린다.
+			// 소환자가 사라지면 목적지가 없다. 기억해 둔 좌표가 없으므로 소환을 버린다.
 			ACTIVE.remove(teamId);
 			return;
 		}
@@ -161,20 +153,9 @@ public final class RallyShardManager {
 			return;
 		}
 
-		if (summon.staggered) {
-			pullOne(server, state, summoner, summon);
-		} else {
-			pullAll(server, state, summoner, summon);
-		}
-
-		if (summon.cursor >= summon.order.size()) {
-			finish(state, summoner);
-			ACTIVE.remove(teamId);
-			return;
-		}
-		// 순차 소환은 다음 사람을 이어서 굳힌다. 굳는 시간이 곧 걸음 사이의 간격이다.
-		summon.ticksLeft = summon.freezeTicks;
-		freezeCurrent(server, summon);
+		pullAll(server, state, summoner, summon);
+		finish(state, summoner);
+		ACTIVE.remove(teamId);
 	}
 
 	/** 동시 소환. 대상 전원을 한 틱에 끌어온다. */
@@ -187,19 +168,7 @@ public final class RallyShardManager {
 				arrived.add(target);
 			}
 		}
-		summon.cursor = summon.order.size();
 		PerkSwapRules.grantOnSwap(state, arrived);
-	}
-
-	/** 순차 소환. 지금 차례인 한 명만 끌어온다. */
-	private static void pullOne(MinecraftServer server, TeamState state, ServerPlayer summoner,
-			Summon summon) {
-		UUID targetId = summon.order.get(summon.cursor);
-		ServerPlayer target = server.getPlayerList().getPlayer(targetId);
-		if (pull(summoner, target, summon)) {
-			PerkSwapRules.grantOnSwap(state, List.of(target));
-		}
-		summon.cursor++;
 	}
 
 	/**
@@ -218,8 +187,8 @@ public final class RallyShardManager {
 		PositionSwapManager.Position origin = PositionSwapManager.Position.capture(target);
 		PositionSwapManager.Position destination = PositionSwapManager.Position.capture(summoner);
 		// 엔드 전투 중에 소환자가 엔드 밖에 있으면 이 한 걸음이 팀원을 엔드에서 빼낸다.
-		// 보통은 PerkRallyShard 가 조각을 누르는 자리에서 미리 거절하지만, 누른 뒤 소환자가
-		// 엔드를 나가는 길(순차 소환은 여러 틱에 걸친다)이 남아 있어 여기서도 가린다.
+		// 보통은 PerkRallyShard 가 조각을 누르는 자리에서 미리 거절하지만, 누른 뒤 굳는 동안
+		// 소환자가 엔드를 나가는 길이 남아 있어 여기서도 가린다.
 		if (EndFightTeleportLock.blocks(target, destination.level())) {
 			EndFightTeleportLock.refuse(target);
 			return false;
@@ -247,13 +216,13 @@ public final class RallyShardManager {
 		return true;
 	}
 
-	/** 마지막 걸음이 끝났다. 소환자도 교환 효과를 받는다. */
+	/** 소환이 끝났다. 소환자도 교환 효과를 받는다. */
 	private static void finish(TeamState state, ServerPlayer summoner) {
 		PerkSwapRules.grantOnSwap(state, List.of(summoner));
 	}
 
 	/**
-	 * 이번 차례에 굳어야 하는 사람들에게 구속을 건다.
+	 * 굳어야 하는 사람들에게 구속을 건다.
 	 *
 	 * <p>지속시간을 굳는 시간보다 넉넉히 잡아 둔다. 정확히 맞추면 마지막 틱에 한 걸음 움직이는
 	 * 일이 생기고, 어차피 도착하는 순간 {@link #pull} 이 걷어낸다.
@@ -281,18 +250,9 @@ public final class RallyShardManager {
 		}
 	}
 
-	/** 지금 굳어 있어야 하는 사람들. 동시 소환이면 남은 전원, 순차면 지금 차례 하나다. */
+	/** 지금 굳어 있어야 하는 사람들. 부를 대상 중 살아 있는 전원이다. */
 	private static List<ServerPlayer> currentTargets(MinecraftServer server, Summon summon) {
 		List<ServerPlayer> result = new ArrayList<>();
-		if (summon.staggered) {
-			if (summon.cursor < summon.order.size()) {
-				ServerPlayer one = server.getPlayerList().getPlayer(summon.order.get(summon.cursor));
-				if (alive(one)) {
-					result.add(one);
-				}
-			}
-			return result;
-		}
 		for (UUID id : summon.order) {
 			ServerPlayer target = server.getPlayerList().getPlayer(id);
 			if (alive(target)) {
@@ -304,9 +264,8 @@ public final class RallyShardManager {
 
 	private static void announceStart(ServerPlayer summoner, List<ServerPlayer> targets,
 			Summon summon) {
-		String tail = summon.staggered ? " (한 명씩 옵니다)" : "";
 		summoner.sendSystemMessage(Component.literal(
-				"[증강] 소집의 조각! " + targets.size() + "명을 부릅니다." + tail));
+				"[증강] 소집의 조각! " + targets.size() + "명을 부릅니다."));
 		ServerLevel level = summoner.level();
 		level.playSound(null, summoner.getX(), summoner.getY(), summoner.getZ(),
 				SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 0.7F, 1.4F);
@@ -337,40 +296,24 @@ public final class RallyShardManager {
 		}
 	}
 
-	/** 목록을 제자리에서 섞는다. 피셔-예이츠. */
-	static void shuffle(List<UUID> ids, RandomGenerator random) {
-		for (int index = ids.size() - 1; index > 0; index--) {
-			int other = random.nextInt(index + 1);
-			UUID temporary = ids.get(index);
-			ids.set(index, ids.get(other));
-			ids.set(other, temporary);
-		}
-	}
-
 	/**
 	 * 진행 중인 소환 하나. 저장하지 않는다 — 서버가 다시 뜨면 조각을 다시 쓰면 된다.
 	 *
-	 * <p>목적지를 들고 있지 않다는 점이 {@link StaggeredSwapManager} 의 시퀀스와 가장 크게
-	 * 다르다. 그쪽은 시작할 때 자리를 전부 캡처해 두지만, 소환은 언제나 소환자의 <b>지금</b>
-	 * 자리로 간다.
+	 * <p>목적지를 들고 있지 않다. 소환은 언제나 소환자의 <b>지금</b> 자리로 간다.
 	 */
 	private static final class Summon {
 		final UUID summonerId;
 		final List<UUID> order;
-		final boolean staggered;
 		final int freezeTicks;
 		final List<SwapExplosionEffect> explosions;
-		int cursor;
 		int ticksLeft;
 
-		Summon(UUID summonerId, List<UUID> order, boolean staggered, int freezeTicks,
+		Summon(UUID summonerId, List<UUID> order, int freezeTicks,
 				List<SwapExplosionEffect> explosions) {
 			this.summonerId = summonerId;
 			this.order = order;
-			this.staggered = staggered;
 			this.freezeTicks = freezeTicks;
 			this.explosions = explosions;
-			this.cursor = 0;
 			this.ticksLeft = freezeTicks;
 		}
 	}

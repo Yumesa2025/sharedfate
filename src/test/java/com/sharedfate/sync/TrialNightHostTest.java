@@ -268,16 +268,61 @@ class TrialNightHostTest {
 	}
 
 	/**
-	 * 엔더맨을 새로 소환하지 않는다.
+	 * 불러오고, <b>반드시 지운다.</b>
 	 *
-	 * <p>이 카드는 <b>이미 엔드에 있는</b> 엔더맨을 적대로 만드는 카드이지 수를 늘리는 카드가
-	 * 아니다. 소환이 섞이면 카드 설명과 실제가 갈라지고, 늘어난 놈은 20초 뒤에도 남는다.
+	 * <p>2026-10-18 전에는 이 자리가 「새로 소환하지 않는다」였다 — 늘어난 놈이 20초 뒤에도
+	 * 남는다는 걱정이었다. 사람이 「20블록 밖에 엔더맨들 5마리를 소환하고 이 개체들만 적대」로
+	 * 바꾸고 「20초가 지나면 소환한 다섯은 사라진다」로 정했으므로, 같은 걱정을 이제 <b>지우는 길이
+	 * 있는가</b>로 묻는다. 지우는 것은 죽음이 아니라 {@code discard} 여야 드롭·경험치가 안 남는다.
+	 * 다시 올라온 개체를 알아보는 표와, 저장보다 먼저 지우는 자리까지 함께 본다.
 	 */
 	@Test
-	void 엔더맨을_새로_소환하지_않는다() {
+	void 불러온_개체를_띄우고_반드시_지운다() {
 		byte[] compiled = classBytes(TrialNightHost.class);
-		assertFalse(references(compiled, "addFreshEntity"),
-				"엔티티를 띄우는 호출이 생겼다 — 수를 늘리는 카드가 아니다");
+		assertTrue(references(compiled, "addFreshEntity"), "엔더맨을 불러오지 않는다");
+		assertTrue(references(compiled, "discard"),
+				"불러온 개체를 지우는 호출이 없다 — 20초 뒤에도 남는다");
+		assertFalse(references(compiled, "kill"),
+				"죽이면 엔더 진주와 경험치가 떨어진다 — 사라지게 해야 한다");
+		assertTrue(references(compiled, "addTag"),
+				"표를 달지 않으면 디스크에서 돌아온 개체를 알아볼 길이 없다");
+		assertEquals("sharedfate.night_host", TrialNightHost.SUMMONED_TAG,
+				"표 이름을 바꾸면 이미 디스크에 남은 개체를 못 알아본다");
+		assertTrue(references(classBytes(com.sharedfate.SharedFateMod.class), "sweepStrays"),
+				"돌아온 개체를 지우는 틱이 등록되지 않았다");
+		assertTrue(references(classBytes(com.sharedfate.SharedFateMod.class), "onEntityLoad"));
+	}
+
+	/**
+	 * 팀원에게서 <b>20칸 밖</b>에 부른다 — 사람 말 「주위 20블록 밖에」.
+	 *
+	 * <p>굴림이 어디로 떨어져도 {@code radius} 를 넘고, 너무 멀어 20초를 달려오는 데 다 쓰지도
+	 * 않는다. 다른 팀원에게 가까운 자리를 버리는 판정은 {@code inReach} 의 반대다(위 시험).
+	 */
+	@Test
+	void 부르는_자리는_20칸_밖이다() {
+		double radius = card().radius();
+		for (int step = 0; step <= 100; step++) {
+			double distance = TrialNightHost.spawnDistance(step / 100.0, radius);
+			assertFalse(TrialNightHost.inReach(distance * distance, radius),
+					"20칸 안에 부른다: " + distance);
+			assertTrue(distance <= radius + TrialNightHost.SPAWN_BAND,
+					"너무 멀다: " + distance);
+		}
+		assertEquals(radius + 1.0, TrialNightHost.spawnDistance(-3.0, radius), 1.0E-9,
+				"굴림이 범위를 벗어나도 안쪽으로 새지 않는다");
+		assertEquals(radius + TrialNightHost.SPAWN_BAND, TrialNightHost.spawnDistance(9.0, radius),
+				1.0E-9);
+	}
+
+	/** 카드 설명이 새 동작을 말한다. 「안의 엔더맨」이 남으면 룰렛이 없는 동작을 약속한다. */
+	@Test
+	void 카드_설명이_소환과_사라짐을_말한다() {
+		TrialCatalog.Trial trial = TrialCatalog.byId("sharedfate:night_host");
+		assertNotNull(trial);
+		assertTrue(trial.description().contains("20블록 밖"), trial.description());
+		assertTrue(trial.description().contains("사라집니다"), trial.description());
+		assertFalse(trial.description().contains("20블록 안"), trial.description());
 	}
 
 	/**

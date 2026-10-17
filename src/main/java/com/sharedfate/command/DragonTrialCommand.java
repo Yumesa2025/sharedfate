@@ -8,6 +8,7 @@ import com.sharedfate.SharedFateMod;
 import com.sharedfate.sync.DragonTrialManager;
 import com.sharedfate.sync.DragonTrialSession;
 import com.sharedfate.sync.TrialCatalog;
+import com.sharedfate.sync.TrialCrystalGuard;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import net.minecraft.commands.CommandSourceStack;
@@ -313,7 +314,8 @@ public final class DragonTrialCommand {
 					line.append("투사체 면역 ");
 				}
 				if (guard.restoreCage()) {
-					line.append("쇠창살 재생 ");
+					// 2026-10-18 부터 다시 채우지 않는다 — 받은 순간 무작위 다섯에 한 번(TrialCrystalGuard).
+					line.append("쇠창살 " + TrialCrystalGuard.CAGE_COUNT + "곳 한 번 ");
 				}
 				// ⚠ 2026-10-01 현재 이 갈래로 오는 카드가 하나도 없다 — 사람이 「무딘곡괭이는
 				// 채굴감소 없앳으니 이름 변경해」라고 해서 sharedfate:iron_cage 가 digSlowdown 을

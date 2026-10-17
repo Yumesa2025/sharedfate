@@ -44,7 +44,7 @@ class TrialTimerRowsTest {
 	@Test
 	void 남은_시간이_짧은_줄이_위_체력형은_맨_아래() {
 		List<Entry> entries = List.of(
-				Entry.health("objects", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.6F),
+				Entry.health("objects", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.6F),
 				countdown("far", 300, 0),
 				Entry.active("zone", "안전지대 축소 중", Kind.ZONE, 40, 100),
 				countdown("near", 60, 0));
@@ -120,7 +120,7 @@ class TrialTimerRowsTest {
 	@Test
 	void 체력형은_초_대신_서버_글자() {
 		Row row = TrialTimerRows.rows(List.of(
-				Entry.health("o", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.6F)), 0).get(0);
+				Entry.health("o", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.6F)), 0).get(0);
 		assertEquals("체력 25%", TrialTimerRows.rightText(row, 0.0F));
 		Row time = TrialTimerRows.rows(List.of(countdown("a", 246, 0)), 0).get(0);
 		assertEquals("12.3초", TrialTimerRows.rightText(time, time.remaining()));
@@ -137,7 +137,7 @@ class TrialTimerRowsTest {
 	@Test
 	void 머리줄은_일반_전투_줄_수_최후의_저항_지금_체력() {
 		assertEquals("다가오는 패턴", TrialTimerRows.header(false));
-		assertEquals("다가오는 것", TrialTimerRows.header(true));
+		assertEquals("패턴 타이머", TrialTimerRows.header(true), "2026-10-18 사람 지시로 「다가오는 것」에서 바꿨다");
 		assertEquals("4개", TrialTimerRows.headerNote(false, 4, Float.NaN));
 		assertEquals("지금 체력 27%", TrialTimerRows.headerNote(true, 3, 0.27F));
 		assertEquals("지금 체력 26%", TrialTimerRows.headerNote(true, 3, 0.2504F),
@@ -154,7 +154,7 @@ class TrialTimerRowsTest {
 		assertEquals(0.25F, TrialTimerRows.rowRatio(row, 100.0F), 1.0E-6F);
 		assertEquals(0.0F, TrialTimerRows.rowRatio(row, 0.0F), 1.0E-6F);
 		Row health = TrialTimerRows.rows(List.of(
-				Entry.health("o", "오브젝트 파도", Kind.HEAL, "체력 25%", 0.6F)), 0).get(0);
+				Entry.health("o", "회복 크리스탈 소환", Kind.HEAL, "체력 25%", 0.6F)), 0).get(0);
 		assertEquals(0.6F, TrialTimerRows.rowRatio(health, 0.0F), 1.0E-6F, "1 이면 문턱까지 멀다");
 		assertEquals(0.0F, TrialTimerRows.countdownRatio(5.0F, 0), "분모 0");
 	}

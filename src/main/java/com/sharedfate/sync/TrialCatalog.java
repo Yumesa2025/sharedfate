@@ -345,7 +345,9 @@ public final class TrialCatalog {
 		 * 「맞으면 아프다」면 룰렛이 무엇을 뽑든 같은 판이 된다.
 		 *
 		 * @param arrowImmune  참이면 크리스탈이 투사체에 맞지 않는다. 올라가서 깨야 한다
-		 * @param restoreCage  참이면 모든 크리스탈에 쇠창살이 다시 생긴다. 없던 탑에도 생긴다
+		 * @param restoreCage  참이면 카드를 받은 순간 남은 크리스탈 중 <b>무작위 다섯</b>에 쇠창살이
+		 *                     <b>한 번만</b> 선다. 없던 탑에도 선다. 부서지면 다시 생기지 않는다
+		 *                     (2026-10-18 사람 지시 — {@code TrialCrystalGuard.CAGE_COUNT})
 		 * @param digSlowdown  참이면 팀 전원의 <b>채굴 속도가 깎인다</b>
 		 *                     ({@code TrialCrystalGuard.DIG_SLOWDOWN_MULTIPLIER}).
 		 *                     <p>⚠⚠ <b>2026-10-01 현재 이것을 참으로 적은 카드가 하나도 없다.</b>
@@ -406,10 +408,11 @@ public final class TrialCatalog {
 		/**
 		 * 크리스탈이 되살아난다.
 		 *
-		 * <p>연출이 도는 동안 드래곤은 중앙 상공에 머문다 — <b>때릴 수 없는 시간이 곧 대가</b>다.
+		 * <p>드래곤은 건드리지 않는다. 2026-10-18 에 사람이 「중앙 상공에서 지켜본다」(못 때리는
+		 * 시간이라는 대가)를 걷었다 — 대가는 <b>되살아난 크리스탈을 다시 깨야 한다</b>는 것뿐이다.
 		 *
-		 * @param count     되살릴 개수. 남은 자리가 그보다 적으면 있는 만큼만
-		 * @param showTicks 복구 연출 길이. 이 동안 드래곤이 중앙에 머문다
+		 * @param count     되살릴 개수. 부서진 자리가 그보다 많으면 <b>무작위로</b> 이만큼, 적으면 있는 만큼만
+		 * @param showTicks 복구 연출 길이. 이 동안 새 크리스탈이 무적이고 빔이 자란다
 		 * @param heal      되살아난 크리스탈 하나당 드래곤이 회복하는 양
 		 */
 		record CrystalRevive(int count, int showTicks, float heal) implements Risk {
@@ -498,15 +501,16 @@ public final class TrialCatalog {
 		}
 
 		/**
-		 * 엔드의 엔더맨이 한꺼번에 적대가 된다.
+		 * 팀 바깥에 엔더맨을 새로 불러 적대로 달려오게 한다.
 		 *
 		 * <p>처음에는 <b>엔드의 엔더맨 전부</b>였다. 실제로 해 보니 「너무 빡세다」 — 엔드는
 		 * 엔더맨이 끝없이 깔린 곳이라 「전부」가 사실상 무한이었다. 그래서 <b>사람 가까이 있는
-		 * 몇 마리</b>로 좁힌다.
+		 * 몇 마리</b>로 좁혔다. 2026-10-18 에 사람이 다시 「주위 20블록 밖에 엔더맨들 5마리를
+		 * 소환하고 이 개체들만 적대가 되어 달려오게」로 바꿨다 — 이제 있던 엔더맨은 건드리지 않는다.
 		 *
-		 * @param hostileTicks 적대인 시간(틱). 지나면 원래대로 돌아간다
-		 * @param radius       팀원에게서 이 거리 안에 있는 놈만 깨운다(블록)
-		 * @param maxMobs      깨우는 최대 마리 수. 넘치면 가까운 순으로 자른다
+		 * @param hostileTicks 적대인 시간(틱). 지나면 불러온 개체가 <b>사라진다</b>
+		 * @param radius       팀원 누구에게서도 이 거리 <b>밖</b>에 불러온다(블록)
+		 * @param maxMobs      불러오는 마리 수. 설 땅이 모자라면 그보다 적다
 		 */
 		record NightHost(int hostileTicks, double radius, int maxMobs) implements Risk {
 		}
@@ -696,7 +700,7 @@ public final class TrialCatalog {
 					// 길다. 여기를 30 아래로 내리면 예고가 사후 통보가 된다.
 					new Risk.TracedProjectile(200, 40, 23.0F, 4.35, 1)),
 			new Trial("sharedfate:lightning_storm", "낙뢰",
-					"6초마다 아레나 열 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
+					"10초마다 아레나 열 곳에 번개가 떨어집니다. 떨어지기 전에 자리가 보입니다.",
 					POOL_ALL_CRYSTALS,
 					// 실제로 맞아 보고 정한 값이다. 두 곳은 「비켜야 할 이유」가 거의 없었고 피해 5 는
 					// 약했다. 열 곳으로 늘리고 피해를 12 로 올렸는데, 그러고도 「아직 안 아픈 정도」라
@@ -716,14 +720,20 @@ public final class TrialCatalog {
 					// 체력의 7할이 날아가고, 맨몸이면 70 이다.
 					//
 					// ⚠ 맨몸이면 35 가 그대로 들어가 한 대에 전멸이다(클래스 설명을 볼 것).
+					//
+					// 주기 200틱(10초)은 2026-10-18 에 사람이 정했다(전에는 120틱, 6초). 피해·열 곳·
+					// 반경은 그대로다. 같은 날 사람이 최후의 저항의 상시 번개 주기(DragonLastStandPatterns
+					// .LIGHTNING_PERIOD_TICKS)도 10초로 정해 지금은 둘 다 200틱이다. 사람이 둘을 각각
+					// 10초로 정한 것이지 한 값에 묶인 것은 아니다 — 한쪽을 고칠 때 다른 쪽을 따라 고치지
+					// 말 것. 피해는 일부러 갈라져 있다(이 카드 35 · 상시 번개 24.5).
 					new Risk.DelayedStrike(Risk.Aim.RANDOM_SPOT, Risk.Impact.LIGHTNING,
-							120, 0, 35.0F, 3.0, 0.0, 10)),
+							200, 0, 35.0F, 3.0, 0.0, 10)),
 			new Trial("sharedfate:crystal_ward", "크리스탈 보호막",
 					"남은 크리스탈이 화살에 맞지 않습니다. 올라가서 깨야 합니다.",
 					POOL_FIRST_CRYSTAL,
 					new Risk.CrystalGuard(true, false, false)),
 			new Trial("sharedfate:iron_cage", "다시 선 쇠창살",
-					"모든 크리스탈에 쇠창살이 다시 생깁니다. 없던 탑에도 생깁니다.",
+					"남은 크리스탈 중 다섯 개에 쇠창살이 생깁니다. 없던 탑에도 생기고, 부수면 다시 생기지 않습니다.",
 					POOL_FIRST_CRYSTAL,
 					// ⚠⚠ 이 카드는 효과가 하나뿐이다. 빠뜨린 것이 아니라 사람이 알고 고른
 					// 것이다 — 세 걸음을 밟았다.
@@ -744,6 +754,11 @@ public final class TrialCatalog {
 					// 그대로 두었다. 되살리려면 셋째 값을 true 로 적으면 된다. 지우지 않은
 					// 까닭은 그 길의 믹스인 자리를 mining_speed 증강이 함께 쓰기 때문이다 —
 					// 한쪽을 걷으려다 둘 다 걷으면 증강이 죽는다.
+					//
+					// 2026-10-18 — 사람 지시로 「모든 크리스탈 · 2초마다 다시 채움」을 「남은 것 중
+					// 무작위 다섯 · 받은 순간 한 번」으로 바꿨다(「크리스탈 5개에. 그리고 계속
+					// 생기는데 이거 버그임? 부숴도 부숴도 계속 생기던데」). 다시 채우던 것은 버그가
+					// 아니라 설계였다(옛 CAGE_REPAIR_INTERVAL) — TrialCrystalGuard 클래스 설명.
 					new Risk.CrystalGuard(false, true, false)),
 			new Trial("sharedfate:dragon_mark", "표적",
 					"크리스탈을 깬 사람이 10초 동안 표적이 되고 드래곤이 구체를 5발 날립니다. 그다음 20초는 쉽니다.",
@@ -764,9 +779,13 @@ public final class TrialCatalog {
 					// 이 카드를 다시 잡을 때 사람이 그것을 보고 정해야 한다.
 					new Risk.DragonFocus(Risk.Focus.CRYSTAL_BREAKER, 200, 400, 5, 6.0F)),
 			new Trial("sharedfate:crystal_revival", "부활",
-					"모든 크리스탈이 되살아납니다. 드래곤이 중앙 상공에서 그것을 지켜봅니다.",
+					"부서진 크리스탈 중 다섯 개가 무작위로 되살아납니다.",
 					POOL_HEALTH_50,
-					new Risk.CrystalRevive(10, 100, 0.0F)),
+					// 2026-10-18 — 사람이 「중앙 상공에서 지켜본다」를 걷고 「모든」을 「5개」로
+					// 줄였다(「이것도 5개만 부활하게. 모든이 아니라」). 다섯은 부서진 자리 중
+					// 무작위다(TrialCrystalRevive.pickSeats). 연출 100틱은 그대로 — 입장 연출의
+					// 110 과 달라야 실행기의 열쇠가 안 겹친다(TrialEntrance.REVIVE_SHOW_TICKS).
+					new Risk.CrystalRevive(5, 100, 0.0F)),
 			new Trial("sharedfate:ender_pulse", "엔더 파동",
 					"20초마다 중앙에서 바닥 고리가 퍼집니다. 지나갈 때 땅을 딛고 있으면 바깥으로 밀려나고 잠시 묶입니다.",
 					POOL_ENTRY,
@@ -814,12 +833,16 @@ public final class TrialCatalog {
 					POOL_ALL_CRYSTALS,
 					new Risk.DryWorld()),
 			new Trial("sharedfate:night_host", "밤의 군세",
-					"주위 20블록 안의 엔더맨이 다섯 마리까지 20초 동안 적대가 되어 쳐다보지 않아도 달려옵니다.",
+					"주위 20블록 밖에 엔더맨 다섯 마리가 나타나 20초 동안 쳐다보지 않아도 달려옵니다. 20초가 지나면 사라집니다.",
 					POOL_HEALTH_50,
 					// 「엔드의 엔더맨 전부」로 냈더니 실제로 해 보고 「너무 빡세다」가 나왔다 —
 					// 엔드는 엔더맨이 끝없이 깔린 곳이라 「전부」가 사실상 무한이었고, 한 번에
 					// 몇 마리가 붙는지를 카드가 정하지 못했다. 사람이 「플레이어 주위에 20블럭 +
 					// 5마리 최대」로 좁혔다. 적대 시간 400틱(20초)은 그대로다.
+					//
+					// 2026-10-18 — 사람 지시로 「있던 엔더맨을 깨운다」에서 「20블록 밖에 다섯을
+					// 새로 불러 그 다섯만 적대」로 바꿨다. 20초가 지나면 불러온 다섯이 사라진다
+					// (사람 결정 — 드롭·경험치 없이). 값 셋은 그대로다.
 					new Risk.NightHost(400, 20.0, 5)),
 			new Trial("sharedfate:end_rain", "종말의 비",
 					"30초 동안 아레나 곳곳에 표시가 떴다가 떨어집니다. 표시된 자리에 서 있으면 크게 다칩니다.",

@@ -41,8 +41,10 @@ class DefaultPerkSetTypesTest {
 
 		Map<PerkSetType, Integer> expected = new EnumMap<>(PerkSetType.class);
 		expected.put(PerkSetType.MINING, 10);
-		expected.put(PerkSetType.POWER, 8);
-		expected.put(PerkSetType.MOBILITY, 7);
+		// 「작아진 몸」이 무유형에서 화력으로 들어와 8 → 9.
+		expected.put(PerkSetType.POWER, 9);
+		// 「숨죽인 걸음」이 무유형에서 기동으로 들어와 7 → 8.
+		expected.put(PerkSetType.MOBILITY, 8);
 		expected.put(PerkSetType.DEFENSE, 8);
 		expected.put(PerkSetType.SUPPLY, 7);
 		expected.put(PerkSetType.WEAPON, 7);
@@ -51,7 +53,9 @@ class DefaultPerkSetTypesTest {
 		expected.put(PerkSetType.SURVIVAL, 5);
 		expected.put(PerkSetType.HUNT, 6);
 		expected.put(PerkSetType.SWAP, 6);
-		expected.put(PerkSetType.RECOVERY, 5);
+		// 「가벼운 위장」(무유형에서)·「무한 회복, 무한 식비」(생존 겸업)·「비상식량」(보급 겸업)이
+		// 들어와 5 → 8. 새 실버 「먹방」이 들어와 8 → 9.
+		expected.put(PerkSetType.RECOVERY, 9);
 		expected.put(PerkSetType.BLESSING, 7);
 		expected.put(PerkSetType.BOND, 6);
 		// 개척은 기존 무유형 둘(길잡이 나침반·요새 탐지기)을 데려오고 새 증강 둘
@@ -64,21 +68,24 @@ class DefaultPerkSetTypesTest {
 		}
 
 		long none = PerkRegistry.all().stream().filter(p -> p.setTypes().isEmpty()).count();
-		// 「굳은살」(실버, 무유형)이 들어오며 11 → 12.
-		assertEquals(12, none, "무유형");
+		// 「굳은살」(실버, 무유형)이 들어오며 11 → 12. 「가벼운 위장」이 회복으로,
+		// 「숨죽인 걸음」이 기동으로 가며 12 → 10. 「작아진 몸」이 화력으로 가며 10 → 9.
+		assertEquals(9, none, "무유형");
 	}
 
 	/**
-	 * 유형이 <b>두 개</b>인 증강은 정확히 다섯뿐이다.
+	 * 유형이 <b>두 개</b>인 증강은 정확히 일곱뿐이다.
 	 *
 	 * <p>「가호」는 셋이 겸업이다 — 전속 광부(채굴)·몽둥이찜질(무기)·열외(교환). 한 사람에게
 	 * 몰아주는 축과 그 효과가 무엇이냐는 축이 서로 직교하기 때문이다.
+	 *
+	 * <p>「비상식량」(보급)과 「무한 회복, 무한 식비」(생존)는 회복을 겸한다.
 	 *
 	 * <p>유형을 하나로 줄이면 세트 판정이 조용히 달라지므로, 개수와 함께 어느 증강인지도
 	 * 못박는다.
 	 */
 	@Test
-	void 유형이_둘인_증강은_정확히_다섯이다(@TempDir Path dir) throws IOException {
+	void 유형이_둘인_증강은_정확히_일곱이다(@TempDir Path dir) throws IOException {
 		loadDefaultPool(dir);
 
 		List<String> multi = PerkRegistry.all().stream()
@@ -86,9 +93,16 @@ class DefaultPerkSetTypesTest {
 				.map(Perk::id)
 				.toList();
 
-		assertEquals(List.of("sharedfate:expedition_kit", "sharedfate:price_of_blood",
+		assertEquals(List.of("sharedfate:emergency_ration", "sharedfate:expedition_kit",
+				"sharedfate:endless_recovery", "sharedfate:price_of_blood",
 				"sharedfate:shared_pickaxe", "sharedfate:cudgel",
 				"sharedfate:swap_exempt"), multi);
+		assertEquals(List.of(PerkSetType.SUPPLY, PerkSetType.RECOVERY),
+				PerkRegistry.byId("sharedfate:emergency_ration").orElseThrow().setTypes(),
+				"비상식량 = 보급·회복");
+		assertEquals(List.of(PerkSetType.SURVIVAL, PerkSetType.RECOVERY),
+				PerkRegistry.byId("sharedfate:endless_recovery").orElseThrow().setTypes(),
+				"무한 회복, 무한 식비 = 생존·회복");
 		assertEquals(List.of(PerkSetType.WEAPON, PerkSetType.BLESSING),
 				PerkRegistry.byId("sharedfate:cudgel").orElseThrow().setTypes(),
 				"몽둥이찜질 = 무기·가호");

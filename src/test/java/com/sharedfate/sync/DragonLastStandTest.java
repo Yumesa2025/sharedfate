@@ -24,6 +24,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -426,24 +427,32 @@ class DragonLastStandTest {
 	}
 
 	/**
-	 * 상시 번개 35 는 「낙뢰」와 <b>같은 값이자 같은 계산</b>이다.
+	 * ⚠⚠ 상시 번개는 「낙뢰」와 <b>일부러 갈라졌다</b> — 2026-10-18.
 	 *
-	 * <p>문서가 「낙뢰와 같은 방식」이라고 적어 둔 것을 값으로 지킨다. 두 곳이 갈라지면
-	 * 사람이 배운 「번개는 세 대에 죽는다」가 자리마다 달라진다.
+	 * <p>전에는 「낙뢰와 같은 방식」을 값으로 지켜 둘 다 35 였다. 사람 말 <b>「2페이지 상시 번개 딜
+	 * 지금보다 30프로 내리고 싶어」</b>로 상시 번개만 <b>24.5</b> 가 됐고 카드 「낙뢰」는 35 그대로다
+	 * (사람은 2페이지만 말했다). 그래서 묻는 것을 뒤집었다 — <b>둘이 같아지면 그것이 사고다.</b>
+	 * 같아지는 길은 「낙뢰」를 따라 내렸거나 이쪽을 35 로 되돌린 것이고 둘 다 사람 말과 다르다.
+	 *
+	 * <p>⚠ 무장 기준으로는 30% 가 아니라 약 43% 줄었다(한 대 6.93 → 3.92) — 방어도 셈이 피해에 따라
+	 * 휘기 때문이다. 그래서 상시 번개는 <b>「세 대에 전멸」에서 빠졌다.</b>
 	 */
 	@Test
-	void 상시_번개는_낙뢰와_같은_값이다() {
+	void 상시_번개는_낙뢰와_일부러_갈라졌다() {
 		TrialCatalog.Trial lightning = TrialCatalog.byId("sharedfate:lightning_storm");
 		assertNotNull(lightning);
 		TrialCatalog.Risk.DelayedStrike strike =
 				(TrialCatalog.Risk.DelayedStrike) lightning.risks().getFirst();
-		assertEquals(strike.damage(), DragonLastStand.LIGHTNING_DAMAGE, 0.001F,
-				"「낙뢰」와 같은 값이어야 한다 — 한쪽을 고치면 다른 쪽도 함께 볼 것");
+		assertEquals(24.5F, DragonLastStand.LIGHTNING_DAMAGE, 0.001F, "사람이 35 에서 30% 내렸다");
+		assertEquals(35.0F, strike.damage(), 0.001F, "카드 「낙뢰」는 그대로다 — 사람은 2페이지만 말했다");
+		assertNotEquals(strike.damage(), DragonLastStand.LIGHTNING_DAMAGE,
+				"「낙뢰」와 같은 값으로 돌아갔다 — 둘은 일부러 갈라진 값이다");
 
 		float perHit = GearedDamage.afterGear(DragonLastStand.LIGHTNING_DAMAGE,
 				GearedDamage.Source.LIGHTNING_BOLT);
-		assertTrue(GearedDamage.wipesInThree(perHit),
-				"무장 기준 세 대에 전멸이어야 한다 — 실제 한 대 " + perHit);
+		assertEquals(3.92F, perHit, 0.02F, "무장 기준 한 대");
+		assertFalse(GearedDamage.wipesInThree(perHit),
+				"세 대에 전멸이면 내린 값이 다시 올라간 것이다 — 실제 한 대 " + perHit);
 	}
 
 	/**
@@ -456,8 +465,13 @@ class DragonLastStandTest {
 	@Test
 	void 공허_흡입은_무장_기준_한_대_6점9다() {
 		assertEquals(35.0F, DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F, "사람이 정한 값이다");
-		assertEquals(DragonLastStand.LIGHTNING_DAMAGE, DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F,
-				"상시 번개와 같은 값이다 — 「큰 카드 한 대분」이 그 뜻이다");
+		// 2026-10-18 부터 상시 번개(24.5)와 값이 갈라졌다 — 사람이 상시 번개만 내렸다. 「큰 카드
+		// 한 대분」은 그대로 「낙뢰」 카드의 35 와 같은 값이다.
+		TrialCatalog.Trial lightning = TrialCatalog.byId("sharedfate:lightning_storm");
+		assertNotNull(lightning);
+		assertEquals(((TrialCatalog.Risk.DelayedStrike) lightning.risks().getFirst()).damage(),
+				DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F,
+				"「낙뢰」 카드와 같은 값이다 — 「큰 카드 한 대분」이 그 뜻이다");
 
 		float bolt = GearedDamage.afterGear(DragonLastStand.VOID_SUCTION_DAMAGE,
 				GearedDamage.Source.LIGHTNING_BOLT);
@@ -490,7 +504,7 @@ class DragonLastStandTest {
 		float bolt = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
 				GearedDamage.Source.LIGHTNING_BOLT);
 		assertTrue(bolt * DragonLastStandPatterns.CROSS_ROUNDS < GearedDamage.TEAM_HEALTH,
-				"lightningBolt() 로 쏘면 두 번을 다 맞아도 안 죽는다 — 실제 한 대 " + bolt);
+				"lightningBolt() 로 쏘면 회차를 다(2026-10-18 부터 네 번) 맞아도 안 죽는다 — 실제 한 대 " + bolt);
 	}
 
 	/**
@@ -511,8 +525,8 @@ class DragonLastStandTest {
 		assertEquals(DragonLastStandPatterns.crossDurationTicks(),
 				DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
 				"칸에 적은 합과 패턴 쪽 계산이 갈라졌다");
-		assertEquals(100, DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
-				"60 + 30 + 여운 10 이다");
+		assertEquals(160, DragonLastStand.Pattern.CROSS_FISSURE.durationTicks(),
+				"60 + 30 × 3 + 여운 10 이다 — 2026-10-18 에 네 회차가 됐다");
 
 		// 터지는 틱이 길이 안에 들어 있어야 한다. 넘치면 피해가 아예 안 들어간다.
 		assertTrue(DragonLastStandPatterns.SUCK_WARN_TICKS
@@ -527,7 +541,7 @@ class DragonLastStandTest {
 	/**
 	 * ⚠ <b>브레스 잠금의 미리 잠그는 길이는 브레스 길이여야 한다.</b>
 	 *
-	 * <p>흡입이 브레스보다 <b>길다</b>(160 대 100, 십자는 100 으로 같다). 그래서 「가장 긴 패턴」으로
+	 * <p>흡입이 브레스보다 <b>길다</b>(160 대 100, 십자도 2026-10-18 부터 160). 그래서 「가장 긴 패턴」으로
 	 * 잠금을 잡고 있었다면 여기서 어긋난다 — {@code DragonLastStandZone.shrinkLockoutLead} 가
 	 * 재는 것은 <b>브레스 한 판이 들어갈 자리</b>이고 새 패턴은 축소와 겹쳐도 되므로 그대로여야
 	 * 한다.
@@ -542,20 +556,9 @@ class DragonLastStandTest {
 				"이 시험이 붙드는 상황(새 패턴이 브레스보다 길다)이 사라졌으면 설명을 고칠 것");
 	}
 
-	/**
-	 * 안전지대 밖 피해는 <b>인원수로 곱하지 않는 초당 값</b>이다.
-	 *
-	 * <p>여기서 붙드는 것은 숫자 하나뿐이다. 붙이는 사람이 「넷이 밖이면 초당 32」로 만들면
-	 * 5초에 전멸이라, 값을 상수로 못박아 두고 그 뜻을 여기에 적어 둔다.
-	 */
-	@Test
-	void 안전지대_밖은_초당_8이다() {
-		assertEquals(8.0F, DragonLastStand.OUTSIDE_ZONE_DAMAGE_PER_SECOND, 0.001F);
-		float perSecond = GearedDamage.afterGear(DragonLastStand.OUTSIDE_ZONE_DAMAGE_PER_SECOND,
-				GearedDamage.Source.LIGHTNING_BOLT);
-		assertTrue(perSecond * 4.0F < GearedDamage.TEAM_HEALTH,
-				"넷이 밖에 있어도 한 번에 전멸이면 안 된다 — 인원수로 곱하지 말 것");
-	}
+	// ⚠ 2026-10-18 — 「안전지대_밖은_초당_8이다」를 걷었다. 사람 말 「넘어가서 딜 입히는 건 폐기」로 상수
+	// (OUTSIDE_ZONE_DAMAGE_PER_SECOND)가 사라졌고, 밖 피해가 없다는 것은 DragonLastStandZoneTest.밖_피해가_없다
+	// 가 붙든다.
 
 	// ------------------------------------------------- 「메마른 세계」만은 이어진다
 

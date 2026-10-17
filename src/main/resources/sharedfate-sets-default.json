@@ -592,9 +592,7 @@
               "type": "on_swap",
               "effects": [
                 {
-                  "type": "status_effect",
-                  "effect": "minecraft:resistance",
-                  "amplifier": 4,
+                  "type": "invulnerable",
                   "duration": 10
                 }
               ]

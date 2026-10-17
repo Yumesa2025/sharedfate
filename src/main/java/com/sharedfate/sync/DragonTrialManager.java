@@ -219,6 +219,9 @@ public final class DragonTrialManager {
 			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {} · {}장",
 					trials ? "켬" : "끔(바닐라 드래곤전)", session.trialCount());
 		}
+		// 서버가 강제로 죽어 우리 엔드 보더가 world_border.dat 에 남았으면 치운다. 되살린 시련 전투가
+		// 있으면 손대지 않는다 — 다음 틱부터 그 전투가 다시 붙든다.
+		DragonTrialBorder.onServerStarted(server, trialHolder(SESSIONS.values(), null) != null);
 	}
 
 	/** 지금 상태를 파일에 남긴다. 세션이 열리고 닫힐 때와 시련을 고를 때 부른다. */
@@ -417,11 +420,11 @@ public final class DragonTrialManager {
 	 *
 	 * <p>{@code SharedFateMod} 의 등록 순서가 곧 실행 순서인데 {@code DragonTrialManager::tick}
 	 * 이 그 줄 맨 앞에 있다. 곧 <b>여기서 사람을 엔드로 옮겨 놓아도 같은 틱의 뒤쪽에서 다른
-	 * 것들이 그 자리를 덮어쓸 수 있다.</b> 사람을 옮기는 길이 다섯이고(순열 교환 · 집합 ·
-	 * 정거장 · 시차 · 소집의 조각) 전부 우리 뒤에 돈다 — 같은 틱에 부딪히면 <b>엔드 소환이
+	 * 것들이 그 자리를 덮어쓸 수 있다.</b> 사람을 옮기는 길이 넷이고(순열 교환 · 집합 ·
+	 * 정거장 · 소집의 조각) 전부 우리 뒤에 돈다 — 같은 틱에 부딪히면 <b>엔드 소환이
 	 * 구조적으로 진다.</b> 실제로 「엔드에 끌려 들어갔다가 도로 나온다」가 그것이었다.
 	 *
-	 * <p>지금은 {@code EndFightTeleportLock} 이 그 다섯을 막아 부딪히지 않는다. 그래도 이
+	 * <p>지금은 {@code EndFightTeleportLock} 이 그 넷을 막아 부딪히지 않는다. 그래도 이
 	 * 사실을 여기 남겨 둔다 — <b>순서로 이기려 들지 말 것.</b> 등록 순서를 바꿔 뒤로 옮기면
 	 * 이번에는 우리가 남의 순간이동을 덮어쓰게 되고, 어느 쪽이 이기는지가 등록 파일의 줄 순서에
 	 * 달린 상태로 돌아간다. 막아야 하는 것은 순서가 아니라 <b>옮기는 행위</b>다.
@@ -446,6 +449,8 @@ public final class DragonTrialManager {
 		if (SharedFateMod.config.dragonHealthPerMember <= 0) {
 			// 전투가 없는 서버다. 패턴 타이머 HUD 를 받던 사람이 있었다면 한 번 지운다.
 			TrialTimers.publish(server, Map.of(), 0L);
+			// 전투 도중 이 설정이 0 이 되면 세션이 더는 안 돌므로 보더도 여기서 되돌린다.
+			DragonTrialBorder.restore(server.getLevel(Level.END));
 			return;
 		}
 		ServerLevel end = server.getLevel(Level.END);
@@ -462,6 +467,7 @@ public final class DragonTrialManager {
 		// 부르는 것은 「전투가 끝났는데 엔드로 끌려간다」가 된다.
 		recallStragglers(server, end, now);
 		tickSessions(server, end, now);
+		restoreBorderIfIdle(end);
 		// ⚠ 세션을 다 돌린 <b>뒤</b>다. 실행기가 이번 틱에 터뜨리고 고른 것이 반영된 상태를 읽어야
 		// 「방금 터졌다」를 「0.0초」로 띄우지 않는다.
 		publishTimers(server, end, now);
@@ -506,7 +512,7 @@ public final class DragonTrialManager {
 	 * 소환한 뒤에 밖으로 나간 사람은 <b>다시는 불리지 않았다.</b> 나가는 길이 둘이다.
 	 *
 	 * <ul>
-	 *   <li><b>낡은 좌표를 쓰는 순간이동</b>(정거장 · 시차)이 사람을 엔드 밖에 떨어뜨린다.
+	 *   <li><b>낡은 좌표를 쓰는 순간이동</b>(정거장)이 사람을 엔드 밖에 떨어뜨린다.
 	 *       {@code EndFightTeleportLock} 이 이제 막지만, 자물쇠가 새면 그대로 밖에 남는다</li>
 	 *   <li><b>소환될 때 오프라인이었던 팀원.</b> {@link #summonTeam} 은 접속해 있는 사람만
 	 *       옮기므로, 전투 도중에 들어온 사람은 영영 밖이다</li>
@@ -919,6 +925,12 @@ public final class DragonTrialManager {
 				}
 				continue;
 			}
+			// 엔드 월드 보더를 섬 가장자리에 세운다(2026-10-18 사람 지시 「드래곤전 시작하면 월드보더가
+			// 제일 끝에서 생기고」). 시련 세션이 열린(startSession) 뒤 첫 틱부터 최후의 저항 전까지 여기가
+			// 붙들고, 최후의 저항이 열리면 위 continue 때문에 이 줄을 안 지나 DragonLastStandZone 이 넘겨받는다
+			// — 두 쪽이 한 틱에 서로 다른 크기를 쓰는 일이 없다. 되돌리는 것은 tick 의 restoreBorderIfIdle.
+			DragonTrialBorder.hold(end, TrialPodium.locate(end, dragon),
+					DragonTrialBorder.ISLAND_HALF_SIDE);
 			// 입장 연출. 룰렛보다 <b>먼저</b> 돌아야 한다 — 룰렛이 뜨면 TrialFreeze 가 판을
 			// 얼려 연출이 그 자리에서 멈춘다. 겹치지 않게 하는 것은 순서가 아니라
 			// TrialCatalog.DELAY_SETTLE_TICKS 가 연출 길이와 한 상수로 묶여 있는 것이다.
@@ -938,6 +950,26 @@ public final class DragonTrialManager {
 			finished.forEach(RECALL_AT::remove);
 			endTrials();
 			persist();
+		}
+	}
+
+	/**
+	 * ⚠ <b>시련 세션이 하나도 없는데 엔드 월드 보더를 들고 있으면 되돌린다.</b> {@link #tick} 이 세션을
+	 * 다 돌린 뒤 매 틱 부른다.
+	 *
+	 * <p>보더는 시련 전투가 열려 있는 동안만 선다(섬 가장자리 → 최후의 저항 42-32-22-18,
+	 * {@link DragonTrialBorder}). 닫히는 길이 여럿이다 — 승리(드래곤이 죽거나 사라져 세션이 닫힘) · 팀
+	 * 해체({@code onTeamGone}) · 옛 저장 파일에서 시련 끔으로 되살린 세션만 남은 판. 그 길마다
+	 * 되돌리는 줄을 두면 하나는 반드시 빠진다(「한쪽만 막으면 반드시 샌다」). 그래서 <b>「시련 세션이
+	 * 없다」 한 가지 사실</b>만 보고 여기 한 곳에서 되돌린다. 시련을 끈 세션(바닐라 드래곤전)만 남아도
+	 * 되돌린다 — 그 세션은 보더를 쓰지 않는다.
+	 *
+	 * <p>되돌리는 값은 처음 잡을 때 기억해 둔 원래 보더다({@link DragonTrialBorder#restore}). 서버가
+	 * 내려가는 길은 {@code DragonLastStand.onServerStopping} 이 따로 맡는다.
+	 */
+	private static void restoreBorderIfIdle(ServerLevel end) {
+		if (DragonTrialBorder.held() && trialHolder(SESSIONS.values(), null) == null) {
+			DragonTrialBorder.restore(end);
 		}
 	}
 
@@ -1511,6 +1543,8 @@ public final class DragonTrialManager {
 	/** 월드가 바뀌거나 서버가 내려갈 때. 남은 상태를 버린다. */
 	public static void clearState() {
 		SESSIONS.clear();
+		// 보더의 「원래 값」 기억만 버린다. 월드는 만지지 않는다 — SERVER_STOPPED 에서도 불린다.
+		DragonTrialBorder.clearState();
 		PENDING_SUMMON.clear();
 		CRYSTALS_AT_START.clear();
 		READY_AT.clear();

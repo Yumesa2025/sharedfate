@@ -56,15 +56,15 @@ import java.util.UUID;
  *   <tr><td>{@link DragonLastStandLights}</td><td><b>신호기 빛</b>(디스플레이 개체).
  *       진입 연출의 보라 기둥 넷과 오브젝트 파도의 흰 선이 함께 쓴다. ⚠ 전에는 <b>타이머 바</b>도
  *       여기 있었는데 2026-10-04 에 파도가 타이머를 버리면서 함께 지웠다</td></tr>
- *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대 — <b>혼자 도는 시계</b>. 2026-10-04 부터
- *       월드 보더가 아니라 <b>나갈 수 있는 원</b>이고 벽은 {@link DragonLastStandZoneWall} 의 빨간
- *       입자 기둥이다(사람 말 「안전지대가 사실상 보더라 나갈 수가 없어」)</td></tr>
+ *   <tr><td>{@link DragonLastStandZone}</td><td>안전지대 — <b>혼자 도는 시계</b>. 2026-10-18 부터
+ *       다시 <b>엔드 월드 보더</b>(넘어갈 수 없고 밖 피해 없음)다 — 사람 말 「월드보더로 아예 못
+ *       넘어가게, 넘어가서 딜 입히는 건 폐기」. 보더를 세우고 되돌리는 것은 {@link DragonTrialBorder}</td></tr>
  *   <tr><td>{@link DragonLastStandDome}</td><td><b>반구 블록 파괴</b> — 뽑히지 않고 1초마다 도는
  *       상시 규칙. 블록을 만지는 것은 <b>이 파일 하나뿐</b>이다</td></tr>
  * </table>
  *
  * <p>「왜 브레스가 안 나오지」는 <b>여기</b>({@link #allowed}), 「왜 빗나가지」는 <b>패턴</b>,
- * 「왜 나 혼자 심장 소리가 나지」는 <b>지대</b>(원 밖이다),「왜 내 발판이 없어졌지」는 <b>반구</b>, 「왜 아무 일도
+ * 「왜 갑자기 안쪽으로 옮겨졌지」는 <b>지대</b>(줄어드는 보더가 지나쳤다),「왜 내 발판이 없어졌지」는 <b>반구</b>, 「왜 아무 일도
  * 안 일어나지」는 <b>진입 연출</b>(8초 동안 시계가 서 있다), 「이 떠 있는 크리스탈은 무엇이지」는
  * <b>오브젝트 파도</b> 쪽이다.
  *
@@ -374,19 +374,27 @@ public final class DragonLastStand {
 	static final float CONE_BREATH_DAMAGE = 65.0F;
 
 	/**
-	 * 상시 번개의 <b>적히는</b> 피해.
+	 * 상시 번개의 <b>적히는</b> 피해. <b>사람이 정한 값이다</b> — 35 에서 30% 내린 <b>24.5</b>.
 	 *
-	 * <p>「낙뢰」와 <b>같은 값</b>이다. 문서가 「낙뢰와 같은 방식」이라고 적어 둔 것을 값으로
-	 * 지킨 것이고, 그러려면 피해원도 같아야 한다 — {@code TrialRisks.detonate} 와 같은
-	 * {@code damageSources().lightningBolt()} 다. 무장 기준 한 대 <b>6.93</b> · 세 대
-	 * <b>20.79</b> 로 「큰 카드는 세 대에 전멸」에 그대로 얹힌다.
+	 * <h2>⚠⚠ 2026-10-18 — 「낙뢰」와 <b>일부러 갈라졌다</b></h2>
+	 *
+	 * <p>사람 말: <b>「2페이지 상시 번개 딜 지금보다 30프로 내리고 싶어」</b>. 전에는 「낙뢰」 카드와
+	 * <b>같은 값</b>(35)이었다 — 문서가 「낙뢰와 같은 방식」이라고 적어 둔 것을 값으로 지킨 것이었다.
+	 * 사람이 내리라고 한 것은 <b>2페이지뿐</b>이라 카드 「낙뢰」의 35 는 그대로이고, 공허 흡입
+	 * ({@link #VOID_SUCTION_DAMAGE}) 35 도 그대로다. ⚠ <b>한쪽을 고칠 때 다른 쪽을 따라 고치지 말 것</b>
+	 * — 시험이 「둘이 같아지면」 터지게 뒤집어 두었다.
+	 *
+	 * <p>피해원은 그대로 {@code damageSources().lightningBolt()} 다({@code TrialRisks.detonate} 와 같다).
+	 * ⚠ <b>무장 기준으로는 30% 가 아니라 약 43% 줄었다</b> — 방어도 셈이 피해에 따라 휘기 때문이다.
+	 * 한 대 <b>6.93 → 3.92</b>, 세 대 20.79 → 11.77 이라 <b>「큰 카드는 세 대에 전멸」에서 빠졌다</b>
+	 * (전멸은 여섯 대 23.55). 무장 기준 30% 감소(4.85)를 원하면 적힌 값이 약 28 이어야 한다.
 	 *
 	 * <p>⚠ 열 개가 한꺼번에 떨어져도 <b>한 사람이 받는 것은 한 발</b>이어야 한다. 겹치면 두 발
-	 * 13.86 이고 세 발이면 전멸이다. <b>사람이 겹침을 허용했으므로</b> 그것을 지키는 것은
+	 * 7.85 · 세 발 11.77 이다. <b>사람이 겹침을 허용했으므로</b> 그것을 지키는 것은
 	 * {@code TrialRisks.reserveSpots} 가 아니라 {@code DragonLastStandPatterns.strikeLightning}
 	 * 의 {@code break} 한 줄뿐이다 — 겹침 확률과 넓이를 재어 둔 표가 그쪽에 있다.
 	 */
-	static final float LIGHTNING_DAMAGE = 35.0F;
+	static final float LIGHTNING_DAMAGE = 24.5F;
 
 	/**
 	 * 공허 흡입이 터질 때 원 안에 있으면 들어가는 <b>적히는</b> 피해. <b>사람이 정한 값이다.</b>
@@ -402,12 +410,13 @@ public final class DragonLastStand {
 	 *   <tr><td>{@code magic()}</td><td>12.60</td><td>아니다 · 방어도를 지나간다</td></tr>
 	 * </table>
 	 *
-	 * <p>{@link #LIGHTNING_DAMAGE} 와 <b>값도 피해원도 같다.</b> 그래서 「큰 카드는 세 대에
-	 * 전멸」에 그대로 얹힌다 — 세 대 20.79, 두 대 13.86 이다.
+	 * <p>피해원은 {@link #LIGHTNING_DAMAGE} 와 같다. 「큰 카드는 세 대에 전멸」에 그대로 얹힌다 —
+	 * 세 대 20.79, 두 대 13.86 이다. ⚠ <b>값은 2026-10-18 부터 갈라졌다</b> — 사람이 상시 번개만
+	 * 24.5 로 내렸고 이쪽 35 는 그대로다.
 	 *
-	 * <p>⚠ 상시 번개와 <b>같은 틱에 겹칠 수 있다.</b> 둘이 한 틱에 들어오면 13.86 이라 아직
-	 * 살지만, 거기에 한 대가 더 겹치면 전멸이다 — 흡입은 5초 예고 뒤 <b>한 틱에 한 번</b>뿐이고
-	 * 번개도 <b>한 사람은 한 발</b>이므로 한 틱에 둘이 최대다.
+	 * <p>⚠ 상시 번개와 <b>같은 틱에 겹칠 수 있다.</b> 둘이 한 틱에 들어오면 6.93 + 3.92 = 10.85 라
+	 * 아직 산다 — 흡입은 예고 뒤 <b>한 틱에 한 번</b>뿐이고 번개도 <b>한 사람은 한 발</b>이므로 한 틱에
+	 * 둘이 최대다.
 	 */
 	static final float VOID_SUCTION_DAMAGE = 35.0F;
 
@@ -423,23 +432,15 @@ public final class DragonLastStand {
 	 * 것」이라고 적어 두었고 <b>그 문단이 23 을 직접 예로 들고 있다</b> — 「난이도 곱이 없는 쪽은
 	 * 35(한 대 6.93), 있는 쪽은 23(한 대 6.77)」.
 	 *
-	 * <p>회차가 둘이고 한 회차에 한 사람은 한 번만 맞으므로 한 판에 최대 <b>두 대</b> — 무장 기준
-	 * {@code 6.77 × 2 = 13.54} 라 <b>이 패턴 혼자서는 전멸하지 않는다.</b> 세 번 긋던 때는 세 번 다
-	 * 맞으면 20.31 로 전멸이었다(2026-10-04 에 두 회차로 바뀌었다 —
-	 * {@code DragonLastStandPatterns.CROSS_ROUNDS}). 띄움 뒤 떨어지는 낙하 피해는 이 셈 밖이다.
+	 * <p>한 회차에 한 사람은 한 번만 맞는다. ⚠ <b>2026-10-18 에 회차가 넷이 되어</b> 한 판에 최대
+	 * <b>네 대</b> — 무장 기준 {@code 6.77 × 4 = 27.08} 이고 <b>세 대(20.31)부터 이 패턴 혼자서 전멸</b>
+	 * 이다. 두 회차이던 동안(2026-10-04 ~)은 13.54 라 혼자서는 전멸하지 않았다. 사람에게 알렸고
+	 * 「그대로」였다({@code DragonLastStandPatterns.CROSS_ROUNDS}). 띄움 뒤 떨어지는 낙하 피해는 이 셈 밖이다.
 	 */
 	static final float CROSS_FISSURE_DAMAGE = 23.0F;
 
-	/**
-	 * 안전지대 밖에 서 있을 때 <b>초당</b> 들어가는 <b>적히는</b> 피해.
-	 *
-	 * <p>사람 수로 곱하지 않는다. 넷이 다 밖이어도 초당 8 이다 — 곱하면 초당 32 라 한 번에
-	 * 전멸이다.
-	 *
-	 * <p>{@code lightningBolt()} 기준으로 무장 감쇠를 지나면 <b>초당 0.81</b> 이다. 축소가 다
-	 * 끝난 115초 시점부터 5초마다 얼마씩 올릴지는 안전지대를 붙이는 사람이 정한다.
-	 */
-	static final float OUTSIDE_ZONE_DAMAGE_PER_SECOND = 8.0F;
+	// ⚠ 2026-10-18 — 「안전지대 밖 초당 8」(OUTSIDE_ZONE_DAMAGE_PER_SECOND)을 걷었다. 사람 말 「넘어가서
+	// 딜 입히는 건 폐기」 — 안전지대가 넘어갈 수 없는 월드 보더가 되어 밖이 없다(DragonLastStandZone).
 
 	// ------------------------------------------------------------------ 상태
 
@@ -683,12 +684,10 @@ public final class DragonLastStand {
 		 * 그래서 <b>수평만</b> 당기고 결과 속도에 천장을 씌운다. 근거는
 		 * {@code DragonLastStandPatterns.SUCK_MAX_INWARD} 에 길게 적어 두었다.
 		 *
-		 * <p>⚠ <b>안전지대가 좁아지면 저절로 어려워진다.</b> 3단계 지대가 반경 12칸 원인데 중앙에서
-		 * 도망쳐야 한다. 예고 3초이던 때는 그것만 달려도 지대 끝을 넘었고(17칸), 예고가 2초가 된
-		 * 뒤로는 11칸이라 원 경계 바로 안쪽에서 멈춘다. ⚠ 2026-10-04 부터 지대는 <b>벽이 아니라 나갈
-		 * 수 있는 원</b>이다(사람 말 「안전지대가 사실상 보더라 나갈 수가 없어」) — 더 달려 원 밖으로
-		 * 나가도 되고, 그 값은 안전지대 밖 피해(초당 8, 팀에 한 사람 몫)다. 흡입 터짐을 맞느니 원 밖에서
-		 * 1~2초 버티는 길이 열린 것이다. <b>이 긴장은 의도다.</b>
+		 * <p>⚠ <b>안전지대가 좁아지면 저절로 어려워진다.</b> 3단계 지대가 반변 18칸 보더인데 중앙에서
+		 * 도망쳐야 한다. 예고 2초 동안 달리는 거리가 11칸이라 벽에 닿기 전에 멈춘다. ⚠ 2026-10-18 부터
+		 * 지대는 다시 <b>넘어갈 수 없는 보더</b>다(밖 피해 없음) — 10-04 ~ 10-18 의 「나갈 수 있는 원」
+		 * 시절처럼 원 밖에서 버티는 길은 없다. <b>이 긴장은 의도다.</b>
 		 *
 		 * <p>길이는 <b>예고 40 + 흡입 100 + 터짐 1 + 여운 19 = 160틱</b>이다(예고 3초이던 때 180틱).
 		 * 값에서 직접 더한다.
@@ -698,10 +697,10 @@ public final class DragonLastStand {
 				+ DragonLastStandPatterns.SUCK_AFTERGLOW_TICKS),
 		/**
 		 * 십자 균열 — 아레나를 가로지르는 <b>폭 3칸</b> 선 · <b>3초 예고 → 십자 둘이 함께 터짐 →
-		 * 1.5초 뒤 다른 각도의 십자 둘 → 총 두 회차</b> · 피해 {@link #CROSS_FISSURE_DAMAGE} ·
+		 * 1.5초마다 각도를 바꿔 십자 둘 → 총 네 회차</b>(2026-10-18 에 둘 → 넷) · 피해 {@link #CROSS_FISSURE_DAMAGE} ·
 		 * <b>잔류 없음</b> · 맞은 사람은 <b>위로 12칸</b> 띄워진다 · <b>섬 밖으로 미는 것은 없다.</b>
 		 *
-		 * <p>회차마다 각도가 다르다 — <b>{@code 0° + 45°} → {@code 22.5° + 67.5°}</b>. 처음에는 세 번을
+		 * <p>회차마다 각도가 다르다 — <b>{@code 0° + 45°} → {@code 22.5° + 67.5°} → 다시 둘</b>. 처음에는 세 번을
 		 * 차례로 그었고({@code +} → {@code ×} → 22.5도 어긋난 십자) 2026-10-04 에 사람이 「그 두 십자를
 		 * 한번에 같이 발동시켜」라고 해서 둘씩 묶었다. 둘째 회차가 첫 회차의 정확히 사이라 첫 회차를
 		 * 피한 자리에 그대로 서 있으면 둘째에 맞는다({@code DragonLastStandPatterns.CROSS_ANGLES}).
@@ -709,7 +708,8 @@ public final class DragonLastStand {
 		 * <p>사람이 <b>「단순 피하기」</b>라고 못박았다. 안전한 자리는 선 사이의 사분면이고 그것은
 		 * 어느 반경에서나 있다.
 		 *
-		 * <p>길이는 <b>60 + 30 + 여운 10 = 100틱</b>이다(세 번 긋던 때 130틱). 값에서 직접 더한다
+		 * <p>길이는 <b>60 + 30 × 3 + 여운 10 = 160틱</b>이다(세 번 긋던 때 130틱 · 두 회차이던 때 100틱).
+		 * 값에서 직접 더한다
 		 * ({@code DragonLastStandPatterns.crossDurationTicks}).
 		 */
 		CROSS_FISSURE(DragonLastStandPatterns.CROSS_FIRST_WARN_TICKS
@@ -740,7 +740,7 @@ public final class DragonLastStand {
 	}
 
 	/**
-	 * 안전지대(나갈 수 있는 원)가 지금 어디까지 왔는가.
+	 * 안전지대(엔드 월드 보더)가 지금 어디까지 왔는가.
 	 *
 	 * <p>안전지대는 패턴이 아니라 <b>혼자 도는 시계</b>라 여기서 뽑히지 않는다. 그런데 브레스를
 	 * 고르는 규칙 둘이 그 시계를 본다 — 「축소 직후 3초 브레스 금지」와 「축소와 브레스 동시
@@ -965,13 +965,14 @@ public final class DragonLastStand {
 		}
 
 		hold(end, dragon, stand, now);
-		// 안전지대. 패턴처럼 뽑히지 않고 진입과 동시에 시작해 저 혼자 돈다 — 원을 그리고
-		// 45초 → 45초 → 25초로 좁히고 밖에 있는 사람에게 초당 값을 넣는 것이 전부 저쪽에 있다.
-		// hold 뒤인 것은 중심이 「드래곤을 못박아 둔 자리」라서다. 2026-10-04 부터 월드 보더가
-		// 아니라 나갈 수 있는 원이다 — 사람이 「안전지대가 사실상 보더라 나갈 수가 없어」라고 했다.
+		// 안전지대. 패턴처럼 뽑히지 않고 진입과 동시에 시작해 저 혼자 돈다 — 엔드 월드 보더를
+		// 42 → 32 → 22 → 18 로 45초 → 45초 → 25초에 좁히고, 줄어드는 벽이 지나친 사람을 피해 없이
+		// 안으로 옮기는 것이 전부 저쪽에 있다. hold 뒤인 것은 중심이 「드래곤을 못박아 둔 자리」라서다.
+		// 2026-10-18 부터 다시 보더다 — 사람이 「월드보더로 아예 못 넘어가게, 넘어가서 딜 입히는 건
+		// 폐기」라고 했다(10-04 ~ 10-18 은 밖 피해가 있는 「나갈 수 있는 원」이었다).
 		//
 		// ⚠ 넘기는 것이 beganAt 이 아니라 stand.clockBase 다. 진입 연출이 도는 동안 저쪽의
-		// elapsed 가 음수라 「원은 서지만 축소도 밖 피해도 돌지 않는」 상태가 된다 — 사람이
+		// elapsed 가 음수라 「보더는 42 로 들어와 서지만 축소는 돌지 않는」 상태가 된다 — 사람이
 		// 「보더가 생기면서 … 그땐 시간 재지말고」라고 정한 것이 그 한 줄이다.
 		DragonLastStandZone.tick(end, stand.anchor, members == null ? List.of() : members,
 				stand.clockBase, now);
@@ -1000,7 +1001,7 @@ public final class DragonLastStand {
 		if (stand.inCinematic(now)) {
 			DragonLastStandEntry.tick(end, dragon, members == null ? List.of() : members,
 					stand.anchor, stand.entryHealth, stand.beganAt, now);
-			raiseShield(server, end, dragon, now);
+			raiseShield(server, end, dragon, members == null ? List.of() : members, now);
 			return standing;
 		}
 		// 오브젝트 파도. 뽑히지 않고 드래곤 체력 25%·10% 에 두 번만 열린다 — 사람이 정했다.
@@ -1020,7 +1021,7 @@ public final class DragonLastStand {
 		advance(end, dragon, members == null ? List.of() : members, stand, now);
 		// ⚠ advance 뒤다. 첫 패턴을 고른 틱에 그 자리에서 깃발을 내려야 「첫 패턴이 시작한
 		// 틱부터는 맞는다」가 성립한다 — 앞에 두면 패턴이 도는 첫 틱 하나를 보호막이 더 먹는다.
-		raiseShield(server, end, dragon, now);
+		raiseShield(server, end, dragon, members == null ? List.of() : members, now);
 		return standing;
 	}
 
@@ -1045,10 +1046,12 @@ public final class DragonLastStand {
 	 * 남는 길을 내리는 줄 하나에 기대지 않는다.
 	 */
 	private static void raiseShield(MinecraftServer server, ServerLevel end, EnderDragon dragon,
-			long now) {
+			List<ServerPlayer> members, long now) {
 		Stand shielding = shieldingStand(now);
+		// members 는 보호막이 막 둘레의 사람을 밀어내는 데 쓴다(2026-10-18). 얼어 있는 틱(holdShield)은
+		// 빈 목록이라 밀지 않는다.
 		DragonLastStandShield.tick(server, end, dragon, shielding != null,
-				shielding == null ? now : shielding.beganAt, now);
+				shielding == null ? now : shielding.beganAt, members, now);
 	}
 
 	/** 지금 보호막을 세워야 하는 판. 없으면 {@code null}. {@link #raiseShield} 가 판 전체를 훑는 자리다. */
@@ -1083,7 +1086,7 @@ public final class DragonLastStand {
 		if (server == null || end == null || dragon == null || !dragon.isAlive() || STANDS.isEmpty()) {
 			return;
 		}
-		raiseShield(server, end, dragon, now);
+		raiseShield(server, end, dragon, List.of(), now);
 	}
 
 	/**
@@ -1699,10 +1702,10 @@ public final class DragonLastStand {
 	 *       그것은 파티클이 아니라 <b>개체</b>인데, 지울 수 있는 것은 그쪽이 <b>개체를 들고
 	 *       있기</b> 때문이다. 월드에서 찾아야 했다면 이 자리에서 막혔다</li>
 	 *   <li><b>{@link #onFightClosed} 가 되돌리는 것</b> — 보스바 이름. 드래곤이 사라진 틱이라
-	 *       월드가 살아 있다. ⚠ 전에는 <b>월드 보더</b>도 여기와 {@link #onServerStopping} 에서
-	 *       되돌렸다 — 2026-10-04 에 안전지대가 보더를 버리고 「나갈 수 있는 원」이 되면서
-	 *       (사람 말 「안전지대가 사실상 보더라 나갈 수가 없어」) 월드에 남는 것이 없어져 두 줄이
-	 *       함께 빠졌다</li>
+	 *       월드가 살아 있다. ⚠ <b>엔드 월드 보더</b>는 여기서 되돌리지 않는다 — 2026-10-18 에 다시
+	 *       보더가 되면서 시련 전투 전체(섬 가장자리 → 최후의 저항)가 보더를 들게 되어, 되돌리는 것은
+	 *       {@code DragonTrialManager.tick}(시련 세션이 없는 틱)과 {@link #onServerStopping} 이다
+	 *       ({@link DragonTrialBorder})</li>
 	 *   <li>⚠ <b>되돌릴 수 없는 것</b> — <b>반구가 부순 블록.</b> 되살리려면 「우리가 지운 것」을
 	 *       기억해야 하는데 그 기억은 서버 재시작 한 번으로 어긋나고, 어긋난 기억은 남의 건축
 	 *       위에 블록을 놓는다 — {@code TrialDryWorld} 의 증발과 같은 판단이고 근거는
@@ -1730,7 +1733,8 @@ public final class DragonLastStand {
 		DragonLastStandEntry.clearState();
 		DragonLastStandObjects.clearState();
 		DragonLastStandLights.drop();
-		// 안전지대의 시계 주인과 넉백 유예. 정적 칸뿐이고 월드에 남긴 것이 없다(보더를 버렸다).
+		// 안전지대의 시계 주인. 정적 칸뿐이다 — 보더의 「원래 값」 기억은 DragonTrialBorder 가 들고
+		// DragonTrialManager.clearState 가 버린다.
 		DragonLastStandZone.clearState();
 	}
 
@@ -1741,9 +1745,10 @@ public final class DragonLastStand {
 	 * {@code TrialFreeze.onServerStopping} 이 같은 자리에 같은 이유로 있다 —
 	 * {@code SERVER_STOPPED} 는 레벨이 이미 닫혀 <b>이미 늦다.</b>
 	 *
-	 * <p>⚠ 전에는 이 줄의 첫 일이 <b>줄어든 월드 보더를 저장보다 먼저 되돌리는 것</b>이었다. 2026-10-04 에
-	 * 안전지대가 보더를 버리고 「나갈 수 있는 원」이 되면서 그 일이 없어졌다 — 근거와 「혹시 남은
-	 * 보더」를 다루는 법은 {@link DragonLastStandZone} 의 「보더를 되돌리는 안전장치를 두지 않았다」.
+	 * <p>⚠ 첫 일이 <b>엔드 월드 보더를 저장보다 먼저 되돌리는 것</b>이다({@link DragonTrialBorder#onServerStopping}).
+	 * 2026-10-04 ~ 10-18 에는 안전지대가 보더를 버려 이 일이 없었고, 2026-10-18 에 다시 보더가 되며
+	 * 돌아왔다. 늦으면 줄어든 보더가 {@code world_border.dat} 에 남는다 — 그래도 남았으면 다음 기동에
+	 * {@link DragonTrialBorder#onServerStarted} 가 지문으로 가려 치운다.
 	 *
 	 * <p>부채꼴과 십자의 <b>빨간 면</b>도 여기서 거둔다. 그쪽은 개체라 <b>월드가 살아 있는 자리에서
 	 * 거두는 것이 가장 깔끔하다</b> — 다만 {@link DragonLastStandConePanel}·{@link DragonLastStandCrossPanel}
@@ -1751,6 +1756,7 @@ public final class DragonLastStand {
 	 * ({@code shouldBeSaved()}) 심지도 들고 있어서, 이 줄을 못 지나도 파일에 남지 않는다.
 	 */
 	public static void onServerStopping(@Nullable MinecraftServer server) {
+		DragonTrialBorder.onServerStopping(server);
 		DragonLastStandConePanel.drop();
 		DragonLastStandCrossPanel.drop();
 		// 진입 연출의 신호기와 오브젝트 파도의 개체들. 저장을 막아 두었으므로 이 줄을 못 지나도

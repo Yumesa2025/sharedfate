@@ -142,17 +142,20 @@ public final class PerkKillRewards {
 	 * 회복량을 공유 풀에 더한다.
 	 *
 	 * <p>{@code StatMirror.applyDeltas} 와 같은 규칙으로 자른다. 체력은 팀 최대 체력까지,
-	 * 허기는 20 까지, 포만감은 허기를 넘지 못한다.
+	 * 허기는 팀의 허기 상한까지(평소 20, 「먹방」이면 100), 포만감은 허기와 20 을 넘지 못한다.
 	 */
 	static void applyToPool(TeamState state, Reward reward) {
 		if (reward.health() > 0.0F) {
 			state.health = clamp(state.health + reward.health(), 0.0F, state.maxHealth);
 		}
 		if (reward.food() > 0) {
-			state.foodLevel = Math.max(0, Math.min(MAX_FOOD, state.foodLevel + reward.food()));
+			// 「먹방」 팀이면 상한이 100 이다. 20 을 넘게 쌓인 허기를 20 으로 되깎지 않는다.
+			state.foodLevel = PerkFoodCapacity.raise(state.foodLevel, reward.food(),
+					PerkFoodCapacity.capacityOf(state));
 		}
 		if (reward.saturation() > 0.0F) {
-			state.saturation = clamp(state.saturation + reward.saturation(), 0.0F, state.foodLevel);
+			state.saturation = clamp(state.saturation + reward.saturation(), 0.0F,
+					PerkFoodCapacity.saturationCeiling(state.foodLevel));
 		}
 	}
 

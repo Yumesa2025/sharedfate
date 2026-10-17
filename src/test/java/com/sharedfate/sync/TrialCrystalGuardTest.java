@@ -320,7 +320,8 @@ class TrialCrystalGuardTest {
 	@Test
 	void 주기는_받은_틱부터_세고_받자마자_한_번_돈다() {
 		long granted = 1_000L;
-		int interval = TrialCrystalGuard.CAGE_REPAIR_INTERVAL;
+		// 쇠창살은 2026-10-18 부터 주기가 없다(아래 시험). 이 주기는 무뎌짐 갈래의 것이다.
+		int interval = TrialCrystalGuard.DIG_REFRESH_INTERVAL;
 
 		assertTrue(TrialCrystalGuard.refreshesAt(granted, granted, interval),
 				"받은 그 틱에 곧바로 한 번 돌아야 한다");
@@ -333,6 +334,62 @@ class TrialCrystalGuardTest {
 
 		assertFalse(TrialCrystalGuard.refreshesAt(granted, granted, 0),
 				"주기가 0 이면 아무 일도 하지 않는다. 나누기로 터지면 안 된다");
+	}
+
+	/**
+	 * 쇠창살은 <b>한 번만</b> 선다 — 부숴도 다시 생기지 않는다.
+	 *
+	 * <p>사람 말(2026-10-18): 「계속 생기는데 이거 버그임? 부숴도 부숴도 계속 생기던데」 → 답
+	 * (A) 한 번만 세우기. 예전에는 2초마다 공기 칸을 다시 채웠다. 세운 뒤에 참이 되는 길이 하나라도
+	 * 있으면 그것이 곧 「다시 채움」이다.
+	 */
+	@Test
+	void 쇠창살은_받은_순간_한_번만_서고_다시_서지_않는다() {
+		long granted = 1_000L;
+		assertTrue(TrialCrystalGuard.cagesNow(false, granted, granted), "받은 그 틱에 선다");
+		assertTrue(TrialCrystalGuard.cagesNow(false, granted + 1L, granted),
+				"보통은 다음 틱에 처음 불린다 — 그때 서야 한다");
+		for (long now = granted; now < granted + 20 * 60 * 5; now++) {
+			assertFalse(TrialCrystalGuard.cagesNow(true, now, granted),
+					"한 번 세운 뒤에 다시 세운다(" + (now - granted) + "틱) — 사람이 걷은 다시 채움이다");
+		}
+		assertFalse(TrialCrystalGuard.cagesNow(false,
+						granted + TrialCrystalGuard.CAGE_GRACE_TICKS + 1L, granted),
+				"재시작으로 기억이 비어도 오래된 카드는 다시 세우지 않는다");
+		assertTrue(TrialCrystalGuard.CAGE_GRACE_TICKS <= 100,
+				"여유가 길면 재시작이 다시 채움의 뒷문이 된다");
+	}
+
+	/** 다섯 이하면 전부, 넘치면 무작위 다섯. 사람 말: 「모든 크리스탈이 아니라 크리스탈 5개에」. */
+	@Test
+	void 쇠창살은_남은_크리스탈_중_무작위_다섯에만_선다() {
+		assertEquals(5, TrialCrystalGuard.CAGE_COUNT);
+		net.minecraft.util.RandomSource random = net.minecraft.util.RandomSource.create(11L);
+
+		java.util.List<Integer> few = java.util.List.of(1, 2, 3);
+		assertEquals(few, TrialCrystalGuard.pickCaged(few, TrialCrystalGuard.CAGE_COUNT, random),
+				"다섯 이하만 남았으면 전부에 선다");
+		assertTrue(TrialCrystalGuard.pickCaged(java.util.List.<Integer>of(),
+				TrialCrystalGuard.CAGE_COUNT, random).isEmpty());
+		assertTrue(TrialCrystalGuard.pickCaged(few, 0, random).isEmpty());
+
+		java.util.List<Integer> ten = java.util.List.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+		java.util.Set<java.util.List<Integer>> seen = new java.util.HashSet<>();
+		for (int roll = 0; roll < 40; roll++) {
+			java.util.List<Integer> picked =
+					TrialCrystalGuard.pickCaged(ten, TrialCrystalGuard.CAGE_COUNT, random);
+			assertEquals(5, picked.size(), "열 개 중 다섯이어야 한다");
+			assertEquals(5, new java.util.HashSet<>(picked).size(), "같은 크리스탈을 두 번 집었다");
+			assertTrue(ten.containsAll(picked));
+			seen.add(picked);
+		}
+		assertTrue(seen.size() > 1, "매번 같은 다섯이다 — 무작위가 아니다");
+
+		TrialCatalog.Trial cage = TrialCatalog.byId("sharedfate:iron_cage");
+		assertNotNull(cage);
+		assertTrue(cage.description().contains("다섯"), "카드 설명이 다섯을 말해야 한다: "
+				+ cage.description());
+		assertFalse(cage.description().contains("모든"), "「모든」이 남으면 카드가 거짓을 말한다");
 	}
 
 	// -------------------------------------------------- 쇠창살 우리

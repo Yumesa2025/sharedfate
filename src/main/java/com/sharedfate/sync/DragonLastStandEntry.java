@@ -30,10 +30,10 @@ import java.util.List;
  * 받아들였다.
  *
  * <pre>
- * 0                          지대의 원이 선다 · 크리스탈과 엔더맨이 사라진다 · 굉음 · 화면 흔들림
+ * 0 .. 40                    보더가 섬 가장자리에서 반변 42 로 들어온다 · 크리스탈과 엔더맨이 사라진다 · 굉음 · 화면 흔들림
  * 0                          원 밖에 있던 사람을 <b>있던 방향 그대로</b> 안쪽 가장자리로
  * 0 .. {@value #DESCEND_TICKS}       드래곤이 중앙으로 <b>내려온다</b>(궤적을 남긴다)
- * {@value #DESCEND_TICKS}             보라색 신호기 빛 <b>넷</b>이 정사각형으로 켜진다
+ * {@value #DESCEND_TICKS}             보라색 신호기 빛 <b>넷</b>이 정사각형으로 켜진다 · 흰 나선이 기둥을 감아 오른다
  * .. +{@value #CHARGE_TICKS}          <b>체력이 20%p 만큼 점점 찬다</b> — 보스바가 차오르는 것이 곧 연출이다
  * {@value #BOOM_AT}                    드래곤에게 <b>터지는 소리</b> · 화면에 「최후의 저항」 · 빛이 꺼진다
  * .. +{@value #SETTLE_TICKS}          한 숨 돌리는 틈
@@ -50,8 +50,8 @@ import java.util.List;
  *   <li>{@code Stand.clockBase} 가 <b>{@code beganAt + }{@value #LENGTH_TICKS}</b> 다. 그 값을
  *       {@code DragonLastStandZone.tick} 과 {@code DragonLastStandPatterns.tickLightning} 에
  *       그대로 넘기므로, 연출이 도는 동안 두 시계의 {@code elapsed} 가 <b>음수</b>다 —
- *       지대는 첫 틱부터 <b>반경 42 의 원만 그리고 그대로 서 있고</b>(축소도 밖 피해도 {@code elapsed < 0}
- *       에서 돌아간다) 번개는 첫 볼리 시각이 미래라 한 발도 안 나간다</li>
+ *       지대는 보더를 <b>반변 42 로 세워 두기만 하고</b>(축소는 {@code elapsed < 0} 에서 안 돈다)
+ *       번개는 첫 볼리 시각이 미래라 한 발도 안 나간다</li>
  *   <li>패턴은 {@code Stand.nextPatternAt} 이 {@code clockBase + ENTRY_GRACE_TICKS} 라 연출이
  *       끝나고 무적 3초가 지난 뒤에 처음 고른다 — <b>고치기 전과 같은 규칙</b>이고 원점만 밀렸다</li>
  *   <li>{@code DragonLastStand.tick} 이 연출 중에는 {@code advance} 와
@@ -109,6 +109,10 @@ import java.util.List;
  * <b>땅이 이어진 가장 먼 자리</b>를 고른다. 방향 감각이 깨지지 않고 완전 중앙도 아니다.
  *
  * <h3>2026-10-04 — 지대가 「나갈 수 있는 원」이 된 뒤에도 남긴다</h3>
+ *
+ * <p>⚠ 2026-10-18 에 지대가 다시 월드 보더(반변 42 네모, 밖 피해 없음)가 됐다. 판정은 그대로 반경 39
+ * <b>원</b>이다 — 원 안이면 네모 안이기도 해서 데려온 사람은 보더 안이고, 보더는 진입 2초 동안 섬
+ * 가장자리에서 들어오므로 그 사람을 끼우지 않는다. 아래 셋째 근거(「나갈 자유」)는 그때의 기록이다.
  *
  * <p>사람이 「안전지대가 사실상 보더라 나갈 수가 없어」라고 해서 지대가 보더를 버렸다. 그래도 이
  * 데려오기는 남긴다. 근거가 셋이다.
@@ -290,12 +294,11 @@ public final class DragonLastStandEntry {
 	/**
 	 * 지대 경계에서 이만큼 안쪽까지만 데려온다(칸).
 	 *
-	 * <p>처음 근거는 보더 충돌이었다 — 26.3 {@code Entity.collide} 가 <b>안에 있고 벽에서 2칸 안</b>
-	 * 이면 보더의 충돌 형상을 얹으므로 3 이면 벽에 끼이지 않았다. 2026-10-04 에 보더를 버린 뒤로
-	 * 그 근거는 사라졌고 값은 그대로 둔다. 지금 근거는 <b>빨간 입자 기둥 바로 위에 내려놓지 않는
-	 * 것</b>이다 — 경계에 딱 붙여 두면 도착한 사람이 「내가 안인가 밖인가」를 기둥과 제 발을 견주어
-	 * 읽어야 하고, 기둥 간격(1.4칸)과 먼지 크기 탓에 그 판단이 한 칸쯤 흔들린다. 3칸이면 기둥이
-	 * 분명히 <b>제 뒤</b>에 있다.
+	 * <p>근거는 보더 충돌이다 — 26.3 {@code Entity.collide} 가 <b>안에 있고 벽에서 2칸 안</b>
+	 * 이면 보더의 충돌 형상을 얹으므로 3 이면 벽에 끼이지 않는다. 2026-10-04 ~ 10-18 에는 보더 대신
+	 * 빨간 입자 기둥이라 「기둥 바로 위에 내려놓지 않는다」가 근거였고, 2026-10-18 에 다시 보더가
+	 * 되어(사람 말 「월드보더로 아예 못 넘어가게」) 처음 근거로 돌아왔다. 줄어드는 보더가 지나친 사람을
+	 * 옮기는 {@code DragonLastStandZone.keepInside} 도 같은 여유를 쓴다.
 	 */
 	static final double WALL_MARGIN = 3.0;
 
@@ -319,14 +322,49 @@ public final class DragonLastStandEntry {
 	/** 궤적을 그리는 간격(틱). */
 	private static final int TRAIL_STRIDE = 2;
 
+	// ------------------------------------------------------------------ 흰 나선 (2026-10-18)
+
 	/**
-	 * 이 파일이 한 틱에 쓰는 점 수의 상한. 하강 궤적 하나뿐이다.
+	 * 기둥 하나를 감아 오르는 흰 가닥 수. 둘이 반 바퀴 어긋나 <b>두 겹 나선</b>이 된다.
+	 *
+	 * <p>사람 말(2026-10-18): <b>「진입 연출 때 2페이지 시작 전 보라색 빛기둥 4개가 생기는데 그 4개에
+	 * 스프링 모양으로 하얀색 이펙트가 빙빙 돌면서 위로 올라가게 연출도 넣어 봐」</b>.
+	 */
+	static final int SPIRAL_STRANDS = 2;
+	/**
+	 * 나선의 반경(칸). 빛기둥 굵기가 {@code DragonLastStandLights.PILLAR_WIDTH}(0.5)라 반폭 0.25 다.
+	 * 1.2 면 기둥에서 한 칸 떨어져 감겨 「기둥을 감는다」로 읽히고, 신호기 정사각형(반변 10)에서 사람이
+	 * 서는 자리를 가리지 않는다.
+	 */
+	static final double SPIRAL_RADIUS = 1.2;
+	/** 나선이 오르는 높이(칸). 빛기둥({@link #BEACON_HEIGHT} 48)의 아래쪽 대부분이고 꼭대기는 빛만 남긴다. */
+	static final double SPIRAL_HEIGHT = 30.0;
+	/** 한 틱에 오르는 높이(칸). 30칸을 75틱(3.75초)에 올라 빛이 서 있는 5초 안에 한 번 넘게 감긴다. */
+	static final double SPIRAL_RISE_PER_TICK = 0.4;
+	/**
+	 * 한 바퀴에 걸리는 틱. 8 이면 한 바퀴에 3.2칸 오른다 — 감긴 고리 사이가 촘촘해 「스프링」으로 읽힌다.
+	 * 길게 잡으면 늘어난 용수철(그냥 비스듬한 선)이 된다.
+	 */
+	static final int SPIRAL_TURN_TICKS = 8;
+	/**
+	 * 한 틱에 찍는 나선 점. 기둥 넷 × 가닥 둘.
+	 *
+	 * <p>점 하나는 <b>가닥의 머리</b>다. {@code END_ROD} 는 수명이 60~71틱이고 속도 0 으로 보내면 그
+	 * 자리에 머물므로, 머리가 지나간 자리가 그대로 <b>나선 꼬리</b>로 남는다 — 한 틱 8점으로 감긴
+	 * 모양 전체가 보인다. 살아 있는 점은 많아야 {@code 8 × 71 ≈ 570} 이다(5장 「살아 있는 점」 9,600 아래).
+	 */
+	static final int SPIRAL_POINTS_PER_TICK = BEACON_COUNT * SPIRAL_STRANDS;
+
+	/**
+	 * 이 파일이 한 틱에 쓰는 점 수의 상한. 하강 궤적({@value #TRAIL_POINTS}) 또는 흰 나선
+	 * ({@value #SPIRAL_POINTS_PER_TICK}) — <b>둘은 한 틱에 겹치지 않는다</b>(궤적은 하강 동안, 나선은 빛이
+	 * 선 뒤).
 	 *
 	 * <p>신호기 빛은 디스플레이 개체라 0점이고, 굉음·폭발·소멸 빛은 개수를 세는 형태라 꾸러미
 	 * 한 장씩이다({@code TrialEntrance.perch} 의 같은 문단). 연출 중에는 번개도 패턴도 돌지
 	 * 않으므로 이 값은 남의 것과 겹치지 않는다.
 	 */
-	static final int WORST_TICK_POINTS = TRAIL_POINTS;
+	static final int WORST_TICK_POINTS = Math.max(TRAIL_POINTS, SPIRAL_POINTS_PER_TICK);
 
 	/** 충전음을 되풀이하는 간격(틱). 1초. */
 	private static final int CHARGE_HUM_TICKS = 20;
@@ -447,6 +485,26 @@ public final class DragonLastStandEntry {
 		return (float) (CHARGE_PITCH_LOW + (CHARGE_PITCH_HIGH - CHARGE_PITCH_LOW) * along);
 	}
 
+	/**
+	 * 흰 나선 가닥 머리의 <b>기둥 밑동에서의 상대 좌표</b>. 월드 없이 시험이 「감기며 오르는가」를 잰다.
+	 *
+	 * <p>높이는 {@value #SPIRAL_HEIGHT} 칸을 다 오르면 밑동에서 다시 시작한다. 가닥 둘은 높이 반, 각도
+	 * 반 바퀴씩 어긋나고, 기둥마다 각도를 4분의 1 바퀴씩 돌려 넷이 같은 박자로 번쩍이지 않게 한다.
+	 *
+	 * @param lit    빛이 켜진 뒤 흐른 틱
+	 * @param pillar 기둥 번호(0~3)
+	 * @param strand 가닥 번호
+	 */
+	static Vec3 spiralOffset(int lit, int pillar, int strand) {
+		double rise = Math.max(0, lit) * SPIRAL_RISE_PER_TICK
+				+ SPIRAL_HEIGHT * strand / SPIRAL_STRANDS;
+		double height = rise % SPIRAL_HEIGHT;
+		double angle = Math.PI * 2.0 * lit / SPIRAL_TURN_TICKS
+				+ Math.PI * 2.0 * strand / SPIRAL_STRANDS
+				+ Math.PI * 0.5 * pillar;
+		return new Vec3(Math.cos(angle) * SPIRAL_RADIUS, height, Math.sin(angle) * SPIRAL_RADIUS);
+	}
+
 	// ------------------------------------------------------------------ 매 틱
 
 	/**
@@ -488,6 +546,7 @@ public final class DragonLastStandEntry {
 		// 못박지 않으므로(하강이 순간이동이 되지 않게) 여기가 유일하게 자리를 잡는 자리다.
 		TrialCrystalRevive.hold(dragon, anchor);
 		if (step < BOOM_AT) {
+			spiral(end, anchor, step);
 			charge(end, members, dragon, anchor, step);
 			return;
 		}
@@ -603,9 +662,13 @@ public final class DragonLastStandEntry {
 	 * 「완전 중앙」이 되는데, 그것은 <b>중앙 한 칸 밖이 사방으로 허공</b>인 판에서만 나오는 답이라
 	 * 일어날 수 없는 경우의 바닥이다.
 	 *
+	 * <p>2026-10-18 부터 {@code DragonLastStandZone.keepInside}(줄어드는 보더가 지나친 사람을 안으로)도
+	 * 이 길을 그대로 지난다 — 「데려온다」가 두 벌이 되지 않게.
+	 *
+	 * @param edge 가장 멀리 데려올 거리(칸). 진입은 {@link #innerEdge()}, 보더는 네모 안쪽까지의 거리
 	 * @return 데려올 자리. 잴 방향이 없으면 {@code null}
 	 */
-	private static @Nullable Vec3 pullTarget(ServerLevel end, TrialEnderPulse.Ground ground,
+	static @Nullable Vec3 pullTarget(ServerLevel end, TrialEnderPulse.Ground ground,
 			Vec3 anchor, double dx, double dz, double edge) {
 		double from = Math.sqrt(dx * dx + dz * dz);
 		if (!(from > 1.0E-4)) {
@@ -697,6 +760,31 @@ public final class DragonLastStandEntry {
 		TrialWarning.playEach(end, members, SoundEvents.BEACON_ACTIVATE, 1.0F, 0.7F);
 		end.sendParticles(ParticleTypes.REVERSE_PORTAL, true, false,
 				anchor.x, anchor.y + 1.0, anchor.z, 80, 3.0, 1.0, 3.0, 0.1);
+	}
+
+	/**
+	 * 보라 빛기둥 넷마다 <b>흰 나선이 감기며 오른다.</b> 빛이 서 있는 동안({@value #DESCEND_TICKS} ~
+	 * {@value #BOOM_AT}틱) 매 틱 가닥 머리만 찍는다 — 꼬리는 {@code END_ROD} 의 긴 수명이 남긴다
+	 * ({@link #SPIRAL_POINTS_PER_TICK}).
+	 *
+	 * <p>{@code END_ROD} 인 까닭: 흰빛을 내는 입자이고 속도 0 으로 보내면 거의 그 자리에 떠 있어 지나간
+	 * 자리가 선으로 남는다. 이 연출에서 이미 충전 구간의 반짝임으로 쓰는 입자라 「같은 힘」으로 읽힌다.
+	 * 긴 형식(32칸 밖에서도 보임)이다.
+	 */
+	private static void spiral(ServerLevel end, Vec3 anchor, int step) {
+		int lit = step - DESCEND_TICKS;
+		if (lit < 0) {
+			return;
+		}
+		for (int pillar = 0; pillar < BEACON_COUNT; pillar++) {
+			Vec3 base = anchor.add(beaconOffset(pillar));
+			for (int strand = 0; strand < SPIRAL_STRANDS; strand++) {
+				Vec3 offset = spiralOffset(lit, pillar, strand);
+				end.sendParticles(ParticleTypes.END_ROD, true, false,
+						base.x + offset.x, base.y + offset.y, base.z + offset.z,
+						1, 0.0, 0.0, 0.0, 0.0);
+			}
+		}
 	}
 
 	/**

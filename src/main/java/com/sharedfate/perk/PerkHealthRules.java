@@ -35,9 +35,10 @@ import java.util.UUID;
  * <p>{@code TeamState.maxHealth} 는 이 둘을 합친 <b>결과</b>이고, 저장은 되지만 아무도 직접
  * 정하지 않는다.
  *
- * <h2>고정이 보너스를 이긴다</h2>
- * <p>{@code max_health_lock}(고행자)이 있으면 보너스는 통째로 무시된다. 이 우선순위를 정하는
- * 자리는 {@link #effectiveMaxHealth} 하나뿐이다.
+ * <h2>고정은 기본값을 갈아 끼운다</h2>
+ * <p>{@code max_health_lock}(고행자)이 있으면 팀이 정한 기본값 대신 그 값을 쓰고, 증강 보너스는
+ * 그 위에 그대로 얹힌다. 예전에는 보너스까지 통째로 무시했지만 2026-10-16 사람 결정으로 바꿨다.
+ * 이 우선순위를 정하는 자리는 {@link #effectiveMaxHealth} 하나뿐이다.
  *
  * <h2>속성과 공유 상한을 함께 맞춰야 한다</h2>
  * <p>이 모드의 체력은 {@code TeamState.maxHealth} 를 상한으로 하는 팀 공유 풀이고,
@@ -155,17 +156,16 @@ public final class PerkHealthRules {
 	/**
 	 * 지금 이 팀에 걸려 있어야 할 최대 체력.
 	 *
-	 * <p>최대 체력에 대한 판단은 전부 이 한 줄로 모인다. 고정이 있으면 그 값, 없으면
-	 * {@code 기본값 + 보너스} 다.
+	 * <p>최대 체력에 대한 판단은 전부 이 한 줄로 모인다. {@code 기본값 + 보너스} 이고, 고정이
+	 * 있으면 기본값 자리에 고정값이 들어간다.
 	 */
 	public static float effectiveMaxHealth(@Nullable TeamState state) {
 		if (state == null) {
 			return 20.0F;
 		}
 		OptionalDouble locked = lockedMaxHealth(state);
-		double target = locked.isPresent()
-				? locked.getAsDouble()
-				: state.baseMaxHealth + bonusMaxHealth(state);
+		double base = locked.isPresent() ? locked.getAsDouble() : state.baseMaxHealth;
+		double target = base + bonusMaxHealth(state);
 		if (!Double.isFinite(target)) {
 			return state.maxHealth;
 		}

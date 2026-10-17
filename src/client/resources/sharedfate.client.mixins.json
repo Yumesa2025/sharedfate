@@ -12,6 +12,7 @@
     "CreativeModeInventoryScreenMixin",
     "DeathScreenAccessor",
     "EnchantmentScreenMixin",
+    "HudFoodCapacityMixin",
     "HudPendingDamageMixin",
     "InventoryScreenTeamButtonMixin",
     "KeyMappingUnknownKeyMixin",

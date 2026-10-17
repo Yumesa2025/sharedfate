@@ -504,15 +504,12 @@ class WeaponDrawbackSetRewardTest {
 
 		assertEquals(List.of(
 						"sharedfate:shared_suffering",
-						"sharedfate:vital_strike",
-						"sharedfate:predator",
-						"sharedfate:flawless",
 						"sharedfate:brink",
+						"sharedfate:overload",
 						"sharedfate:king_and_subjects",
 						"sharedfate:practiced_wrist",
 						"sharedfate:sweeping_edge",
-						"sharedfate:excavator",
-						"sharedfate:cudgel"),
+						"sharedfate:excavator"),
 				reduced, "공격력을 깎는 증강은 이 열뿐이다");
 	}
 

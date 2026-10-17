@@ -112,35 +112,34 @@ class LuckyOreEffectTest {
 	}
 
 	@Test
-	void 기댓값은_정확히_1_이다() {
+	void 기댓값은_1_67_이다() {
 		double expected = 0.0;
 		for (int extra = 0; extra <= LuckyOreEffect.MAX_EXTRA; extra++) {
 			expected += extra * LuckyOreEffect.chanceOf(extra);
 		}
 
-		assertEquals(1.0, expected, 1.0e-9, "평균으로는 '하나 더'와 같은 값어치여야 한다");
+		assertEquals(5.0 / 3.0, expected, 1.0e-9, "(1*30 + 2*20 + 3*10) / 60 이다");
 	}
 
+	/** 꽝(0개)은 2026-10-16 사람 결정으로 걷어냈다. 1~3개의 비율 30:20:10 은 그대로다. */
 	@Test
-	void 확률은_40_30_20_10_이다() {
-		assertEquals(0.40, LuckyOreEffect.chanceOf(0), 1.0e-9);
-		assertEquals(0.30, LuckyOreEffect.chanceOf(1), 1.0e-9);
-		assertEquals(0.20, LuckyOreEffect.chanceOf(2), 1.0e-9);
-		assertEquals(0.10, LuckyOreEffect.chanceOf(3), 1.0e-9);
+	void 확률은_0_50_33_17_이다() {
+		assertEquals(0.0, LuckyOreEffect.chanceOf(0), 1.0e-9, "0개는 나오지 않는다");
+		assertEquals(30.0 / 60.0, LuckyOreEffect.chanceOf(1), 1.0e-9);
+		assertEquals(20.0 / 60.0, LuckyOreEffect.chanceOf(2), 1.0e-9);
+		assertEquals(10.0 / 60.0, LuckyOreEffect.chanceOf(3), 1.0e-9);
 		assertEquals(0.0, LuckyOreEffect.chanceOf(4), 1.0e-9, "4개는 나올 수 없다");
 		assertEquals(0.0, LuckyOreEffect.chanceOf(-1), 1.0e-9);
 	}
 
 	@Test
 	void 굴린_값이_구간_경계에서_넘어간다() {
-		assertEquals(0, LuckyOreEffect.extraForRoll(0));
-		assertEquals(0, LuckyOreEffect.extraForRoll(39));
-		assertEquals(1, LuckyOreEffect.extraForRoll(40));
-		assertEquals(1, LuckyOreEffect.extraForRoll(69));
-		assertEquals(2, LuckyOreEffect.extraForRoll(70));
-		assertEquals(2, LuckyOreEffect.extraForRoll(89));
-		assertEquals(3, LuckyOreEffect.extraForRoll(90));
-		assertEquals(3, LuckyOreEffect.extraForRoll(99));
+		assertEquals(1, LuckyOreEffect.extraForRoll(0));
+		assertEquals(1, LuckyOreEffect.extraForRoll(29));
+		assertEquals(2, LuckyOreEffect.extraForRoll(30));
+		assertEquals(2, LuckyOreEffect.extraForRoll(49));
+		assertEquals(3, LuckyOreEffect.extraForRoll(50));
+		assertEquals(3, LuckyOreEffect.extraForRoll(59));
 	}
 
 	@Test
@@ -150,7 +149,7 @@ class LuckyOreEffectTest {
 	}
 
 	@Test
-	void 실제로_굴려도_0_부터_3_까지_나온다() {
+	void 실제로_굴려도_1_부터_3_까지_나온다() {
 		LuckyOreEffect effect = create("{ \"type\": \"lucky_ore\" }");
 		RandomSource random = RandomSource.create(20260902L);
 
@@ -165,7 +164,7 @@ class LuckyOreEffectTest {
 			assertEquals(LuckyOreEffect.chanceOf(extra), ratio, 0.01,
 					extra + "개가 나오는 비율이 정의한 확률과 달라졌습니다");
 		}
-		assertTrue(counts[0] > 0, "0개도 나와야 한다 — '안 나올 때도 있다'가 요구사항이다");
+		assertEquals(0, counts[0], "0개(꽝)는 나오면 안 된다 — 2026-10-16 에 대가를 걷어냈다");
 	}
 
 	@Test

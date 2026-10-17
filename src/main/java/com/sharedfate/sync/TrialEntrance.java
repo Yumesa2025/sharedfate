@@ -163,7 +163,8 @@ public final class TrialEntrance {
 	 * <ul>
 	 *   <li><b>「부활」 카드(100틱)보다 길다.</b> 사람이 「이 연출도 조금더 화려하게」라고 했고,
 	 *       이 구간은 드래곤이 하늘에 붙들려 있어 <b>길어도 팀이 잃는 것이 없다</b> —
-	 *       카드 쪽에서 길이가 곧 「못 때리는 시간」이라는 대가였던 것과 다르다</li>
+	 *       카드 쪽에서 길이가 곧 「못 때리는 시간」이라는 대가였던 것과 다르다(그 대가는
+	 *       2026-10-18 에 카드에서 걷혔다 — 지금 카드는 드래곤을 붙들지 않는다)</li>
 	 *   <li><b>카드와 값이 달라야 한다.</b> {@link TrialCrystalRevive} 가 이미 발동한 연출을
 	 *       기억하는 열쇠는 「받은 틱 + 위험 값」이다. 여기가 카드와 똑같은
 	 *       {@code CrystalRevive(10, 100, 0)} 이면 받은 틱까지 겹치는 날 두 연출이 한 번으로
@@ -327,8 +328,17 @@ public final class TrialEntrance {
 			perch(end, dragon, members, elapsed - VANISH_TICKS);
 			return;
 		}
-		// 3단계. 크리스탈을 세우고 빔을 긋고 드래곤을 붙들어 두는 일을 「부활」 카드의 실행기가
-		// 그대로 한다 — 연출을 여기서 다시 짜면 두 벌이 되어 언젠가 한쪽만 고쳐진다.
+		// 3단계. 크리스탈을 세우고 빔을 긋는 일은 「부활」 카드의 실행기가 그대로 한다 — 연출을
+		// 여기서 다시 짜면 두 벌이 되어 언젠가 한쪽만 고쳐진다.
+		// ⚠ 드래곤을 붙드는 일만은 여기서 한다. 2026-10-18 에 「부활」 카드가 드래곤을 중앙 상공에
+		// 붙드는 대가를 걷으면서 그 실행기가 hold 를 부르지 않게 됐다 — 입장 연출은 여전히
+		// 「중앙위에서」 부활해야 하므로, 부활이 끝나는 틱(CINEMATIC_TICKS) 전까지 매 틱 붙든다.
+		if (elapsed < CINEMATIC_TICKS && dragon != null && dragon.isAlive()) {
+			Vec3 perch = TrialCrystalRevive.perchOver(end);
+			if (perch != null) {
+				TrialCrystalRevive.hold(dragon, perch);
+			}
+		}
 		long reviveGranted = started + VANISH_TICKS + PERCH_TICKS;
 		TrialCrystalRevive.tick(end, dragon, members, REVIVE_KEY, reviveGranted, now, REVIVE);
 		halo(end, dragon, elapsed - (VANISH_TICKS + PERCH_TICKS));

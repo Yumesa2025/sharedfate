@@ -4,11 +4,11 @@ import com.sharedfate.perk.effect.GatherEffect;
 import com.sharedfate.perk.effect.OnSwapEffect;
 import com.sharedfate.perk.effect.ProximityEffect;
 import com.sharedfate.perk.effect.SwapBlockEffect;
-import com.sharedfate.perk.effect.StaggeredSwapEffect;
 import com.sharedfate.perk.effect.SwapExplosionEffect;
 import com.sharedfate.perk.effect.SwapExemptEffect;
 import com.sharedfate.perk.effect.SwapIntervalEffect;
 import com.sharedfate.perk.effect.SwapRallyEffect;
+import com.sharedfate.perk.effect.SwapSkipChanceEffect;
 import com.sharedfate.team.TeamState;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.random.RandomGenerator;
 
 /**
  * 팀원 위치 교환과 집합에 끼어드는 증강들의 판정부.
@@ -245,7 +246,8 @@ public final class PerkSwapRules {
 	 * 이 팀이 {@code swap_rally}(골드 「정거장」)를 가졌는가.
 	 *
 	 * <p>참이면 {@code PositionSwapManager.swapMoment}가 순열 교환 대신
-	 * {@code RallyPointManager}에게 집합·복귀를 넘긴다. {@link #staggered}보다 먼저 확인한다.
+	 * {@code RallyPointManager}에게 집합·복귀를 넘긴다. {@link #skipsSwap}에 걸려 제자리인
+	 * 시점에는 모이지 않는다.
 	 */
 	public static boolean rallyPoint(@Nullable TeamState state) {
 		if (!usesPerks(state)) {
@@ -259,24 +261,44 @@ public final class PerkSwapRules {
 		return false;
 	}
 
-	// ------------------------------------------------------------------ 순차 이동
+	// ------------------------------------------------------------------ 제자리 확률
 
 	/**
-	 * 이 팀이 {@code staggered_swap}(실버 「시차」)을 가졌는가.
+	 * 이 팀이 교환 시점에 자리를 <b>그대로 둘</b> 확률({@code swap_skip_chance}, 실버 「본진이
+	 * 바뀔까?」). 없으면 0.
 	 *
-	 * <p>참이면 {@code PositionSwapManager.swapMoment}가 한 틱 안에서 전부 옮기는 대신
-	 * {@code StaggeredSwapManager}에게 진행을 넘긴다.
+	 * <p>여러 개면 「하나라도 걸리면 제자리」로 합친다 — {@code 1 - Π(1 - p)}. 지금 기본 풀에는
+	 * 하나뿐이다.
 	 */
-	public static boolean staggered(@Nullable TeamState state) {
+	public static double swapSkipChance(@Nullable TeamState state) {
 		if (!usesPerks(state)) {
-			return false;
+			return 0.0;
 		}
+		double moves = 1.0;
 		for (PerkEffect effect : effectsOf(state)) {
-			if (effect instanceof StaggeredSwapEffect) {
-				return true;
+			if (effect instanceof SwapSkipChanceEffect skip) {
+				moves *= 1.0 - skip.chance();
 			}
 		}
-		return false;
+		return 1.0 - moves;
+	}
+
+	/**
+	 * 이번 교환 시점에 자리를 그대로 둘 것인가. 확률이 0 이면 난수를 뽑지도 않는다.
+	 *
+	 * <p>{@code PositionSwapManager.swapMoment} 가 「뿌리내린 발」 막힘 <b>다음</b>, 정거장·순열
+	 * 교환 <b>앞</b>에서 부른다. 막힘이 먼저인 까닭은 그쪽이 「언제나 제자리」라 굴릴 것이 없어서다.
+	 */
+	public static boolean skipsSwap(@Nullable TeamState state, RandomGenerator random) {
+		return rollSkip(swapSkipChance(state), random);
+	}
+
+	/** 확률 하나로 판정만 떼어 놓은 것. 시험이 보는 자리다. */
+	static boolean rollSkip(double chance, RandomGenerator random) {
+		if (!(chance > 0.0)) {
+			return false;
+		}
+		return chance >= 1.0 || random.nextDouble() < chance;
 	}
 
 	// ------------------------------------------------------------------ 집합
@@ -321,8 +343,8 @@ public final class PerkSwapRules {
 	 * 팀 전원이 그대로 받는다. 「그 사람만 교환에서 빠진다」이지 「그 사람만 팀이 아니다」가
 	 * 아니기 때문이다.
 	 *
-	 * <p>{@code PositionSwapManager} 가 이 결과를 순열 교환·{@code StaggeredSwapManager}(시차)·
-	 * {@code RallyPointManager}(정거장) 셋 모두에 그대로 넘기므로, 세 갈래가 같은 명단을 쓴다.
+	 * <p>{@code PositionSwapManager} 가 이 결과를 순열 교환·{@code RallyPointManager}(정거장)·
+	 * 제자리 폭발(「본진이 바뀔까?」) 모두에 그대로 넘기므로, 세 갈래가 같은 명단을 쓴다.
 	 */
 	public static List<ServerPlayer> swapParticipants(@Nullable TeamState state,
 			List<ServerPlayer> online) {
@@ -379,9 +401,8 @@ public final class PerkSwapRules {
 	 * <p>받는 사람은 <b>그 증강을 고른 사람</b> 하나뿐이다({@code TeamState.perkOwners}).
 	 * 명단에 그 사람이 없으면(접속을 끊었거나 죽었으면) 아무 일도 하지 않는다.
 	 *
-	 * <p>부르는 자리는 {@code PositionSwapManager.swapMoment} 의 맨 앞이다. 시차는 이동이 여러
-	 * 틱에 걸쳐 일어나 그 갈래에서 곧바로 돌아가 버리므로, 갈림길 뒤에서 주면 시차 팀의 열외는
-	 * 영영 못 받는다.
+	 * <p>부르는 자리는 {@code PositionSwapManager.swapMoment} 의 맨 앞이다. 막힘이든 제자리든
+	 * 정거장이든 갈림길과 상관없이 교환 시점마다 받는다.
 	 */
 	public static void grantSwapExemptBonus(@Nullable TeamState state, List<ServerPlayer> members) {
 		if (members.isEmpty()) {

@@ -2,6 +2,7 @@ package com.sharedfate.sync;
 
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.net.TeamBroadcaster;
+import com.sharedfate.perk.PerkFoodCapacity;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
@@ -172,8 +173,12 @@ public final class StatMirror {
 				}
 
 				StatDelta delta = collectDeltas(team, online, state.damageAlertEnabled);
-				int adjustedFoodDelta = FoodOverflowBuffer.get(server).apply(
-						team.teamId(), state.foodLevel, delta.foodLevel());
+				// 「먹방」을 가진 팀은 남는 허기 완충을 쓰지 않는다. 100 을 넘게 먹은 몫은 버리고,
+				// 이미 쌓인 완충은 얼려 두었다가 증강을 잃으면 다시 쓴다(사람이 정했다).
+				int adjustedFoodDelta = PerkFoodCapacity.eatsWhenFull(PerkFoodCapacity.capacityOf(state))
+						? FoodOverflowBuffer.bypass(team.teamId(), delta.foodLevel())
+						: FoodOverflowBuffer.get(server).apply(
+								team.teamId(), state.foodLevel, delta.foodLevel());
 				delta = new StatDelta(delta.healthLoss(), delta.healthGain(),
 						delta.absorptionLoss(), delta.absorptionGain(), adjustedFoodDelta,
 						delta.saturation(), delta.totalExperience());
@@ -228,6 +233,23 @@ public final class StatMirror {
 				: healthDelta < -0.01F || absorptionConsumed > 0.01F;
 		return SharedHurtFeedback.shouldEcho(false, noticeable ? beyondSlices : 0.0F, deferredAmount,
 				false);
+	}
+
+	/**
+	 * 이 팀원의 개인 허기가 공유 풀과 상관없이 바뀌었음을 적어 둔다. 다음 바퀴가 그 차이를
+	 * 「먹었다·배고파졌다」로 세지 않는다.
+	 *
+	 * <p>{@link com.sharedfate.perk.PerkFoodCapacity#dropToVanilla} 가 증강을 잃은 사람의 허기를
+	 * 20 으로 깎을 때 부른다. 이걸 빼먹으면 깎인 양이 팀원 수만큼 <b>합산</b>되어 팀이 굶는다 —
+	 * {@link #healthDelta} 가 최대 체력이 줄 때 막는 것과 같은 함정이다.
+	 */
+	public static void rebaseFood(UUID player, int foodLevel, float saturation) {
+		Snapshot last = LAST.get(player);
+		if (last == null) {
+			return;
+		}
+		LAST.put(player, new Snapshot(last.teamId(), last.health(), last.absorption(),
+				last.maxAbsorption(), foodLevel, saturation, last.experiencePoints()));
 	}
 
 	public static void syncPlayerNow(UUID teamId, TeamState state, ServerPlayer player) {
@@ -412,8 +434,11 @@ public final class StatMirror {
 		state.absorption = availableAbsorption - absorbed;
 		state.health = clamp(
 				state.health + delta.healthGain() - overflowDamage, 0.0F, maxHealth);
-		state.foodLevel = Math.round(clamp(state.foodLevel + delta.foodLevel(), 0.0F, 20.0F));
-		state.saturation = clamp(state.saturation + delta.saturation(), 0.0F, state.foodLevel);
+		// 허기 상한은 팀마다 다르다(「먹방」이면 100). 포만감은 언제나 20 이 끝이다.
+		state.foodLevel = PerkFoodCapacity.clampFood(
+				(long) state.foodLevel + delta.foodLevel(), PerkFoodCapacity.capacityOf(state));
+		state.saturation = clamp(state.saturation + delta.saturation(), 0.0F,
+				PerkFoodCapacity.saturationCeiling(state.foodLevel));
 		if (shareExperience) {
 			// 상한을 넘은 몫은 여기서 사라진다. 다음 writeBack 이 팀원의 경험치를 잘린 값으로
 			// 되돌리므로, 레벨은 상한에서 멈추고 막대도 더 차지 않는다.

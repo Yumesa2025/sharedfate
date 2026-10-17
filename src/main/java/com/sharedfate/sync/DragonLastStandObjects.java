@@ -334,10 +334,9 @@ import java.util.List;
  * 356 → 360 이 되어 합이 397 이었다가, 같은 날 십자 예고를 바닥 판으로 바꿔 먼지 선과 흰 기둥
  * 벽을 걷으면서 360 → <b>322</b> 로 내려왔다({@code DragonLastStandPatternsTest} 가 322 를
  * 못박는다). 그래서 합이 <b>359</b> 이다.
- * ⚠ <b>그 뒤 안전지대가 월드 보더를 버리고 빨간 입자 기둥이 되어</b>(2026-10-04) 그 벽의 한 틱 최대
- * <b>39점</b>({@code DragonLastStandZoneWall.worstPointsPerTick})이 언제나 위에 얹힌다 — 패턴 322 + 파도
- * 37 + 벽 39 = <b>398</b>. 아래 끝 400 까지 남은 몫이 81 에서 <b>2점</b>으로 줄었다
- * ({@code DragonLastStandZoneWallTest} 가 세 값을 더해 400 이하를 붙든다).
+ * ⚠ 2026-10-04 ~ 10-18 에는 안전지대가 빨간 입자 기둥 벽이라 한 틱 39점이 언제나 얹혀 합이 398 이었다.
+ * 2026-10-18 에 안전지대가 다시 월드 보더(점 0)가 되어 합이 <b>359</b> 로 돌아왔다
+ * ({@code DragonLastStandZoneTest} 가 두 값을 더해 400 이하를 붙든다).
  *
  * <h2>⚠⚠ 일곱 자리에서 지운다 — {@code DragonLastStandConePanel} 을 그대로 따른다</h2>
  *
@@ -443,10 +442,9 @@ public final class DragonLastStandObjects {
 	 *
 	 * <p>⚠⚠ <b>그래도 타이머가 없다는 사실은 그대로다.</b> 팀이 손을 놓으면 드래곤은 가득까지
 	 * 차고 이 페이즈는 <b>끝나지 않는다</b> — 사람이 「부술떄까지」라고 정한 것이 그 뜻이다.
-	 * <b>시간 제한도 없다.</b> 안전지대는 115초에 반경 12 까지 줄고 그 뒤 밖 피해가 5초마다
-	 * +1.6 씩 오르지만({@code DragonLastStandZone}) 그 피해는 <b>원 밖에만</b> 든다 — 반경 12
-	 * 안에 머물면 받지 않고 그 안에서 계속 싸울 수 있다. 그동안 살아 있는 크리스탈이 되돌리는
-	 * 양에는 천장이 없다(위 표의 16.6초).
+	 * <b>시간 제한도 없다.</b> 안전지대는 115초에 반변 18 까지 줄고 거기 멈춘다 — 2026-10-18 부터
+	 * 밖 피해가 없는 월드 보더라({@code DragonLastStandZone}) 그 안에서 계속 싸울 수 있다. 그동안
+	 * 살아 있는 크리스탈이 되돌리는 양에는 천장이 없다(위 표의 16.6초).
 	 */
 	static final float LEAK_FRACTION_PER_SECOND = 0.005F;
 
@@ -523,20 +521,20 @@ public final class DragonLastStandObjects {
 	/**
 	 * 오브젝트가 서는 고리의 반경(칸). <b>새 숫자를 만들지 않았다.</b>
 	 *
-	 * <p>안전지대의 <b>마지막 반경</b>에서 경계 여유({@code DragonLastStandEntry.WALL_MARGIN})만큼
-	 * 안쪽이다 — 12 − 3 = <b>9</b>. 그 여유의 근거는 2026-10-04 에 보더 충돌(벽에 끼이지 않게)에서
-	 * 「빨간 입자 기둥 바로 위에 두지 않는다」로 바뀌었고 값은 그대로다 — 이 고리에도 같은 근거가
-	 * 맞는다(크리스탈이 경계 기둥에 붙어 서면 「안에 있는가」가 흐려진다). 이렇게 적어 두면 <b>「오브젝트가 지대 밖에 서지 않는다」가
-	 * 구조적으로 참</b>이고, 지대의 끝값을 고치는 사람이 여기를 따로 고칠 일이 없다
-	 * (상시 번개의 {@code LIGHTNING_FIELD_RADIUS} 가 같은 식으로 적혀 있다).
+	 * <p>패턴 중심 원({@code DragonLastStandZone.PATTERN_CORE_RADIUS} 12)에서 경계 여유
+	 * ({@code DragonLastStandEntry.WALL_MARGIN})만큼 안쪽이다 — 12 − 3 = <b>9</b>.
+	 *
+	 * <p>⚠ 2026-10-18 전에는 「안전지대의 마지막 반경」(12)에서 뽑았다. 사람 지시로 끝값이 18 이 되자
+	 * 이 고리가 15 로 따라 나가 날개가 가장 센 구간(아래 ②) 밖이 됐고, 사람이 <b>「회복 크리스탈 고리는
+	 * 옛 12 기준에 묶는다」</b>를 골랐다. 12 가 끝값 18 보다 작으므로 「오브젝트가 지대 밖에 서지
+	 * 않는다」는 그대로 참이다(상시 번개만 18 을 따라 넓혔다 — {@code LIGHTNING_FIELD_RADIUS}).
 	 *
 	 * <p>따라오는 사실 둘. ① 앉은 드래곤의 상자가 가로 16칸이라 반이 8 이므로 <b>몸 바로
 	 * 밖</b>이다. ② 그래서 오브젝트를 때리는 자리가 <b>날개 퍼덕이기가 가장 센 구간</b>(4~12칸)과
 	 * 겹친다.
 	 */
 	static final double RING_RADIUS =
-			DragonLastStandZone.RADII[DragonLastStandZone.RADII.length - 1]
-					- DragonLastStandEntry.WALL_MARGIN;
+			DragonLastStandZone.PATTERN_CORE_RADIUS - DragonLastStandEntry.WALL_MARGIN;
 
 	/** 흰 신호기 선만 서 있는 시간(틱). 1초. 「먼저 선이 서고」가 이 1초다. */
 	static final int RISE_TICKS = 20;
@@ -1164,7 +1162,7 @@ public final class DragonLastStandObjects {
 			slots.add(new Slot(new Vec3(x, surface, z), RISE_TICKS + index * DROP_STRIDE_TICKS));
 		}
 		if (slots.isEmpty()) {
-			SharedFateMod.LOGGER.info("[END] 오브젝트 파도 — 설 자리를 하나도 못 찾아 지나갑니다");
+			SharedFateMod.LOGGER.info("[END] 회복 크리스탈 소환(오브젝트 파도) — 설 자리를 하나도 못 찾아 지나갑니다");
 			return;
 		}
 		for (Slot slot : slots) {
@@ -1176,7 +1174,7 @@ public final class DragonLastStandObjects {
 		TrialWarning.playEach(end, members, SoundEvents.BEACON_POWER_SELECT, 1.0F, 1.2F);
 		wave = new Wave(now, firedWaves, anchor, slots, plantTicks(count));
 		SharedFateMod.LOGGER.info(
-				"[END] 오브젝트 파도 — 체력 {}% · {}개 · 체력 {} · 크기 {}칸 · 타이머 없음 · "
+				"[END] 회복 크리스탈 소환(오브젝트 파도) — 체력 {}% · {}개 · 체력 {} · 크기 {}칸 · 타이머 없음 · "
 						+ "박힌 뒤 {}초에 연결되어 하나마다 초당 {}% 씩 회복 · 부술 때까지",
 				Math.round(THRESHOLDS[firedWaves] * 100.0F), slots.size(), OBJECT_HEALTH,
 				CRYSTAL_HEIGHT, LINK_DELAY_TICKS / (float) SECOND_TICKS,
@@ -1332,7 +1330,7 @@ public final class DragonLastStandObjects {
 			// ⚠ 옛 「block/beacon/deactivate(시간이 꺼졌다)」는 걷어냈다. 꺼질 시간이 없다.
 			TrialWarning.playEach(end, members, SoundEvents.ENDER_DRAGON_GROWL, 1.0F, 0.6F);
 			SharedFateMod.LOGGER.info(
-					"[END] 오브젝트 파도 — 첫 연결 · 하나마다 초당 {}(최대 체력 {} 의 {}%)",
+					"[END] 회복 크리스탈 소환(오브젝트 파도) — 첫 연결 · 하나마다 초당 {}(최대 체력 {} 의 {}%)",
 					leakPerSecond(dragon.getMaxHealth()), dragon.getMaxHealth(),
 					LEAK_FRACTION_PER_SECOND * 100.0F);
 		}
@@ -1418,12 +1416,12 @@ public final class DragonLastStandObjects {
 			// block/amethyst/shimmer 다. 부수는 소리와 같은 계열이라 「이 물건이 끝났다」로 들린다.
 			TrialWarning.playEach(end, members, SoundEvents.AMETHYST_BLOCK_CHIME, 1.0F, 1.2F);
 			SharedFateMod.LOGGER.info(
-					"[END] 오브젝트 파도 — 전부 부쉈습니다(체력 {}% 파도 · 그동안 드래곤 체력 +{})",
+					"[END] 회복 크리스탈 소환(오브젝트 파도) — 전부 부쉈습니다(체력 {}% 파도 · 그동안 드래곤 체력 +{})",
 					Math.round(THRESHOLDS[current.threshold] * 100.0F), current.healed);
 			return;
 		}
 		SharedFateMod.LOGGER.info(
-				"[END] 오브젝트 파도 — 드래곤이 죽어 닫습니다(체력 {}% 파도 · 그동안 +{})",
+				"[END] 회복 크리스탈 소환(오브젝트 파도) — 드래곤이 죽어 닫습니다(체력 {}% 파도 · 그동안 +{})",
 				Math.round(THRESHOLDS[current.threshold] * 100.0F), current.healed);
 	}
 
