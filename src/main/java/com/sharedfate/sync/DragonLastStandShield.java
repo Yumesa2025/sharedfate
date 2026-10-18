@@ -143,16 +143,26 @@ import java.util.List;
  *   <tr><td>표면을 도는 띠({@value #BAND_POINTS} ÷ {@value #BAND_STRIDE})</td><td>{@value #BAND_POINTS_PER_TICK}</td></tr>
  *   <tr><td>파동 고리(밀어내는 박자부터 {@value #WAVE_TICKS}틱)</td><td>{@value #WAVE_POINTS}</td></tr>
  *   <tr><td>밀린 사람 자리의 돌풍(팀원 넷)</td><td>{@value #REPEL_GUST_POINTS}</td></tr>
- *   <tr><td><b>합</b></td><td><b>{@code worstShieldTickPoints()} = 84</b></td></tr>
+ *   <tr><td><b>합</b></td><td><b>{@code worstShieldTickPoints()} = 88</b></td></tr>
  * </table>
  *
  * <p>2026-10-18 — 띠 · 파동 고리 · 돌풍 · 흰 나선은 <b>빨간 기둥 벽을 걷은 몫</b>(진입부터 언제나 한 틱
- * 39점)으로 더했다. 옛 「보호막 54 + 벽 39 = 93」 안이다.
+ * 39점)으로 더했다. 옛 「보호막 54 + 벽 39 = 93」 안이다. 같은 날 밤 막 밑자락을 섬 바닥까지 내려 그으며
+ * 반구 몫이 36 → 40 이 되어 84 → <b>88</b> 이다(여전히 93 안).
+ *
+ * <h2>⚠ 2026-10-18 밤 — 높이 기준을 드래곤 발에서 <b>섬 바닥</b>으로</h2>
+ *
+ * <p>드래곤은 기반암 기둥 꼭대기에 앉아 섬 표면보다 세 칸 높다. 막 밑동 · 파동 고리가 그 높이에 그려져 바닥에서
+ * 떠 보였고, 밀어내기의 높이 판정도 그 높이에서 재어 바닥에 선 사람이 경계(−3)에 걸렸다. 거기에 날개의 공중
+ * 감쇠 속도를 빌려 써 바닥에서는 0.198배만 밀렸다 — CHANGELOG 의 「12칸 안 사람을 15칸까지」가 사실이 아니었다.
+ * 지금은 {@code DragonLastStand} 가 넘기는 {@code floorDrop}(드래곤 발 → 섬 바닥) 만큼 내린 <b>막 밑동</b>에서
+ * 재고 그리며, 미는 거리는 {@link #repelTravel} · {@link #repelSpeed} 가 정한다.
  *
  * <p>걷히는 틱은 첫 패턴이 시작하는 틱이라 그쪽 최악({@code DragonLastStandPatterns
- * .worstCasePointsPerTick} 322)과 겹친다. 그 틱에 반구는 이미 안 그리고 파편은 개수를 세는
- * 꾸러미 <b>{@value #SHATTER_POINTS}장</b>뿐이다 — 322 + {@value #SHATTER_POINTS} 이고, 파도의 37 을
- * 억지로 더해도 361 / 440 이다(2026-10-04 에 패턴 쪽이 360 → 322 로 내려오기 전에는 399). {@code DragonLastStandShieldTest} 가 이 셈을 붙든다.
+ * .worstCasePointsPerTick} 346)과 겹친다. 그 틱에 반구는 이미 안 그리고 파편은 개수를 세는
+ * 꾸러미 <b>{@value #SHATTER_POINTS}장</b>뿐이다 — 346 + {@value #SHATTER_POINTS} 이고, 파도의 37 을
+ * 억지로 더해도 385 / 440 이다(2026-10-18 날갯짓에 비가 얹히기 전에는 361, 2026-10-04 에 패턴 쪽이 360 → 322 로
+ * 내려오기 전에는 399). {@code DragonLastStandShieldTest} 가 이 셈을 붙든다.
  */
 public final class DragonLastStandShield {
 
@@ -172,16 +182,21 @@ public final class DragonLastStandShield {
 	 *
 	 * <p>반구 겉넓이가 {@code 2π × 9² ≈ 509} 칸²라 180점이면 점 사이가 약 1.7칸이다 — 막으로 읽히는
 	 * 성김의 끝이다. 더 성기면 「점 몇 개가 떠 있다」가 된다.
+	 *
+	 * <p>⚠ 2026-10-18 밤 180 → <b>240</b>. 막이 드래곤 발(섬 표면보다 세 칸 위)에서 끝나 바닥에서 떠 보였다 —
+	 * 같은 구의 <b>밑자락</b>을 섬 바닥까지 내려 긋는다({@link #domeOffset}). 겉넓이가 {@code 2π × 9 × 12 ≈ 679}
+	 * 칸²로 늘어 같은 성김(약 1.7칸)을 지키려면 240점이다.
 	 */
-	static final int DOME_POINTS = 180;
+	static final int DOME_POINTS = 240;
 
 	/**
 	 * 반구를 몇 틱에 나눠 긋는가.
 	 *
 	 * <p>⚠ <b>먼지 수명(최소 8틱)보다 짧아야</b> 막이 닫힌 채 보인다(5장 「{@code stride} 상한은
-	 * 입자 수명에 묶여 있습니다」). 5 면 한 바퀴가 끝나기 전에 앞 점이 안 꺼진다.
+	 * 입자 수명에 묶여 있습니다」). 6 이면 한 바퀴가 끝나기 전에 앞 점이 안 꺼진다(먼지 크기 1.5 라 수명이
+	 * 12틱 이상이다). 2026-10-18 밤 5 → 6 — 점이 240 으로 늘어도 한 틱 몫이 40 이다.
 	 */
-	static final int DOME_STRIDE = 5;
+	static final int DOME_STRIDE = 6;
 
 	/** 한 틱에 긋는 반구 점의 상한. 나눠 그리기가 위상에 따라 하나 더 나가는 일은 없다(180 ÷ 5 가 딱 떨어진다). */
 	static final int DOME_POINTS_PER_TICK = (DOME_POINTS + DOME_STRIDE - 1) / DOME_STRIDE;
@@ -199,7 +214,7 @@ public final class DragonLastStandShield {
 	/** 반구 먼지 크기. 1.0 이 레드스톤 가루다 — 9칸 떨어진 막이 보이려면 그보다 커야 한다. */
 	private static final float DOME_DUST_SCALE = 1.5F;
 
-	/** 반구를 드래곤 발밑에서 이만큼 올려 세운다(칸). 0 이면 맨 아랫줄이 포디움에 묻힌다. */
+	/** 막을 이만큼 올려 세운다(칸). 0 이면 맨 아랫줄이 바닥(밑자락을 그은 뒤로는 섬 표면)에 묻힌다. */
 	private static final double DOME_LIFT = 0.3;
 
 	/**
@@ -262,9 +277,13 @@ public final class DragonLastStandShield {
 	static final int REPEL_PULSE_TICKS = 10;
 
 	/**
-	 * 드래곤 높이에서 이만큼 아래 · (반구 높이 + 이만큼) 위까지만 민다(칸).
+	 * 막 밑동(섬 바닥 높이)에서 이만큼 아래 · (반구 높이 + 이만큼) 위까지만 민다(칸).
 	 *
 	 * <p>하강 2초 동안 막은 드래곤과 함께 공중에 있다 — 그 밑 땅에 선 사람은 「막 둘레」가 아니다.
+	 *
+	 * <p>⚠ 2026-10-18 밤까지 기준이 <b>드래곤 발</b>이었다. 드래곤은 기둥 꼭대기(섬 표면보다 세 칸 위)에
+	 * 앉으므로 평평한 바닥에 선 사람이 정확히 −3.0 = 경계였고, 바닥이 한 칸만 낮아도 −4 로 안 밀렸다.
+	 * 지금은 {@link #tick} 이 받는 {@code floorDrop} 만큼 내린 <b>막 밑동</b>에서 잰다 — 바닥에 선 사람이 0 이다.
 	 */
 	static final double REPEL_VERTICAL_SLACK = 3.0;
 
@@ -376,15 +395,23 @@ public final class DragonLastStandShield {
 		return gap >= 0 && gap <= PULSE_SLACK_TICKS;
 	}
 
-	/** 반구 위 {@code index} 번째 점의 상대 좌표. 시험이 「전부 반구 위인가」를 잰다. */
-	static Vec3 domeOffset(int index) {
-		// 반구는 높이로 고르게 자르면 띠마다 넓이가 같다(아르키메데스). 그래서 높이를 고르게 놓고
-		// 각도를 황금각으로 돌리면 점이 한쪽에 몰리지 않는다.
-		double height = (index + 0.5) / DOME_POINTS;
-		double ring = Math.sqrt(Math.max(0.0, 1.0 - height * height));
+	/**
+	 * 막 위 {@code index} 번째 점의 상대 좌표(드래곤 발에서). 시험이 「전부 구 위인가 · 바닥 밑이 아닌가」를 잰다.
+	 *
+	 * <p>위쪽 반구에 더해 <b>밑자락</b>을 {@code skirt} 칸 아래(섬 바닥)까지 같은 구로 내려 긋는다(2026-10-18 밤).
+	 * 드래곤은 기둥 꼭대기에 앉아 있어 반구만 그리면 막 밑동이 바닥에서 세 칸 떠 보였다. 구 중심을 바닥으로
+	 * 내리지 않은 것은 막 꼭대기가 함께 내려앉아 앉은 드래곤의 몸이 막 위로 삐져나오기 때문이다.
+	 *
+	 * @param skirt 드래곤 발에서 섬 바닥까지(칸). 0 이면 옛 반구 그대로다. 반경보다 작다
+	 */
+	static Vec3 domeOffset(int index, double skirt) {
+		// 구는 높이로 고르게 자르면 띠마다 넓이가 같다(아르키메데스). 그래서 높이를 −skirt ~ 반경에 고르게
+		// 놓고 각도를 황금각으로 돌리면 점이 한쪽에 몰리지 않는다.
+		double low = -Math.max(0.0, Math.min(skirt, DOME_RADIUS * 0.9));
+		double height = low + (DOME_RADIUS - low) * (index + 0.5) / DOME_POINTS;
+		double ring = Math.sqrt(Math.max(0.0, DOME_RADIUS * DOME_RADIUS - height * height));
 		double angle = index * GOLDEN_ANGLE;
-		return new Vec3(Math.cos(angle) * ring * DOME_RADIUS, height * DOME_RADIUS,
-				Math.sin(angle) * ring * DOME_RADIUS);
+		return new Vec3(Math.cos(angle) * ring, height, Math.sin(angle) * ring);
 	}
 
 	/** 황금각(라디안). */
@@ -425,7 +452,8 @@ public final class DragonLastStandShield {
 	 * 이 사람을 <b>얼마나</b> 밀어야 하는가(칸). 밀 대상이 아니면 0 이다. 월드 없이 시험이 굴린다.
 	 *
 	 * @param horizontal 드래곤에서의 수평 거리
-	 * @param rise       드래곤 높이에서 사람 발까지의 높이(위가 양수)
+	 * @param rise       <b>막 밑동</b>(섬 바닥 높이)에서 사람 발까지의 높이(위가 양수). 2026-10-18 밤까지는 드래곤
+	 *                   발에서 쟀다 — {@link #REPEL_VERTICAL_SLACK}
 	 */
 	static double repelWanted(double horizontal, double rise) {
 		if (horizontal > REPEL_RADIUS) {
@@ -435,6 +463,45 @@ public final class DragonLastStandShield {
 			return 0.0;
 		}
 		return REPEL_TO - horizontal;
+	}
+
+	/**
+	 * ⚠⚠ 이번 박자에 <b>실제로 밀 거리</b>(칸) — 천장 둘을 지난 거리를 <b>「점프해도 넘지 않는 거리」</b>로
+	 * 한 번 더 자른다. 2026-10-18 밤.
+	 *
+	 * <h2>왜 날개와 다른 셈인가</h2>
+	 *
+	 * <p>날개({@code DragonLastStandPatterns.shoveSpeed})는 <b>공중 감쇠</b>로 속도를 잡아 바닥에 선 사람은 적힌
+	 * 거리의 0.198배만 간다 — 날개는 그것이 의도(「넉백 버티기」)지만 보호막은 「막 둘레는 서 있을 수 없는
+	 * 자리」가 의도라 그 셈이면 12칸에서 15칸까지 미는 대신 3칸에 선 사람을 2.4칸 밀었고, 10틱 사이 달려
+	 * 들어오는 2.8칸을 못 이겼다(공개 배포 직전 검토).
+	 *
+	 * <p>그래서 <b>바닥 감쇠</b>({@code GROUND_DRAG})로 속도를 잡는다({@link #repelSpeed}). 대가는 6장의 그
+	 * 함정 — 바닥 속도로 밀린 직후 뛰면 공중 감쇠라 <b>다섯 배</b>를 간다. 그것을 이 함수가 막는다: 밀 거리를
+	 * <b>{@code safeReach × AIRBORNE_PUSH_SCALE}</b> 아래로 자르면 바닥 속도({@code travel × 0.454})로 통째로
+	 * 떠 있어도 공중 이동이 {@code travel × 0.454 ÷ 0.09 ≤ safeReach} 다. {@code safeReach} 는 같은 방향으로
+	 * 천장 둘(반경 32 · 땅이 끊기는 자리)이 허락하는 끝이다. 곧 <b>어떤 경우에도 반경 32 와 땅 끝 안</b>이다.
+	 *
+	 * <p>섬 중앙 포디움 기준으로 드래곤 바로 옆(3칸)에서 한 박자에 약 5.7칸, 다음 박자에 4.5칸 — 1초 안에
+	 * 미는 반경(12) 밖으로 나간다. 11칸 밖이면 한 박자에 15칸 줄이다. 반경 안으로 달려 들어오는 사람은 다음
+	 * 박자에 다시 밀린다(가장자리에서도 3칸 넘게 — 10틱 동안 달려 드는 2.8칸보다 길다).
+	 *
+	 * @param distance  천장 둘을 지난 거리({@code pushDistance} → {@code groundedReach})
+	 * @param safeReach 같은 방향으로 천장 둘이 허락하는 끝까지의 거리
+	 */
+	static double repelTravel(double distance, double safeReach) {
+		double cap = Math.max(0.0, safeReach) * DragonLastStandPatterns.AIRBORNE_PUSH_SCALE;
+		return Math.max(0.0, Math.min(distance, cap));
+	}
+
+	/**
+	 * 그 거리를 <b>그대로</b> 가게 하는 처음 속도(칸/틱). 바닥이면 바닥 감쇠, 떠 있으면 공중 감쇠로 잡는다 —
+	 * 둘 다 끝까지 가는 거리가 {@code travel} 이라 <b>뛰어도 이득도 손해도 없다</b>(날개의
+	 * {@code AIRBORNE_PUSH_SCALE} 와 같은 약속). 안전은 {@link #repelTravel} 이 지킨다.
+	 */
+	static double repelSpeed(double travel, boolean airborne) {
+		double drag = airborne ? TrialEnderStorm.AIR_DRAG : DragonLastStandPatterns.GROUND_DRAG;
+		return Math.max(0.0, travel) * (1.0 - drag);
 	}
 
 	/** 띠의 이번 높이(반구 반경에 대한 비율). 0.25 ~ 0.75 사이를 오르내린다. */
@@ -520,12 +587,14 @@ public final class DragonLastStandShield {
 	 * {@code advance} 뒤여야 「첫 패턴이 시작한 틱부터는 맞는다」가 그 틱 안에서 성립한다.
 	 *
 	 * @param up      이 틱에 보호막이 서 있어야 하는가({@link #shielded} 의 답)
-	 * @param beganAt 보호막을 세운 판이 시작한 틱. 반구를 나눠 긋는 위상의 원점이다
-	 * @param members 밀어낼 팀원. 판이 얼어 있는 틱({@code DragonLastStand.holdShield})은 빈 목록이다
-	 * @param now     받은 틱. {@code getGameTime} 을 다시 읽지 않는다
+	 * @param beganAt   보호막을 세운 판이 시작한 틱. 반구를 나눠 긋는 위상의 원점이다
+	 * @param floorDrop 드래곤 발에서 섬 바닥(사람이 서는 높이)까지 내려가는 칸 수. 막 밑자락 · 파동 고리 ·
+	 *                  밀어내기 높이가 여기서 나온다(2026-10-18 밤). 맨손 포디움이면 3
+	 * @param members   밀어낼 팀원. 판이 얼어 있는 틱({@code DragonLastStand.holdShield})은 빈 목록이다
+	 * @param now       받은 틱. {@code getGameTime} 을 다시 읽지 않는다
 	 */
 	static void tick(MinecraftServer server, ServerLevel end, EnderDragon dragon, boolean up,
-			long beganAt, List<ServerPlayer> members, long now) {
+			long beganAt, double floorDrop, List<ServerPlayer> members, long now) {
 		nowTick = now;
 		raisedAtServerTick = server.getTickCount();
 		raised = up;
@@ -534,11 +603,14 @@ public final class DragonLastStandShield {
 			// 얼어 있는 동안 매 서버 틱 syncVelocity 가 나가 사람 입력을 지운다.
 			domeDrawnAt = now;
 			Vec3 center = dragon.position();
-			drawDome(end, center, beganAt, now);
+			// 막 밑동 — 드래곤과 함께 내려오고, 앉은 뒤로는 섬 바닥이다.
+			double skirt = Math.max(0.0, floorDrop);
+			Vec3 base = center.subtract(0.0, skirt, 0.0);
+			drawDome(end, center, skirt, beganAt, now);
 			drawBand(end, center, beganAt, now);
-			drawWave(end, center, beganAt, now);
+			drawWave(end, base, beganAt, now);
 			if (repelBeat(beganAt, now)) {
-				repel(end, members, center);
+				repel(end, members, base);
 			}
 		}
 	}
@@ -563,7 +635,10 @@ public final class DragonLastStandShield {
 		}
 	}
 
-	/** 밀어내는 박자마다 반구 밑동에서 바깥으로 번지는 <b>파동 고리</b>. 바닥 높이에 긋는다. */
+	/**
+	 * 밀어내는 박자마다 막 밑동에서 바깥으로 번지는 <b>파동 고리</b>. 바닥 높이에 긋는다 — {@code base} 가 섬
+	 * 바닥이다(2026-10-18 밤까지 드래곤 발 높이라 바닥에서 세 칸 떠 있었다).
+	 */
 	private static void drawWave(ServerLevel end, Vec3 center, long beganAt, long now) {
 		double radius = waveRadius(beganAt, now);
 		if (radius < 0.0) {
@@ -587,11 +662,15 @@ public final class DragonLastStandShield {
 	 * <ol>
 	 *   <li>{@code TrialEnderStorm.pushDistance} — 목적지가 반경 32 안</li>
 	 *   <li>{@code TrialLandingShock.groundedReach} — 땅이 끊기기 전에서 멈춘다</li>
-	 *   <li>{@code DragonLastStandPatterns.shoveSpeed} — 공중이면 바닥과 같은 거리만 가게 깎는다</li>
+	 *   <li>{@link #repelTravel} — 점프해도 위 둘을 넘지 않는 거리로 자른다(2026-10-18 밤. 전에는 날개의
+	 *       {@code shoveSpeed} 를 지나 바닥에 선 사람이 0.198배만 밀렸다)</li>
+	 *   <li>{@link #repelSpeed} — 바닥이면 바닥 감쇠, 떠 있으면 공중 감쇠로 그 거리를 그대로 가게 한다</li>
 	 *   <li>수평은 <b>덮어쓰고</b> 세로는 {@link TrialVelocity#syncedVertical} 를 지난다(6장 「배달」)</li>
 	 * </ol>
 	 *
 	 * <p>피해원이 없다 — 보호막은 막는 것이지 때리는 것이 아니다. 관전자는 밀지 않는다.
+	 *
+	 * @param center 막 밑동 — 드래곤 수평 자리 · 섬 바닥 높이
 	 */
 	private static void repel(ServerLevel end, List<ServerPlayer> members, Vec3 center) {
 		if (members.isEmpty()) {
@@ -614,17 +693,22 @@ public final class DragonLastStandShield {
 				ground = new TrialEnderPulse.Ground();
 			}
 			TrialEnderPulse.Ground probe = ground;
+			TrialLandingShock.GroundProbe hasGround =
+					(x, z) -> probe.surfaceAt(end, x, z) != TrialEnderPulse.NO_GROUND;
 			double stepX = dx / from;
 			double stepZ = dz / from;
-			double distance = TrialEnderStorm.pushDistance(member.getX(), member.getZ(),
-					new Vec3(stepX, 0.0, stepZ), wanted);
-			distance = TrialLandingShock.groundedReach(
-					(x, z) -> probe.surfaceAt(end, x, z) != TrialEnderPulse.NO_GROUND,
+			Vec3 outward = new Vec3(stepX, 0.0, stepZ);
+			double distance = TrialEnderStorm.pushDistance(member.getX(), member.getZ(), outward, wanted);
+			distance = TrialLandingShock.groundedReach(hasGround,
 					member.getX(), member.getZ(), stepX, stepZ, distance);
 			if (!(distance > 0.0)) {
 				continue;
 			}
-			double speed = DragonLastStandPatterns.shoveSpeed(distance,
+			// 같은 방향으로 천장 둘이 허락하는 끝. 바닥 속도로 밀린 직후 뛰어도 여기를 못 넘게 자른다.
+			double safeReach = TrialLandingShock.groundedReach(hasGround, member.getX(), member.getZ(),
+					stepX, stepZ, TrialEnderStorm.pushDistance(member.getX(), member.getZ(), outward,
+							Double.MAX_VALUE));
+			double speed = repelSpeed(repelTravel(distance, safeReach),
 					DragonLastStandPatterns.isAirborne(end, probe, member));
 			Vec3 motion = member.getDeltaMovement();
 			member.setDeltaMovement(stepX * speed,
@@ -647,13 +731,15 @@ public final class DragonLastStandShield {
 	 *
 	 * <p>중심을 <b>드래곤 자리</b>로 잡는다 — 진입 연출의 첫 2초는 드래곤이 내려오는 중이라
 	 * 막이 함께 내려온다. 그 뒤로는 자리가 못박혀 있어 막도 선다.
+	 *
+	 * @param skirt 밑자락을 드래곤 발에서 내려 긋는 칸 수 — 섬 바닥까지({@link #domeOffset})
 	 */
-	private static void drawDome(ServerLevel end, Vec3 center, long beganAt, long now) {
+	private static void drawDome(ServerLevel end, Vec3 center, double skirt, long beganAt, long now) {
 		// 주기는 (now - 원점) % 간격이다. now % 간격이면 다른 시계와 같은 틱에 몰린다(5장).
 		int phase = (int) Math.floorMod(now - beganAt, (long) DOME_STRIDE);
 		ParticleOptions dust = new DustParticleOptions(DOME_COLOR, DOME_DUST_SCALE);
 		for (int index = phase; index < DOME_POINTS; index += DOME_STRIDE) {
-			Vec3 offset = domeOffset(index);
+			Vec3 offset = domeOffset(index, skirt);
 			end.sendParticles(dust, true, false,
 					center.x + offset.x, center.y + DOME_LIFT + offset.y, center.z + offset.z,
 					1, 0.0, 0.0, 0.0, 0.0);

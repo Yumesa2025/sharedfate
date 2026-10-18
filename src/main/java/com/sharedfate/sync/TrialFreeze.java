@@ -266,13 +266,19 @@ public final class TrialFreeze {
 		}
 	}
 
-	/** 서버가 멈추기 직전. 얼려 둔 채로 종료하지 않는다. */
+	/**
+	 * 서버가 멈추기 직전. 얼려 둔 채로 종료하지 않는다.
+	 *
+	 * <p>⚠ 끝난 결과는 <b>버리지 않는다</b>(2026-10-18 검토). 전에는 여기서 {@code finished} 를 비워 룰렛이 돌던
+	 * 중에 꺼지면 카드가 사라지고 다음에 다시 뽑혔다. 이 뒤에 등록된 {@code DragonTrialManager.onServerStopping}
+	 * 이 결과를 먼저 쌓고 전투를 일시 중단으로 저장한다 — 접속 종료로 닫힐 때({@link #tick})와 같다. 거기서 안
+	 * 가져가면(전투가 없다) {@code SERVER_STOPPED} 의 {@link #reset()} 이 비운다.
+	 */
 	public static void onServerStopping(@Nullable MinecraftServer server) {
 		State current = state;
 		if (current != null) {
 			finish(server, current, null);
 		}
-		finished = null;
 	}
 
 	/** 월드가 바뀔 때. 서버 객체를 만질 수 없는 자리에서는 상태만 버린다. */

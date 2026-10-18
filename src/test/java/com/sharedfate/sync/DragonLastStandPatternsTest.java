@@ -2126,8 +2126,9 @@ class DragonLastStandPatternsTest {
 		assertTrue(worst <= TrialLandingShock.MAX_POINTS_PER_TICK,
 				"한 틱에 " + worst + "점이라 예산 " + TrialLandingShock.MAX_POINTS_PER_TICK
 						+ "을 넘는다 — 개수나 반경을 올린 사람은 여기서 멈출 것");
-		assertEquals(228, DragonLastStandPatterns.wingBeatPoints(),
-				"날개 퍼덕이기 — 파랑 고리 131 + 벽 68 + 바깥 가닥 24 + 돌풍 5");
+		assertEquals(276, DragonLastStandPatterns.wingBeatPoints(),
+				"날개 퍼덕이기 — 파랑 고리 131 + 벽 68 + 바깥 가닥 24 + 돌풍 5 + 종말의 비 착탄 48"
+						+ "(2026-10-18 에 228 → 276)");
 		assertEquals(236, DragonLastStandPatterns.coneWarnPoints(),
 				"부채꼴 예고 — 호가 하나에서 셋이 되어 202 → 236. 예고가 4초로 줄어도 한 틱 몫은 같다");
 		assertEquals(55, DragonLastStandPatterns.coneSprayPoints(), "부채꼴 브레스 파티클");
@@ -2150,12 +2151,14 @@ class DragonLastStandPatternsTest {
 				"상시 번개 내리침 — 바닥 표식은 없고 깎인 사람마다 발밑 입자 12점뿐이다");
 		assertEquals(70, DragonLastStandPatterns.lightningPoints(),
 				"번개는 예고 틱과 내리침 틱 가운데 바쁜 쪽이다 — 지금은 예고가 이긴다");
-		assertEquals(322, worst,
+		assertEquals(346, worst,
 				"가장 바쁜 틱 — 272 → 356 → 360 → 322(2026-10-04: 십자 예고를 바닥 면으로 바꿔 162 를 "
-						+ "덜고, 갈라짐이 두 벌이 되어 124 를 더했다)");
+						+ "덜고, 갈라짐이 두 벌이 되어 124 를 더했다) → 346(2026-10-18: 날갯짓에 종말의 비)");
 		assertEquals(DragonLastStandPatterns.lightningPoints()
-						+ DragonLastStandPatterns.crossPoints(), worst,
-				"최악이 십자가 터지는 틱이 아니게 됐으면 클래스 설명의 예산 절도 함께 고칠 것");
+						+ DragonLastStandPatterns.wingBeatPoints(), worst,
+				"최악이 날갯짓 틱이 아니게 됐으면 클래스 설명의 예산 절도 함께 고칠 것");
+		assertTrue(DragonLastStandPatterns.crossPoints() < DragonLastStandPatterns.wingBeatPoints(),
+				"십자가 다시 가장 바쁜 패턴이 되면 클래스 설명의 예산 절을 고칠 것");
 		assertTrue(DragonLastStandPatterns.suckPoints() < DragonLastStandPatterns.crossPoints(),
 				"불 결계를 키우다 흡입이 가장 바쁜 패턴이 되면 클래스 설명을 고칠 것");
 	}

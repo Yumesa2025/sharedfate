@@ -795,4 +795,153 @@ class DragonLastStandTest {
 			return fail(failed);
 		}
 	}
+
+	// ------------------------------------------------------------------ 일시 중단 (2026-10-18)
+
+	/**
+	 * ⚠⚠ 멈추는 것은 처치가 아니다 — 무적을 주지 않는다.
+	 *
+	 * <p>2026-10-18 본서버: 팀이 전부 접속을 끊자 섬 청크가 내려가 드래곤이 메모리에서 빠졌고, 그것이
+	 * 「처치」로 읽혀 {@code onFightClosed} 가 팀을 서버 재시작까지 저항 V 로 만들었다 — 나갔다 들어오면
+	 * 무적 공략이었다. 이제 그 길은 {@link DragonLastStand#suspend} 다.
+	 */
+	@Test
+	void 멈추면_판을_거두되_무적을_주지_않는다() {
+		UUID team = UUID.randomUUID();
+		DragonLastStand.openForTesting(team, 1_000L);
+
+		DragonLastStand.Paused paused = DragonLastStand.suspend(null, team, null, 700.0F, 2400.0F,
+				1_000L + DragonLastStandEntry.LENGTH_TICKS + 100L);
+
+		assertTrue(paused != null, "돌던 판을 멈췄는데 세션에 적을 값이 없다");
+		assertEquals(700.0F, paused.health(), 0.0F, "연출이 끝난 판의 체력을 바꿨다");
+		assertFalse(DragonLastStand.isVictorious(team), "멈춘 것을 처치로 읽었다 — 팀이 무적이 된다");
+		assertFalse(DragonLastStand.isRunning(team), "멈춘 판이 STANDS 에 남았다 — 다시 세울 수 없다");
+		assertFalse(DragonLastStand.contactDamageOff(), "멈춘 판이 접촉 깃발을 붙들었다");
+		assertFalse(DragonLastStand.shieldWanted(1_100L), "멈춘 판이 보호막을 계속 원한다");
+	}
+
+	/** 진입 연출(체력 +20%p 가 차오르는 중)에 멈추면 차오를 몫을 다 채운 값을 지킨다. */
+	@Test
+	void 진입_회복_도중에_멈추면_다_채운_값을_지킨다() {
+		UUID team = UUID.randomUUID();
+		DragonLastStand.openForTesting(team, 1_000L);
+		// openForTesting 의 진입 체력은 0 이다 — 다 채운 값은 최대 체력의 20%.
+		DragonLastStand.Paused paused = DragonLastStand.suspend(null, team, null, 100.0F, 2400.0F,
+				1_000L + 20L);
+		assertEquals(DragonLastStand.healedHealth(0.0F, 2400.0F), paused.health(), 0.01F,
+				"나갔다 들어오는 것만으로 진입 회복이 깎인다");
+	}
+
+	/** 판이 없는 팀이 멈추면 아무 일도 하지 않는다 — 남의 판을 거두지 않는다. */
+	@Test
+	void 판이_없는_팀이_멈춰도_남의_판은_그대로다() {
+		UUID running = UUID.randomUUID();
+		DragonLastStand.openForTesting(running, 1_000L);
+		assertEquals(null, DragonLastStand.suspend(null, UUID.randomUUID(), null, 1.0F, 2.0F, 1_100L));
+		assertTrue(DragonLastStand.isRunning(running));
+		assertTrue(DragonLastStand.contactDamageOff());
+	}
+
+	/**
+	 * ⚠⚠ 사람 결정 「이어 가기, 무적 없음」(2026-10-18 검토) — 멈출 때 지대(보더) 시계가 어디까지 왔는지를 적는다.
+	 * 전에는 이을 때 42 부터 다시였고, 그것이 최후의 저항이 불리할 때 끊었다 들어오는 「쉼표」였다.
+	 */
+	@Test
+	void 멈추면_지대_시계를_적는다() {
+		UUID team = UUID.randomUUID();
+		DragonLastStand.openForTesting(team, 1_000L);
+		long clockBase = 1_000L + DragonLastStandEntry.LENGTH_TICKS;
+		DragonLastStand.Paused paused = DragonLastStand.suspend(null, team, null, 700.0F, 2400.0F,
+				clockBase + 1_234L);
+		assertEquals(1_234L, paused.zoneClock(), "보더를 멈춘 단계에서 이을 수 없다");
+
+		UUID early = UUID.randomUUID();
+		DragonLastStand.openForTesting(early, 5_000L);
+		DragonLastStand.Paused cinematic = DragonLastStand.suspend(null, early, null, 700.0F, 2400.0F, 5_010L);
+		assertTrue(cinematic.zoneClock() < 0L, "진입 연출 도중은 시계가 아직 안 돌았다(음수)");
+		assertEquals(0L, DragonTrialSuspend.resumedZoneClock(cinematic.zoneClock()),
+				"연출 도중에 끊긴 판은 시계가 막 도는 자리(42)에서 잇는다");
+	}
+
+	/**
+	 * 이은 판 — 진입 연출 · 보호막 없이, 지대 시계는 멈춘 경과에서, 첫 패턴은 쉬는 시간 뒤. 화면 흔들림도 없다.
+	 */
+	@Test
+	void 이은_판은_연출과_보호막_없이_그_자리에서_잇는다() {
+		UUID team = UUID.randomUUID();
+		long now = 50_000L;
+		int rest = DragonLastStand.restTicks(0.5);
+		DragonLastStand.openResumedForTesting(team, now, 2_000L, rest);
+		DragonLastStand.View view = DragonLastStand.view(team, now);
+		assertTrue(view != null);
+		assertFalse(view.shielded(), "이은 판에 진입 보호막이 섰다 — 사람 결정은 보호막 없음");
+		assertEquals(now - 2_000L, view.clockBase(), "지대 시계가 멈춘 경과에서 잇지 않는다(42 로 돌아간다)");
+		assertEquals(now + rest, view.nextPatternAt(), "첫 패턴이 패턴 사이 쉬는 시간 뒤가 아니다");
+		assertTrue(rest >= DragonLastStand.restTicks(0.0) && rest <= DragonLastStand.restTicks(0.999),
+				"쉬는 시간이 2~4초 밖이다");
+		assertFalse(DragonLastStand.shieldWanted(now + 1L));
+		assertTrue(DragonLastStand.contactDamageOff(), "이은 판에 접촉 피해가 되돌아온다");
+
+		UUID unknown = UUID.randomUUID();
+		DragonLastStand.openResumedForTesting(unknown, now, Long.MIN_VALUE, rest);
+		assertEquals(now, DragonLastStand.view(unknown, now).clockBase(), "모르는 시계는 0(42)에서 잇는다");
+	}
+
+	/** 처치의 무적은 {@code onFightClosed} 한 곳에서만 준다 — 멈추는 길과 섞이지 않았는가. */
+	@Test
+	void 처치만_무적을_준다() {
+		UUID team = UUID.randomUUID();
+		DragonLastStand.openForTesting(team, 1_000L);
+		DragonLastStand.onFightClosed(null, new com.sharedfate.team.ShareTeam(team, "t",
+				java.util.List.of(team)));
+		assertTrue(DragonLastStand.isVictorious(team), "진짜 처치에서 무적이 빠졌다");
+	}
+
+	/**
+	 * ⚠ <b>하강 뒤 HOVERING 의 날아갈 목표가 앵커로 다시 잡힌다</b>(2026-10-18 밤, 공개 배포 직전 검토).
+	 *
+	 * <p>{@code setPhase(HOVERING)} 을 드래곤이 공중에 있을 때 불러 목표가 하강을 시작한 공중 지점으로 굳었고,
+	 * 앵커에 못박아도 {@code aiStep} 이 그 지점 쪽으로 고개를 돌렸다. 바닐라 사실(begin 이 목표를 비운다)과 우리
+	 * 판단(앵커와 다르면 다시 잡는다)을 함께 붙든다.
+	 */
+	@Test
+	void 하강_뒤_목표가_앵커로_다시_잡힌다() throws ReflectiveOperationException {
+		DragonHoverPhase phase = new DragonHoverPhase(null);
+		java.lang.reflect.Field target = DragonHoverPhase.class.getDeclaredField("targetLocation");
+		target.setAccessible(true);
+		target.set(phase, new net.minecraft.world.phys.Vec3(40.0, 90.0, -12.0));
+		phase.begin();
+		assertEquals(null, phase.getFlyTargetLocation(), "begin() 이 목표를 비우지 않는다 — 다시 잡을 길이 없다");
+
+		net.minecraft.world.phys.Vec3 anchor = new net.minecraft.world.phys.Vec3(0.5, 68.0, 0.5);
+		assertTrue(DragonLastStand.needsRetarget(new net.minecraft.world.phys.Vec3(40.0, 90.0, -12.0), anchor),
+				"공중 지점에 굳은 목표를 그대로 둔다 — 드래곤이 저 혼자 고개를 돌린다");
+		assertTrue(DragonLastStand.needsRetarget(null, anchor));
+		assertFalse(DragonLastStand.needsRetarget(new net.minecraft.world.phys.Vec3(0.5, 68.0, 0.5), anchor),
+				"앵커에 닿은 목표까지 매 틱 지운다");
+		String stand = vanillaClassBytes(DragonLastStand.class);
+		assertTrue(stand.contains("retarget") && stand.contains("getFlyTargetLocation"),
+				"hold 가 목표를 다시 잡지 않는다");
+	}
+
+	/**
+	 * ⚠ <b>끝까지 치른 회복 크리스탈 소환을 그때그때 세션에 적는다</b>(2026-10-18 밤). 멈출 때만 적던 때는 서버가
+	 * 강제로 죽으면 저장 파일에 그 전 값이 남아 다시 켠 뒤 같은 파도를 한 번 더 받았다.
+	 */
+	@Test
+	void 치른_파도를_그때그때_세션에_적는다() {
+		DragonTrialSession session = new DragonTrialSession(UUID.randomUUID(), 0L, true);
+		assertEquals(0, session.lastStandWaves());
+		assertTrue(session.recordLastStandWaves(1), "첫 파도를 치렀는데 안 적었다");
+		assertEquals(1, session.lastStandWaves());
+		assertFalse(session.recordLastStandWaves(1), "같은 수에 저장을 또 부른다");
+		assertFalse(session.recordLastStandWaves(0), "치른 파도가 되돌아갔다 — 다시 받는다");
+		assertEquals(1, session.lastStandWaves());
+		assertTrue(session.recordLastStandWaves(2));
+		assertTrue(vanillaClassBytes(DragonLastStand.class).contains("recordLastStandWaves"),
+				"최후의 저항이 치른 파도를 세션에 안 적는다");
+		assertTrue(vanillaClassBytes(DragonTrialManager.class).contains("lastStandWaves"),
+				"관리자가 바뀐 파도 수를 저장하지 않는다");
+	}
 }

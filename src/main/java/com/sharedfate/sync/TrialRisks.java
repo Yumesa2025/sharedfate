@@ -243,6 +243,106 @@ public final class TrialRisks {
 		CrystalWatch.clearState();
 	}
 
+	/**
+	 * 한 번짜리 카드가 <b>이미 한 일</b>을 읽는다 — 전투가 일시 중단될 때 {@link #clearState()} <b>전에</b>
+	 * {@code DragonTrialManager.suspend} 가 불러 세션에 적는다({@code DragonTrialSession.rememberDone}).
+	 *
+	 * <h2>이것이 없어서 일어나던 일 (2026-10-18 검토)</h2>
+	 *
+	 * <p>멈출 때 시련이 판에 건 것을 되돌리는 길({@link #clearState()})이 실행기마다의 「이미 썼다」 기억까지
+	 * 비웠다. 그래서 재개 첫 틱에 <b>부활이 크리스탈 다섯을 또 살리고</b>, <b>메마른 세계가 또 증발·양동이
+	 * 비우기·채팅</b>을 했다. 서버 재시작도 같았다. 이을 때 받은 틱을 멈춘 만큼 밀면 쇠창살의 5초 창도 다시
+	 * 열려 다섯을 또 세운다.
+	 *
+	 * <p>값은 1(했다)이고, 밤의 군세만 <b>지금 살아 있는 수</b>다 — 이을 때 그만큼만 다시 부른다(사람 결정).
+	 * 주기 카드는 적을 것이 없다 — 받은 틱만 밀면 위상이 이어진다. ⚠ default 없는 switch 다 — 카드 종류를
+	 * 더하면 여기서 「한 번짜리인가」를 정하지 않고는 컴파일이 안 된다.
+	 */
+	static Map<String, Integer> snapshotDone(@Nullable DragonTrialSession session) {
+		Map<String, Integer> done = new java.util.LinkedHashMap<>();
+		if (session == null) {
+			return done;
+		}
+		for (Active entry : activeRisks(session)) {
+			long granted = session.grantedTick(entry.trialId());
+			switch (entry.risk()) {
+				case TrialCatalog.Risk.CrystalRevive revive -> {
+					if (TrialCrystalRevive.spent(granted, revive)) {
+						done.put(entry.key(), 1);
+					}
+				}
+				case TrialCatalog.Risk.DryWorld dry -> {
+					if (TrialDryWorld.dried(granted)) {
+						done.put(entry.key(), 1);
+					}
+				}
+				case TrialCatalog.Risk.CrystalGuard guard -> {
+					if (guard.restoreCage() && TrialCrystalGuard.caged(entry.key(), granted)) {
+						done.put(entry.key(), 1);
+					}
+				}
+				case TrialCatalog.Risk.NightHost host -> {
+					int alive = TrialNightHost.survivors(granted, host);
+					if (alive >= 0) {
+						done.put(entry.key(), alive);
+					}
+				}
+				// 주기 카드이거나 창을 받은 틱에서 재는 카드(종말의 비 · 연결된 수정)다. 받은 틱을 밀면 잇는다.
+				case TrialCatalog.Risk.DelayedStrike ignored -> {
+				}
+				case TrialCatalog.Risk.TracedProjectile ignored -> {
+				}
+				case TrialCatalog.Risk.DragonFocus ignored -> {
+				}
+				case TrialCatalog.Risk.EnderPulse ignored -> {
+				}
+				case TrialCatalog.Risk.CrystalLink ignored -> {
+				}
+				case TrialCatalog.Risk.CrystalOvercharge ignored -> {
+				}
+				case TrialCatalog.Risk.EnderStorm ignored -> {
+				}
+				case TrialCatalog.Risk.EndRain ignored -> {
+				}
+				case TrialCatalog.Risk.LandingShock ignored -> {
+				}
+				case TrialCatalog.Risk.HotbarLock ignored -> {
+				}
+			}
+		}
+		return done;
+	}
+
+	/**
+	 * 세션에 적어 둔 「이미 한 일」을 실행기에 다시 심는다 — 전투를 잇는 틱({@code DragonTrialManager.resume})에,
+	 * 받은 틱을 민 <b>뒤</b>에 부른다(실행기 기억의 열쇠가 받은 틱이다). {@link #snapshotDone} 의 짝이다.
+	 */
+	static void restoreDone(@Nullable DragonTrialSession session) {
+		if (session == null) {
+			return;
+		}
+		Map<String, Integer> done = session.riskDone();
+		if (done.isEmpty()) {
+			return;
+		}
+		for (Active entry : activeRisks(session)) {
+			Integer value = done.get(entry.key());
+			if (value == null) {
+				continue;
+			}
+			long granted = session.grantedTick(entry.trialId());
+			if (entry.risk() instanceof TrialCatalog.Risk.CrystalRevive revive) {
+				TrialCrystalRevive.markSpent(granted, revive);
+			} else if (entry.risk() instanceof TrialCatalog.Risk.DryWorld) {
+				TrialDryWorld.markDried(granted);
+			} else if (entry.risk() instanceof TrialCatalog.Risk.CrystalGuard) {
+				TrialCrystalGuard.markCaged(entry.key(), granted);
+			} else if (entry.risk() instanceof TrialCatalog.Risk.NightHost host) {
+				TrialNightHost.resume(granted, host, value);
+			}
+		}
+	}
+
 	private static void forget() {
 		TRAILS.clear();
 		TRAIL_PICKS.clear();
@@ -496,9 +596,10 @@ public final class TrialRisks {
 			long cycle, TrialCatalog.Risk.DelayedStrike strike) {
 		Cycle<UUID> picked = TRAIL_PICKS.get(key);
 		if (picked == null || picked.index() != cycle) {
+			List<ServerPlayer> targets = targetable(members);
 			List<UUID> ids = new ArrayList<>();
-			for (int index : pickIndexes(strike.count(), members.size(), end.getRandom())) {
-				ids.add(members.get(index).getUUID());
+			for (int index : pickIndexes(strike.count(), targets.size(), end.getRandom())) {
+				ids.add(targets.get(index).getUUID());
 			}
 			picked = new Cycle<>(cycle, ids);
 			TRAIL_PICKS.put(key, picked);
@@ -927,6 +1028,22 @@ public final class TrialRisks {
 		return Math.min(requested, available);
 	}
 
+	/**
+	 * 노릴 수 있는 사람 — 관전자와 죽은 사람을 뺀다.
+	 *
+	 * <p>모드가 관전자를 만들지는 않지만 운영자가 바꿔 둘 수 있고, 죽은 사람은 다시 살아나기 전까지
+	 * 엔드 명단에 남는다. 그 사람을 뽑으면 그 주기의 한 발이 허공으로 간다(자리 폭격 · 기둥 화염구).
+	 */
+	static List<ServerPlayer> targetable(List<ServerPlayer> members) {
+		List<ServerPlayer> targets = new ArrayList<>(members.size());
+		for (ServerPlayer member : members) {
+			if (!member.isSpectator() && member.isAlive()) {
+				targets.add(member);
+			}
+		}
+		return targets;
+	}
+
 	/** 겹치지 않게 뽑은 자리 번호들. 같은 사람을 두 번 노리면 그 주기가 한 발로 줄어든다. */
 	static List<Integer> pickIndexes(int count, int size, RandomSource random) {
 		int wanted = targetCount(count, size);
@@ -1073,8 +1190,10 @@ public final class TrialRisks {
 			// 1 이었는데, 사람이 「서로 겹쳐도 되니까 내가 말한 숫자로」라고 정해 고리끼리 겹친다.
 			// 그래서 이 숫자는 증명이 아니라 실측이고, 값도 근거도 TrialEndRain 이 들고 있다 —
 			// 겹침을 되살리려면 그 파일부터 볼 것. 이 카드가 「즉사 메커닉 0개」의 유일한 예외다.
+			// 지점보다 많이 겹칠 수는 없으므로 지점 수에서 자른다 — 카드(90곳)는 9 그대로이고,
+			// 최후의 저항 「폭풍 날갯짓」의 낙하(6곳, DragonLastStandWingRain)는 6 이다.
 			case TrialCatalog.Risk.EndRain rain ->
-					hits(rain.damage(), TrialEndRain.WORST_CASE_OVERLAP);
+					hits(rain.damage(), Math.min(TrialEndRain.WORST_CASE_OVERLAP, rain.maxSpots()));
 			// 고리 하나가 중앙에서 한 번 지나간다. 같은 틱에 두 번 닿는 자리가 없다.
 			case TrialCatalog.Risk.LandingShock shock -> hits(shock.damage(), 1);
 			// 소용돌이 둘이 서로 가까워지는 순간이 있으므로 둘 다 닿는 자리를 셈에 넣는다.

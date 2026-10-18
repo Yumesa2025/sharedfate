@@ -27,6 +27,14 @@ import java.util.Map;
  * 메모리에만 있다. 전투 중에 서버가 내려갔다 올라오면 <b>체력 2000 짜리 드래곤에 시련 0 장</b>인
  * 어긋난 상태가 된다. 운영자가 {@code stop} 을 치는 일은 드물지 않다.
  *
+ * <h2>⚠ 파일은 <b>월드 폴더</b>에 있다 (2026-10-18 검토)</h2>
+ *
+ * <p>전에는 서버 폴더(월드 밖)에 있었다. 루프 스크립트는 전멸·초기화 뒤 <b>월드 폴더만</b> 지우므로, 옛 회차의
+ * 「일시 중단」 세션이 새 월드에서 되살아나 새 회차에 접속한 팀을 엔드로 끌고 가고 새 드래곤에 옛 카드·옛
+ * 체력·최후의 저항까지 걸었다(팀 명부도 월드 밖이라 팀 id 가 그대로다). 싱글·LAN 에서는 월드 A 의 전투가
+ * 월드 B 로 번질 수 있었다. 이제 {@link #locate} 가 월드 폴더 안을 가리키고, 서버 폴더에 남은 옛 파일은
+ * 어느 월드의 것인지 알 수 없어 읽지 않고 지운다({@link #legacy}).
+ *
  * <h2>파일 하나에 팀 하나</h2>
  *
  * <p>{@code singleTeamOnly} 가 기본이라 대개 하나지만, 목록으로 두면 팀이 여럿인 서버에서도
@@ -57,6 +65,33 @@ public final class DragonTrialStore {
 		 * 되살아난다. 그래서 누적 목록과 같이 저장한다.
 		 */
 		public Map<String, Long> grantedTicks = new LinkedHashMap<>();
+		/**
+		 * 전투가 일시 중단된 채 저장되었는가(2026-10-18, {@code DragonTrialSuspend}). 엔드에 팀원이 없어
+		 * 드래곤이 내려간 사이에 서버가 꺼져도, 돌아왔을 때 그 자리에서 잇는다.
+		 */
+		public boolean suspended;
+		/**
+		 * 입장 연출({@code TrialEntrance})의 원점. 없으면(옛 파일) {@code startedTick} 이다.
+		 *
+		 * <p>⚠ 칸 이름에 {@code entrance} 를 쓰지 않는다 — {@code TrialEntranceGateTest} 가 「입장 수락창은
+		 * 저장되지 않는다」를 칸 이름으로 지킨다. 이 칸은 수락창이 아니라 연출의 시계다.
+		 */
+		public @Nullable Long introTick;
+		/** 이을 때 입장 연출을 처음부터 다시 돌리는가. */
+		public boolean replayIntro;
+		/**
+		 * 중단될 때의 드래곤 실제 체력. 없으면 모른다. ⚠ 싸우는 도중에는 적지 않는다 — 강제 종료 뒤에
+		 * 낡은 값으로 되돌리면 드래곤이 회복한다.
+		 */
+		public @Nullable Float dragonHealth;
+		/** 최후의 저항에서 끝까지 치른 오브젝트 파도 수. */
+		public int lastStandWaves;
+		/** 멈춘 틱. 없으면 모른다 — 이을 때 카드의 받은 틱을 밀지 않는다(2026-10-18 검토). */
+		public @Nullable Long pausedTick;
+		/** 최후의 저항 지대 시계가 멈출 때 어디까지 왔는가. 없으면 모른다. */
+		public @Nullable Long lastStandClock;
+		/** 한 번짜리 카드가 이미 한 일 — 위험 열쇠 → 값({@code DragonTrialSession.riskDone}). */
+		public Map<String, Integer> riskDone = new LinkedHashMap<>();
 	}
 
 	private static final class Payload {
@@ -64,6 +99,20 @@ public final class DragonTrialStore {
 	}
 
 	private DragonTrialStore() {
+	}
+
+	/** 저장 파일 — 월드 폴더 안이다. 까닭은 클래스 설명에 있다. */
+	public static Path locate(Path worldRoot) {
+		return worldRoot.toAbsolutePath().normalize().resolve(FILE_NAME);
+	}
+
+	/**
+	 * 0.42 이전 판이 쓰던 자리(서버 폴더). 저장 파일과 같은 자리면(월드 폴더가 곧 서버 폴더인 이상한 판)
+	 * {@code null} 이다 — 그것까지 지우면 지금 파일을 지운다.
+	 */
+	public static @Nullable Path legacy(Path serverRoot, Path worldRoot) {
+		Path old = serverRoot.toAbsolutePath().normalize().resolve(FILE_NAME);
+		return old.equals(locate(worldRoot)) ? null : old;
 	}
 
 	/**
@@ -105,6 +154,10 @@ public final class DragonTrialStore {
 						}
 					}
 					entry.grantedTicks = marks;
+					// 이 칸도 옛 파일에는 없다. null 이면 빈 맵이다.
+					if (entry.riskDone == null) {
+						entry.riskDone = new LinkedHashMap<>();
+					}
 					clean.add(entry);
 				}
 			}

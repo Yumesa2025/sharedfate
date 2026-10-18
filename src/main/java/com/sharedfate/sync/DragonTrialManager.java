@@ -54,12 +54,23 @@ import java.util.UUID;
  * 선다」는 이 모드의 규칙이고, 시련을 껐다고 혼자 들어가게 두면 나머지는 다른 차원에서 공유
  * 체력만 깎이는 것을 구경하게 된다 — 아래 「왜 전원을 부르는가」가 그대로 성립한다.
  *
- * <h2>엔드는 나갈 수 없다</h2>
+ * <h2>엔드는 걸어서 나갈 수 없다 — 그러나 <b>접속을 끊을 수는 있다</b></h2>
  *
  * <p>드래곤을 잡기 전에 엔드를 나가는 길은 죽는 것뿐이고, 이 모드에서 그건 곧 전멸이자 월드
- * 초기화다. 그래서 「전원 이탈」 같은 종료 조건은 두지 않는다 — 일어날 수 없는 상황을 위한
- * 코드는 시험할 수도 없고 다음 사람이 읽을 때 헷갈린다. 끝나는 길은 <b>드래곤 사망</b>과
- * <b>팀 전멸</b> 둘뿐이다.
+ * 초기화다. 끝나는 길은 <b>드래곤 사망</b>과 <b>팀 전멸</b>(그리고 팀 해체) 셋뿐이다.
+ *
+ * <p>⚠⚠ 전에는 여기에 「전원 이탈은 일어날 수 없다」고 적혀 있었다. <b>틀렸다</b> — 팀원이 전부
+ * <b>접속을 끊으면</b> 엔드에서 아무도 안 나갔는데 엔드가 빈다. 그러면 바닐라가 섬 청크 티켓을 떼어
+ * 드래곤 개체가 메모리에서 빠지고, 이 파일은 그것을 「드래곤 처치」로 읽어 세션을 닫았다(2026-10-18
+ * 본서버 로그 — 「left the game」 1초 뒤 「드래곤 처치」). 최후의 저항 중이면 팀이 무적이 됐고, 체력
+ * 강화가 저장되지 않아 드래곤이 다시 올라오며 회복했다.
+ *
+ * <p>지금은 그것을 <b>전투의 일시 중단</b>으로 읽는다 — {@link DragonTrialSuspend}. 처치는 드래곤이
+ * <b>진짜로 죽었을 때</b>만이고, 엔드가 비거나 드래곤이 내려가면 세션을 그대로 두고 시련만 멈춘다.
+ * 팀원이 엔드로 돌아와 드래곤이 다시 올라오면 그 자리에서 잇는다 — 수락창도 입장 연출도 다시 띄우지
+ * 않는다(연출 도중에 끊겼으면 연출만 처음부터). 배선은 {@link #tickSessions} 의 판정 세 줄이고,
+ * 멈추는 것과 잇는 것은 {@link #suspend} · {@link #resume} 두 곳이다. <b>서버가 내려가는 것도 같은
+ * 길</b>이다({@link #onServerStopping}).
  *
  * <p>그 반대쪽 — <b>들어온 사람이 밖으로 새는 것</b> — 은 실제로 일어났다. 우리 뒤에 도는
  * 순간이동들이 같은 틱에 자리를 덮어썼기 때문이고, 그것을 {@code EndFightTeleportLock} 이
@@ -93,8 +104,27 @@ public final class DragonTrialManager {
 	private static final int SUMMON_DELAY_TICKS = 60;
 	/** 도착 직후 무적. 떨어지자마자 브레스에 맞아 팀이 절반 깎이는 것을 막는다. */
 	static final int ARRIVAL_GRACE_TICKS = 60;
+	/**
+	 * 드래곤 체력 강화 수정자의 id.
+	 *
+	 * <p>⚠ 2026-10-18 부터 <b>저장되는</b> 수정자다({@code addOrReplacePermanentModifier}). 전에는 저장되지
+	 * 않는 수정자라 드래곤이 청크와 함께 내려갔다 올라오거나 서버가 다시 뜨면 최대 체력이 바닐라 200 으로
+	 * 돌아가고, 저장된 체력도 그 200 에 잘렸다 — 26.3 {@code LivingEntity.readAdditionalSaveData} 가
+	 * 속성을 먼저 읽고 {@code setHealth(Health)} 를 뒤에 하므로, 수정자가 함께 저장되어야 체력이 안
+	 * 잘린다(바이트코드로 확인). 걷어내는 길은 {@link #releaseOrphanDragon} 한 곳 — 시련 세션이 하나도
+	 * 없는 판의 드래곤에서 뗀다.
+	 */
 	private static final net.minecraft.resources.Identifier HEALTH_MODIFIER_ID =
 			SharedFateMod.id("trial/dragon_health");
+	/**
+	 * 마지막으로 본 드래곤 체력 · 최대 체력. 드래곤이 <b>먼저 내려가고</b> 그 뒤에 멈추는 길
+	 * ({@link DragonTrialSuspend.Verdict#ABSENT})에서 지킬 체력이 이것이다. 저장하지 않는다 — 재시작한
+	 * 판은 세션이 적어 둔 값({@code DragonTrialSession.dragonHealth})을 쓴다.
+	 */
+	private static float lastSeenHealth = Float.NaN;
+	private static float lastSeenMax = Float.NaN;
+	/** 주인 없는 드래곤을 훑는 간격(틱). 매 틱 엔드 개체를 뒤질 까닭이 없다. */
+	private static final int ORPHAN_SWEEP_TICKS = 20;
 
 	private static final Map<UUID, DragonTrialSession> SESSIONS = new HashMap<>();
 	private static final Map<UUID, Long> PENDING_SUMMON = new HashMap<>();
@@ -134,6 +164,12 @@ public final class DragonTrialManager {
 	 * <p>근거는 {@link #recallStragglers} 에 적어 두었다.
 	 */
 	static final int RECALL_INTERVAL_TICKS = 40;
+
+	/**
+	 * 팀마다 지난 틱 엔드에 서 있던 팀원 — 재개 직후 보호({@link #protectArrivals})가 「새로 온 사람」을 가르는 명단.
+	 * 멈출 때 지운다 — 이은 틱에는 엔드에 선 전원이 새로 온 사람이다. 저장하지 않는다.
+	 */
+	private static final Map<UUID, java.util.Set<UUID>> ARRIVED = new HashMap<>();
 
 	/**
 	 * 세션 루프가 실행기(자리 감지 · 최후의 저항 · 입장 연출 · 룰렛 · 패시브 · 위험)를 마지막으로 돌린
@@ -184,15 +220,35 @@ public final class DragonTrialManager {
 	/**
 	 * 서버가 뜰 때. 진행 중이던 전투를 되살린다.
 	 *
-	 * <p>드래곤 체력 수정자는 개체에 붙어 월드와 함께 저장되지만 타이머와 누적은 메모리에만
-	 * 있다. 되살리지 않으면 체력만 강화된 채 시련 0 장인 어긋난 상태가 된다.
+	 * <p>드래곤 체력 수정자는 개체에 붙어 월드와 함께 저장되지만(2026-10-18 부터 — 그 전에는
+	 * 저장되지 않는 수정자라 이 문장이 틀려 있었고, 재시작한 전투의 드래곤이 최대 체력 200 으로 남았다)
+	 * 카드와 누적은 메모리에만 있다. 되살리지 않으면 체력만 강화된 채 시련 0 장인 어긋난 상태가 된다.
+	 *
+	 * <p>되살린 세션은 <b>일시 중단</b>으로 읽힌다 — 서버가 내려갈 때 {@link #onServerStopping} 이 멈춰
+	 * 두었고, 강제 종료로 그 줄을 못 지났어도 첫 틱에 엔드에 아무도 없으니 {@link #tickSessions} 가
+	 * 멈춘다. 팀원이 돌아와 드래곤이 올라오면 {@link #resume} 이 강화를 다시 확인하고 적어 둔 체력으로
+	 * 되돌린다.
 	 */
 	public static void onServerStarted(@Nullable MinecraftServer server) {
 		if (server == null) {
 			return;
 		}
-		stateFile = server.getServerDirectory().toAbsolutePath().normalize()
-				.resolve(DragonTrialStore.FILE_NAME);
+		// ⚠ 월드 폴더다(2026-10-18 검토). 서버 폴더에 두면 루프 스크립트가 월드만 지운 새 회차에 옛 회차의
+		// 「일시 중단」 전투가 되살아나 팀을 엔드로 끌고 갔다 — DragonTrialStore 클래스 설명.
+		java.nio.file.Path worldRoot = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
+		stateFile = DragonTrialStore.locate(worldRoot);
+		java.nio.file.Path legacy = DragonTrialStore.legacy(server.getServerDirectory(), worldRoot);
+		if (legacy != null && java.nio.file.Files.isRegularFile(legacy)) {
+			// 어느 월드의 전투인지 알 수 없다 — 읽지 않고 지운다. 남겨 두면 운영자가 「아직 있다」로 헷갈린다.
+			try {
+				java.nio.file.Files.deleteIfExists(legacy);
+				SharedFateMod.LOGGER.warn("[END] 서버 폴더의 옛 엔드 전투 저장 파일을 지웠습니다 — 이제 월드 폴더에"
+						+ " 저장합니다(어느 월드의 전투인지 알 수 없어 잇지 않습니다): {}", legacy);
+			} catch (java.io.IOException error) {
+				SharedFateMod.LOGGER.warn("[END] 서버 폴더의 옛 엔드 전투 저장 파일을 지우지 못했습니다(읽지 않고 둡니다): {}",
+						legacy, error);
+			}
+		}
 		SESSIONS.clear();
 		for (DragonTrialStore.Entry entry : DragonTrialStore.load(stateFile)) {
 			UUID teamId;
@@ -207,7 +263,8 @@ public final class DragonTrialManager {
 			boolean wanted = trialsEnabled(server, teamId);
 			// 시련 세션은 하나다(trialHolder). 이 규칙이 생기기 전의 저장 파일은 시련 세션 둘을
 			// 들고 있을 수 있다 — 먼저 되살린 하나만 시련을 잇고 나머지는 끔으로 되살린다.
-			boolean trials = wanted && trialHolder(SESSIONS.values(), teamId) == null;
+			// ⚠ 여기는 멈춘 세션까지 센다 — 되살린 세션은 전부 멈춘 채라 trialHolder(싸우는 세션만)로는 둘 다 켬이 된다.
+			boolean trials = wanted && anyTrialSession(SESSIONS.values(), teamId) == null;
 			if (wanted && !trials) {
 				SharedFateMod.LOGGER.warn("[END] 팀({}) 시련 세션을 끔으로 되살립니다 — 다른 팀이 이미"
 						+ " 시련 세션을 들고 있습니다(시련 세션은 한 번에 하나)", teamId);
@@ -215,13 +272,19 @@ public final class DragonTrialManager {
 			DragonTrialSession session = new DragonTrialSession(teamId, entry.startedTick, trials);
 			session.restore(entry.chosen, entry.fired, entry.queued, entry.awaitingChoice,
 					entry.grantedTicks);
+			session.restoreSuspension(entry.suspended, entry.introTick, entry.replayIntro,
+					entry.dragonHealth, entry.lastStandWaves);
+			session.restorePause(entry.pausedTick, entry.lastStandClock, entry.riskDone);
 			SESSIONS.put(teamId, session);
-			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {} · {}장",
-					trials ? "켬" : "끔(바닐라 드래곤전)", session.trialCount());
+			SharedFateMod.LOGGER.info("[END] 진행 중이던 엔드 전투를 되살렸습니다 — 시련 {} · {}장 · {}",
+					trials ? "켬" : "끔(바닐라 드래곤전)", session.trialCount(),
+					session.suspended() ? "일시 중단 — 팀원이 엔드로 돌아오면 잇습니다" : "첫 틱에 다시 판정합니다");
 		}
-		// 서버가 강제로 죽어 우리 엔드 보더가 world_border.dat 에 남았으면 치운다. 되살린 시련 전투가
-		// 있으면 손대지 않는다 — 다음 틱부터 그 전투가 다시 붙든다.
-		DragonTrialBorder.onServerStarted(server, trialHolder(SESSIONS.values(), null) != null);
+		// 서버가 강제로 죽어 우리 엔드 보더가 world_border.dat 에 남았으면 치운다. ⚠ 되살린 시련 전투가
+		// 있어도 치운다 — 서버가 막 뜬 틱에는 엔드에 아무도 없어 그 전투는 일시 중단으로 읽히고, 보더는
+		// 팀원이 돌아와 전투를 잇는 틱에 다시 선다(DragonTrialSuspend). 전에는 「다음 틱부터 그 전투가
+		// 다시 붙든다」였다.
+		DragonTrialBorder.onServerStarted(server, false);
 	}
 
 	/** 지금 상태를 파일에 남긴다. 세션이 열리고 닫힐 때와 시련을 고를 때 부른다. */
@@ -240,6 +303,16 @@ public final class DragonTrialManager {
 			entry.awaitingChoice = session.awaitingChoice();
 			// 위험의 주기는 카드를 받은 틱부터 센다. 이것을 안 적으면 재시작 뒤 위상이 튄다.
 			entry.grantedTicks = new java.util.LinkedHashMap<>(session.grantedTicks());
+			// 일시 중단(2026-10-18). 체력은 멈춘 세션만 적는다 — 싸우는 도중의 값은 NaN 이라 null 로 나간다.
+			entry.suspended = session.suspended();
+			entry.introTick = session.entranceTick();
+			entry.replayIntro = session.replayEntrance();
+			entry.dragonHealth = session.dragonHealth() > 0.0F ? session.dragonHealth() : null;
+			entry.lastStandWaves = session.lastStandWaves();
+			// 멈춘 틱 · 지대 시계 · 한 번짜리 카드가 한 일(2026-10-18 검토).
+			entry.pausedTick = session.pausedAt() == Long.MIN_VALUE ? null : session.pausedAt();
+			entry.lastStandClock = session.lastStandClock() == Long.MIN_VALUE ? null : session.lastStandClock();
+			entry.riskDone = new java.util.LinkedHashMap<>(session.riskDone());
 			entries.add(entry);
 		}
 		try {
@@ -442,6 +515,7 @@ public final class DragonTrialManager {
 		// 엔드를 떠난 뒤에도 유지돼야 해서 엔드 검사보다도 앞이다.
 		DragonLastStand.tickVictory(server);
 		applyFinishedTrial(server);
+		deliverPausedClosedNotices(server);
 		// ⚠ 이 줄은 <b>서버 전체</b>를 끄는 스위치다. 팀 설정의 「드래곤 시련」과 다르다 —
 		// 여기서 돌아가면 팀을 엔드로 부르는 것까지 함께 멈춘다. 시련을 끈 팀에게
 		// dragonHealthPerMember 를 무시한다고 적었지만, 0 으로 둔 서버에서는 그 팀도 전원
@@ -468,6 +542,7 @@ public final class DragonTrialManager {
 		recallStragglers(server, end, now);
 		tickSessions(server, end, now);
 		restoreBorderIfIdle(end);
+		releaseOrphanDragon(end, now);
 		// ⚠ 세션을 다 돌린 <b>뒤</b>다. 실행기가 이번 틱에 터뜨리고 고른 것이 반영된 상태를 읽어야
 		// 「방금 터졌다」를 「0.0초」로 띄우지 않는다.
 		publishTimers(server, end, now);
@@ -495,7 +570,15 @@ public final class DragonTrialManager {
 			// 누가 어느 묶음을 받는지는 TrialTimers.audienceOf 가 고른다 — 2026-10-06 검토에서
 			// 확정된 문제로 시험이 굴릴 수 있게 떼어 냈다. 여기 남은 것은 월드에서 팀과
 			// 「엔드에 선 팀원」을 찾아 주는 것뿐이다.
-			audience = TrialTimers.audienceOf(SESSIONS.values(), teamId -> {
+			// 일시 중단된 세션은 띄울 것이 없다 — 엔드에 사람이 있어도(드래곤만 내려간 판) 멈춘 시계를
+			// 보여 주면 「곧 온다」로 읽힌다.
+			List<DragonTrialSession> fighting = new ArrayList<>();
+			for (DragonTrialSession session : SESSIONS.values()) {
+				if (!session.suspended()) {
+					fighting.add(session);
+				}
+			}
+			audience = TrialTimers.audienceOf(fighting, teamId -> {
 				ShareTeam team = TeamManager.get(server).teamById(teamId);
 				return team == null ? null : membersOf(server, team, end);
 			}, session -> TrialTimers.collect(session, frozen, healthRatio, now));
@@ -562,6 +645,13 @@ public final class DragonTrialManager {
 			return;
 		}
 		for (UUID teamId : new ArrayList<>(SESSIONS.keySet())) {
+			// ⚠ 멈춘 전투는 부르지 않는다(2026-10-18 검토). 멈췄다는 것이 곧 「엔드에 아무도 없다」이고, 여기서
+			// 부르면 오버월드에 접속한 팀원이 멈춘 전투로 끌려간다 — 옛 회차의 멈춘 세션이 새 회차를 엔드로 끌고
+			// 간 사고의 마지막 고리가 이 줄이었다. 팀원이 스스로 엔드에 돌아와 전투를 이으면 그때부터 다시 부른다.
+			DragonTrialSession session = SESSIONS.get(teamId);
+			if (session == null || session.suspended()) {
+				continue;
+			}
 			Long nextAt = RECALL_AT.get(teamId);
 			if (nextAt != null && now < nextAt) {
 				continue;
@@ -604,6 +694,34 @@ public final class DragonTrialManager {
 			outside.add(member);
 		}
 		return outside;
+	}
+
+	/**
+	 * 재개 직후 3초 보호 — 이번 틱에 <b>새로</b> 엔드에 선 팀원에게 저항 V {@value DragonTrialSuspend#RESUME_GRACE_TICKS}틱.
+	 *
+	 * <p>사람 결정(2026-10-18) 「이어 가기, 무적 없음」 — 최후의 저항이든 아니든 재개한 틱에는 도착 무적이 없어
+	 * 접속해 청크를 받는 동안 포격·카드·패턴에 맞았다(검토). 멈췄다 이은 틱에는 {@link #ARRIVED} 가 비어 있어
+	 * 엔드에 선 전원이 받고, 넷이 하나씩 돌아오면 늦게 온 사람도 들어선 틱에 받는다. 수단은 도착 무적
+	 * ({@link #ARRIVAL_GRACE_TICKS})과 같다. 전투를 여는 틱의 팀원도 지나가지만 모으기·부르기가 이미 같은 값을
+	 * 걸었으므로 바뀌는 것이 없다.
+	 */
+	private static void protectArrivals(UUID teamId, List<ServerPlayer> members) {
+		java.util.Set<UUID> before = ARRIVED.getOrDefault(teamId, java.util.Set.of());
+		List<UUID> present = new ArrayList<>();
+		for (ServerPlayer member : members) {
+			present.add(member.getUUID());
+		}
+		List<UUID> fresh = DragonTrialSuspend.newArrivals(before, present);
+		if (!fresh.isEmpty()) {
+			for (ServerPlayer member : members) {
+				if (member.isSpectator() || !fresh.contains(member.getUUID())) {
+					continue;
+				}
+				member.addEffect(new MobEffectInstance(MobEffects.RESISTANCE,
+						DragonTrialSuspend.RESUME_GRACE_TICKS, 4, false, false, true));
+			}
+		}
+		ARRIVED.put(teamId, new java.util.HashSet<>(present));
 	}
 
 	private static void tickPendingSummons(MinecraftServer server, ServerLevel end, long now) {
@@ -725,6 +843,9 @@ public final class DragonTrialManager {
 							+ " 엔드 크리스탈 넷으로 드래곤을 되살리면 다시 열립니다", team.name());
 			return false;
 		}
+		// ⚠ 멈춘 시련 세션은 자리를 쥐지 않는다 — 다른 팀이 전투를 여는 이 틱에 닫는다(사람 결정 2026-10-18,
+		// closePausedTrials 설명). 그 팀이 걸어 둔 드래곤 강화는 아래에서 이 팀에 맞게 다시 걸거나 뗀다.
+		closePausedTrials(server, end, team.teamId());
 		boolean wanted = trialsEnabled(server, team.teamId());
 		// 시련 세션은 한 번에 하나다 — 까닭은 trialHolder 설명에 있다. 이미 다른 팀이 시련 전투를
 		// 치르고 있으면 이 팀은 시련 끔(바닐라 드래곤전)으로 연다.
@@ -748,6 +869,11 @@ public final class DragonTrialManager {
 		// 끈 팀에게는 강화 자체를 건너뛴다. 지금 값을 그대로 로그에 적어 「바닐라 200 이다」가
 		// 눈으로 확인되게 한다.
 		EnderDragon dragon = findDragon(end);
+		// 시련 끔으로 여는데 드래곤에 우리 강화가 남아 있으면(방금 닫은 멈춘 시련 세션의 것) 비율을 지켜 뗀다 —
+		// 「끄면 바닐라 그대로」. 다른 시련 세션이 싸우고 있으면 그 팀의 강화이므로 두지 않는다.
+		if (!trials && dragon != null && trialHolder(SESSIONS.values(), team.teamId()) == null) {
+			weakenDragon(dragon);
+		}
 		float target = trials
 				? strengthenDragon(end, memberCount)
 				: (dragon == null ? 0.0F : dragon.getMaxHealth());
@@ -790,8 +916,16 @@ public final class DragonTrialManager {
 	 * 둘 생기지 않으므로 이 규칙에 걸리지 않는다.
 	 *
 	 * <p>⚠ 문이 셋이다 — {@link #startSession}(열리는 모든 길의 목), {@link #detectArrival}(시련
-	 * 수락창을 띄울지), {@link #onServerStarted}(옛 저장 파일이 둘을 들고 있을 때). 「한쪽만 막으면
-	 * 반드시 샌다」.
+	 * 수락창을 띄울지), {@link #onServerStarted}(옛 저장 파일이 둘을 들고 있을 때 — 거기는
+	 * {@link #anyTrialSession}). 「한쪽만 막으면 반드시 샌다」.
+	 *
+	 * <h2>⚠ 멈춘 세션은 자리를 쥐지 않는다 (사람 결정 2026-10-18)</h2>
+	 *
+	 * <p>0.42 의 일시 중단이 처음 들어왔을 때는 멈춘 세션도 자리를 쥐었다(돌아와서 이으려고). 그러자
+	 * {@code singleTeamOnly} 를 끈 서버에서 시련 팀 A 가 멈춘 사이 들어온 팀 B 가 시련 끔으로 열리는데 드래곤에는
+	 * A 의 강화(2400)가 남고, 착지 주사위도 A 를 시련 중으로 셌으며, B 가 잡으면 A 세션이 조용히 닫혔다 — 공개
+	 * 문서의 「켠 팀이 엔드에서 싸우는 동안」 · 「끄면 바닐라 그대로」와 어긋났다. 지금은 싸우는 세션만 세고, 다른
+	 * 팀이 전투를 여는 틱에 멈춘 시련 세션을 닫는다({@link #closePausedTrials}).
 	 *
 	 * @param except 묻는 팀 자신. 제 세션은 세지 않는다({@link #forceStart} 가 다시 열 때). {@code null}
 	 *               이면 모든 세션을 센다
@@ -799,11 +933,95 @@ public final class DragonTrialManager {
 	static @Nullable UUID trialHolder(java.util.Collection<DragonTrialSession> sessions,
 			@Nullable UUID except) {
 		for (DragonTrialSession session : sessions) {
+			if (session.trialsEnabled() && !session.suspended() && !session.teamId().equals(except)) {
+				return session.teamId();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * 시련을 켠 세션의 팀 — <b>멈춘 것까지</b> 센다. 없으면 {@code null}. 시련 자리가 아니라 「이 판에 시련 세션의
+	 * 흔적이 있는가」를 묻는 두 곳이 쓴다 — 저장 파일에서 되살릴 때(되살린 세션은 전부 멈춘 채다)와 주인 없는
+	 * 드래곤을 바닐라로 되돌릴 때(멈춘 세션의 드래곤은 강화를 쥔 채 기다린다).
+	 */
+	static @Nullable UUID anyTrialSession(java.util.Collection<DragonTrialSession> sessions,
+			@Nullable UUID except) {
+		for (DragonTrialSession session : sessions) {
 			if (session.trialsEnabled() && !session.teamId().equals(except)) {
 				return session.teamId();
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * 다른 팀이 전투를 여는 틱에 <b>멈춘 시련 세션을 닫는다</b>(사람 결정 2026-10-18 — 「멈춘 A 는 시련 자리를
+	 * 쥐지 않는다. B 는 B 설정대로 열고, 드래곤의 A 강화는 떼거나 B 인원으로 다시 건다. 그 순간 A 세션은 닫는다」).
+	 *
+	 * <p>드래곤은 차원에 하나라 A 의 카드·최후의 저항 기억을 B 의 전투 위에 남길 수 없다. A 의 팀원이 돌아오면
+	 * 세션이 없으니 그때 열린 전투에 보통 팀처럼 들어온다. A 의 팀원에게는 접속해 있으면 곧바로, 아니면 다음에
+	 * 접속할 때 채팅 한 줄로 까닭을 알린다({@link #PAUSED_CLOSED_NOTICE}). 시련을 끈 멈춘 세션은 두 팀이 같은
+	 * 드래곤을 함께 쓰는 지금 규칙과 다를 것이 없어 그대로 둔다.
+	 *
+	 * @param opener 전투를 여는 팀
+	 */
+	private static void closePausedTrials(MinecraftServer server, ServerLevel end, UUID opener) {
+		List<UUID> closed = new ArrayList<>();
+		for (DragonTrialSession session : SESSIONS.values()) {
+			if (session.trialsEnabled() && session.suspended() && !session.teamId().equals(opener)) {
+				closed.add(session.teamId());
+			}
+		}
+		for (UUID teamId : closed) {
+			SESSIONS.remove(teamId);
+			resetTrialDelay(teamId);
+			RECALL_AT.remove(teamId);
+			CRYSTALS_AT_START.remove(teamId);
+			ARRIVED.remove(teamId);
+			// 판은 멈출 때 이미 거뒀다. 남았으면(그럴 리 없지만) 무적 없이 거둔다.
+			DragonLastStand.onTeamGone(end, teamId);
+			ShareTeam team = TeamManager.get(server).teamById(teamId);
+			ShareTeam opening = TeamManager.get(server).teamById(opener);
+			SharedFateMod.LOGGER.info("[END] 팀 '{}' 의 멈춘 시련 전투를 닫습니다 — 팀 '{}' 가 엔드 전투를 열었습니다"
+					+ "(멈춘 세션은 시련 자리를 쥐지 않습니다)", team == null ? teamId : team.name(),
+					opening == null ? opener : opening.name());
+			if (team != null) {
+				PAUSED_CLOSED_PENDING.addAll(team.members());
+			}
+		}
+		if (!closed.isEmpty()) {
+			persist();
+		}
+	}
+
+	/**
+	 * 멈춘 시련 전투가 다른 팀 때문에 닫혔을 때 그 팀원에게 보내는 채팅 한 줄. 돌아와서 카드가 없으면 「버그」로
+	 * 읽히므로 <b>왜</b>를 알린다.
+	 */
+	static final String PAUSED_CLOSED_NOTICE =
+			"다른 팀이 엔드 전투를 시작해, 일시 중단되어 있던 우리 팀의 드래곤 시련 전투는 끝났습니다(뽑은 카드도 사라졌습니다).";
+
+	/**
+	 * {@link #PAUSED_CLOSED_NOTICE} 를 아직 못 받은 사람. 접속해 있는 틱에 보내고 지운다. 저장하지 않는다 — 재시작
+	 * 사이에 잃는 것은 알림 한 줄뿐이다.
+	 */
+	private static final java.util.Set<UUID> PAUSED_CLOSED_PENDING = new java.util.HashSet<>();
+
+	/** {@link #PAUSED_CLOSED_PENDING} 가운데 접속해 있는 사람에게 알린다. 대개 비어 있어 바로 돌아간다. */
+	private static void deliverPausedClosedNotices(MinecraftServer server) {
+		if (PAUSED_CLOSED_PENDING.isEmpty()) {
+			return;
+		}
+		Component notice = Component.literal(PAUSED_CLOSED_NOTICE).withStyle(ChatFormatting.YELLOW);
+		PAUSED_CLOSED_PENDING.removeIf(playerId -> {
+			ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+			if (player == null) {
+				return false;
+			}
+			player.sendSystemMessage(notice);
+			return true;
+		});
 	}
 
 	/**
@@ -834,28 +1052,109 @@ public final class DragonTrialManager {
 		if (instance == null) {
 			return 0.0F;
 		}
-		double base = instance.getBaseValue();
-		double target = (double) SharedFateMod.config.dragonHealthPerMember * memberCount;
-		if (!(base > 0.0) || target <= base) {
+		double boost = healthBoost(instance.getBaseValue(),
+				(double) SharedFateMod.config.dragonHealthPerMember * memberCount);
+		if (Double.isNaN(boost)) {
 			return dragon.getMaxHealth();
 		}
 		float before = dragon.getMaxHealth();
+		// ⚠ 떼기 전에 읽는다 — 이미 붙어 있던 강화를 떼는 순간 체력이 바닐라 200 에 잘린다.
+		float health = dragon.getHealth();
 		instance.removeModifier(HEALTH_MODIFIER_ID);
-		instance.addOrUpdateTransientModifier(new AttributeModifier(
-				HEALTH_MODIFIER_ID, (target / base) - 1.0,
-				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
-		// 가득 차 있었으면 새 최대치로 다시 채운다. 안 그러면 강화하자마자 반피로 시작한다.
-		if (dragon.getHealth() >= before) {
-			dragon.setHealth(dragon.getMaxHealth());
+		// ⚠ 저장되는 수정자다 — 까닭은 HEALTH_MODIFIER_ID 설명에 있다.
+		instance.addOrReplacePermanentModifier(new AttributeModifier(
+				HEALTH_MODIFIER_ID, boost, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+		// 체력은 비율을 지켜 옮긴다(2026-10-18 검토) — 가득이면 새 최대치로 가득, 깎여 있었으면 같은 비율.
+		// 전에는 「가득이면 채움」만 있어 깎인 드래곤에 강화를 걸면 200 / 2400 이 되어 문턱 셋이 한꺼번에 터졌다.
+		// ⚠ 이 메서드는 전투를 <b>여는</b> 틱에만 부른다 — 이을 때는 restrengthen 이다(적어 둔 체력으로 되돌린다).
+		dragon.setHealth(DragonTrialSuspend.rescaledHealth(health, before, dragon.getMaxHealth(), 1.0F));
+		return dragon.getMaxHealth();
+	}
+
+	/**
+	 * 강화 배율. {@code ADD_MULTIPLIED_TOTAL} 의 값이다. 강화할 것이 없으면 NaN. <b>월드를 모른다 —
+	 * 시험이 직접 굴린다.</b>
+	 *
+	 * @param base   최대 체력 기본값(바닐라 200)
+	 * @param target 팀 인원에 맞춘 최대 체력
+	 */
+	static double healthBoost(double base, double target) {
+		if (!(base > 0.0) || !(target > base)) {
+			return Double.NaN;
+		}
+		return target / base - 1.0;
+	}
+
+	/**
+	 * 이어진 전투의 드래곤에 강화를 <b>다시 건다 — 채우지 않는다.</b> 이미 붙어 있으면 아무 일도 하지
+	 * 않는다(저장되는 수정자라 대개 붙은 채 올라온다). 붙어 있지 않은 길은 0.41 이전 판이 저장한 월드,
+	 * 바닐라가 드래곤을 못 찾아 새로 만든 판({@code EnderDragonFight.findOrCreateDragon} — 엔드가 오래 비어
+	 * {@code ticksSinceDragonSeen} 이 1200 을 넘으면 새 드래곤을 띄운다) 둘이다.
+	 *
+	 * <p>새로 붙일 때는 체력을 <b>비율로</b> 옮기고 이미 지난 문턱 위로는 자른다
+	 * ({@link DragonTrialSuspend#rescaledHealth}, 2026-10-18 검토). 전에는 200 / 2400 이 되어 문턱 셋이 한꺼번에
+	 * 터졌다. 적어 둔 체력이 있으면 부르는 쪽({@link #resume})이 그 값으로 한 번 더 맞춘다 — 새로 만든 드래곤도
+	 * 나갈 때의 체력으로 돌아온다.
+	 *
+	 * @param ceiling 넘지 않을 체력 비율({@link DragonTrialSuspend#healthCeiling})
+	 * @return 지금 최대 체력
+	 */
+	private static float restrengthen(EnderDragon dragon, int memberCount, float ceiling) {
+		AttributeInstance instance = dragon.getAttribute(Attributes.MAX_HEALTH);
+		if (instance == null || instance.hasModifier(HEALTH_MODIFIER_ID)) {
+			return dragon.getMaxHealth();
+		}
+		double boost = healthBoost(instance.getBaseValue(),
+				(double) SharedFateMod.config.dragonHealthPerMember * memberCount);
+		if (!Double.isNaN(boost)) {
+			float before = dragon.getMaxHealth();
+			float health = dragon.getHealth();
+			instance.addOrReplacePermanentModifier(new AttributeModifier(
+					HEALTH_MODIFIER_ID, boost, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
+			dragon.setHealth(DragonTrialSuspend.rescaledHealth(health, before, dragon.getMaxHealth(), ceiling));
 		}
 		return dragon.getMaxHealth();
+	}
+
+	/**
+	 * 우리 강화를 뗀다. 체력은 26.3 {@code LivingEntity.onAttributeUpdated} 가 새 최대치로 자른다.
+	 *
+	 * @return 떼었으면 참
+	 */
+	private static boolean dropStrength(EnderDragon dragon) {
+		AttributeInstance instance = dragon.getAttribute(Attributes.MAX_HEALTH);
+		return instance != null && instance.removeModifier(HEALTH_MODIFIER_ID);
+	}
+
+	/**
+	 * 우리 강화를 <b>비율을 지켜</b> 뗀다 — 멈춘 시련 세션을 닫고 시련 끔으로 전투를 여는 틱({@link #startSession}).
+	 * 그냥 떼면 2000 / 2400 이던 드래곤이 200 / 200(가득)이 된다.
+	 */
+	private static void weakenDragon(EnderDragon dragon) {
+		float before = dragon.getMaxHealth();
+		float health = dragon.getHealth();
+		if (dropStrength(dragon)) {
+			dragon.setHealth(DragonTrialSuspend.rescaledHealth(health, before, dragon.getMaxHealth(), 1.0F));
+		}
 	}
 
 	private static void tickSessions(MinecraftServer server, ServerLevel end, long now) {
 		if (SESSIONS.isEmpty()) {
 			return;
 		}
-		EnderDragon dragon = findDragon(end);
+		EnderDragon found = findDragon(end);
+		// ⚠ 죽음 연출(DYING — 체력 1 로 붙들린 채 200틱) 중인 드래곤은 <b>죽은 것</b>으로 본다(2026-10-18 검토).
+		// 살아 있는 것으로 세면 그 사이 전원이 끊을 때 「처치」가 아니라 일시 중단이 되어 세션이 남았다.
+		boolean dying = dying(found);
+		EnderDragon dragon = dying ? null : found;
+		if (dragon != null) {
+			lastSeenHealth = dragon.getHealth();
+			lastSeenMax = dragon.getMaxHealth();
+		}
+		// ⚠ 「살아 있는 드래곤이 없다」는 죽었다는 뜻이 아니다 — 섬 청크가 내려가도 그렇다. 죽은 근거 둘을
+		// 따로 본다(DragonTrialSuspend 클래스 설명). 살아 있는 드래곤이 있으면 묻지 않는다.
+		boolean deadInWorld = dying || (dragon == null && deadDragonInWorld(end));
+		boolean vanillaKilled = dragon == null && vanillaDragonKilled(end);
 		List<UUID> finished = new ArrayList<>();
 		// 실행기를 이 now 로 이미 돌렸는가. 판이 얼어 있으면 게임 시각이 서므로 같은 now 가 매 서버
 		// 틱 다시 온다 — 까닭과 무엇을 건너뛰는지는 executorsRanAt 설명에 있다.
@@ -875,7 +1174,10 @@ public final class DragonTrialManager {
 				finished.add(entry.getKey());
 				continue;
 			}
-			if (dragon == null || !dragon.isAlive()) {
+			List<ServerPlayer> members = membersOf(server, team, end);
+			DragonTrialSuspend.Verdict verdict = DragonTrialSuspend.judge(dragon != null, deadInWorld,
+					vanillaKilled, !members.isEmpty());
+			if (verdict == DragonTrialSuspend.Verdict.KILLED) {
 				SharedFateMod.LOGGER.info("[END] 팀 '{}' 드래곤 처치 — {}초 · 시련 {}장",
 						team.name(), session.elapsedTicks(now) / 20, session.trialCount());
 				// 최후의 저항이 돌고 있었으면 여기가 「처치」다 — 시련이 사라지고 팀이 무적이
@@ -883,6 +1185,28 @@ public final class DragonTrialManager {
 				DragonLastStand.onFightClosed(end, team);
 				finished.add(entry.getKey());
 				continue;
+			}
+			// ⚠⚠ 일시 중단(2026-10-18). 엔드가 비었거나 드래곤이 메모리에서 내려갔다 — 처치가 아니다.
+			// 멈춘 세션은 아래 실행기를 하나도 돌리지 않고, 팀원이 돌아와 드래곤이 다시 올라온 틱에 이어
+			// 그 틱부터 평소대로 돈다. 까닭과 판정은 DragonTrialSuspend 에 있다.
+			if (session.suspended()) {
+				if (verdict != DragonTrialSuspend.Verdict.FIGHTING) {
+					continue;
+				}
+				resume(end, team, session, dragon, now);
+			} else if (DragonTrialSuspend.pauses(verdict)) {
+				ARRIVED.remove(team.teamId());
+				suspend(end, team.teamId(), team.name(), session, dragon,
+						verdict == DragonTrialSuspend.Verdict.AWAY
+								? "엔드에 팀원이 없음"
+								: "드래곤이 메모리에서 내려감(섬 근처에 팀원이 없음)",
+						now);
+				continue;
+			}
+			// 재개 직후 3초 보호 — 이은 틱에 엔드에 선 팀원, 그리고 그 뒤 하나씩 돌아오는 팀원(사람 결정
+			// 「이어 가기, 무적 없음」). 시련을 켠 팀만이다 — 끈 팀은 바닐라 드래곤전이다.
+			if (session.trialsEnabled()) {
+				protectArrivals(team.teamId(), members);
 			}
 			// 시련을 끈 팀은 여기서 통째로 지나간다. 바닐라 드래곤전이므로 자리도 카드도
 			// 패시브도 없고, 남는 일은 위의 「드래곤이 죽었는가」 하나뿐이다.
@@ -904,12 +1228,17 @@ public final class DragonTrialManager {
 				DragonLastStand.holdShield(server, end, dragon, now);
 				continue;
 			}
-			List<ServerPlayer> members = membersOf(server, team, end);
 			boolean lastStandBegins = detectTriggers(end, dragon, session, now);
 			// ⚠ 최후의 저항은 카드가 아니라 별개의 보스전이고, 열리는 순간 아래 셋을 전부
 			// 멈춘다 — 룰렛·시련·패시브. 「시련이 전부 멈춥니다」가 이 continue 한 줄이다.
+			int wavesBefore = session.lastStandWaves();
 			DragonLastStand.Standing standing = DragonLastStand.tick(server, end, dragon, team,
 					session, members, lastStandBegins, now);
+			if (session.lastStandWaves() != wavesBefore) {
+				// 최후의 저항에서 회복 크리스탈 소환을 끝까지 치렀다(2026-10-18 밤). 바로 저장하지 않으면 강제
+				// 종료 뒤에 그 파도를 다시 받는다 — DragonTrialSession.recordLastStandWaves.
+				persist();
+			}
 			if (standing != DragonLastStand.Standing.OFF) {
 				// ⚠⚠ 「착지」 패시브의 깃발을 내린다. 최후의 저항은 드래곤을
 				// EnderDragonPhase.HOVERING 으로 영구히 앉혀 두고 사람이 활로 1200 을 깎는
@@ -937,8 +1266,10 @@ public final class DragonTrialManager {
 			TrialEntrance.tick(end, dragon, members, session, now);
 			openTrialWhenDue(server, end, session, members, now);
 			// 패시브는 시련과 다르다. 팀이 뽑는 것이 아니라 언제나 있는 판이므로 카드와 무관하게
-			// 돈다 — 섞으면 「이번 판이 왜 어려웠나」를 나눌 수 없다.
-			DragonPassives.tick(end, dragon, members, session.startedTick(), now);
+			// 돈다 — 섞으면 「이번 판이 왜 어려웠나」를 나눌 수 없다. 입장 연출 동안에는 연쇄 포격만
+			// 쉰다 — 이어진 전투의 연출이 포격 위상과 따로 다시 돈다(DragonPassives.tick 설명).
+			DragonPassives.tick(end, dragon, members, session.startedTick(), now,
+					TrialEntrance.managesCrystals(session, now));
 			TrialRisks.tick(end, dragon, members, session, now);
 		}
 		if (!finished.isEmpty()) {
@@ -948,6 +1279,7 @@ public final class DragonTrialManager {
 			// 재소환 시계도 함께 버린다. 남겨 두면 다음 전투의 첫 검사가 앞 전투의 시각을
 			// 물려받아 최대 2초 늦게 돈다 — 소환 직후가 가장 어긋나기 쉬운 순간이다.
 			finished.forEach(RECALL_AT::remove);
+			finished.forEach(ARRIVED::remove);
 			endTrials();
 			persist();
 		}
@@ -968,8 +1300,263 @@ public final class DragonTrialManager {
 	 * 내려가는 길은 {@code DragonLastStand.onServerStopping} 이 따로 맡는다.
 	 */
 	private static void restoreBorderIfIdle(ServerLevel end) {
-		if (DragonTrialBorder.held() && trialHolder(SESSIONS.values(), null) == null) {
+		// 「싸우는」 시련 세션이다 — 일시 중단된 세션은 보더를 쓰지 않는다(2026-10-18). 엔드가 빈 채로 섬
+		// 크기 보더가 남으면 그사이 엔드에 들어온 다른 사람이 까닭 없는 벽을 만난다. 이을 때 그 단계에
+		// 맞게 다시 선다 — 섬 가장자리는 tickSessions 가, 최후의 저항은 지대가 처음 값(42)부터.
+		if (DragonTrialBorder.held() && activeTrialHolder(SESSIONS.values()) == null) {
 			DragonTrialBorder.restore(end);
+		}
+	}
+
+	/**
+	 * <b>싸우고 있는</b>(일시 중단되지 않은) 시련 세션의 팀. 없으면 {@code null}. <b>월드를 모른다 —
+	 * 시험이 직접 굴린다.</b>
+	 *
+	 * <p><b>판에 걸어 둔 것을 되돌릴지</b>를 묻는 자리(보더 · {@link #endTrials})가 쓴다. 처음에는
+	 * {@link #trialHolder} 와 멈춘 세션을 세는지로 갈렸는데, 멈춘 세션이 시련 자리를 쥐지 않게 되며(사람 결정
+	 * 2026-10-18) 지금은 {@code trialHolder(sessions, null)} 과 같은 답이다. 묻는 것이 달라 이름은 둘로 둔다.
+	 */
+	static @Nullable UUID activeTrialHolder(java.util.Collection<DragonTrialSession> sessions) {
+		for (DragonTrialSession session : sessions) {
+			if (session.trialsEnabled() && !session.suspended()) {
+				return session.teamId();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * 바닐라 죽음 연출 중인가 — {@code DYING} 칸(체력 1 로 붙들린 채 200틱을 돈 뒤 체력 0). 이 칸은 죽음이
+	 * 정해진 뒤에만 들어간다({@code EnderDragon} 의 마지막 일격이 체력을 1 로 되돌리고 넘긴다). 살아 있는 것으로
+	 * 세면 그 사이 전원이 끊을 때 처치가 일시 중단으로 읽히고, 다시 들어오면 「끝나지 않은 전투」로 수락창이 뜬다.
+	 */
+	private static boolean dying(@Nullable EnderDragon dragon) {
+		return dragon != null && dragon.getPhaseManager().getCurrentPhase().getPhase()
+				== net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase.DYING;
+	}
+
+	/** 죽은(체력 0) 드래곤 개체가 아직 월드에 있는가 — 바닐라 죽음 연출 200틱 동안이다. */
+	private static boolean deadDragonInWorld(ServerLevel end) {
+		for (EnderDragon ignored : end.getEntities(EntityTypes.ENDER_DRAGON,
+				candidate -> !candidate.isAlive())) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * 바닐라 {@code EnderDragonFight.dragonKilled}. 못 읽으면 거짓 — {@link #endFightLive(ServerLevel)}
+	 * 과 같은 규칙이다(모를 때 「죽었다」로 기울면 내려간 드래곤이 다시 「처치」가 된다).
+	 */
+	private static boolean vanillaDragonKilled(ServerLevel end) {
+		return end.getDragonFight() instanceof EnderDragonFightAccessor accessor
+				&& accessor.sharedfate$dragonKilled();
+	}
+
+	/**
+	 * 전투를 <b>일시 중단</b>한다. 세션은 그대로 둔다 — 뽑힌 카드 · 터진 자리 · 줄 · 받은 틱.
+	 *
+	 * <h2>하는 일</h2>
+	 *
+	 * <ol>
+	 *   <li>드래곤의 <b>실제 체력</b>을 세션에 적는다. 드래곤이 보이면 그 값, 이미 내려갔으면 마지막으로 본
+	 *       값({@link #lastSeenHealth}), 그것도 없으면(재시작 첫 틱) 앞서 적어 둔 값을 지킨다</li>
+	 *   <li>최후의 저항이 돌고 있었으면 판을 거둔다 — {@link DragonLastStand#suspend}. 처치가 아니라
+	 *       무적을 주지 않고, 드래곤을 바닐라 비행으로 풀어 두며, 진입 회복 도중이면 그 몫을 다 채워
+	 *       둔다</li>
+	 *   <li>입장 연출이 끝나기 전이면 이을 때 처음부터 다시 돌도록 적는다</li>
+	 *   <li>싸우는 시련 세션이 더 없으면 시련이 판에 걸어 둔 것을 되돌린다 — 소환 엔더맨 · 회복 크리스탈 ·
+	 *       종말의 비 패널 · 화살 면역 등({@link #endTrials} 와 같은 길 + 패시브의 시계). 카드 자체는
+	 *       세션에 남아 이을 때 다시 돈다</li>
+	 *   <li>룰렛 지연 · 크리스탈 기준값을 버린다 — 이은 틱부터 다시 센다</li>
+	 *   <li>저장한다 — 그사이 서버가 꺼져도 잇는다</li>
+	 * </ol>
+	 *
+	 * <p>엔드 월드 보더는 여기서 되돌리지 않는다 — {@link #restoreBorderIfIdle} 이 같은 틱 끝에 「싸우는
+	 * 시련 세션이 없다」를 보고 되돌린다(되돌리는 자리는 한 곳).
+	 *
+	 * @param dragon 살아 있는 드래곤. 이미 내려갔으면 {@code null}
+	 * @param reason 로그에 적을 까닭
+	 */
+	private static void suspend(ServerLevel end, UUID teamId, String teamName,
+			DragonTrialSession session, @Nullable EnderDragon dragon, String reason, long now) {
+		boolean trials = session.trialsEnabled();
+		float health = dragon != null ? dragon.getHealth() : lastSeenHealth;
+		float max = dragon != null ? dragon.getMaxHealth() : lastSeenMax;
+		int waves = -1;
+		boolean lastStand = false;
+		if (trials) {
+			// ⚠ 판을 거두기 전에 읽는다 — 거두는 길(TrialRisks.clearState)이 실행기의 「이미 썼다」 기억을 비운다.
+			// 이것을 세션에 적어 두지 않으면 재개 첫 틱에 부활 · 메마른 세계가 또 터진다(2026-10-18 검토).
+			session.rememberDone(TrialRisks.snapshotDone(session));
+			DragonLastStand.Paused paused = DragonLastStand.suspend(end, teamId, dragon, health, max, now);
+			if (paused != null) {
+				health = paused.health();
+				waves = paused.clearedWaves();
+				// 지대(보더) 시계가 어디까지 왔는가 — 이을 때 그 단계 · 그 시간표에서 잇는다(사람 결정).
+				session.keepLastStandClock(paused.zoneClock());
+				lastStand = true;
+			}
+		}
+		// 입장 자리가 이미 소비됐으면(룰렛이 끝나 카드를 쌓았다) 연출을 다시 돌리지 않는다(2026-10-18 검토).
+		boolean replay = trials && DragonTrialSuspend.replaysEntrance(session.entranceTick(), now,
+				session.pending(TrialCatalog.Trigger.ENTRY));
+		session.suspend(replay, trials ? health : Float.NaN, waves, now);
+		resetTrialDelay(teamId);
+		CRYSTALS_AT_START.remove(teamId);
+		if (activeTrialHolder(SESSIONS.values()) == null) {
+			endTrials();
+			// 연쇄 포격·착지 고정의 시계도 버린다. 이을 때 위상은 startedTick 에서 그대로 다시 센다.
+			DragonPassives.clearState();
+		}
+		SharedFateMod.LOGGER.info(
+				"[END] 팀 '{}' 전투 일시 중단 — {} · 드래곤 체력 {} · 시련 {}장{}{}",
+				teamName, reason, session.dragonHealth() > 0.0F ? session.dragonHealth() : "?",
+				session.trialCount(), lastStand ? " · 최후의 저항(이을 때 그 자리에서 — 보더 이어 감 · 무적 없음)" : "",
+				session.replayEntrance() ? " · 입장 연출을 처음부터 다시" : "");
+		persist();
+	}
+
+	/**
+	 * 멈춘 전투를 <b>그 자리에서 잇는다.</b> 판정이 {@code FIGHTING} 이 된 틱 — 살아 있는 드래곤이 있고
+	 * 엔드에 팀원이 있다 — 에 부른다. 같은 틱에 아래 실행기가 평소대로 돈다.
+	 *
+	 * <ul>
+	 *   <li>입장 수락창·입장 연출을 다시 띄우지 않는다 — 세션이 그대로라 {@link #detectArrival} 이
+	 *       건너뛴다. 입장 연출 도중에 멈췄으면 그 연출만 처음부터 다시 돈다({@code entranceTick})</li>
+	 *   <li>드래곤 체력 강화를 다시 확인하고({@link #restrengthen} — <b>채우지 않는다</b>) 적어 둔 체력으로
+	 *       <b>정확히</b> 되돌린다({@link DragonTrialSuspend#restoredHealth}) — 회복도 깎임도 없다</li>
+	 *   <li>최후의 저항이던 판은 이 틱의 {@code DragonLastStand.tick} 이 그 자리에서 잇는다(연출·보호막·무적
+	 *       없이, 보더는 멈춘 단계에서 — {@code DragonLastStand.reenter})</li>
+	 *   <li>카드의 받은 틱을 멈춘 만큼 밀고({@code DragonTrialSession.resume}) 한 번짜리 카드가 이미 한 일을 다시
+	 *       심는다({@code TrialRisks.restoreDone}) — 끊기로 창을 건너뛰지도, 다시 터지지도 않는다</li>
+	 *   <li>3초 보호는 같은 틱의 {@link #protectArrivals} 가 준다</li>
+	 *   <li>룰렛 지연은 이 틱부터 다시 센다 — 줄에 남은 자리는 그 지연만큼 뒤에 뜬다</li>
+	 * </ul>
+	 */
+	private static void resume(ServerLevel end, ShareTeam team, DragonTrialSession session,
+			EnderDragon dragon, long now) {
+		float saved = session.dragonHealth();
+		// 카드의 받은 틱을 멈춰 있던 만큼 민다(창 있는 카드는 멈춘 자리에서 잇는다) — 그 뒤에 「이미 한 일」을 심는다.
+		boolean replay = session.resume(now);
+		resetTrialDelay(team.teamId());
+		CRYSTALS_AT_START.remove(team.teamId());
+		if (session.trialsEnabled()) {
+			TrialRisks.restoreDone(session);
+			restrengthen(dragon, Math.max(1, team.members().size()),
+					DragonTrialSuspend.healthCeiling(session.fired()));
+			float restored = DragonTrialSuspend.restoredHealth(saved, dragon.getHealth(),
+					dragon.getMaxHealth());
+			if (restored != dragon.getHealth()) {
+				dragon.setHealth(restored);
+			}
+		}
+		SharedFateMod.LOGGER.info("[END] 팀 '{}' 전투 재개 — 드래곤 체력 {} / {} · 시련 {}장{}{}",
+				team.name(), dragon.getHealth(), dragon.getMaxHealth(), session.trialCount(),
+				replay ? " · 입장 연출을 처음부터" : "",
+				session.trialsEnabled() && session.fired().contains(TrialCatalog.Trigger.HEALTH_30)
+						? " · 최후의 저항(진입 연출·보호막 없이 그 자리에서 — 보더 이어 감)" : "");
+		persist();
+	}
+
+	/**
+	 * 서버가 멈추기 직전 — <b>싸우는 전투를 전부 일시 중단한다.</b> {@code SharedFateMod} 가
+	 * {@code SERVER_STOPPING} 에 {@code DragonLastStand.onServerStopping}(보더 되돌리기) 보다 먼저 붙인다.
+	 *
+	 * <p>재시작도 「팀이 엔드를 비웠다」와 같은 일이다 — 다시 뜨면 엔드에 아무도 없다. 그래서 같은 길
+	 * ({@link #suspend})로 보낸다. 월드가 아직 살아 있는 자리라 드래곤의 실제 체력을 읽어 적고, 최후의
+	 * 저항이면 드래곤을 저장 <b>전에</b> 놓아주고 보스바 이름을 되돌린다 — 앉힌 채 저장되지 않는다.
+	 */
+	public static void onServerStopping(@Nullable MinecraftServer server) {
+		if (server == null) {
+			return;
+		}
+		// 룰렛이 돌던 중에 꺼지면 그 카드를 먼저 쌓는다(2026-10-18 검토) — 접속 종료 쪽처럼. 전에는
+		// TrialFreeze.onServerStopping 이 끝난 결과를 버려 카드가 사라지고 다시 뽑혔다. 그쪽이 이보다 먼저
+		// 등록되어(SharedFateMod) 정지를 풀고 결과를 남겨 둔다.
+		applyFinishedTrial(server);
+		if (SESSIONS.isEmpty()) {
+			return;
+		}
+		ServerLevel end = server.getLevel(Level.END);
+		if (end == null) {
+			return;
+		}
+		EnderDragon dragon = findDragon(end);
+		long now = end.getGameTime();
+		for (DragonTrialSession session : new ArrayList<>(SESSIONS.values())) {
+			if (session.suspended()) {
+				continue;
+			}
+			ShareTeam team = TeamManager.get(server).teamById(session.teamId());
+			suspend(end, session.teamId(), team == null ? session.teamId().toString() : team.name(),
+					session, dragon, "서버 종료", now);
+		}
+	}
+
+	/**
+	 * <b>월드 초기화로 서버가 내려간다</b>(팀 전멸 · 운영자 초기화) — 엔드 전투를 일시 중단으로 남기지 않고
+	 * <b>버린다.</b> {@code WorldResetCoordinator} 가 표식을 쓴 뒤 {@code halt} 직전에 부른다.
+	 *
+	 * <h2>이것이 없어서 일어나던 일 (2026-10-18 검토)</h2>
+	 *
+	 * <p>전멸한 틱에도 팀원은 엔드(사망 화면)에 있어 전투는 싸우는 중이고, 내려가는 길의 {@link #onServerStopping}
+	 * 이 그 전투를 「일시 중단」으로 저장했다. 저장 파일이 서버 폴더에 있어 루프 스크립트가 월드만 지운 새 회차에서
+	 * 그 세션이 되살아나 영영 멈춘 채 남고, 새 회차에 접속한 팀이 엔드로 끌려가 새 드래곤에 옛 카드·옛 체력·최후의
+	 * 저항까지 걸렸다 — 사실상 서버를 못 썼다. 저장 파일을 월드 폴더로 옮긴 것({@link DragonTrialStore})이 첫 겹이고
+	 * 이것이 둘째 겹이다. 여기서 세션을 비우고 파일을 지우므로 뒤이어 도는 {@link #onServerStopping} 이 저장할 것이
+	 * 없다. 판(최후의 저항)은 무적 없이 거둔다 — 보더 되돌리기는 그 뒤의 {@code DragonLastStand.onServerStopping} 이다.
+	 */
+	public static void discardForWorldReset(@Nullable MinecraftServer server) {
+		if (server == null || SESSIONS.isEmpty()) {
+			return;
+		}
+		ServerLevel end = server.getLevel(Level.END);
+		for (UUID teamId : new ArrayList<>(SESSIONS.keySet())) {
+			DragonLastStand.onTeamGone(end, teamId);
+		}
+		SharedFateMod.LOGGER.info("[END] 월드 초기화로 서버를 내립니다 — 엔드 전투 {}개를 일시 중단으로 남기지 않고"
+				+ " 버립니다", SESSIONS.size());
+		SESSIONS.clear();
+		PENDING_SUMMON.clear();
+		READY_AT.clear();
+		RECALL_AT.clear();
+		ARRIVED.clear();
+		CRYSTALS_AT_START.clear();
+		endTrials();
+		// 빈 목록이면 파일을 지운다(DragonTrialStore.save).
+		persist();
+	}
+
+	/**
+	 * <b>주인 없는 드래곤</b>에서 시련이 남긴 것을 걷는다 — 시련 세션이(멈춘 것까지) 하나도 없는 판에서만.
+	 *
+	 * <ul>
+	 *   <li>체력 강화 수정자 — 저장되는 수정자라 걷지 않으면 다음 판(시련을 끈 팀의 바닐라 드래곤전)까지
+	 *       남는다. 시련 팀이 해체되거나 드래곤이 내려간 채 세션이 닫힌 판이 그 길이다</li>
+	 *   <li>「최후의 저항」 이름을 단 채 앉아 있는 드래곤 — {@code DragonLastStand.releaseOrphan}. 0.41 이전
+	 *       판이 접속 종료를 「처치」로 잘못 닫으며 세이브에 남긴 드래곤도 여기서 풀린다</li>
+	 * </ul>
+	 *
+	 * <p>엔드에 사람이 있을 때만, {@value #ORPHAN_SWEEP_TICKS} 틱마다 본다 — 사람이 없으면 드래곤도 메모리에
+	 * 없다.
+	 */
+	private static void releaseOrphanDragon(ServerLevel end, long now) {
+		// 멈춘 세션까지 센다 — 멈춘 시련 세션의 드래곤은 강화를 쥔 채 그 팀을 기다린다.
+		if (now % ORPHAN_SWEEP_TICKS != 0L || end.players().isEmpty()
+				|| anyTrialSession(SESSIONS.values(), null) != null) {
+			return;
+		}
+		EnderDragon dragon = findDragon(end);
+		if (dragon == null) {
+			return;
+		}
+		boolean released = DragonLastStand.releaseOrphan(dragon);
+		boolean weakened = dropStrength(dragon);
+		if (released || weakened) {
+			SharedFateMod.LOGGER.info("[END] 시련 세션이 없는 드래곤을 바닐라로 되돌렸습니다 —{}{} · 체력 {} / {}",
+					released ? " 최후의 저항 자세·이름 풀기" : "", weakened ? " 체력 강화 떼기" : "",
+					dragon.getHealth(), dragon.getMaxHealth());
 		}
 	}
 
@@ -1023,7 +1610,9 @@ public final class DragonTrialManager {
 	 * 않으므로 그 팀이 남아 있어도 비워도 된다.
 	 */
 	private static void endTrials() {
-		if (trialHolder(SESSIONS.values(), null) != null) {
+		// 「싸우는」 시련 세션이다 — 멈춘 세션은 판에 아무것도 걸어 두지 않는다({@link #suspend} 가 이 길로
+		// 이미 되돌렸다).
+		if (activeTrialHolder(SESSIONS.values()) != null) {
 			return;
 		}
 		TrialRisks.clearState();
@@ -1435,7 +2024,9 @@ public final class DragonTrialManager {
 		EnderDragon dragon = findDragon(end);
 		// ⚠ findDragon 이 이미 isAlive() 로 걸렀지만 체력을 한 번 더 본다. 「살아 있다」의 뜻이
 		// 판마다 달라질 수 있는 자리이고, 여기서 틀리면 돌아오는 것이 바로 그 무한 고리다.
-		boolean dragonAlive = dragon != null && dragon.getHealth() > 0.0F;
+		// 죽음 연출(DYING) 중인 드래곤도 끝난 것으로 본다 — tickSessions 가 그 틱에 처치로 닫으므로, 여기서
+		// 살아 있다고 하면 그 자리에서 「첫 입장」 수락창이 뜬다(dying 설명).
+		boolean dragonAlive = dragon != null && dragon.getHealth() > 0.0F && !dying(dragon);
 		EnderDragonFight fight = end.getDragonFight();
 		// ⚠ 캐스팅이 아니라 instanceof 다. 믹스인이 sharedfate.mixins.json 에 안 등록되면
 		// 캐스팅은 엔드에 사람이 있는 매 틱 ClassCastException 으로 서버를 때리는데, 이쪽은
@@ -1549,7 +2140,11 @@ public final class DragonTrialManager {
 		CRYSTALS_AT_START.clear();
 		READY_AT.clear();
 		RECALL_AT.clear();
+		ARRIVED.clear();
+		PAUSED_CLOSED_PENDING.clear();
 		executorsRanAt = Long.MIN_VALUE;
+		lastSeenHealth = Float.NaN;
+		lastSeenMax = Float.NaN;
 		// 수락창은 저장되지 않고 붙들기도 매 틱 다시 거는 것이라 버리기만 하면 된다.
 		// 월드를 만질 수 없는 자리에서도 불리므로(SERVER_STOPPED) 꾸러미를 보내지 않는다.
 		TrialEntranceGate.clearState();
@@ -1583,6 +2178,10 @@ public final class DragonTrialManager {
 		SESSIONS.remove(team.teamId());
 		resetTrialDelay(team.teamId());
 		RECALL_AT.remove(team.teamId());
+		ARRIVED.remove(team.teamId());
+		// ⚠ 옛 세션의 최후의 저항 판도 거둔다(2026-10-18 검토). 남기면 새 세션의 첫 틱이 그 판을 그대로 이어
+		// 받아 수락창·입장 연출 없이 붙박이 드래곤과 싸운다. 처치가 아니므로 무적은 없다.
+		DragonLastStand.onTeamGone(end, team.teamId());
 		// ⚠ 떠 있던 입장 수락창도 접는다. 남겨 두면 다음 틱에 그 창이 「확인됐다」로 끝나면서
 		// 팀을 단상으로 모으고 전투를 한 번 더 열어 — 방금 이 명령으로 연 세션을 통째로 덮어쓴다.
 		// 명령으로 직접 여는 길이라 묻는 창이 뜻을 잃는 자리이기도 하다.
@@ -1647,7 +2246,14 @@ public final class DragonTrialManager {
 			return false;
 		}
 		resetTrialDelay(team.teamId());
-		session.restore(List.of(), session.firedNames(), session.queuedNames(), false, Map.of());
+		// 터진 자리도 함께 푼다(2026-10-18 검토 — 명령 안내 「터진 자리도 함께 풀립니다」 · fire 안내 「clear 로 비운 뒤
+		// 다시 터뜨리십시오」와 코드가 어긋나 있었다). 줄도 함께 비운다 — 줄은 터진 자리 안에서만 산다.
+		// ⚠ 최후의 저항 자리(체력 30%)만은 남긴다 — 카드가 아니라 별개의 보스전이고, 풀면 드래곤이 30% 아래일 때
+		// 다음 틱에 진입(드래곤 +20%p · 팀 회복)이 한 번 더 열린다.
+		List<String> keep = session.fired().contains(TrialCatalog.Trigger.HEALTH_30)
+				? List.of(TrialCatalog.Trigger.HEALTH_30.name()) : List.of();
+		session.restore(List.of(), keep, List.of(), false, Map.of());
+		CRYSTALS_AT_START.remove(team.teamId());
 		TrialRisks.clearState();
 		persist();
 		return true;

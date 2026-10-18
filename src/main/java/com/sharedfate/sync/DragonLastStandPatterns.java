@@ -227,6 +227,11 @@ import java.util.UUID;
  * 더해졌지만 163점이라 그 아래다. 수를 쓰려는 사람은
  * {@code DragonLastStandPatternsTest.한_틱_점_예산을_넘지_않는다} 가 못박아 둔 수부터 고쳐야 한다.
  *
+ * <p>⚠⚠ <b>2026-10-18 에 322 → 346 으로 올랐고 주인이 바뀌었다.</b> 「폭풍 날갯짓」에 종말의 비 세 차례가
+ * 얹혀({@link DragonLastStandWingRain}) 날갯짓이 228 → <b>276</b>(착탄 틱 48)이 되어 십자 터지는 틱(252)을
+ * 넘었다. 가장 바쁜 틱은 이제 <b>「번개 + 날갯짓」</b>이고 {@code 70 + 276 = 346}, 파도 37 을 더해 <b>383</b> 이다.
+ * 착탄 점을 카드가 실제로 쓰는 8 로 받아 400 아래를 지켰다(12 면 407).
+ *
  * <p>⚠ <b>내리치는 틱도 이제 센다.</b> 번개가 맞은 사람 발밑에 점을 뿌리게 되어
  * ({@link #slowStruck}) 「내리치는 틱은 0점」이 거짓이 됐다 — {@link #lightningPoints} 가 예고 틱
  * (70)과 내리침 틱(48) 가운데 큰 쪽을 센다.
@@ -1572,6 +1577,7 @@ public final class DragonLastStandPatterns {
 		releaseSlows();
 		DragonLastStandConePanel.drop();
 		DragonLastStandCrossPanel.drop();
+		DragonLastStandWingRain.clearState();
 	}
 
 	/**
@@ -1640,7 +1646,11 @@ public final class DragonLastStandPatterns {
 	// ------------------------------------------------------------------ ① 날개 퍼덕이기
 
 	/**
-	 * 날개 퍼덕이기 — 5초간 0.6초마다 충격파 여덟 번. <b>넉백만, 피해 없음.</b>
+	 * 날개 퍼덕이기 — 5초간 0.6초마다 충격파 여덟 번. <b>충격파는 넉백만, 피해 없음.</b>
+	 *
+	 * <p>⚠ 2026-10-18 부터 그 5초 동안 <b>「종말의 비」 세 차례 × 여섯 곳</b>이 드래곤 둘레에 떨어진다
+	 * (사람 말 「종말의 비를 날개 퍼덕이기 할 때 떨구는 거야」). 피해는 그쪽 몫이고 시각표·셈은
+	 * {@link DragonLastStandWingRain} 에 있다. 밀려서 표식에 들어가 맞는 것이 사람이 원한 긴장이다.
 	 *
 	 * <h2>⚠ 천장이 둘이다 — 하나라도 빼면 낙사 장치다</h2>
 	 *
@@ -1713,6 +1723,9 @@ public final class DragonLastStandPatterns {
 		// 바깥으로 흐르는 가닥. 공허 흡입의 안쪽 흐름과 정확히 반대다 — 사람이 「빨아드리는거랑
 		// 밀치는거랑 이펙트가 너무 구분이안됨」이라고 한 자리가 여기와 그쪽 둘이다.
 		wingWave(end, ground, center, step);
+		// 날갯짓 동안 떨어지는 「종말의 비」 세 차례(2026-10-18 사람 지시). 충격파 틱이 아니어도 돌아야
+		// 구체가 매 틱 내려온다 — 그래서 아래 return 앞이다.
+		DragonLastStandWingRain.tick(end, members, center, at, step);
 		if (step % WING_PULSE_TICKS != 0 || step / WING_PULSE_TICKS >= WING_PULSES) {
 			return;
 		}
@@ -3995,8 +4008,9 @@ public final class DragonLastStandPatterns {
 	 * ({@link DragonLastStandConePanel}·{@link DragonLastStandCrossPanel}).
 	 *
 	 * <p>안전지대는 이 수에 없다 — 2026-10-18 부터 다시 월드 보더라 <b>점을 한 개도 안 쓴다</b>
-	 * (2026-10-04 ~ 10-18 의 빨간 입자 기둥 벽은 한 틱 39점이었다). 이 페이즈의 한 틱 최악은 패턴 322 +
-	 * 파도 37 = <b>359</b> 이고, {@code DragonLastStandZoneTest} 가 그 합을 400 이하로 붙든다.
+	 * (2026-10-04 ~ 10-18 의 빨간 입자 기둥 벽은 한 틱 39점이었다). 이 페이즈의 한 틱 최악은 패턴 346 +
+	 * 파도 37 = <b>383</b> 이고(2026-10-18 날갯짓에 비를 얹기 전에는 322 + 37 = 359), {@code DragonLastStandZoneTest}
+	 * 가 그 합을 400 이하로 붙든다.
 	 *
 	 * <p>값에서 직접 센다 — 개수나 반경을 올리는 사람이 예산을 눈으로 세지 않아도 시험이 먼저
 	 * 멈춰 세운다.
@@ -4011,16 +4025,18 @@ public final class DragonLastStandPatterns {
 
 	/**
 	 * 날개 퍼덕이기 — 파랑 고리 둘(반경 4 · 12) + <b>그 둘의 벽</b> + <b>바깥으로 흐르는 가닥</b>
-	 * + 충격파 틱의 돌풍.
+	 * + 충격파 틱의 돌풍 + <b>날갯짓 동안 떨어지는 비</b>(2026-10-18, {@link DragonLastStandWingRain#points}).
 	 *
-	 * <p>가장 바쁜 틱은 충격파가 나가는 틱이다.
+	 * <p>가장 바쁜 틱은 충격파가 나가는 틱이다. 비의 착탄 틱(30 · 63 · 96)은 충격파 틱(12의 배수, 84까지)과
+	 * 안 겹치지만 몰릴 수 있는 길을 막지 않았으므로 그대로 더한다 — 228 + 48 = <b>276</b>. 2026-10-18 부터
+	 * 이것이 십자 터지는 틱(252)을 넘어 <b>이 페이즈의 가장 바쁜 패턴</b>이다(번개 더해 346 · 파도 더해 383).
 	 */
 	static int wingBeatPoints() {
 		int rings = TrialWarning.ringPoints(WING_NEAR_RADIUS)
 				+ TrialWarning.ringPoints(WING_STRONG_RADIUS);
 		int walls = ringWallPoints(WING_NEAR_RADIUS) + ringWallPoints(WING_STRONG_RADIUS);
-		// 큰 돌풍 하나 + 밀린 사람마다 작은 돌풍 하나.
-		return rings + walls + WING_GUST_SPOKES + 1 + BUDGET_MEMBERS;
+		// 큰 돌풍 하나 + 밀린 사람마다 작은 돌풍 하나 + 날갯짓 동안 떨어지는 비(착탄 틱 48).
+		return rings + walls + WING_GUST_SPOKES + 1 + BUDGET_MEMBERS + DragonLastStandWingRain.points();
 	}
 
 	/** 부채꼴 브레스 — 예고 틱과 터지는 틱 가운데 바쁜 쪽. */

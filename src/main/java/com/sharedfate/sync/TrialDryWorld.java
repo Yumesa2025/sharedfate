@@ -360,6 +360,19 @@ public final class TrialDryWorld {
 		banUntil = Long.MIN_VALUE;
 	}
 
+	/**
+	 * 이 카드가 이미 증발시켰는가. 전투가 일시 중단될 때 {@code TrialRisks.snapshotDone} 이 {@link #clearState()}
+	 * <b>전에</b> 읽어 세션에 적는다(2026-10-18 검토 — 멈췄다 이은 첫 틱에 증발·양동이 비우기·채팅을 또 했다).
+	 */
+	static boolean dried(long granted) {
+		return DRIED.contains(granted);
+	}
+
+	/** 이은 판에 「이미 증발시켰다」를 다시 심는다. 설치 금지는 {@link #tick} 이 매 틱 다시 민다. */
+	static void markDried(long granted) {
+		DRIED.add(granted);
+	}
+
 	// ------------------------------------------------------------------ 증발
 
 	/**
@@ -596,13 +609,30 @@ public final class TrialDryWorld {
 	 * @param item  놓으려는 아이템
 	 */
 	public static boolean banPlacing(@Nullable Level level, @Nullable Item item) {
+		return banHoldsIn(level) && placesFluid(item);
+	}
+
+	/**
+	 * 지금 이 월드에서 <b>얼음이 물이 되는 것</b>을 막아야 하는가. 참이면 물 대신 공기가 된다.
+	 *
+	 * <p>⚠ 26.3 {@code IceBlock} 바이트코드로 확인한 뒷문이다. 엔드는 {@code WATER_EVAPORATES} 가
+	 * 없어 얼음이 녹으면 물이 된다 — ① {@code playerDestroy}: 섬세한 손길 없이 부수고 밑이
+	 * {@code #blocks_motion} 이거나 액체면 그 자리에 물, ② {@code melt}: 블록 빛이 11 을 넘는 곳
+	 * (횃불 곁)에서 무작위 틱에 물. 섬세한 손길로 캐 온 얼음을 놓고 맨손으로 부수면 양동이 없이
+	 * 물이 생긴다. {@code IceBlockMeltBanMixin} 이 그 두 자리를 감싸 여기를 묻는다.
+	 *
+	 * <p>판단은 {@link #banPlacing} 과 같은 한 곳({@link #banHoldsIn})에서 나온다.
+	 */
+	public static boolean banMelting(@Nullable Level level) {
+		return banHoldsIn(level);
+	}
+
+	/** 이 월드가 엔드(서버 쪽)이고 금지가 아직 살아 있는가. 설치 금지와 녹는 물 금지가 함께 쓴다. */
+	private static boolean banHoldsIn(@Nullable Level level) {
 		if (level == null || level.isClientSide() || level.dimension() != Level.END) {
 			return false;
 		}
-		if (!banHolds(level.getGameTime(), banUntil)) {
-			return false;
-		}
-		return placesFluid(item);
+		return banHolds(level.getGameTime(), banUntil);
 	}
 
 	/**

@@ -90,6 +90,58 @@ public final class DragonTrialSession {
 	/** 지금 선택을 기다리는 중인가. 기다리는 동안 다음 자리는 줄에서 기다린다. */
 	private boolean awaitingChoice;
 
+	// ------------------------------------------------------------------ 일시 중단 (2026-10-18)
+
+	/**
+	 * 입장 연출({@code TrialEntrance})의 원점. 처음에는 {@link #startedTick} 과 같다.
+	 *
+	 * <p>연출 도중에 전투가 멈췄다가 이어지면 <b>이 칸만</b> 이은 틱으로 옮겨 연출을 처음부터 다시
+	 * 돌린다 — 크리스탈을 거둔 채 멈추면 되살리는 단계가 영영 안 와 크리스탈이 0개로 남는다.
+	 * {@link #startedTick} 을 옮기지 않는 까닭은 그것이 패시브(연쇄 포격)·카드 위상의 원점이라서다 —
+	 * 그쪽은 멈춘 동안에도 위상을 그대로 잇는다. 저장된다.
+	 */
+	private long entranceTick;
+	/**
+	 * 전투가 <b>일시 중단</b>되었는가 — 엔드에 팀원이 아무도 없어 드래곤이 메모리에서 내려갔다
+	 * ({@code DragonTrialSuspend}). 중단된 세션은 실행기를 하나도 돌리지 않고 자리도 세지 않는다.
+	 * 저장된다.
+	 */
+	private boolean suspended;
+	/** 이을 때 입장 연출을 처음부터 다시 돌리는가. 중단될 때 정해진다. 저장된다. */
+	private boolean replayEntrance;
+	/**
+	 * 중단될 때의 드래곤 <b>실제</b> 체력. 모르면 {@link Float#NaN}. 싸우는 동안은 언제나 NaN 이다 —
+	 * 싸우는 도중의 값을 적어 두면 강제 종료 뒤에 <b>낡은 체력</b>으로 되돌려 드래곤이 회복한다.
+	 * 저장된다.
+	 */
+	private float dragonHealth = Float.NaN;
+	/**
+	 * 최후의 저항에서 <b>끝까지 치른</b> 오브젝트 파도 수(0·1·2). 이을 때 이만큼은 다시 주지 않는다 —
+	 * 도는 중이던 파도는 개체가 걷혔으므로 셈에 넣지 않아 다시 온다. 저장된다.
+	 */
+	private int lastStandWaves;
+	/**
+	 * 멈춘 틱. 모르면 {@link Long#MIN_VALUE}(싸우는 중 · 옛 저장). 이을 때 카드의 받은 틱을 이만큼 뒤로 민다
+	 * ({@link DragonTrialSuspend#resumedGrant}) — 엔드의 게임 시각은 아무도 없어도 흐르므로, 밀지 않으면 창 있는
+	 * 카드를 끊기로 건너뛴다(2026-10-18 검토). 저장된다.
+	 */
+	private long pausedAt = Long.MIN_VALUE;
+	/**
+	 * 최후의 저항 지대(보더) 시계가 멈출 때 어디까지 왔는가({@code now - clockBase}). 모르면
+	 * {@link Long#MIN_VALUE}. 이을 때 보더를 그 단계·그 시간표에서 잇는다(사람 결정 「이어 가기, 무적 없음」,
+	 * {@link DragonTrialSuspend#resumedZoneClock}). 저장된다.
+	 */
+	private long lastStandClock = Long.MIN_VALUE;
+	/**
+	 * 한 번짜리 카드가 <b>이미 한 일</b> — 위험 열쇠({@code 카드 id#순번}) → 값. 부활 · 메마른 세계 · 다시 선
+	 * 쇠창살은 1(했다), 밤의 군세는 멈출 때 살아 있던 엔더맨 수다({@code TrialRisks.snapshotDone}).
+	 *
+	 * <p>멈출 때 실행기의 기억을 걷으므로(시련이 판에 건 것을 되돌리는 같은 길) 이것이 없으면 재개 첫 틱에 부활이
+	 * 크리스탈을 또 살리고 메마른 세계가 또 증발시켰다. 서버 재시작도 같았다. 이을 때 실행기에 다시 심는다
+	 * ({@code TrialRisks.restoreDone}). <b>줄지 않는다</b> — 한 번 한 일은 그 전투 동안 한 일이다. 저장된다.
+	 */
+	private final Map<String, Integer> riskDone = new LinkedHashMap<>();
+
 	/**
 	 * @param trialsEnabled 이 팀이 시련을 쓰기로 했는가. <b>기본값이 없다</b> — 부르는 쪽이
 	 *                      반드시 정해야 한다. 까닭은 클래스 문서에 적어 뒀다
@@ -98,6 +150,7 @@ public final class DragonTrialSession {
 		this.teamId = teamId;
 		this.startedTick = startedTick;
 		this.trialsEnabled = trialsEnabled;
+		this.entranceTick = startedTick;
 	}
 
 	public UUID teamId() {
@@ -237,6 +290,8 @@ public final class DragonTrialSession {
 		fired.clear();
 		queued.clear();
 		awaitingChoice = false;
+		// 카드를 비우면(시험 명령 clear) 그 카드들이 한 일도 버린다. 같은 카드를 다시 받으면 새 카드다.
+		riskDone.clear();
 		if (!trialsEnabled) {
 			// 시련을 끈 팀은 무엇이 적혀 있었든 한 장도 되살리지 않는다. 설정을 끄기 전에
 			// 쌓아 둔 저장이 남아 있을 수 있는데, 그것을 읽어 들이면 「꺼 놓았는데 카드가
@@ -278,6 +333,176 @@ public final class DragonTrialSession {
 			}
 		}
 		awaitingChoice = waiting;
+	}
+
+	// ------------------------------------------------------------------ 일시 중단
+
+	/** 입장 연출의 원점. 까닭은 칸 설명에 있다. */
+	public long entranceTick() {
+		return entranceTick;
+	}
+
+	/** 전투가 일시 중단되었는가. */
+	public boolean suspended() {
+		return suspended;
+	}
+
+	/** 이을 때 입장 연출을 처음부터 다시 돌리는가. */
+	public boolean replayEntrance() {
+		return replayEntrance;
+	}
+
+	/** 중단될 때의 드래곤 실제 체력. 모르면 NaN. */
+	public float dragonHealth() {
+		return dragonHealth;
+	}
+
+	/** 최후의 저항에서 끝까지 치른 오브젝트 파도 수. */
+	public int lastStandWaves() {
+		return lastStandWaves;
+	}
+
+	/**
+	 * 끝까지 치른 파도 수를 <b>그때그때</b> 적는다 — {@code DragonLastStand.tick} 이 매 틱 부른다(2026-10-18 밤).
+	 * 늘 때만 바뀐다(치른 파도는 되돌아가지 않는다).
+	 *
+	 * <p>전에는 {@link #suspend} 만 이 칸을 적어, 서버가 강제로 죽으면 저장 파일에 그 전 값이 남아 다시 켠 뒤
+	 * 이미 부순 회복 크리스탈 소환을 한 번 더 받았다.
+	 *
+	 * @return 바뀌었으면 참 — 부르는 쪽이 저장한다
+	 */
+	public boolean recordLastStandWaves(int waves) {
+		if (waves <= lastStandWaves) {
+			return false;
+		}
+		lastStandWaves = waves;
+		return true;
+	}
+
+	/**
+	 * 전투를 멈춘다. <b>뽑힌 카드·터진 자리·줄은 그대로 둔다</b> — 그것이 멈추는 까닭이다.
+	 *
+	 * @param replay       이을 때 입장 연출을 처음부터 다시 돌리는가
+	 * @param health       드래곤 실제 체력. 모르면 NaN — 앞서 적어 둔 값이 있으면 그것을 지킨다
+	 *                     (재시작 뒤 첫 틱처럼 드래곤을 못 본 채 다시 멈추는 길)
+	 * @param waves        최후의 저항에서 끝까지 치른 파도 수. 음수면 앞 값을 지킨다
+	 */
+	public void suspend(boolean replay, float health, int waves) {
+		suspend(replay, health, waves, Long.MIN_VALUE);
+	}
+
+	/**
+	 * 전투를 멈춘다 — 멈춘 틱을 함께 적는다. 이을 때 카드의 받은 틱을 이만큼 뒤로 민다.
+	 *
+	 * @param now 멈추는 틱. 이미 멈춰 있으면 앞서 적은 틱을 지킨다
+	 */
+	public void suspend(boolean replay, float health, int waves, long now) {
+		if (!suspended && now != Long.MIN_VALUE) {
+			pausedAt = now;
+		}
+		suspended = true;
+		replayEntrance = replayEntrance || replay;
+		if (health > 0.0F) {
+			dragonHealth = health;
+		}
+		if (waves >= 0) {
+			lastStandWaves = waves;
+		}
+	}
+
+	/**
+	 * 전투를 잇는다. 입장 연출을 다시 돌려야 하면 그 원점을 {@code now} 로 옮긴다.
+	 *
+	 * <p>적어 둔 체력은 여기서 버린다 — 부르는 쪽이 이미 드래곤에 되돌려 놓은 뒤다. 남겨 두면 다음
+	 * 강제 종료 뒤에 그 낡은 값으로 한 번 더 되돌린다.
+	 *
+	 * @return 입장 연출을 처음부터 다시 돌리는가
+	 */
+	public boolean resume(long now) {
+		boolean replay = replayEntrance;
+		if (replay) {
+			entranceTick = now;
+		}
+		// 카드의 받은 틱을 멈춰 있던 만큼 민다 — 창 있는 카드는 멈춘 자리에서 잇고 주기 카드는 위상만 바뀐다.
+		if (pausedAt != Long.MIN_VALUE) {
+			for (Map.Entry<String, Long> mark : grantedTicks.entrySet()) {
+				mark.setValue(DragonTrialSuspend.resumedGrant(mark.getValue(), pausedAt, now));
+			}
+		}
+		pausedAt = Long.MIN_VALUE;
+		suspended = false;
+		replayEntrance = false;
+		dragonHealth = Float.NaN;
+		return replay;
+	}
+
+	/**
+	 * 저장에서 중단 상태를 되살린다. {@link #restore} 다음에 부른다.
+	 *
+	 * @param entrance 입장 연출의 원점. {@code null} 이면(이 칸이 없던 옛 파일) {@link #startedTick}
+	 * @param health   중단될 때의 체력. {@code null} 이면 모른다
+	 */
+	public void restoreSuspension(boolean wasSuspended, @Nullable Long entrance, boolean replay,
+			@Nullable Float health, int waves) {
+		entranceTick = entrance == null ? startedTick : entrance;
+		suspended = wasSuspended;
+		replayEntrance = wasSuspended && replay;
+		dragonHealth = wasSuspended && health != null && health > 0.0F ? health : Float.NaN;
+		lastStandWaves = Math.max(0, waves);
+	}
+
+	/**
+	 * 저장에서 멈춘 틱 · 지대 시계 · 한 번짜리 카드가 한 일을 되살린다. {@link #restore} 와
+	 * {@link #restoreSuspension} 다음에 부른다. {@code null} 은 모름(이 칸이 없던 옛 파일)이다.
+	 */
+	public void restorePause(@Nullable Long paused, @Nullable Long standClock,
+			@Nullable Map<String, Integer> done) {
+		pausedAt = suspended && paused != null ? paused : Long.MIN_VALUE;
+		lastStandClock = standClock == null ? Long.MIN_VALUE : standClock;
+		riskDone.clear();
+		if (done != null) {
+			rememberDone(done);
+		}
+	}
+
+	/** 멈춘 틱. 모르거나 싸우는 중이면 {@link Long#MIN_VALUE}. */
+	public long pausedAt() {
+		return pausedAt;
+	}
+
+	/** 최후의 저항 지대 시계가 멈출 때 어디까지 왔는가. 모르면 {@link Long#MIN_VALUE}. */
+	public long lastStandClock() {
+		return lastStandClock;
+	}
+
+	/** 최후의 저항이 멈출 때 지대 시계의 경과를 적는다. */
+	public void keepLastStandClock(long elapsed) {
+		lastStandClock = elapsed;
+	}
+
+	/** 한 번짜리 카드가 이미 한 일. 읽기 전용 사본이다. */
+	public Map<String, Integer> riskDone() {
+		return Collections.unmodifiableMap(new LinkedHashMap<>(riskDone));
+	}
+
+	/**
+	 * 한 번짜리 카드가 한 일을 더한다 — <b>덮어 넣기만 하고 지우지 않는다.</b> 재시작 첫 틱처럼 실행기 기억이 빈
+	 * 채로 다시 멈추는 길이 앞서 적은 것을 지우지 않게.
+	 */
+	public void rememberDone(@Nullable Map<String, Integer> done) {
+		if (done == null) {
+			return;
+		}
+		for (Map.Entry<String, Integer> mark : done.entrySet()) {
+			if (mark.getKey() != null && !mark.getKey().isBlank() && mark.getValue() != null) {
+				riskDone.put(mark.getKey(), mark.getValue());
+			}
+		}
+	}
+
+	/** 이 자리가 아직 줄에 남아 있는가(터졌고 아직 카드를 쌓거나 지나가지 않았다). */
+	public boolean pending(@Nullable Trigger trigger) {
+		return trigger != null && queued.contains(trigger);
 	}
 
 	/** 저장에 쓰는 값. */

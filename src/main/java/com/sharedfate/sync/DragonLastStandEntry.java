@@ -427,6 +427,22 @@ public final class DragonLastStandEntry {
 	 * @param step        연출이 시작된 뒤 흐른 틱
 	 */
 	static float rampedHealth(float entryHealth, float max, int step) {
+		return rampedHealth(entryHealth, max, step, true);
+	}
+
+	/**
+	 * {@link #rampedHealth(float, float, int)} 에 「회복을 주는가」를 더한 것.
+	 *
+	 * <p>거짓이면 연출 내내 <b>들어온 체력 그대로</b>다 — 일시 중단 뒤 다시 세우는 판(2026-10-18,
+	 * {@code DragonLastStand.reenter})이 연출은 처음부터 다시 돌리되 +20%p 를 다시 주지 않는 길이다.
+	 * 매 틱 같은 값을 쓰는 것은 그대로라 「연출 동안 체력이 흔들리지 않는다」도 그대로다.
+	 *
+	 * @param heals 이 연출이 +20%p 를 주는가
+	 */
+	static float rampedHealth(float entryHealth, float max, int step, boolean heals) {
+		if (!heals) {
+			return entryHealth;
+		}
 		float target = DragonLastStand.healedHealth(entryHealth, max);
 		if (step <= DESCEND_TICKS) {
 			return entryHealth;
@@ -515,11 +531,12 @@ public final class DragonLastStandEntry {
 	 *
 	 * @param anchor      드래곤을 못박아 둘 자리. 지대의 중심이자 정사각형의 가운데다
 	 * @param entryHealth 진입한 틱의 드래곤 체력
+	 * @param heals       이 연출이 +20%p 를 주는가. 일시 중단 뒤 다시 세우는 판은 거짓이다
 	 * @param beganAt     최후의 저항이 시작한 틱
 	 * @param now         받은 틱. {@code getGameTime} 을 여기서 다시 읽지 않는다
 	 */
 	static void tick(ServerLevel end, EnderDragon dragon, List<ServerPlayer> members, Vec3 anchor,
-			float entryHealth, long beganAt, long now) {
+			float entryHealth, boolean heals, long beganAt, long now) {
 		if (owner != beganAt) {
 			// 남의 판이거나 첫 틱이다. 앞 판의 빛이 남아 있으면 여기서 먼저 거둔다.
 			dropBeacons();
@@ -530,7 +547,7 @@ public final class DragonLastStandEntry {
 		// ⚠ 이 한 줄이 「체력이 점점 찬다」다. 되돌릴 것을 한 칸도 남기지 않는다 — 까닭은 클래스
 		// 설명의 표에 있다. 피해를 막는 것은 이 줄이 아니라 DragonLastStandShield 다(2026-10-04 —
 		// 이 줄만으로는 피해가 끝까지 들어간 뒤 틱 끝에 덮어써져 「맞으면서 회복」으로 보였다).
-		dragon.setHealth(rampedHealth(entryHealth, dragon.getMaxHealth(), step));
+		dragon.setHealth(rampedHealth(entryHealth, dragon.getMaxHealth(), step, heals));
 
 		if (step == 0) {
 			pullInside(end, members, anchor);

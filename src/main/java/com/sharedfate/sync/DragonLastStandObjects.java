@@ -309,7 +309,8 @@ import java.util.List;
  *       패턴 쪽이 272 → 356 으로 오르면서 남은 몫이 84점뿐이라 그 절반도 쓰지 않는 쪽을 골랐다.
  *       ⚠ <b>2026-10-04</b> 에 패턴 쪽이 띄움 기둥 넷을 더해 <b>360</b> 이 되어 남은 몫은
  *       <b>80점</b>이다 — 나눠 그리는 판단은 그래서 더 맞는 쪽이 되었다. 같은 날 십자 예고를
- *       바닥 판으로 바꿔 패턴 쪽이 <b>322</b> 로 내려왔고 남은 몫은 <b>118점</b>이다</li>
+ *       바닥 판으로 바꿔 패턴 쪽이 <b>322</b> 로 내려왔고 남은 몫은 <b>118점</b>이었다. 2026-10-18 에 날갯짓에
+ *       종말의 비가 얹혀 <b>346</b>, 남은 몫 <b>94점</b>이다</li>
  * </ul>
  *
  * <p>⚠⚠ <b>선이 상시가 되면서 몫이 31 → 37 로 늘었다.</b> 한 틱 점수는
@@ -329,7 +330,8 @@ import java.util.List;
  * 10 + 5 + 2 + 1 = 18점이고, 전부 연결되는 130틱의 37 가 어느 틱보다 크다.
  *
  * <p>시험이 {@link #worstCasePointsPerTick} 을 못박고 패턴 몫과의 <b>합</b>을
- * {@code TrialLandingShock.MAX_POINTS_PER_TICK}(440)과 견준다 — <b>322 + 37 = 359</b> 이다.
+ * {@code TrialLandingShock.MAX_POINTS_PER_TICK}(440)과 견준다 — <b>346 + 37 = 383</b> 이다
+ * (2026-10-18 「폭풍 날갯짓」에 종말의 비가 얹혀 패턴 쪽이 322 → 346. 그 전 아래 서술의 359).
  * ⚠ <b>2026-10-04</b>: 옛 서술은 「356 + 37」이었다. 패턴 쪽이 <b>띄움 기둥 넷</b>을 더해
  * 356 → 360 이 되어 합이 397 이었다가, 같은 날 십자 예고를 바닥 판으로 바꿔 먼지 선과 흰 기둥
  * 벽을 걷으면서 360 → <b>322</b> 로 내려왔다({@code DragonLastStandPatternsTest} 가 322 를
@@ -594,7 +596,7 @@ public final class DragonLastStandObjects {
 	 * 예산({@code TrialLandingShock.MAX_POINTS_PER_TICK} = 440)에 84점만 남았다
 	 * ({@code DragonLastStandPatterns} 클래스 설명). ⚠ <b>2026-10-04</b> 에 띄움 기둥 넷이
 	 * 더해져 패턴 쪽은 360, 남은 몫은 80점이 되었다가 같은 날 십자 예고를 바닥 판으로 바꿔
-	 * <b>322</b>, 남은 몫 <b>118점</b>이 되었다 — 2 를 고른 까닭은 그대로 선다.
+	 * <b>322</b>, 남은 몫 <b>118점</b>이 되었다(2026-10-18 날갯짓의 비로 346 · 94점) — 2 를 고른 까닭은 그대로 선다.
 	 * 여섯 줄을 매 틱 다 그리면 61점이라 그 몫의
 	 * 대부분을 혼자 먹는다 — 나눠 그리면 <b>31점</b>이고, 다음 패턴을 늘릴 사람에게 남는 몫이
 	 * 두 배가 된다.
@@ -1058,6 +1060,30 @@ public final class DragonLastStandObjects {
 		wave = null;
 		owner = Long.MIN_VALUE;
 		firedWaves = 0;
+	}
+
+	/**
+	 * 끝까지 치른 파도 수 — 전투가 일시 중단될 때 {@code DragonLastStand.suspend} 가 거두기 <b>전에</b>
+	 * 읽는다. 도는 중이던 파도는 넣지 않는다({@link DragonTrialSuspend#clearedWaves}).
+	 */
+	static int clearedWaves() {
+		return DragonTrialSuspend.clearedWaves(firedWaves, wave != null);
+	}
+
+	/**
+	 * 다시 세운 판에 <b>이미 치른 파도 수</b>를 넘겨준다. {@code DragonLastStand.reenter} 가 부른다.
+	 *
+	 * <p>{@link #owner} 를 그 판의 원점으로 미리 적어 둔다 — {@link #tick} 첫 틱의 「원점이 다르면
+	 * 새로 연다」가 이 값을 0 으로 지우지 않게. 전에는 재시작으로 되살린 판이 파도를 처음부터 다시
+	 * 받았다(그때 문서의 「한 번 더 받는다」).
+	 *
+	 * @param clockBase 다시 세운 판의 시계 원점
+	 * @param cleared   이미 치른 파도 수
+	 */
+	static void resumeFrom(long clockBase, int cleared) {
+		clearState();
+		owner = clockBase;
+		firedWaves = Math.max(0, Math.min(THRESHOLDS.length, cleared));
 	}
 
 	/** 시험이 들여다보는 곳. 지금 파도가 도는가. */

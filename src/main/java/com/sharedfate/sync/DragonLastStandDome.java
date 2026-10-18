@@ -30,6 +30,32 @@ import net.minecraft.world.phys.Vec3;
  * ({@link #podiumPart})와 <b>원래 못 부수는 블록</b>({@link #unbreakable}) 둘뿐이다. 아래 「두 겹」과
  * 표는 그에 맞춰 고쳤다.
  *
+ * <h2>⚠⚠ 2026-10-18 밤 — 훑기 바닥이 <b>한 칸 낮았다</b>. 섬 맨 윗겹을 깎고 있었다</h2>
+ *
+ * <p>공개 배포 직전 검토가 찾았고 26.3 바이트코드로 다시 확인했다. 옛 설명은 「포디움 원점 {@code p.y} =
+ * 섬 표면 위 첫 빈 칸」이라 적었는데 <b>틀렸다</b> — {@code EnderDragonFight.spawnExitPortal} 은
+ * {@code getHeightmapPos(MOTION_BLOCKING_NO_LEAVES, …)} 에 <b>{@code .below()}</b> 를 붙여 원점을 잡는다.
+ * 곧 {@code p.y} 는 <b>섬 맨 윗블록 그 자체</b>(포디움 테두리·포털이 섬 표면과 같은 층)이고, 평평한 바닥에
+ * 선 사람의 발은 {@code p.y + 1}, 드래곤 발(기둥 {@code p.y … p.y + 3} 위)은 {@code p.y + 4} 다.
+ *
+ * <p>그래서 옛 훑기 바닥({@code 드래곤 발 − 4 = p.y})은 섬 맨 윗겹 위에 있었다. 10-18 전에는
+ * {@code DRAGON_IMMUNE} 이 엔드석을 지켜 가려졌지만, 「평평하게」로 그 겹을 걷자 반경 25 안에서 맨 윗블록이
+ * {@code p.y} 이상인 <b>모든 열</b>(포디움 제외)을 한 칸 깎아 출구 포털 단상이 한 칸 솟고, 수백~1,961칸을
+ * 초당 256칸씩 지웠다. 하이트맵 거름망도 그동안 한 열도 못 걸렀다({@code top = p.y} 가 바닥과 같았다).
+ *
+ * <ul>
+ *   <li><b>훑기 바닥 = {@code p.y + 1}</b>({@link #sweepFloorY}) — 섬 표면 위 첫 빈 칸. 사람이 처음 말한
+ *       「섬 표면보다 높은 것」 그대로다</li>
+ *   <li><b>포디움 원점은 바닐라가 적어 둔 값을 읽는다</b>({@link #podiumOriginY}, {@code exitPortalLocation}) —
+ *       기둥 위에 알이 있으면 하이트맵이 한 칸 올라가 「드래곤 발 − 4」가 한 칸 어긋나고 벽 횃불 보호도 함께
+ *       어긋났다. 못 읽거나 기둥 꼴이 안 맞으면 옛 셈({@code 드래곤 발 − 4})으로 돌아간다</li>
+ *   <li><b>먼지 연출을 한 번에 {@value #MAX_PUFFS_PER_SWEEP} 개로 자른다</b>({@link #MAX_PUFFS_PER_SWEEP}) —
+ *       열마다 하나라 최대 256 이었고 점 예산(5장)에 없었다</li>
+ * </ul>
+ *
+ * <p>아래 본문에서 「{@code sweepFloorY} = {@code p.y} = 표면 위 첫 빈 칸」이라 적힌 곳은 이 문단으로 읽을 것 —
+ * 숫자는 고쳤고 문장은 그때의 기록으로 둔 곳이 있다.
+ *
  * <h2>패턴이 아니다 — 상시 규칙이다</h2>
  *
  * <p>{@link DragonLastStand.Pattern} 으로 뽑히지 않는다. {@link DragonLastStandZone}(안전지대)와
@@ -49,11 +75,12 @@ import net.minecraft.world.phys.Vec3;
  *
  * <ol>
  *   <li><b>훑기 바닥보다 낮은 칸은 아예 읽지 않는다.</b> {@link #sweepFloorY} 가 <b>섬 표면 위의
- *       첫 빈 칸</b>이고, 부수는 것은 <b>{@code y ≥ sweepFloorY}</b> 뿐이다. 섬 표면의 맨 위
- *       블록은 그보다 <b>정확히 한 칸 아래</b>({@code sweepFloorY − 1})에 있다 — 근거는
+ *       첫 빈 칸</b>({@code 포디움 원점 + 1}, 2026-10-18 밤에 바로잡았다 — 위 문단)이고, 부수는 것은
+ *       <b>{@code y ≥ sweepFloorY}</b> 뿐이다. 섬 표면의 맨 위 블록(= 포디움 원점 높이)은 그보다
+ *       <b>정확히 한 칸 아래</b>({@code sweepFloorY − 1})에 있다 — 근거는
  *       {@link #sweepFloorY} 에 적어 두었다. 곧 <b>사람이 표면에 쌓은 것은 첫 칸부터 부수면서
- *       표면 자신은 한 번도 읽지 않는다</b>. 2026-10-01 에 바닥을 네 칸 내리면서 이 겹이
- *       <b>얇아졌다</b>(전에는 네 칸의 여유가 있었고 지금은 한 칸이다). 한 칸이면 충분한 것은
+ *       표면 자신은 한 번도 읽지 않는다</b>. 2026-10-01 에 바닥을 내리면서 이 겹이
+ *       <b>얇아졌다</b>(지금 여유는 한 칸이다). 한 칸이면 충분한 것은
  *       그 한 칸이 <b>계산으로 나온 값</b>이고 사람이 쌓는 높이와 무관하기 때문이지만, 여기서
  *       <b>한 칸이라도 더 내리면 섬 표면이 범위에 들어온다</b> — 그때 섬을 지키는 것은 아래 ②
  *       하나뿐이 되고 {@link #sweepFloorY} 의 하이트맵 거름망도 함께 죽는다. <b>더 내리지
@@ -74,10 +101,10 @@ import net.minecraft.world.phys.Vec3;
  *       <td>훑기 바닥 아래다(맨 위 블록이 {@code sweepFloorY − 1} 이다). ⚠ 2026-10-18 부터 <b>이것
  *           하나</b>다 — 훑기 바닥 <u>위</u>의 엔드석(둔덕)은 사람 지시로 부순다</td></tr>
  *   <tr><td><b>기반암 포디움 · 출구 포털</b></td>
- *       <td>⚠ <b>2026-10-01 부터 훑기 바닥 <u>위</u>다.</b> {@code EndPodiumFeature.place} 의
- *           바이트코드에서 확인한 자리는 기반암 기둥이
- *           {@code sweepFloorY … sweepFloorY + 3}, 포디움 테두리 기반암과 엔드 포털이
- *           {@code sweepFloorY} 다 — 곧 <b>넷 다 새 범위 안</b>이다. 2026-10-18 부터 <b>두 겹</b>이
+ *       <td>⚠ <b>기둥 셋과 알 자리 · 횃불은 훑기 바닥 <u>위</u>다.</b> {@code EndPodiumFeature.place} 의
+ *           바이트코드에서 확인한 자리는 기반암 기둥이 포디움 원점 {@code p.y … p.y + 3}, 포디움 테두리
+ *           기반암과 엔드 포털이 {@code p.y}(= 섬 맨 윗층, 훑기 바닥 {@code p.y + 1} 아래)다 — 곧 기둥
+ *           {@code p.y + 1 … p.y + 3} 과 알 · 횃불이 범위 안이다. 2026-10-18 부터 <b>두 겹</b>이
  *           지킨다 — {@link #podiumPart} 가 그 자리를 <b>좌표로</b> 건너뛰고(블록을 읽지도 않는다),
  *           설령 좌표가 틀려도 {@code bedrock}·{@code end_portal} 은 {@link #unbreakable} 이다.
  *           <b>한 칸도 안 없어진다</b></td></tr>
@@ -308,9 +335,10 @@ import net.minecraft.world.phys.Vec3;
  *       건너뛴다 — 아무것도 쌓지 않은 판에서는 <b>모든 열이 여기서 걸러진다</b></li>
  * </ol>
  *
- * <p>⚠ <b>2026-10-01 에 바닥을 네 칸 내렸는데도 ②가 여전히 모든 열을 거르는 까닭</b>을 적어 둔다.
- * 내린 바닥은 <b>섬 표면 위의 첫 빈 칸</b>({@code = 포디움 원점의 y}, 근거는
- * {@link #sweepFloorY})이고, 맨손 아레나에서 하이트맵이 돌려주는 「맨 위 블록의 y」는 섬 표면
+ * <p>⚠ <b>바닥이 섬 표면 바로 위인데도 ②가 모든 열을 거르는 까닭</b>을 적어 둔다.
+ * 바닥은 <b>섬 표면 위의 첫 빈 칸</b>({@code = 포디움 원점의 y + 1}, 근거는
+ * {@link #sweepFloorY}. ⚠ 2026-10-18 밤까지는 포디움 원점 그 자신이라 한 칸 낮았고, 이 거름망이 한 열도
+ * 못 걸렀다 — 클래스 설명 맨 위)이고, 맨손 아레나에서 하이트맵이 돌려주는 「맨 위 블록의 y」는 섬 표면
  * 그 자신이라 <b>{@code sweepFloorY − 1}</b> 이다. 곧 {@code top < sweepFloor} 가
  * <b>{@code sweepFloorY − 1 < sweepFloorY}</b> 로 참이 되어 열이 걸러진다 — <b>한 칸 차이로
  * 성립한다.</b> 여유가 한 칸뿐이므로 <b>바닥을 한 칸이라도 더 내리면 거름망이 통째로 죽는다</b>
@@ -396,13 +424,26 @@ public final class DragonLastStandDome {
 	 * 구조물은 모두 한 번에 없어지고</b>, 천장에 걸리는 것은 판 전체를 덮는 수준의 건축뿐이다.
 	 *
 	 * <p>천장이 필요한 까닭은 먼지 연출이 블록 갱신과 달리 <b>묶여 나가지 않기</b> 때문이다
-	 * ({@link #puff}). 연출을 열마다 하나로 줄여 두었으므로 꾸러미는 이 수를 넘지 않고, 그
-	 * <b>{@value #MAX_BREAKS_PER_SWEEP} 장이 한 틱에 나가도 파티클 예산
-	 * ({@code TrialLandingShock.MAX_POINTS_PER_TICK} = 440)보다 적다</b> — 곧 이 규칙이 가장
-	 * 바쁜 틱을 갈아치우는 일은 없다. 블록 갱신 쪽은 바닐라가 구획 단위로 묶어 보내므로
+	 * ({@link #puff}). 블록 갱신 쪽은 바닐라가 구획 단위로 묶어 보내므로
 	 * ({@code ChunkHolder.blockChanged}) 세지 않아도 된다.
+	 *
+	 * <p>⚠ <b>2026-10-18 밤 — 여기 적혀 있던 「256 장이 한 틱에 나가도 파티클 예산(440)보다 적다 — 이 규칙이
+	 * 가장 바쁜 틱을 갈아치우는 일은 없다」는 틀렸다.</b> 먼지 한 번이 클라이언트에서 {@code EXPLOSION} 입자
+	 * 하나라(26.3 {@code LevelEventHandler} 의 2008 갈래) 256 이면 256점이고, 훑기는 패턴과 같은 틱에 돈다 —
+	 * 패턴 최악 383 위에 얹히면 639 다. 그래서 먼지만 따로 {@link #MAX_PUFFS_PER_SWEEP} 로 자른다. 부수는
+	 * 수는 이 값 그대로다.
 	 */
 	static final int MAX_BREAKS_PER_SWEEP = 256;
+
+	/**
+	 * 한 번의 훑기에서 피우는 먼지({@link #puff}) 수의 천장. 2026-10-18 밤.
+	 *
+	 * <p>먼지 하나가 입자 하나(1점)이고 훑기는 패턴 · 오브젝트 파도와 같은 틱에 돈다. 그 둘의 최악 383
+	 * ({@code DragonLastStandPatterns} 346 + {@code DragonLastStandObjects} 37)에 이 값을 더해도 <b>이 페이즈가
+	 * 지키는 아래 끝 400</b> 안이어야 한다 — 383 + 16 = 399. 시험이 그 합을 붙든다. 넘는 열은 소리 없이
+	 * 부서진다(첫 훑기에 둔덕이 넓을 때뿐이고, 사람이 쌓은 지붕은 대개 이 안이다).
+	 */
+	static final int MAX_PUFFS_PER_SWEEP = 16;
 
 	/**
 	 * ⚠ <b>유체가 든 칸을 공기로 바꿀 때 주는 깃발.</b> {@code Block.UPDATE_CLIENTS}
@@ -438,10 +479,11 @@ public final class DragonLastStandDome {
 	 *
 	 * <p><b>왜 하필 이 값인가.</b> 기하 원점({@link #domeOriginY})이 포디움 원점 {@code p} 에서
 	 * {@code p.y + 4} 이고, 그 <b>4</b> 가 바로 이 상수다 — {@code EndPodiumFeature.place} 가
-	 * {@code p.above(0..3)} 에 기반암을 세우므로 하이트맵이 {@code p.y + 4} 를 돌려준다(셈은
-	 * {@link #sweepFloorY} 에 있다). 곧 <b>원점에서 이 값을 빼면 포디움 원점 {@code p.y} 가
-	 * 나오고, 그것이 섬 표면 위의 첫 빈 칸</b>이다. 같은 4 를 두 번 쓰는 것이 아니라 <b>한 번 쓴
-	 * 4 를 되돌리는 것</b>이라 이 상수가 이 자리에 맞다.
+	 * {@code p.above(0..3)} 에 기반암을 세우므로 하이트맵이 {@code p.y + 4} 를 돌려준다. 곧 <b>원점에서
+	 * 이 값을 빼면 포디움 원점 {@code p.y} 가 나온다</b>({@link #fallbackPodiumY} — 바닐라 값을 못 읽을 때의
+	 * 셈). 같은 4 를 두 번 쓰는 것이 아니라 <b>한 번 쓴 4 를 되돌리는 것</b>이라 이 상수가 이 자리에 맞다.
+	 * ⚠ 2026-10-18 밤까지 여기에 「그것이 섬 표면 위의 첫 빈 칸」이라 적혀 있었다 — {@code p.y} 는 섬
+	 * 맨 윗블록이고 첫 빈 칸은 {@code p.y + 1} 이다(클래스 설명 맨 위).
 	 *
 	 * <p>⚠ 판이 올라 바닐라가 기둥 높이를 바꾸면 <b>훑기 바닥이 저절로 따라 움직인다.</b> 그것이
 	 * 옳은 쪽이다 — 이 값은 「사람이 고른 두께」가 아니라 <b>포디움 기하에서 나오는 값</b>이다.
@@ -456,6 +498,9 @@ public final class DragonLastStandDome {
 	 */
 	private static long lastSweep = Long.MIN_VALUE;
 
+	/** 이번 훑기에서 피운 먼지 수. {@link #sweep} 첫머리에서 0 으로 돌린다({@link #MAX_PUFFS_PER_SWEEP}). */
+	private static int puffs;
+
 	private DragonLastStandDome() {
 	}
 
@@ -466,16 +511,18 @@ public final class DragonLastStandDome {
 	 *
 	 * <p>{@value #SWEEP_TICKS} 틱마다 한 번만 실제로 훑는다.
 	 *
-	 * @param center 드래곤을 못박아 둔 자리. 반구의 중심이고 그 {@code y} 에서 기하 원점
-	 *               ({@link #domeOriginY})과 훑기 바닥({@link #sweepFloorY})이 함께 나온다
-	 * @param now    받은 틱. {@code getGameTime} 을 여기서 다시 읽지 않는다
+	 * @param center   드래곤을 못박아 둔 자리. 반구의 중심이고 그 {@code y} 에서 기하 원점
+	 *                 ({@link #domeOriginY})이 나온다
+	 * @param podiumY  포디움 원점의 높이({@link #podiumOriginY}). 훑기 바닥({@link #sweepFloorY})과
+	 *                 포디움 좌표({@link #podiumPart})가 여기서 나온다
+	 * @param now      받은 틱. {@code getGameTime} 을 여기서 다시 읽지 않는다
 	 */
-	static void tick(ServerLevel end, Vec3 center, long now) {
+	static void tick(ServerLevel end, Vec3 center, int podiumY, long now) {
 		if (lastSweep != Long.MIN_VALUE && now - lastSweep < SWEEP_TICKS) {
 			return;
 		}
 		lastSweep = now;
-		sweep(end, center);
+		sweep(end, center, podiumY);
 	}
 
 	/**
@@ -487,15 +534,16 @@ public final class DragonLastStandDome {
 	 *         있었고, 그것이 천장을 말없이 먹던 길이다). ⚠ <b>같은 날 용암이 이 수에 들어왔다</b> —
 	 *         사람이 「전부 고쳐」라고 해서 넓혔으니 이제 용암 한 칸도 센 값이다
 	 */
-	static int sweep(ServerLevel end, Vec3 center) {
+	static int sweep(ServerLevel end, Vec3 center, int podiumY) {
 		if (!end.getGameRules().get(GameRules.MOB_GRIEFING)) {
 			// 게임룰을 존중한다. 까닭은 클래스 설명의 「게임룰」에 있다.
 			return 0;
 		}
 		// ⚠ 두 높이를 갈라 쓴다. origin 은 반구의 기하 원점이고(천장과 domeTop 이 여기서 나온다)
-		// sweepFloor 는 훑기 바닥이다 — 바닥만 네 칸 아래다. 까닭은 sweepFloorY 에 있다.
+		// sweepFloor 는 훑기 바닥이다 — 섬 표면 위 첫 빈 칸(포디움 원점 + 1). 까닭은 sweepFloorY 에 있다.
 		int origin = domeOriginY(center);
-		int sweepFloor = sweepFloorY(center);
+		int sweepFloor = sweepFloorY(podiumY);
+		puffs = 0;
 		int ceiling = origin + Mth.floor(RADIUS);
 		int minX = Mth.floor(center.x - RADIUS);
 		int maxX = Mth.floor(center.x + RADIUS);
@@ -511,7 +559,7 @@ public final class DragonLastStandDome {
 				if (chunk == null || !holdsBlocksAbove(chunk, sweepFloor, ceiling)) {
 					continue;
 				}
-				broken += sweepChunk(end, chunk, chunkX, chunkZ, center, origin, sweepFloor,
+				broken += sweepChunk(end, chunk, chunkX, chunkZ, center, origin, sweepFloor, podiumY,
 						ceiling, minX, maxX, minZ, maxZ, at, MAX_BREAKS_PER_SWEEP - broken);
 				if (broken >= MAX_BREAKS_PER_SWEEP) {
 					return broken;
@@ -572,11 +620,12 @@ public final class DragonLastStandDome {
 	 *
 	 * @param origin     반구의 기하 원점(= 드래곤 발밑). 천장 계산에만 쓴다
 	 * @param sweepFloor 훑기 바닥. 하이트맵 거름망과 열의 아래끝이 이것이다
+	 * @param podiumY    포디움 원점의 높이. {@link #podiumPart} 의 {@code dy} 가 여기서 잰다
 	 * @param budget     아직 부술 수 있는 블록 수
 	 * @return 이 청크에서 부순 수
 	 */
 	private static int sweepChunk(ServerLevel end, LevelChunk chunk, int chunkX, int chunkZ,
-			Vec3 center, int origin, int sweepFloor, int ceiling,
+			Vec3 center, int origin, int sweepFloor, int podiumY, int ceiling,
 			int minX, int maxX, int minZ, int maxZ,
 			BlockPos.MutableBlockPos at, int budget) {
 		int broken = 0;
@@ -603,9 +652,9 @@ public final class DragonLastStandDome {
 					continue;
 				}
 				// 천장은 origin 으로 잰다(반구 모양) · 아래끝은 sweepFloor 다(훑는 범위).
-				// domeTop 은 최소가 origin 이고 origin = sweepFloor + PODIUM_PILLAR_HEIGHT 이므로
-				// highest 가 바닥보다 낮아지는 일은 없다. top 도 위에서 걸러 sweepFloor 이상이다.
-				broken += sweepColumn(end, chunk, sweepFloor, Math.min(top,
+				// domeTop 은 최소가 origin 이고 origin 은 기둥 꼭대기 위라 sweepFloor 보다 높다 —
+				// 설령 아니어도 sweepColumn 의 루프가 한 번도 안 돌 뿐이다. top 도 위에서 걸러 sweepFloor 이상이다.
+				broken += sweepColumn(end, chunk, sweepFloor, podiumY, Math.min(top,
 						Math.min(ceiling, domeTop(origin, flat))), x, z,
 						x - Mth.floor(center.x), z - Mth.floor(center.z), at, budget - broken);
 			}
@@ -630,21 +679,23 @@ public final class DragonLastStandDome {
 	 * {@link #sweepChunk} 의 주석에 적어 두었다.
 	 *
 	 * @param sweepFloor 열의 아래끝. <b>기하 원점이 아니라 훑기 바닥</b>이다
+	 * @param podiumY    포디움 원점의 높이 — {@link #podiumPart} 의 {@code dy} 는 여기서 잰다(훑기 바닥이 아니다)
 	 * @param highest    이 열에서 부술 수 있는 가장 높은 칸
 	 * @param podiumDx   포디움 원점에서 이 열까지의 x 차이({@link #podiumPart})
 	 * @param podiumDz   같은 z 차이
 	 * @return 부순 수
 	 */
-	private static int sweepColumn(ServerLevel end, LevelChunk chunk, int sweepFloor,
+	private static int sweepColumn(ServerLevel end, LevelChunk chunk, int sweepFloor, int podiumY,
 			int highest, int x, int z, int podiumDx, int podiumDz,
 			BlockPos.MutableBlockPos at, int budget) {
 		int broken = 0;
 		int puffAt = Integer.MIN_VALUE;
 		for (int y = highest; y >= sweepFloor && broken < budget; y--) {
-			// ⚠ 2026-10-18 부터 포디움은 <b>좌표로</b> 뺀다. 아래 네 칸에 포디움(기반암 기둥·테두리·
-			// 엔드 포털·횃불)이 들어오고, 사람이 엔드석까지 부수라고 해서 DRAGON_IMMUNE 을 더는 안
-			// 묻는다 — 알 자리까지 여기서 지킨다(클래스 설명의 표).
-			if (podiumPart(podiumDx, y - sweepFloor, podiumDz)) {
+			// ⚠ 2026-10-18 부터 포디움은 <b>좌표로</b> 뺀다. 바닥 위에 포디움(기반암 기둥·횃불·알 자리)이
+			// 들어오고, 사람이 엔드석까지 부수라고 해서 DRAGON_IMMUNE 을 더는 안 묻는다 — 알 자리까지 여기서
+			// 지킨다(클래스 설명의 표). dy 는 포디움 원점에서 잰다 — 2026-10-18 밤까지 훑기 바닥(드래곤 발 − 4)
+			// 에서 재어 기둥 위에 알이 있으면 횃불 자리가 한 칸 어긋났다.
+			if (podiumPart(podiumDx, y - podiumY, podiumDz)) {
 				continue;
 			}
 			at.set(x, y, z);
@@ -667,7 +718,8 @@ public final class DragonLastStandDome {
 				puffAt = y;
 			}
 		}
-		if (puffAt != Integer.MIN_VALUE) {
+		if (puffAt != Integer.MIN_VALUE && puffs < MAX_PUFFS_PER_SWEEP) {
+			puffs++;
 			puff(end, x, puffAt, z);
 		}
 		// center 를 안 받는다. 반구 천장은 부르는 쪽이 이미 highest 에 넣어 두었다.
@@ -779,7 +831,8 @@ public final class DragonLastStandDome {
 	 * {@code checkWalls} 끝에서 <b>한 번</b> 쏘는 바로 그 사건이다. 블록마다 쏘면 한 훑기에
 	 * 수백 꾸러미가 되고(블록 갱신은 바닐라가 구획 단위로 묶어 주지만 이것은 안 묶인다), 한
 	 * 훑기에 하나만 쏘면 스물다섯 칸이 소리 없이 사라진다. 열마다 하나가 그 사이다 — 지붕이
-	 * 갈려 나가는 모습이 열 수만큼 보이고 개수는 {@link #MAX_BREAKS_PER_SWEEP} 아래다.
+	 * 갈려 나가는 모습이 열 수만큼 보인다. ⚠ 2026-10-18 밤부터 한 훑기에 {@link #MAX_PUFFS_PER_SWEEP} 개까지다 —
+	 * 하나가 클라이언트에서 {@code EXPLOSION} 입자 하나라 점 예산에 든다(그 상수의 설명).
 	 */
 	private static void puff(ServerLevel end, int x, int y, int z) {
 		end.levelEvent(LevelEvent.PARTICLES_DRAGON_BLOCK_BREAK, new BlockPos(x, y, z), 0);
@@ -817,12 +870,12 @@ public final class DragonLastStandDome {
 	 * <p>이고, 드래곤의 발이 정확히 그 높이에 있으므로 읽는 법이 하나 더 있다 —
 	 * <b>「드래곤 발밑」</b>.
 	 *
-	 * <p>⚠ <b>포디움 원점의 {@code y} 를 직접 읽을 수는 없다.</b>
-	 * {@code EnderDragonFight.getPodiumLocation} 은 {@code origin} 에 {@code BlockPos.ZERO} 를
-	 * 더한 것이라 {@code y} 가 0 이고, 포디움의 진짜 높이는 바닐라도 그 자리에서 하이트맵으로
-	 * 찾는다({@code EnderDragonFight} 바이트코드에서 확인했다). 그래서 하이트맵으로 잡은
-	 * 드래곤의 자리가 <b>이 값을 얻는 유일한 길</b>이고, {@link #sweepFloorY} 가 거기서 4 를
-	 * 되돌려 포디움 원점을 되찾는다.
+	 * <p>⚠ <b>(2026-10-18 밤에 고쳤다) 포디움 원점의 {@code y} 는 바닐라가 적어 둔 값이 있다.</b>
+	 * {@code EnderDragonFight.getPodiumLocation} 은 {@code y} 가 0 이지만, 포털을 세울 때 하이트맵에서
+	 * 한 칸 내린 자리를 {@code exitPortalLocation} 에 적어 둔다. 전에는 「이 값을 얻는 유일한 길이 드래곤
+	 * 자리」라 적고 거기서 4 를 되돌렸는데, 기둥 위에 알이 있으면 하이트맵이 한 칸 올라가 그 셈이 어긋났다.
+	 * 지금은 {@link #podiumOriginY} 가 바닐라 값을 먼저 읽고, 못 읽을 때만 {@link #fallbackPodiumY} 로 4 를
+	 * 되돌린다.
 	 *
 	 * <p>⚠⚠ <b>남아 있는 구멍 하나를 적어 둔다.</b> 이 값이 {@code DragonLastStand.podium()} 의
 	 * 하이트맵에서 나오므로, 누가 <b>진입 전에 포디움 정중앙(한 칸)에 탑을 쌓아 두면</b> 기하
@@ -882,9 +935,87 @@ public final class DragonLastStandDome {
 	 * <p>⚠ 새 범위에는 <b>포디움 구조물이 들어온다</b>(기반암 기둥 {@code p.y..p.y + 3} · 테두리
 	 * 기반암 {@code p.y} · 엔드 포털 {@code p.y}). 2026-10-18 부터 {@link #podiumPart} 가 그 자리(벽 횃불
 	 * 넷과 알 자리까지)를 좌표로 빼므로 한 칸도 안 부서진다 — 근거는 클래스 설명의 표에 있다.
+	 *
+	 * <h2>⚠⚠ 2026-10-18 밤 — 위 셈이 한 칸 틀렸다. 바닥은 {@code p.y + 1} 이다</h2>
+	 *
+	 * <p>위 「{@code EnderDragonFight} 가 그 {@code p} 를 하이트맵으로 잡으므로 {@code p.y} 는 섬 표면 위의 첫
+	 * 빈 칸」이 거짓이었다. 26.3 {@code spawnExitPortal} 바이트코드가
+	 * {@code getHeightmapPos(MOTION_BLOCKING_NO_LEAVES, podium).below()} 다 — 하이트맵(첫 빈 칸)에서 <b>한 칸
+	 * 내린</b> 섬 맨 윗블록이 {@code p.y} 이고, {@code EndPodiumFeature.place} 는 그 층({@code p.y})에 테두리와
+	 * 포털을, 그 아래({@code p.y − 1})에 받침을 깐다. 곧 위 두 성질이 둘 다 거짓이었다 — 섬 맨 윗겹을 읽어
+	 * 부쉈고({@code DRAGON_IMMUNE} 을 걷은 10-18 부터 실제로 깎였다), 맨손 아레나에서 {@code top = p.y} 가
+	 * 바닥과 같아 거름망이 한 열도 못 걸렀다.
+	 *
+	 * <p>지금 바닥은 <b>{@code podiumY + 1}</b> 이고 위 두 성질은 이 값으로 참이다 — 섬 맨 윗블록
+	 * {@code podiumY} 는 바닥보다 한 칸 아래고, 사람이 섬에 서서 놓는 첫 블록이 바닥 높이다. 포디움 원점은
+	 * 드래곤 자리에서 되짚지 않고 바닐라 값을 읽는다({@link #podiumOriginY}).
+	 *
+	 * @param podiumY 포디움 원점의 높이 — 섬 맨 윗블록({@link #podiumOriginY})
 	 */
-	static int sweepFloorY(Vec3 center) {
-		return domeOriginY(center) - PODIUM_PILLAR_HEIGHT;
+	static int sweepFloorY(int podiumY) {
+		return podiumY + 1;
+	}
+
+	/**
+	 * 바닐라 값을 못 읽을 때의 포디움 원점 — <b>드래곤 발 − 기둥 높이</b>. 맨손 포디움에서 드래곤이 기둥
+	 * 꼭대기({@code p.y + 3}) 바로 위에 앉으므로 맞는 값이다. 기둥 위에 알이나 블록이 있으면 그만큼 높게
+	 * 나온다 — 높게 틀리면 덜 부술 뿐 섬을 깎지 않는다.
+	 */
+	static int fallbackPodiumY(Vec3 anchor) {
+		return domeOriginY(anchor) - PODIUM_PILLAR_HEIGHT;
+	}
+
+	/**
+	 * <b>포디움 원점의 높이</b>(= 섬 맨 윗블록 · 기반암 기둥 밑동). {@code DragonLastStand} 가 판마다 한 번
+	 * 읽어 훑기 바닥과 진입 보호막의 바닥 높이로 쓴다.
+	 *
+	 * <p>바닐라 {@code EnderDragonFight.exitPortalLocation} 을 읽는다({@code EnderDragonFightAccessor}).
+	 * 못 읽거나 아래 {@link #podiumOriginY(BlockPos, Vec3, java.util.function.IntPredicate)} 의 검사에서
+	 * 떨어지면 {@link #fallbackPodiumY} 다.
+	 */
+	static int podiumOriginY(ServerLevel end, Vec3 anchor) {
+		BlockPos portal = end.getDragonFight() instanceof com.sharedfate.mixin.EnderDragonFightAccessor accessor
+				? accessor.sharedfate$exitPortalLocation()
+				: null;
+		BlockPos.MutableBlockPos probe = new BlockPos.MutableBlockPos();
+		return podiumOriginY(portal, anchor, y -> portal != null
+				&& end.getBlockState(probe.set(portal.getX(), y, portal.getZ())).is(Blocks.BEDROCK));
+	}
+
+	/**
+	 * {@link #podiumOriginY(ServerLevel, Vec3)} 의 판단을 값으로만 다시 적은 것. 월드 없이 시험이 굴린다.
+	 *
+	 * <p>바닐라 값을 그대로 믿지 않고 <b>세 가지</b>를 본다 — 바닥을 한 칸이라도 낮게 잡으면 섬 맨 윗겹을
+	 * 깎으므로, 의심스러우면 옛 셈으로 돌아간다.
+	 *
+	 * <ol>
+	 *   <li><b>같은 기둥이다</b> — x · z 가 드래곤을 앉힌 칸과 같다(둘 다 {@code getPodiumLocation} 에서 나온다)</li>
+	 *   <li><b>드래곤보다 아래다</b> — 옛 셈({@link #fallbackPodiumY}) 이하. 알 · 쌓은 블록이 드래곤을 올릴 수는
+	 *       있어도 내릴 수는 없다</li>
+	 *   <li><b>기둥 꼴이다</b> — {@code y … y + 3} 이 기반암이고 {@code y + 4} 는 아니다. 26.3
+	 *       {@code spawnExitPortal} 은 원점을 못 찾은 채 포디움이 이미 서 있으면 기반암을 따라 내려가며
+	 *       ({@code while (BEDROCK && y > 63) below()}) 받침 밑까지 갈 수 있다 — 그 값은 여기서 떨어진다</li>
+	 * </ol>
+	 *
+	 * @param exitPortal 바닐라가 적어 둔 포디움 원점. 없으면 {@code null}
+	 * @param anchor     드래곤을 앉힌 자리
+	 * @param bedrockAt  그 기둥 칸의 높이 {@code y} 가 기반암인가
+	 */
+	static int podiumOriginY(@org.jetbrains.annotations.Nullable BlockPos exitPortal, Vec3 anchor,
+			java.util.function.IntPredicate bedrockAt) {
+		int fallback = fallbackPodiumY(anchor);
+		if (exitPortal == null
+				|| exitPortal.getX() != Mth.floor(anchor.x) || exitPortal.getZ() != Mth.floor(anchor.z)
+				|| exitPortal.getY() > fallback) {
+			return fallback;
+		}
+		int y = exitPortal.getY();
+		for (int dy = 0; dy < PODIUM_PILLAR_HEIGHT; dy++) {
+			if (!bedrockAt.test(y + dy)) {
+				return fallback;
+			}
+		}
+		return bedrockAt.test(y + PODIUM_PILLAR_HEIGHT) ? fallback : y;
 	}
 
 	/** 칸 가운데에서 잰 수평 거리의 제곱. */
@@ -965,8 +1096,10 @@ public final class DragonLastStandDome {
 	}
 
 	/**
-	 * <b>출구 포털 포디움</b>의 칸인가. 포디움 원점 {@code p}(= 훑기 바닥 · 기둥 밑동)에서 잰 차이로
-	 * 묻는다 — {@code dy = y − sweepFloorY}.
+	 * <b>출구 포털 포디움</b>의 칸인가. 포디움 원점 {@code p}(= 섬 맨 윗블록 · 기둥 밑동,
+	 * {@link #podiumOriginY})에서 잰 차이로 묻는다 — {@code dy = y − podiumY}. ⚠ 2026-10-18 밤까지는
+	 * {@code y − sweepFloorY} 였고 그 바닥이 드래곤 자리에서 되짚은 값이라, 기둥 위에 알이 있으면 한 칸
+	 * 어긋났다. 지금 훑기 바닥이 {@code p.y + 1} 이라 {@code dy == 0} 층(테두리 · 포털)은 아예 안 읽힌다.
 	 *
 	 * <p>26.3 {@code EndPodiumFeature.place} 바이트코드에서 읽은 자리 그대로다.
 	 *
@@ -1039,7 +1172,8 @@ public final class DragonLastStandDome {
 		int minZ = Mth.floor(centerZ - RADIUS);
 		int maxZ = Mth.floor(centerZ + RADIUS);
 		int chunks = ((maxX >> 4) - (minX >> 4) + 1) * ((maxZ >> 4) - (minZ >> 4) + 1);
-		int sweepFloor = domeOriginY - PODIUM_PILLAR_HEIGHT;
+		// 맨손 포디움이라 포디움 원점 = 원점 − 4 이고 바닥은 그 한 칸 위다(2026-10-18 밤).
+		int sweepFloor = sweepFloorY(domeOriginY - PODIUM_PILLAR_HEIGHT);
 		int sections = (((domeOriginY + Mth.floor(RADIUS)) >> 4) - (sweepFloor >> 4)) + 1;
 		return chunks * sections;
 	}

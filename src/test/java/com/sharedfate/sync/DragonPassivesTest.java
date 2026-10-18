@@ -88,4 +88,24 @@ class DragonPassivesTest {
 		assertTrue(!DragonPerch.holdsTakeoff() && !DragonPerch.rangedImmune(),
 				"드래곤이 없는 틱에 깃발이 켜진 채 남는다 — 그러면 아무도 내리지 않는다");
 	}
+
+	/**
+	 * 입장 연출 동안 연쇄 포격이 쉬어도 <b>처음 열린 전투</b>는 그대로다 — 연출이 첫 포격 예고보다
+	 * 먼저 끝난다.
+	 *
+	 * <p>쉬는 것은 연출 도중 끊겼다 이어져 연출이 처음부터 다시 도는 전투를 위한 것이다. 연출을
+	 * 늘리거나 주기를 줄여 이 부등식이 뒤집히면 첫 포격이 사라지므로 여기서 먼저 멈춘다.
+	 */
+	@Test
+	void 입장_연출은_첫_포격_예고보다_먼저_끝난다() {
+		assertTrue(TrialEntrance.CINEMATIC_TICKS
+						< DragonFireBarrage.PERIOD_TICKS - DragonFireBarrage.LEAD_TICKS,
+				"입장 연출 " + TrialEntrance.CINEMATIC_TICKS + "틱이 첫 포격 예고("
+						+ (DragonFireBarrage.PERIOD_TICKS - DragonFireBarrage.LEAD_TICKS)
+						+ "틱)와 겹친다 — 연출 중 쉬는 포격이 첫 전투에서도 빠진다");
+		// 연출 중이면 월드가 있어도 포격 쪽으로 들어가지 않는다. 월드 없이 볼 수 있는 갈래는
+		// null 뿐이라, 여기서는 「터지지 않고 돌아온다」만 본다.
+		DragonPassives.tick(null, null, null, 0L, 0L, true);
+		assertNull(DragonFireBarrage.active());
+	}
 }

@@ -114,10 +114,13 @@ class DragonLastStandShieldTest {
 	}
 
 	/**
-	 * ⚠ <b>재시작으로 되살린 판에는 보호막이 없다.</b>
+	 * ⚠ <b>진입 연출이 없는 판에는 보호막이 없다.</b> 보호막은 연출에 딸린 것이다.
 	 *
-	 * <p>{@code DragonLastStand.resume} 은 아무것도 다시 주지 않는다 — 진입 연출도 체력 +20%p 도.
-	 * 보호막만 다시 서면 「서버를 껐다 켤 때마다 11초씩 안 맞는 드래곤」이 된다.
+	 * <p>2026-10-18 전에는 재시작으로 되살린 판({@code DragonLastStand.resume})이 연출 없이 서서 이 판이었다.
+	 * 이제 일시 중단·재시작 뒤 다시 세우는 판({@code DragonLastStand.reenter})도 <b>회복 없는 진입 연출</b>을
+	 * 처음부터 돌려 보호막이 첫 패턴까지 선다 — 다시 접속해 청크를 받는 동안 맞지 않게. 「껐다 켤 때마다
+	 * 안 맞는 드래곤」이 되지 않는 것은 그 판이 체력을 다시 주지 않아서다({@code DragonLastStandEntryTest}
+	 * 의 「다시 세운 판은 회복을 주지 않는다」). 연출이 없는 판은 이제 시험이 꽂을 때뿐이지만 규칙은 그대로다.
 	 */
 	@Test
 	void 되살린_판에는_보호막이_없다() {
@@ -270,11 +273,35 @@ class DragonLastStandShieldTest {
 		assertTrue(DragonLastStandShield.DOME_RADIUS < DragonLastStandEntry.BEACON_HALF_SIDE,
 				"막이 보라 신호기 넷보다 밖이면 「빛 안의 보호막」으로 안 읽힌다");
 		for (int index = 0; index < DragonLastStandShield.DOME_POINTS; index++) {
-			Vec3 at = DragonLastStandShield.domeOffset(index);
+			Vec3 at = DragonLastStandShield.domeOffset(index, 0.0);
 			assertEquals(DragonLastStandShield.DOME_RADIUS, at.length(), 1.0E-6,
 					index + "번째 점이 반구 위가 아니다");
 			assertTrue(at.y >= 0.0, index + "번째 점이 땅 밑이다 — 보이지 않는 점에 예산을 쓴다");
 		}
+	}
+
+	/**
+	 * ⚠ <b>막 밑자락이 섬 바닥까지 내려온다</b>(2026-10-18 밤). 드래곤은 기둥 꼭대기(섬 표면보다 세 칸 위)에 앉아
+	 * 반구만 그리면 밑동이 바닥에서 떠 보였다. 같은 구를 바닥까지 내려 긋고, 바닥 밑에는 한 점도 안 쓴다.
+	 */
+	@Test
+	void 막_밑자락이_바닥까지_내려오고_바닥_밑은_없다() {
+		double skirt = 3.0;
+		double lowest = Double.MAX_VALUE;
+		double highest = -Double.MAX_VALUE;
+		for (int index = 0; index < DragonLastStandShield.DOME_POINTS; index++) {
+			Vec3 at = DragonLastStandShield.domeOffset(index, skirt);
+			assertEquals(DragonLastStandShield.DOME_RADIUS, at.length(), 1.0E-6, index + "번째 점이 구 위가 아니다");
+			assertTrue(at.y >= -skirt, index + "번째 점이 섬 바닥 밑이다");
+			lowest = Math.min(lowest, at.y);
+			highest = Math.max(highest, at.y);
+		}
+		assertTrue(lowest < -skirt + 0.2, "밑자락이 바닥에 닿지 않는다 — 가장 낮은 점 " + lowest);
+		assertTrue(highest > DragonLastStandShield.DOME_RADIUS - 0.2, "꼭대기가 내려앉았다 — 몸이 막 위로 나온다");
+		// 점 사이가 옛 반구(180점 · 약 1.7칸)보다 성기지 않다 — 겉넓이 비례.
+		double area = 2.0 * Math.PI * DragonLastStandShield.DOME_RADIUS * (DragonLastStandShield.DOME_RADIUS + skirt);
+		double oldArea = 2.0 * Math.PI * DragonLastStandShield.DOME_RADIUS * DragonLastStandShield.DOME_RADIUS;
+		assertTrue(area / DragonLastStandShield.DOME_POINTS <= oldArea / 180.0 + 1.0E-9, "막이 옛 반구보다 성기다");
 	}
 
 	/**
@@ -289,9 +316,9 @@ class DragonLastStandShieldTest {
 				"나눠 그리기가 딱 떨어지지 않으면 위상에 따라 한 점 더 나간다 — 셈을 다시 할 것");
 		assertTrue(DragonLastStandShield.DOME_STRIDE < 8,
 				"먼지 수명(최소 8틱)보다 길게 나누면 막이 영영 안 닫힌다");
-		assertEquals(84, DragonLastStandShield.worstShieldTickPoints(),
-				"반구 36 + 막힘 불꽃 6 + 하강 궤적·흰 나선 12 + 띠 10 + 파동 고리 16 + 돌풍 4"
-						+ " — 값을 바꿨으면 클래스 설명의 표도 고칠 것");
+		assertEquals(88, DragonLastStandShield.worstShieldTickPoints(),
+				"반구 40(240 ÷ 6, 2026-10-18 밤 밑자락) + 막힘 불꽃 6 + 하강 궤적·흰 나선 12 + 띠 10 + 파동 고리 16"
+						+ " + 돌풍 4 — 값을 바꿨으면 클래스 설명의 표도 고칠 것");
 		// 2026-10-18 — 빨간 기둥 벽(진입부터 한 틱 39점)을 걷은 몫으로 띠·파동 고리·돌풍·흰 나선을 더했다.
 		// 옛 「보호막 54 + 벽 39 = 93」 안에 머문다.
 		assertTrue(DragonLastStandShield.worstShieldTickPoints() <= 54 + 39,
@@ -373,6 +400,63 @@ class DragonLastStandShieldTest {
 				DragonLastStandShield.DOME_RADIUS + DragonLastStandShield.REPEL_VERTICAL_SLACK + 0.1),
 				"막 한참 위 사람을 밀었다");
 		assertTrue(DragonLastStandShield.repelWanted(2.0, 1.5) > 0.0, "막 안에 선 사람을 안 밀었다");
+		// ⚠ 2026-10-18 밤 — 높이는 막 밑동(섬 바닥)에서 잰다. 바닥에 선 사람(0)과 한두 칸 낮은 바닥에 선 사람도
+		// 민다. 전에는 드래곤 발에서 재어 바닥에 선 사람이 −3(경계), 한 칸 낮으면 −4 로 안 밀렸다.
+		assertTrue(DragonLastStandShield.repelWanted(3.0, 0.0) > 0.0, "섬 바닥에 선 사람을 안 밀었다");
+		assertTrue(DragonLastStandShield.repelWanted(3.0, -1.0) > 0.0, "한 칸 낮은 바닥에 선 사람을 안 밀었다");
+		assertTrue(DragonLastStandShield.repelWanted(3.0, -2.0) > 0.0, "두 칸 낮은 바닥에 선 사람을 안 밀었다");
+	}
+
+	/**
+	 * ⚠⚠ <b>바닥에 선 사람이 실제로 15칸 줄까지 밀리고, 뛰어도 천장을 못 넘는다</b>(2026-10-18 밤).
+	 *
+	 * <p>전에는 날개의 공중 감쇠 속도를 빌려 써 바닥에서 0.198배만 밀렸다 — 3칸에 선 사람이 2.4칸, 10틱 사이
+	 * 달려 들어오는 2.8칸을 못 이겼다. 여기서 바닥 · 공중 · 「밀린 직후 뛰기」를 셈으로 굴려 본다.
+	 */
+	@Test
+	void 바닥에_선_사람이_15칸_줄까지_밀리고_뛰어도_천장을_못_넘는다() {
+		double groundDrag = DragonLastStandPatterns.GROUND_DRAG;
+		double airDrag = TrialEnderStorm.AIR_DRAG;
+		for (double distance = 0.5; distance <= DragonLastStandShield.REPEL_TO; distance += 0.5) {
+			for (double safeReach = 0.0; safeReach <= 40.0; safeReach += 1.0) {
+				double travel = DragonLastStandShield.repelTravel(distance, safeReach);
+				assertTrue(travel <= distance + 1.0E-9, "천장 둘을 지난 거리보다 멀리 민다");
+				double grounded = DragonLastStandShield.repelSpeed(travel, false);
+				double airborne = DragonLastStandShield.repelSpeed(travel, true);
+				assertEquals(travel, grounded / (1.0 - groundDrag), 1.0E-9, "바닥에서 그 거리를 그대로 안 간다");
+				assertEquals(travel, airborne / (1.0 - airDrag), 1.0E-9, "공중에서 그 거리를 그대로 안 간다");
+				// 바닥 속도로 밀린 직후 뛰어 통째로 떠 있어도 천장 끝을 못 넘는다.
+				assertTrue(grounded / (1.0 - airDrag) <= safeReach + 1.0E-9,
+						"바닥 속도로 밀린 뒤 뛰면 천장 끝(" + safeReach + ")을 넘는다 — " + grounded / (1.0 - airDrag));
+			}
+		}
+
+		// 평평한 섬(땅 끊김 없음) · 드래곤이 (0.5, 0.5). 3칸에 선 사람을 박자마다 민다.
+		// 가까이 붙은 사람은 한 박자에 15칸까지 못 간다 — 뛰어도 반경 32 를 못 넘게 자르기 때문이다. 대신 두
+		// 박자(1초) 안에 미는 반경(12) 밖으로 나간다.
+		double x = 3.5;
+		int beats = 0;
+		while (Math.abs(x - 0.5) <= DragonLastStandShield.REPEL_RADIUS && beats < 5) {
+			double from = Math.abs(x - 0.5);
+			double wanted = DragonLastStandShield.repelWanted(from, 0.0);
+			Vec3 outward = new Vec3(1.0, 0.0, 0.0);
+			double distance = TrialEnderStorm.pushDistance(x, 0.5, outward, wanted);
+			double safeReach = TrialEnderStorm.pushDistance(x, 0.5, outward, Double.MAX_VALUE);
+			x += DragonLastStandShield.repelTravel(distance, safeReach);
+			beats++;
+		}
+		assertTrue(beats <= 2, "3칸에 선 사람이 두 박자(1초) 안에 막 둘레 밖으로 안 나간다 — " + beats + "박자, " + x);
+		assertTrue(Math.abs(x - 0.5) <= DragonLastStandShield.REPEL_TO + 1.0E-9, "15칸 줄을 넘어 밀었다");
+		// 11칸 밖이면 한 박자에 15칸 줄이다.
+		double from = 11.5;
+		double reach = TrialEnderStorm.pushDistance(from + 0.5, 0.5, new Vec3(1.0, 0.0, 0.0), Double.MAX_VALUE);
+		assertEquals(DragonLastStandShield.REPEL_TO - from,
+				DragonLastStandShield.repelTravel(DragonLastStandShield.REPEL_TO - from, reach), 1.0E-9);
+		// 한 박자 사이(10틱) 달려 들어오는 2.8칸(질주 0.28칸/틱)보다 미는 거리가 길다 — 막 둘레에 설 수 없다.
+		double edge = DragonLastStandShield.REPEL_RADIUS - 0.1;
+		double edgeReach = TrialEnderStorm.pushDistance(edge + 0.5, 0.5, new Vec3(1.0, 0.0, 0.0), Double.MAX_VALUE);
+		assertTrue(DragonLastStandShield.repelTravel(DragonLastStandShield.repelWanted(edge, 0.0), edgeReach) > 2.8,
+				"막 가장자리에서 미는 거리가 달려 드는 거리보다 짧다");
 	}
 
 	/**
@@ -435,7 +519,11 @@ class DragonLastStandShieldTest {
 		String bytes = classBytes();
 		assertTrue(bytes.contains("pushDistance"), "반경 32 천장을 안 지난다");
 		assertTrue(bytes.contains("groundedReach"), "땅이 끊기는 천장을 안 지난다");
-		assertTrue(bytes.contains("shoveSpeed"), "공중 비율을 안 지난다 — 점프 중에 밀리면 날아간다");
+		// 2026-10-18 밤 — 날개의 shoveSpeed(공중 감쇠 · 바닥 0.198배) 대신 바닥 감쇠 속도를 쓰고, 뛰어도 천장을
+		// 못 넘게 거리를 자른다. 그 셈은 바닥에_선_사람이_15칸_줄까지_밀리고_뛰어도_천장을_못_넘는다 가 굴린다.
+		assertTrue(bytes.contains("repelTravel"), "뛰어도 천장을 못 넘게 자르지 않는다 — 바닥 속도로 밀린 뒤 뛰면 날아간다");
+		assertTrue(bytes.contains("repelSpeed"), "바닥 · 공중 감쇠를 가르지 않는다");
+		assertTrue(bytes.contains("isAirborne"), "떠 있는지 안 본다");
 		assertTrue(bytes.contains("syncedVertical"), "세로를 안 자르면 바닐라가 쌓은 값을 배달한다");
 		assertFalse(bytes.contains("hurtServer"), "보호막이 사람을 때린다");
 	}

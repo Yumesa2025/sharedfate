@@ -105,6 +105,11 @@ public class SharedFateMod implements ModInitializer {
 		// 비행 허가는 저장보다 먼저 걷어내야 한다. SERVER_STOPPED 는 이미 늦다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(
 				com.sharedfate.perk.PerkFlightCharm::onServerStopping);
+		// 싸우는 엔드 전투를 일시 중단으로 저장한다 — 드래곤의 실제 체력을 적고, 최후의 저항이면 드래곤을
+		// 저장 전에 놓아준다(2026-10-18). 다시 뜨면 팀원이 엔드로 돌아올 때 그 자리에서 잇는다. 아래 보더
+		// 되돌리기보다 먼저다 — 판을 거둔 뒤에 보더를 되돌려야 거둔 판이 보더를 다시 잡지 않는다.
+		ServerLifecycleEvents.SERVER_STOPPING.register(
+				com.sharedfate.sync.DragonTrialManager::onServerStopping);
 		// 드래곤 시련의 엔드 월드 보더를 저장보다 먼저 되돌리고(2026-10-18 에 안전지대가 다시 보더가 되며
 		// 돌아온 일), 최후의 저항의 부채꼴·십자 빨간 면과 연출 개체를 월드가 살아 있을 때 거둔다.
 		ServerLifecycleEvents.SERVER_STOPPING.register(

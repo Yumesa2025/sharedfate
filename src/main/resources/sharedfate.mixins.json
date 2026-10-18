@@ -74,6 +74,7 @@
     "ServerPlayerDeathMessageMixin",
     "SlotAccessor",
     "BucketEmptyBanMixin",
+    "IceBlockMeltBanMixin",
     "BedBlockEndBlastMixin"
   ],
   "injectors": {

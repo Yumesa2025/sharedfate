@@ -230,4 +230,34 @@ class TrialDryWorldTest {
 		assertEquals(0, TrialCatalog.Risk.DryWorld.class.getRecordComponents().length,
 				"칸을 더했으면 그 값이 증발 쪽인지 금지 쪽인지 TrialDryWorld 에 적을 것");
 	}
+
+	// ------------------------------------------------------------------ 얼음
+
+	/**
+	 * 얼음이 물이 되는 두 자리에 핸들러가 <b>실제로 합쳐져</b> 있다 — 시험도 믹스인이 입혀진 채
+	 * 돈다. 안 붙으면 금지 중 엔드에서 얼음을 맨손으로 부숴 물을 얻는다.
+	 */
+	@Test
+	void 얼음_녹는_자리에_믹스인이_붙어_있다() {
+		boolean destroy = false;
+		boolean melt = false;
+		for (java.lang.reflect.Method method
+				: net.minecraft.world.level.block.IceBlock.class.getDeclaredMethods()) {
+			destroy |= method.getName().endsWith("sharedfate$dryWorldBreaksIceDry");
+			melt |= method.getName().endsWith("sharedfate$dryWorldMeltsIceDry");
+		}
+		assertTrue(destroy, "playerDestroy 쪽 핸들러가 IceBlock 에 없다 — 믹스인이 안 붙었다");
+		assertTrue(melt, "melt 쪽 핸들러가 IceBlock 에 없다 — 믹스인이 안 붙었다");
+	}
+
+	/** 재정의되면 그쪽으로 가는 호출에서 믹스인이 조용히 죽는다. */
+	@Test
+	void 살얼음이_녹는_메서드를_재정의하지_않는다() {
+		for (java.lang.reflect.Method method
+				: net.minecraft.world.level.block.FrostedIceBlock.class.getDeclaredMethods()) {
+			assertFalse(method.getName().equals("playerDestroy") || method.getName().equals("melt"),
+					"FrostedIceBlock 이 " + method.getName() + " 을 재정의하기 시작했다");
+		}
+		assertFalse(TrialDryWorld.banMelting(null), "월드가 없으면 막을 것이 없다");
+	}
 }

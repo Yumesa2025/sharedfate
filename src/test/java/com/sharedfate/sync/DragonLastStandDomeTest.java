@@ -145,23 +145,77 @@ class DragonLastStandDomeTest {
 	 * 훑기 바닥이 <b>저절로</b> 따라 움직여야 한다.
 	 */
 	@Test
-	void 훑기_바닥이_기하_원점보다_네_칸_아래다() {
+	void 훑기_바닥이_섬_표면_위_첫_빈_칸이다() {
+		// ⚠ 2026-10-18 밤 — 옛 이름은 「훑기_바닥이_기하_원점보다_네_칸_아래다」였고 그 바닥(= 포디움 원점)이
+		// 섬 맨 윗블록이라 한 칸 낮았다. 26.3 EnderDragonFight.spawnExitPortal 이 하이트맵에 .below() 를 붙여
+		// 원점을 잡는다 — 그래서 포디움 원점은 「원점 − 4」 그대로이고, 바닥이 그 한 칸 위다.
 		assertEquals(4, EndPodiumFeature.PODIUM_PILLAR_HEIGHT,
-				"바닐라 포디움 기둥 높이가 4 가 아니면 「원점 − 4 = 표면 위 첫 빈 칸」이 깨진다");
+				"바닐라 포디움 기둥 높이가 4 가 아니면 「드래곤 발 − 4 = 포디움 원점」이 깨진다");
 		assertEquals(EndPodiumFeature.PODIUM_PILLAR_HEIGHT,
 				DragonLastStandDome.PODIUM_PILLAR_HEIGHT,
 				"우리 숫자를 적지 않고 바닐라 상수를 그대로 참조한다");
 
 		Vec3 anchor = new Vec3(0.5, 68.0, 0.5);
 		int origin = DragonLastStandDome.domeOriginY(anchor);
-		int floor = DragonLastStandDome.sweepFloorY(anchor);
-		assertEquals(64, floor, "68 − 4 = 64 다");
-		assertEquals(4, origin - floor,
-				"정확히 네 칸이다 — 더 내리면 섬 표면이 범위에 들어오고 거름망이 죽는다");
-		assertEquals(64, DragonLastStandDome.sweepFloorY(new Vec3(0.5, 68.9, 0.5)),
-				"내림이 바닥에도 그대로 간다");
-		assertEquals(-9, DragonLastStandDome.sweepFloorY(new Vec3(0.5, -4.5, 0.5)),
+		int podium = DragonLastStandDome.fallbackPodiumY(anchor);
+		int floor = DragonLastStandDome.sweepFloorY(podium);
+		assertEquals(64, podium, "68 − 4 = 64 — 포디움 원점이자 섬 맨 윗블록이다");
+		assertEquals(65, floor, "섬 맨 윗블록 64 의 한 칸 위 — 사람이 서는 높이다");
+		assertEquals(3, origin - floor, "드래곤 발은 바닥보다 세 칸 위다(기둥 p+1 · p+2 · p+3)");
+		assertEquals(64, DragonLastStandDome.fallbackPodiumY(new Vec3(0.5, 68.9, 0.5)),
+				"내림이 포디움 원점에도 그대로 간다");
+		assertEquals(-9, DragonLastStandDome.fallbackPodiumY(new Vec3(0.5, -4.5, 0.5)),
 				"음수에서도 내림 뒤에 빼야 한다 — (−5) − 4 = −9");
+		assertEquals(-8, DragonLastStandDome.sweepFloorY(-9));
+	}
+
+	/**
+	 * ⚠⚠ <b>포디움 원점은 바닐라가 적어 둔 값을 읽되, 의심스러우면 옛 셈으로 돌아간다</b>(2026-10-18 밤).
+	 *
+	 * <p>바닥을 한 칸이라도 낮게 잡으면 섬 맨 윗겹을 깎는다. 그래서 높게 틀리는 쪽(옛 셈)으로만 물러난다.
+	 */
+	@Test
+	void 포디움_원점은_바닐라_값을_기둥_꼴로_확인하고_읽는다() {
+		// 맨손 포디움 — 기둥 64..67 이 기반암, 드래곤이 68 에 앉는다. 받침 63 도 기반암이다.
+		java.util.function.IntPredicate pillar = y -> y >= 63 && y <= 67;
+		Vec3 bare = new Vec3(0.5, 68.0, 0.5);
+		assertEquals(64, DragonLastStandDome.podiumOriginY(new net.minecraft.core.BlockPos(0, 64, 0), bare, pillar));
+		assertEquals(64, DragonLastStandDome.podiumOriginY(null, bare, pillar), "못 읽으면 옛 셈 — 맨손이면 같다");
+
+		// ⚠ 기둥 위에 알이 있다 — 하이트맵이 한 칸 올라 드래곤이 69 에 앉는다. 옛 셈은 65 로 한 칸 어긋났다.
+		Vec3 egg = new Vec3(0.5, 69.0, 0.5);
+		assertEquals(65, DragonLastStandDome.fallbackPodiumY(egg), "옛 셈은 알만큼 높다 — 이것이 고친 결함이다");
+		int fixed = DragonLastStandDome.podiumOriginY(new net.minecraft.core.BlockPos(0, 64, 0), egg, pillar);
+		assertEquals(64, fixed, "바닐라 값을 읽으면 알과 무관하다");
+		assertTrue(DragonLastStandDome.podiumPart(1, 66 - fixed, 0), "벽 횃불(66)이 지켜져야 한다");
+		assertTrue(DragonLastStandDome.podiumPart(0, 68 - fixed, 0), "알 자리(68)가 지켜져야 한다");
+
+		// 의심스러우면 옛 셈 — 다른 기둥 · 드래곤보다 위 · 기둥 꼴이 아님(spawnExitPortal 이 받침 밑까지 내려간 값).
+		assertEquals(64, DragonLastStandDome.podiumOriginY(new net.minecraft.core.BlockPos(5, 64, 0), bare, pillar));
+		assertEquals(64, DragonLastStandDome.podiumOriginY(new net.minecraft.core.BlockPos(0, 66, 0), bare, pillar));
+		assertEquals(64, DragonLastStandDome.podiumOriginY(new net.minecraft.core.BlockPos(0, 62, 0), bare, pillar),
+				"받침 밑(엔드석)은 기둥이 아니다 — 받아들이면 바닥이 두 칸 낮아 섬을 깎는다");
+		assertEquals(64, DragonLastStandDome.podiumOriginY(new net.minecraft.core.BlockPos(0, 63, 0), bare, pillar),
+				"받침(63)부터 네 칸이면 그 위(67)도 기반암이다 — 한 칸 낮은 값을 거른다");
+		assertTrue(classBytes().contains("sharedfate$exitPortalLocation"), "바닐라 값을 안 읽는다");
+	}
+
+	/**
+	 * ⚠ <b>접근자가 붙을 칸이 실제로 있다</b> — 믹스인은 대상이 틀려도 빌드가 통과한다(6장). 등록된 믹스인은 시험에서
+	 * 반사로 못 읽으므로, 대상 칸이 {@code EnderDragonFight} <b>자신</b>에 같은 타입으로 선언돼 있는지와 접근자 글자를
+	 * 본다. ({@code @Accessor} 는 대상 칸의 타입과 돌려주는 타입이 같아야 적용된다.)
+	 */
+	@Test
+	void 출구_포털_접근자의_대상_칸이_있다() throws NoSuchFieldException, IOException {
+		java.lang.reflect.Field field = net.minecraft.world.level.dimension.end.EnderDragonFight.class
+				.getDeclaredField("exitPortalLocation");
+		assertEquals(net.minecraft.core.BlockPos.class, field.getType(), "칸 타입이 BlockPos 가 아니다");
+		// 믹스인 패키지 클래스는 시험에서 불러오지 않는다(믹스인 환경 밖에서 불러오면 안 되는 클래스다) — 글자로 본다.
+		String source = new String(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
+				"src/main/java/com/sharedfate/mixin/EnderDragonFightAccessor.java")), StandardCharsets.UTF_8);
+		assertTrue(source.contains("@Accessor(\"exitPortalLocation\")"), "접근자가 읽는 칸 이름이 다르다");
+		assertTrue(source.contains("net.minecraft.core.BlockPos sharedfate$exitPortalLocation()"),
+				"접근자가 돌려주는 타입이 칸 타입(BlockPos)과 다르다");
 	}
 
 	/**
@@ -186,10 +240,11 @@ class DragonLastStandDomeTest {
 				"가장자리 천장도 옛 값 그대로 기하 원점이다");
 
 		// ⚠ 넣으면 안 되는 값을 일부러 넣어 본다. 이 수가 실제로 쓰이면 반구가 내려앉는다.
-		int sunken = DragonLastStandDome.domeTop(DragonLastStandDome.sweepFloorY(anchor), 0.0);
-		assertEquals(89, sunken);
-		assertEquals(4, DragonLastStandDome.domeTop(origin, 0.0) - sunken,
-				"domeTop 에 훑기 바닥을 넣으면 천장이 네 칸 내려앉는다 — sweepChunk 가 origin 을 넘긴다");
+		int sunken = DragonLastStandDome.domeTop(
+				DragonLastStandDome.sweepFloorY(DragonLastStandDome.fallbackPodiumY(anchor)), 0.0);
+		assertEquals(90, sunken);
+		assertEquals(3, DragonLastStandDome.domeTop(origin, 0.0) - sunken,
+				"domeTop 에 훑기 바닥을 넣으면 천장이 세 칸 내려앉는다 — sweepChunk 가 origin 을 넘긴다");
 	}
 
 	/**
@@ -202,9 +257,11 @@ class DragonLastStandDomeTest {
 	void 표면에_쌓은_세_칸이_이제_범위에_든다() {
 		Vec3 anchor = new Vec3(0.5, 68.0, 0.5);
 		int origin = DragonLastStandDome.domeOriginY(anchor);
-		int floor = DragonLastStandDome.sweepFloorY(anchor);
-		// 섬 표면의 맨 위 블록. 하이트맵이 돌려주는 값이 이것이다.
+		int floor = DragonLastStandDome.sweepFloorY(DragonLastStandDome.fallbackPodiumY(anchor));
+		// 섬 표면의 맨 위 블록 = 포디움 원점. 하이트맵이 돌려주는 값이 이것이다.
 		int surface = floor - 1;
+		assertEquals(DragonLastStandDome.fallbackPodiumY(anchor), surface,
+				"섬 맨 윗블록은 포디움 원점 높이다(spawnExitPortal 의 .below())");
 
 		for (int step = 1; step <= 3; step++) {
 			int placed = surface + step;
@@ -239,19 +296,38 @@ class DragonLastStandDomeTest {
 	 */
 	@Test
 	void 맨손_아레나에서_하이트맵이_모든_열을_거른다() {
+		// ⚠ 2026-10-18 밤 — 이 시험은 전에 「훑기 바닥 = 포디움 원점」·「섬 표면 = 원점 − 1」을 놓고 통과했는데
+		// 그 둘째가 거짓이었다(spawnExitPortal 의 .below() — 섬 표면 = 포디움 원점). 실제로는 거름망이 한 열도
+		// 못 걸렀고 섬 맨 윗겹을 깎았다. 지금 바닥은 포디움 원점 + 1 이다.
 		Vec3 anchor = new Vec3(0.5, 68.0, 0.5);
-		int floor = DragonLastStandDome.sweepFloorY(anchor);
-
 		int podiumOrigin = DragonLastStandDome.domeOriginY(anchor)
 				- EndPodiumFeature.PODIUM_PILLAR_HEIGHT;
-		assertEquals(podiumOrigin, floor, "훑기 바닥이 포디움 원점 p.y 와 같은 칸이라야 한다");
+		int floor = DragonLastStandDome.sweepFloorY(podiumOrigin);
+		assertEquals(podiumOrigin + 1, floor, "훑기 바닥이 포디움 원점 p.y 의 한 칸 위라야 한다");
 
-		// 하이트맵이 돌려주는 「맨 위 블록의 y」. 맨손 아레나에서는 섬 표면 그 자신이다.
-		int heightmapTop = podiumOrigin - 1;
+		// 하이트맵이 돌려주는 「맨 위 블록의 y」. 맨손 아레나에서는 섬 표면 = 포디움 원점이다.
+		int heightmapTop = podiumOrigin;
 		assertTrue(heightmapTop < floor,
 				"top < sweepFloor 가 거짓이 되면 모든 열이 통과해 1961열을 매 초 다 읽는다");
 		assertEquals(1, floor - heightmapTop,
-				"여유가 한 칸이다 — 한 칸이라도 더 내리면 이 거름망이 죽는다");
+				"여유가 한 칸이다 — 한 칸이라도 더 내리면 섬 맨 윗겹을 깎고 이 거름망이 죽는다");
+		assertTrue(heightmapTop >= podiumOrigin,
+				"옛 바닥(= 포디움 원점)이었다면 top < floor 가 거짓이다 — 고친 결함");
+	}
+
+	/**
+	 * ⚠ <b>먼지는 점 예산에 든다</b>(2026-10-18 밤). 먼지 한 번이 클라이언트에서 {@code EXPLOSION} 입자 하나이고
+	 * 훑기는 패턴 · 오브젝트 파도와 같은 틱에 돈다 — 셋을 더해도 이 페이즈가 지키는 아래 끝 400 안이다.
+	 */
+	@Test
+	void 먼지가_점_예산_안이다() {
+		int worst = DragonLastStandPatterns.worstCasePointsPerTick()
+				+ DragonLastStandObjects.worstCasePointsPerTick()
+				+ DragonLastStandDome.MAX_PUFFS_PER_SWEEP;
+		assertTrue(worst <= 400, "패턴 + 파도 + 먼지가 400 을 넘는다 — 실제 " + worst);
+		assertTrue(DragonLastStandDome.MAX_PUFFS_PER_SWEEP < DragonLastStandDome.MAX_BREAKS_PER_SWEEP,
+				"먼지를 부수는 수만큼 피우면 256점이다 — 그것이 고친 결함이다");
+		assertTrue(DragonLastStandDome.MAX_PUFFS_PER_SWEEP > 0, "먼지가 없으면 지붕이 소리 없이 사라진다");
 	}
 
 	/**
@@ -581,13 +657,14 @@ class DragonLastStandDomeTest {
 					kept.getBlock() + " 에 유체가 들어 있다 — clear 의 둘째 갈래로도 샐 수 있다");
 		}
 
-		// 첫째 겹도 유체 작업과 무관하게 그대로다 — 훑기 바닥을 한 칸도 안 건드렸다.
+		// 첫째 겹도 유체 작업과 무관하게 그대로다. ⚠ 2026-10-18 밤에 바닥 자체를 한 칸 올렸다 — 포디움 원점
+		// (섬 맨 윗블록 64) + 1 = 65 다(훑기_바닥이_섬_표면_위_첫_빈_칸이다).
 		Vec3 anchor = new Vec3(0.5, 68.0, 0.5);
-		assertEquals(64, DragonLastStandDome.sweepFloorY(anchor),
-				"유체까지 넓히면서 훑기 바닥을 건드렸다 — 68 − 4 = 64 라야 한다");
-		assertEquals(4, DragonLastStandDome.domeOriginY(anchor)
-						- DragonLastStandDome.sweepFloorY(anchor),
-				"기하 원점과 훑기 바닥의 네 칸 관계가 유체 작업에 흔들리면 안 된다");
+		assertEquals(65, DragonLastStandDome.sweepFloorY(DragonLastStandDome.fallbackPodiumY(anchor)),
+				"훑기 바닥이 섬 표면 위 첫 빈 칸(64 + 1)이 아니다");
+		assertEquals(3, DragonLastStandDome.domeOriginY(anchor)
+						- DragonLastStandDome.sweepFloorY(DragonLastStandDome.fallbackPodiumY(anchor)),
+				"기하 원점(드래곤 발)은 섬 표면 위 첫 빈 칸보다 세 칸 위다(기둥 넷 중 셋이 표면 위)");
 	}
 
 	/**

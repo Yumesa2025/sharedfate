@@ -984,8 +984,11 @@ public final class TrialEndRain {
 	 *
 	 * <p><b>긴 형태</b>다. 짧은 형태로 되돌리면 32칸 밖 구체가 통째로 사라져, 아레나 반대편에서
 	 * 보면 하늘은 비어 있는데 바닥만 터진다.
+	 *
+	 * <p>패키지 안으로 연 것은 최후의 저항 「폭풍 날갯짓」이 같은 구체를 그대로 떨구기 때문이다
+	 * (2026-10-18, {@link DragonLastStandWingRain}). 두 벌로 짜면 언젠가 한쪽만 고쳐진다.
 	 */
-	private static void dropOrb(ServerLevel end, Vec3 spot, ParticleOptions core,
+	static void dropOrb(ServerLevel end, Vec3 spot, ParticleOptions core,
 			ParticleOptions halo, int remaining, TrialCatalog.Risk.EndRain risk) {
 		double height = orbHeight(remaining, risk.warnTicks());
 		double y = spot.y + GROUND_OFFSET + height;
@@ -1066,13 +1069,25 @@ public final class TrialEndRain {
 	 * <p>덮어씌우던 {@code REVERSE_PORTAL} 도 함께 걷어냈다 — 수명이 <b>60~61틱</b>이라 터진 뒤
 	 * 3초 동안 자국이 남았고, 볼리 간격이 40~60틱이라 <b>그 자국이 다음 볼리의 고리와 겹쳤다.</b>
 	 * 이미 안전한 자리가 위험해 보이는 것이 이 전투가 가장 피하는 종류의 거짓말이다.
+	 *
+	 * <p>{@link #dropOrb} 와 같은 까닭으로 패키지 안으로 열었다 — 「폭풍 날갯짓」의 낙하가 피해·반경·
+	 * 연출을 이 한 곳에서 받는다({@link DragonLastStandWingRain}).
 	 */
-	private static void detonate(ServerLevel end, List<ServerPlayer> members, Vec3 at,
+	static void detonate(ServerLevel end, List<ServerPlayer> members, Vec3 at,
 			TrialCatalog.Risk.EndRain risk) {
+		detonate(end, members, at, risk, impactPoints(risk));
+	}
+
+	/**
+	 * 착탄 점 수를 받는 쪽. 「폭풍 날갯짓」은 지점이 여섯뿐이라 {@link #impactPoints} 가 12 를 주지만, 그
+	 * 페이즈는 한 틱 400 아래를 지켜야 해서 <b>카드가 실제로 쓰는 8</b>을 넘긴다({@link DragonLastStandWingRain}).
+	 */
+	static void detonate(ServerLevel end, List<ServerPlayer> members, Vec3 at,
+			TrialCatalog.Risk.EndRain risk, int points) {
 		// 착탄 연출도 긴 형태로 보낸다. 맞는 사람은 어차피 가깝지만 나머지 셋이 「저기 떨어졌다,
 		// 피했구나」를 봐야 예고가 완결된다. 아레나 반경 40 이면 흩어진 팀원은 쉽게 32칸을 넘는다.
 		end.sendParticles(orbParticle(), true, false, at.x, at.y + 0.3, at.z,
-				impactPoints(risk), risk.radius() * 0.45, 0.25, risk.radius() * 0.45, 0.02);
+				Math.max(1, points), risk.radius() * 0.45, 0.25, risk.radius() * 0.45, 0.02);
 
 		for (ServerPlayer member : members) {
 			if (!TrialRisks.insideMark(member.position(), at, risk.radius())) {
@@ -1111,8 +1126,10 @@ public final class TrialEndRain {
 	 * <p>음높이를 0.7 로 내린다. 수십 곳이 한꺼번에 터지는 순간이라 낮을수록 무게가 맞는다.
 	 * <b>이 값은 소리를 바꾸면서도 그대로 두었다</b> — 낮춰 놓은 것이 「한 발」이 아니라
 	 * 「한꺼번에」를 말하기 위해서라 소리가 무엇이든 같다.
+	 *
+	 * <p>「폭풍 날갯짓」의 낙하도 이 소리를 쓴다({@link DragonLastStandWingRain}).
 	 */
-	private static void impactSound(ServerLevel end, List<ServerPlayer> members) {
+	static void impactSound(ServerLevel end, List<ServerPlayer> members) {
 		TrialWarning.playEach(end, members, SoundEvents.GENERIC_EXPLODE, 1.0F, 0.7F);
 	}
 

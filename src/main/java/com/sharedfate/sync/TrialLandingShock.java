@@ -436,8 +436,11 @@ public final class TrialLandingShock {
 	 *                  착지한 다음 틱에 다시 판정당해 <b>점프가 회피가 아니게</b> 된다.
 	 *                  고리마다 따로인 것은 <b>고리 셋이 각자 한 번씩</b> 지나가야 하기
 	 *                  때문이다. 하나로 합치면 두 번째·세 번째 고리가 아무도 안 때린다
+	 * @param lastDistance 사람마다 <b>지난 틱</b> {@code center} 에서 잰 거리. 고리 셋이 함께
+	 *                     쓴다 — 거리는 고리가 아니라 사람의 것이다. <b>고쳐 쓴다</b>
 	 */
-	private record Wave(Vec3 center, long startedAt, List<Set<UUID>> crossed) {
+	private record Wave(Vec3 center, long startedAt, List<Set<UUID>> crossed,
+			Map<UUID, Double> lastDistance) {
 	}
 
 	/** 아레나도 팀도 하나뿐이라 칸 하나로 둔다. {@link #clearState()} 가 반드시 비운다. */
@@ -665,7 +668,7 @@ public final class TrialLandingShock {
 		for (int index = 0; index < rings; index++) {
 			crossed.add(new HashSet<>());
 		}
-		wave = new Wave(podium, now, crossed);
+		wave = new Wave(podium, now, crossed, new HashMap<>());
 		// 착지 자체가 이 카드의 유일한 예고다. 가운데에서 한 번 크게 터뜨려 「지금부터다」를
 		// 말한다.
 		end.sendParticles(ParticleTypes.GUST_EMITTER_LARGE, true, false,
@@ -735,6 +738,13 @@ public final class TrialLandingShock {
 			wanted += want[index];
 		}
 
+		// 지난 틱 거리를 꺼내고 이번 틱 거리로 고쳐 둔다. 고리 셋이 같은 「지난 틱」을 봐야 하므로
+		// 고리를 돌기 전에 한 번만 한다.
+		Map<UUID, Double> previous = new HashMap<>(run.lastDistance());
+		run.lastDistance().clear();
+		for (ServerPlayer member : present) {
+			run.lastDistance().put(member.getUUID(), flatDistance(member.position(), run.center()));
+		}
 		for (int index = 0; index < rings; index++) {
 			int step = stepOf(age, index, interval);
 			if (step < 0 || step > life) {
@@ -746,7 +756,8 @@ public final class TrialLandingShock {
 			draw(end, ground, run.center(), radii[index], ringAllowance(want[index], wanted),
 					now + index);
 			warn(end, present, run.center(), step, risk);
-			judge(end, ground, present, run.center(), run.crossed().get(index), step, now, risk);
+			judge(end, ground, present, run.center(), run.crossed().get(index), previous, step,
+					now, risk);
 		}
 	}
 
@@ -777,36 +788,34 @@ public final class TrialLandingShock {
 	/**
 	 * 고리 뒷자락이 지나간 사람을 가른다.
 	 *
-	 * <p>경계를 <b>{@code (지난 틱 뒷자락, 이번 틱 뒷자락]}</b> 반열린 구간으로 잡는다. 고리는 한
-	 * 틱에 {@code maxRadius / travelTicks} 칸씩 건너뛰므로 「반경과 거리가 같은가」로 물으면
-	 * 대부분의 사람이 <b>그냥 건너뛰어진다.</b> 구간으로 물으면 0 부터 {@code maxRadius} 까지
-	 * 어느 거리든 정확히 한 번 덮인다. 「엔더 파동」이 쓰는 그 구간이고 같은 함수에서 나온다.
+	 * <p>「고리가 사람을 지나간 틱」을 묻는다 — 지난 틱에는 뒷자락 바깥, 이번 틱에는 안쪽이면
+	 * 지나간 것이다. 「엔더 파동」과 같은 함수({@link TrialEnderPulse#crossesNow})라 셈이 한 벌이다.
+	 * ⚠ 이번 틱 거리 하나를 {@code (지난 뒷자락, 이번 뒷자락]} 띠에 넣어 보던 전 판정은 띠가 0.5칸
+	 * 두께라 <b>고리를 향해 달려 들어가는 사람</b>이 한 틱에 띠를 건너뛰어 약 30% 가 안 맞았다.
 	 *
 	 * <p><b>거리만으로는 부족하다.</b> 고리가 지형을 타므로 같은 거리라도 내 발밑을 지나갔는지는
 	 * 높이를 봐야 안다({@link TrialEnderPulse#atRingHeight}). 그 검사가 없으면 지붕 밑이나 굴
 	 * 속에 선 사람이 <b>머리 위로 지나간 고리</b>에 맞고 밀려난다.
 	 *
-	 * @param crossed 이 고리의 명단. 고리마다 따로다 — 합치면 두 번째 고리가 아무도 안 때린다
+	 * @param crossed  이 고리의 명단. 고리마다 따로다 — 합치면 두 번째 고리가 아무도 안 때린다
+	 * @param previous 사람마다 지난 틱 거리. 없으면 이번 틱 거리로 본다
 	 */
 	private static void judge(ServerLevel end, TrialEnderPulse.Ground ground,
-			List<ServerPlayer> present, Vec3 center, Set<UUID> crossed, int step, long now,
-			TrialCatalog.Risk.LandingShock risk) {
+			List<ServerPlayer> present, Vec3 center, Set<UUID> crossed,
+			Map<UUID, Double> previous, int step, long now, TrialCatalog.Risk.LandingShock risk) {
 		double outer = TrialEnderPulse.judgeRadius(step, risk.travelTicks(), risk.maxRadius());
 		double inner = TrialEnderPulse.judgeRadius(step - 1, risk.travelTicks(), risk.maxRadius());
 		for (ServerPlayer member : present) {
 			UUID memberId = member.getUUID();
-			if (crossed.contains(memberId)) {
-				continue;
-			}
 			Vec3 at = member.position();
 			double distance = flatDistance(at, center);
-			if (!(distance > inner) || !(distance <= outer)) {
+			// 지나간 것은 뛰었든 아니든 지나간 것이다 — 참이면 명단에 적는다. 안 적으면 우리가 민
+			// 사람이 다음 틱에 뒷자락 앞으로 나가 같은 고리에 두 번 맞는다. 높이로 빠진 사람도
+			// 적힌다 — 고리는 그 사람의 칸을 이미 지나갔다.
+			if (!TrialEnderPulse.crossesNow(crossed, memberId,
+					previous.getOrDefault(memberId, distance), distance, inner, outer)) {
 				continue;
 			}
-			// 지나간 것은 뛰었든 아니든 지나간 것이다. 안 적으면 우리가 민 사람이 다음 틱에
-			// 뒷자락 앞으로 나가 같은 고리에 두 번 맞는다. 높이로 빠진 사람도 적는다 — 고리는
-			// 그 사람의 칸을 이미 지나갔다.
-			crossed.add(memberId);
 			if (!TrialEnderPulse.atRingHeight(at.y, ground.surfaceAt(end, at.x, at.z))) {
 				continue;
 			}

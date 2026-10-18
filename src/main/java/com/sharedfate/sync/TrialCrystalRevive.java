@@ -315,6 +315,21 @@ public final class TrialCrystalRevive {
 		SPENT.clear();
 	}
 
+	/**
+	 * 이 카드가 이미 되살렸는가. 전투가 일시 중단될 때 {@code TrialRisks.snapshotDone} 이 {@link #clearState()}
+	 * <b>전에</b> 읽어 세션에 적는다(2026-10-18 검토 — 멈췄다 이은 첫 틱에 다섯 개를 또 살렸다).
+	 */
+	static boolean spent(long granted, @Nullable TrialCatalog.Risk.CrystalRevive risk) {
+		return risk != null && SPENT.contains(new Key(granted, risk));
+	}
+
+	/** 이은 판에 「이미 되살렸다」를 다시 심는다. {@code granted} 는 밀어 둔 받은 틱이다. */
+	static void markSpent(long granted, @Nullable TrialCatalog.Risk.CrystalRevive risk) {
+		if (risk != null) {
+			SPENT.add(new Key(granted, risk));
+		}
+	}
+
 	// ------------------------------------------------------------------ 연출
 
 	/**

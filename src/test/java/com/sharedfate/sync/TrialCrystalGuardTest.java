@@ -392,6 +392,50 @@ class TrialCrystalGuardTest {
 		assertFalse(cage.description().contains("모든"), "「모든」이 남으면 카드가 거짓을 말한다");
 	}
 
+	/**
+	 * 우리가 <b>빈 탑을 먼저</b> 고른다 — 바닐라 철창 탑을 섞어 고르면 새 우리가 다섯보다 적어진다.
+	 *
+	 * <p>남은 아홉 중 둘이 바닐라 철창 탑이면 전에는 평균 1.1개를 이미 온전한 우리에 썼다.
+	 */
+	@Test
+	void 쇠창살은_우리가_빈_탑을_먼저_고른다() {
+		net.minecraft.util.RandomSource random = net.minecraft.util.RandomSource.create(7L);
+		java.util.List<Integer> open = java.util.List.of(0, 1, 2, 3, 4, 5, 6);
+		java.util.List<Integer> guarded = java.util.List.of(100, 101);
+		java.util.Set<java.util.List<Integer>> seen = new java.util.HashSet<>();
+		for (int roll = 0; roll < 40; roll++) {
+			java.util.List<Integer> picked = TrialCrystalGuard.pickCaged(open, guarded,
+					TrialCrystalGuard.CAGE_COUNT, random);
+			assertEquals(5, picked.size());
+			assertEquals(5, new java.util.HashSet<>(picked).size(), "같은 크리스탈을 두 번 집었다");
+			assertTrue(open.containsAll(picked), "빈 탑이 다섯 이상인데 바닐라 우리를 골랐다: " + picked);
+			seen.add(picked);
+		}
+		assertTrue(seen.size() > 1, "매번 같은 다섯이다 — 무작위가 아니다");
+
+		// 빈 탑이 모자라면 빈 탑 전부 + 나머지를 서 있는 탑에서 채운다.
+		java.util.List<Integer> few = java.util.List.of(0, 1, 2);
+		java.util.List<Integer> picked = TrialCrystalGuard.pickCaged(few, java.util.List.of(100,
+				101, 102, 103), TrialCrystalGuard.CAGE_COUNT, random);
+		assertEquals(5, picked.size());
+		assertTrue(picked.containsAll(few), "빈 탑이 먼저 다 들어가야 한다: " + picked);
+		assertEquals(few, picked.subList(0, 3));
+		// 남은 게 다섯보다 적으면 전부.
+		assertEquals(4, TrialCrystalGuard.pickCaged(few, java.util.List.of(100),
+				TrialCrystalGuard.CAGE_COUNT, random).size());
+	}
+
+	/** 바닐라 우리(빈 칸 0)는 서 있는 쪽, 없던 탑(73)은 빈 쪽, 몇 칸 부순 우리는 아직 우리다. */
+	@Test
+	void 우리가_대부분_비었는가() {
+		assertEquals(73, TrialCrystalGuard.CAGE_CELLS);
+		assertFalse(TrialCrystalGuard.cageMostlyOpen(0));
+		assertFalse(TrialCrystalGuard.cageMostlyOpen(10), "몇 칸 부순 우리는 아직 우리다");
+		assertFalse(TrialCrystalGuard.cageMostlyOpen(36));
+		assertTrue(TrialCrystalGuard.cageMostlyOpen(37));
+		assertTrue(TrialCrystalGuard.cageMostlyOpen(73));
+	}
+
 	// -------------------------------------------------- 쇠창살 우리
 
 	/**

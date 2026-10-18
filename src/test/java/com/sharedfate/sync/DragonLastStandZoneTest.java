@@ -108,6 +108,63 @@ class DragonLastStandZoneTest {
 	}
 
 	/**
+	 * ⚠ <b>벽이 움직이는 틱에만 옮긴다</b> — 2026-10-18 오후 사람 말 「보더 닿아도 순간이동하는 건 없애. 그냥 벽
+	 * 역할만 하면 돼서」. 0.41.0 은 매 틱 옮겨서 멈춘 벽에 기대거나 넉백으로 밀려 닿은 사람까지 안쪽으로 옮겼다.
+	 *
+	 * <p>움직이는 구간은 진입 때 105 → 42 로 들어오는 2초와 걸음마다의 축소 5초이고, <b>끝나는 틱까지</b>다 —
+	 * 마지막 틱에 지나쳐진 사람이 그 틱에야 「걸렸다」로 읽히기 때문이다.
+	 */
+	@Test
+	void 벽이_움직일_때만_옮긴다() {
+		long entry = -DragonLastStandEntry.LENGTH_TICKS;
+		assertTrue(DragonLastStandZone.wallMoving(entry), "진입 틱 — 보더가 105 에서 들어오기 시작한다");
+		assertTrue(DragonLastStandZone.wallMoving(entry + DragonLastStandZone.ENTRY_SHRINK_TICKS),
+				"진입 보더가 42 에 닿는 틱을 놓쳤다");
+		assertFalse(DragonLastStandZone.wallMoving(entry + DragonLastStandZone.ENTRY_SHRINK_TICKS + 1),
+				"42 에 멈춘 뒤에도 옮긴다");
+		assertFalse(DragonLastStandZone.wallMoving(-1L), "진입 연출 끝 무렵은 멈춘 벽이다");
+		for (int leg = 0; leg < DragonLastStandZone.LEG_END_TICKS.length; leg++) {
+			long begins = DragonLastStandZone.shrinkBeginsAt(leg);
+			long ends = DragonLastStandZone.LEG_END_TICKS[leg];
+			assertFalse(DragonLastStandZone.wallMoving(begins - 1), leg + "걸음 — 축소 전 멈춘 벽에서 옮긴다");
+			assertTrue(DragonLastStandZone.wallMoving(begins), leg + "걸음 — 축소 첫 틱");
+			assertTrue(DragonLastStandZone.wallMoving(ends), leg + "걸음 — 끝나는 틱을 빼면 마지막에 지나쳐진 사람이 밖에 남는다");
+			assertFalse(DragonLastStandZone.wallMoving(ends + 1), leg + "걸음 — 멈춘 벽에서 옮긴다");
+		}
+		assertFalse(DragonLastStandZone.wallMoving(5000L), "끝값 18 에 멈춘 뒤에도 옮긴다");
+		// 멈춘 벽이 115초 가운데 대부분이다 — 움직이는 틱은 진입 41 + 걸음마다 101 이다.
+		long moving = 0L;
+		for (long elapsed = 0L; elapsed <= 2400L; elapsed++) {
+			if (DragonLastStandZone.wallMoving(elapsed)) {
+				moving++;
+			}
+		}
+		assertEquals(3L * (DragonLastStandZone.SHRINK_TICKS + 1), moving);
+		assertTrue(classBytes().contains("wallMoving"), "tick 이 움직임을 묻지 않고 옮긴다");
+	}
+
+	/**
+	 * ⚠ <b>멈춘 벽 <u>너머</u>에 선 사람은 옮긴다</b>(2026-10-18 밤, 공개 배포 직전 검토). 몸이 벽에 걸친 사람은
+	 * 그대로 두고 중심이 완전히 밖인 사람만이다 — 혼자 끊었다가 보더가 줄어든 뒤 접속한 사람이나 진주로 벽에 걸친
+	 * 뒤 걸어 나간 사람이 밖에 서서 번개 · 비 · 브레스를 피하며 활을 쏘던 길이다.
+	 */
+	@Test
+	void 멈춘_벽_너머에_선_사람만_옮긴다() {
+		double half = 32.0;
+		// 멈춘 벽 — 기대거나 넉백으로 밀려 몸이 걸친 사람(중심은 안)은 그대로다.
+		assertFalse(DragonLastStandZone.pulls(false, half - 0.2, 0.0, half), "멈춘 벽에 기댄 사람을 옮긴다");
+		assertFalse(DragonLastStandZone.pulls(false, 0.0, -half, half), "벽 위에 딱 선 사람을 옮긴다");
+		assertTrue(DragonLastStandZone.crossed(half - 0.2, 0.0, half), "그 사람은 벽에 걸친 사람이다");
+		// 멈춘 벽 — 중심이 밖이면 옮긴다.
+		assertTrue(DragonLastStandZone.pulls(false, half + 0.1, 0.0, half), "벽 너머에 선 사람을 안 옮긴다");
+		assertTrue(DragonLastStandZone.pulls(false, 5.0, -(half + 20.0), half), "한참 밖에 선 사람을 안 옮긴다");
+		// 움직이는 벽 — 지금처럼 몸이 걸린 사람까지.
+		assertTrue(DragonLastStandZone.pulls(true, half - 0.2, 0.0, half), "줄어드는 벽에 걸린 사람을 안 옮긴다");
+		assertFalse(DragonLastStandZone.pulls(true, half - 1.0, 0.0, half), "벽에 안 닿은 사람을 옮긴다");
+		assertTrue(classBytes().contains("pulls"), "tick 이 이 판단을 안 지난다");
+	}
+
+	/**
 	 * ⚠ <b>보더는 네모다.</b> 지나친 사람 판정도 네모이고 몸 반폭(0.3)이 벽에 걸리면 지나친 것이다.
 	 *
 	 * <p>반변 18 에서 (17, 17) 은 중앙에서 24칸이지만 <b>안</b>이다 — 원으로 재면 밖이었다.
@@ -331,7 +388,7 @@ class DragonLastStandZoneTest {
 	 * ⚠⚠ <b>이 페이즈의 한 틱 최악이 400 을 넘지 않는다.</b>
 	 *
 	 * <p>전에는 {@code DragonLastStandZoneWallTest} 가 「패턴 + 파도 + 벽」을 붙들었다. 2026-10-18 에 벽이
-	 * 보더(점 0)로 바뀌어 그 파일이 지워졌고 남은 두 값의 합을 여기서 붙든다 — 지금 322 + 37 = 359.
+	 * 보더(점 0)로 바뀌어 그 파일이 지워졌고 남은 두 값의 합을 여기서 붙든다 — 지금 346 + 37 = 383(2026-10-18 날갯짓에 종말의 비를 얹기 전 322 + 37 = 359).
 	 * 남의 값을 숫자로 적지 않고 그쪽 함수에서 읽으므로 누가 어느 쪽을 올려도 여기서 먼저 멈춘다. 예산의
 	 * 위 끝은 {@code TrialLandingShock.MAX_POINTS_PER_TICK}(440)이고, 「종말의 비」·「연쇄 포격」이 그 위
 	 * 끝에 붙어 있어 이 페이즈는 <b>아래 끝 400</b>을 지킨다.

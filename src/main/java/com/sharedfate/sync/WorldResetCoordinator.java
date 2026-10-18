@@ -239,6 +239,9 @@ public final class WorldResetCoordinator {
 			server.getPlayerList().broadcastSystemMessage(Component.literal(
 					"새 월드를 만들기 위해 서버를 재시작합니다."), false);
 			clearPending();
+			// 엔드 전투를 일시 중단으로 남기지 않는다 — 내려가는 길(SERVER_STOPPING)이 싸우던 전투를 멈춘 채 저장하면
+			// 새 회차에서 되살아나 팀을 엔드로 끌고 갔다(2026-10-18 검토). 표식을 쓴 뒤라 실패한 초기화는 여기 오지 않는다.
+			com.sharedfate.sync.DragonTrialManager.discardForWorldReset(server);
 			server.halt(false);
 		} catch (IOException | IllegalArgumentException e) {
 			SharedFateMod.LOGGER.error(

@@ -72,17 +72,25 @@ public final class DragonPassives {
 	 * <p><b>드래곤이 살아 있을 때만 돈다.</b> 패시브는 드래곤이 하는 짓이므로, 죽은 뒤에도 포격이
 	 * 이어지면 승리한 팀이 귀환 포털로 걸어가다 맞는다.
 	 *
-	 * @param granted 전투가 열린 틱({@link DragonTrialSession#startedTick()})
-	 * @param now     지금 게임 시각. 시련 룰렛이 시간을 멈추면 이 값도 멈춰 위상이 함께 선다
+	 * <p>⚠ <b>입장 연출 동안에는 연쇄 포격을 쉰다</b>({@code entranceRunning}). 처음 열린 전투에서는
+	 * 연출(18.5초)이 첫 포격의 예고(36초)보다 먼저 끝나 아무것도 바뀌지 않는다. 쉬는 것이 일을
+	 * 하는 것은 <b>연출 도중 끊겼다 이어진 전투</b>다 — 연출은 이은 틱({@code entranceTick})에서
+	 * 처음부터 다시 돌지만 포격 위상은 {@code granted} 그대로라 40초 주기 어디에서든 연출과 겹칠 수
+	 * 있었다. 쉬는 동안 예고를 놓을 틱을 지나치면 그 주기는 건너뛴다 — 예고가 모자란 포격은 놓지
+	 * 않는 {@link DragonFireBarrage#tick} 의 규칙 그대로다. 「착지」는 깃발 패시브라 연출 중에도 돈다.
+	 *
+	 * @param granted         전투가 열린 틱({@link DragonTrialSession#startedTick()})
+	 * @param now             지금 게임 시각. 시련 룰렛이 시간을 멈추면 이 값도 멈춰 위상이 함께 선다
+	 * @param entranceRunning 입장 연출이 도는 중인가({@code TrialEntrance.managesCrystals})
 	 */
 	public static void tick(@Nullable ServerLevel end, @Nullable EnderDragon dragon,
-			@Nullable List<ServerPlayer> members, long granted, long now) {
+			@Nullable List<ServerPlayer> members, long granted, long now, boolean entranceRunning) {
 		// ⚠ 이른 반환보다 먼저다. 「착지」는 믹스인이 읽는 깃발을 세우는 패시브라, 안 불린 틱에는
 		// 직전 값이 그대로 남는다 — 사람이 아무도 없거나 드래곤이 사라진 틱에 깃발이 켜진 채
 		// 멈추면 아무도 그것을 내리지 않는다. 그래서 그쪽은 null 을 스스로 받아 깃발을 내린다.
 		DragonPerch.tick(end, dragon, members, granted, now);
 		if (end == null || dragon == null || !dragon.isAlive()
-				|| members == null || members.isEmpty()) {
+				|| members == null || members.isEmpty() || entranceRunning) {
 			return;
 		}
 		DragonFireBarrage.tick(end, dragon, members, granted, now);

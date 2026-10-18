@@ -290,7 +290,9 @@ public final class DragonLandingDice {
 	 * 세션 루프도 그 한 줄로 끈 팀을 통째로 지나간다. 시험이 직접 부르는 자리이기도 하다.
 	 */
 	static boolean trialLive(@Nullable DragonTrialSession session) {
-		return session != null && session.trialsEnabled();
+		// 일시 중단된 세션은 싸우는 전투가 아니다(2026-10-18 검토) — 그 사이 엔드에 선 다른 팀의 바닐라 드래곤전에
+		// 시련의 착지 주사위가 걸리지 않게.
+		return session != null && session.trialsEnabled() && !session.suspended();
 	}
 
 	/**

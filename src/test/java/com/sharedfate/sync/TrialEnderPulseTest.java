@@ -667,6 +667,54 @@ class TrialEnderPulseTest {
 				"명단 없이도 한 번이라면 이 시험이 묻는 것이 없어졌다 — 고리 속도나 세기를 먼저 볼 것");
 	}
 
+	/**
+	 * ⚠ <b>고리를 향해 달려 들어가는 사람도 정확히 한 번 걸린다.</b>
+	 *
+	 * <p>고리는 0.525칸/틱, 전력 질주는 0.28칸/틱이라 둘이 서로 0.8칸/틱으로 다가온다. 이번 틱
+	 * 거리만 {@code (지난 반경, 이번 반경]} 띠에 넣어 보던 전 판정은 띠가 한 틱 걸음 두께라 약 30%
+	 * 를 건너뛰었다(검토 발견). 그 옛 판정이 실제로 놓친다는 것도 함께 보여 이 시험이 묻는 것이
+	 * 살아 있게 둔다.
+	 */
+	@Test
+	void 안쪽으로_달려도_고리가_지나가면_걸린다() {
+		TrialCatalog.Risk.EnderPulse pulse = card();
+		int life = TrialEnderPulse.lifetime(pulse.interval(), pulse.travelTicks());
+		double sprint = 5.612 / 20.0;
+		int oldMissed = 0;
+		int samples = 0;
+		for (double start = 20.0; start <= 40.0; start += 0.037) {
+			samples++;
+			assertEquals(1, runnerHits(pulse, life, start, -sprint, false),
+					start + "칸에서 안쪽으로 달린 사람이 고리에 한 번 걸리지 않았다");
+			if (runnerHits(pulse, life, start, -sprint, true) == 0) {
+				oldMissed++;
+			}
+		}
+		assertTrue(oldMissed > samples / 5,
+				"옛 띠 판정이 " + oldMissed + "/" + samples + " 만 놓친다 — 이 시험이 묻는 것을 다시 볼 것");
+	}
+
+	/** 일정한 속도로 달리는 사람이 한 고리에 몇 번 걸리는가. {@code band} 면 옛 띠 판정으로 센다. */
+	private static int runnerHits(TrialCatalog.Risk.EnderPulse pulse, int life, double start,
+			double velocity, boolean band) {
+		java.util.UUID who = new java.util.UUID(0L, 2L);
+		java.util.Set<java.util.UUID> crossed = new java.util.HashSet<>();
+		double previous = start;
+		double at = start;
+		int hits = 0;
+		for (int step = 0; step <= life; step++) {
+			double outer = TrialEnderPulse.judgeRadius(step, pulse.travelTicks(), pulse.maxRadius());
+			double inner = TrialEnderPulse.judgeRadius(step - 1, pulse.travelTicks(),
+					pulse.maxRadius());
+			if (TrialEnderPulse.crossesNow(crossed, who, band ? at : previous, at, inner, outer)) {
+				hits++;
+			}
+			previous = at;
+			at = Math.max(0.0, at + velocity);
+		}
+		return hits;
+	}
+
 	/** 한 고리가 지나가는 동안 그 사람을 몇 번 미는가. 맞은 뒤로는 바닥 마찰로 밀려간다. */
 	private static int hitsOnOneRing(TrialCatalog.Risk.EnderPulse pulse, int life, double start,
 			boolean keepRoster) {
@@ -674,6 +722,7 @@ class TrialEnderPulseTest {
 		java.util.Set<java.util.UUID> crossed = new java.util.HashSet<>();
 		TrialLandingShock.GroundProbe flat = island(1000.0);
 		double at = start;
+		double previous = start;
 		double speed = 0.0;
 		int hits = 0;
 		for (int step = 0; step <= life; step++) {
@@ -683,11 +732,12 @@ class TrialEnderPulseTest {
 			if (!keepRoster) {
 				crossed.clear();
 			}
-			if (TrialEnderPulse.crossesNow(crossed, who, at, inner, outer)) {
+			if (TrialEnderPulse.crossesNow(crossed, who, previous, at, inner, outer)) {
 				hits++;
 				speed = TrialEnderPulse.pushSpeed(
 						TrialEnderPulse.pushReach(at, 0.0, pulse.maxRadius(), flat), false);
 			}
+			previous = at;
 			at += speed;
 			speed *= TrialEnderPulse.GROUND_DRAG;
 		}

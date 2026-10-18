@@ -449,8 +449,10 @@ public final class TrialEnderPulse {
 	 *                사람이 같은 파동에 두 번 묶인다. ⚠ <b>밀치기가 생긴 뒤로는 이것이 「고리마다 한
 	 *                사람 한 번」의 장치다</b> — 우리가 바깥으로 민 사람은 아직 뒷자락이 안 온
 	 *                자리로 가므로, 이 명단이 없으면 몇 틱 뒤 같은 고리가 또 밀고 또 민다
+	 * @param lastDistance 사람마다 <b>지난 틱</b> 중앙에서 잰 거리. 판정이 「고리가 사람을 지나간
+	 *                     틱」을 묻는 데 쓴다({@link #crossesNow}). <b>고쳐 쓴다</b>
 	 */
-	private record Pulse(long index, Set<UUID> crossed) {
+	private record Pulse(long index, Set<UUID> crossed, Map<UUID, Double> lastDistance) {
 	}
 
 	private TrialEnderPulse() {
@@ -508,7 +510,7 @@ public final class TrialEnderPulse {
 		long index = elapsed / interval;
 		Pulse pulse = PULSES.get(pulseKey);
 		if (pulse == null || pulse.index() != index) {
-			pulse = new Pulse(index, new HashSet<>());
+			pulse = new Pulse(index, new HashSet<>(), new HashMap<>());
 			PULSES.put(pulseKey, pulse);
 		}
 
@@ -598,9 +600,9 @@ public final class TrialEnderPulse {
 	/**
 	 * 고리 뒷자락이 지나간 사람을 가른다.
 	 *
-	 * <p>경계를 <b>{@code (지난 틱 반경, 이번 틱 반경]}</b> 반열린 구간으로 잡는다. 고리는 한 틱에
-	 * 0.5칸씩 건너뛰므로 「반경과 거리가 같은가」로 물으면 대부분의 사람이 <b>그냥 건너뛰어진다.</b>
-	 * 구간으로 물으면 0 부터 {@code maxRadius} 까지 어느 거리든 정확히 한 번 덮인다.
+	 * <p>「고리가 사람을 지나간 틱」을 묻는다 — <b>지난 틱에는 사람이 뒷자락 바깥이었고 이번 틱에는
+	 * 안쪽</b>이면 지나간 것이다({@link #crossesNow}). 그래서 사람마다 지난 틱 거리를 들고
+	 * ({@link Pulse#lastDistance}), 판정이 끝나면 이번 틱 거리로 고쳐 둔다.
 	 *
 	 * <p>피해는 없다. 걸린 사람에게 하는 일은 둘이다 — 구속({@link #root})과 바깥 밀치기
 	 * ({@link #push}). <b>둘 다 이 자리 한 곳에서만</b> 일어나고, 이 자리는 {@link #crossesNow} 가
@@ -614,10 +616,16 @@ public final class TrialEnderPulse {
 			Pulse pulse, int step, long now, TrialCatalog.Risk.EnderPulse risk) {
 		double outer = judgeRadius(step, risk.travelTicks(), risk.maxRadius());
 		double inner = judgeRadius(step - 1, risk.travelTicks(), risk.maxRadius());
+		Map<UUID, Double> previous = new HashMap<>(pulse.lastDistance());
+		pulse.lastDistance().clear();
 		for (ServerPlayer member : members) {
 			UUID memberId = member.getUUID();
 			Vec3 at = member.position();
-			if (!crossesNow(pulse.crossed(), memberId, distanceFromCenter(at), inner, outer)) {
+			double distance = distanceFromCenter(at);
+			// 판정보다 먼저 적는다 — 아래 continue 들이 기록을 건너뛰면 다음 틱이 옛 거리를 읽는다.
+			pulse.lastDistance().put(memberId, distance);
+			if (!crossesNow(pulse.crossed(), memberId, previous.getOrDefault(memberId, distance),
+					distance, inner, outer)) {
 				continue;
 			}
 			if (!atRingHeight(at.y, ground.surfaceAt(end, at.x, at.z))) {
@@ -634,6 +642,16 @@ public final class TrialEnderPulse {
 	/**
 	 * 이 사람이 <b>이번 틱에 처음으로</b> 고리 뒷자락에 닿았는가. 참이면 명단에 적는다.
 	 *
+	 * <p>⚠ <b>「고리가 사람을 지나갔는가」를 묻는다 — 지난 틱 거리 &gt; 지난 틱 반경, 그리고 이번 틱
+	 * 거리 ≤ 이번 틱 반경.</b> 전에는 이번 틱 거리 하나만 {@code (지난 반경, 이번 반경]} 에 넣어
+	 * 봤는데, 그 띠는 고리 한 틱 걸음(0.525칸, 「착지 충격」 0.5칸) 두께라 <b>고리를 향해 안쪽으로
+	 * 달리는 사람</b>(전력 질주 0.28칸/틱 — 서로 0.8칸/틱으로 다가온다)은 한 틱 만에 띠를 건너뛰어
+	 * 약 30% 가 그냥 지나갔다. 둘이 자리를 바꾼 순간을 물으면 어느 쪽으로 달리든 정확히 한 번
+	 * 잡힌다. 가만히 선 사람에게는 두 물음이 같다.
+	 *
+	 * <p>지난 틱 거리가 없으면(파동 첫 틱, 막 들어온 사람) 이번 틱 거리를 그대로 넣는다 — 곧 옛
+	 * 띠 판정이다.
+	 *
 	 * <p>지나간 것은 뛰었든 아니든 지나간 것이다. 안 적으면 고리 끝에 붙어 바깥으로 달리는 사람이
 	 * 같은 파동에 다시 걸린다. 높이로 빠진 사람도 마찬가지로 적는다 — 고리는 그 사람의 칸을 이미
 	 * 지나갔고, 안 적으면 지붕 밑에서 나오는 순간 다시 걸린다.
@@ -646,14 +664,18 @@ public final class TrialEnderPulse {
 	 *
 	 * <p>월드 없이 답이 정해지는 계산이라 시험이 밀린 사람을 고리와 함께 굴려 본다.
 	 *
-	 * @param crossed 이 고리의 명단. <b>고쳐 쓴다</b>
+	 * @param crossed  이 고리의 명단. <b>고쳐 쓴다</b>
+	 * @param previous 지난 틱 거리
+	 * @param distance 이번 틱 거리
+	 * @param inner    지난 틱 뒷자락 반경
+	 * @param outer    이번 틱 뒷자락 반경
 	 */
-	static boolean crossesNow(Set<UUID> crossed, UUID memberId, double distance, double inner,
-			double outer) {
+	static boolean crossesNow(Set<UUID> crossed, UUID memberId, double previous, double distance,
+			double inner, double outer) {
 		if (crossed.contains(memberId)) {
 			return false;
 		}
-		if (!(distance > inner) || !(distance <= outer)) {
+		if (!(previous > inner) || !(distance <= outer)) {
 			return false;
 		}
 		crossed.add(memberId);

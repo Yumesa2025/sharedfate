@@ -109,6 +109,36 @@ class TrialLandingShockTest {
 	}
 
 	/**
+	 * ⚠ 고리를 향해 <b>안쪽으로 달려도</b> 정확히 한 번 맞는다 — 「엔더 파동」과 같은 판정이다.
+	 *
+	 * <p>고리 0.5칸/틱 + 질주 0.28칸/틱 = 0.78칸/틱이 띠 두께 0.5칸보다 커서, 이번 틱 거리만 띠에
+	 * 넣어 보던 전 판정은 약 30% 를 그냥 보냈다. {@link TrialEnderPulse#crossesNow} 가 지난 틱
+	 * 거리를 함께 받아 「고리가 사람을 지나간 틱」을 묻는다.
+	 */
+	@Test
+	void 안쪽으로_달려도_고리에_한_번_맞는다() {
+		int life = TrialEnderPulse.lifetime(0, TRAVEL);
+		double sprint = 5.612 / 20.0;
+		UUID who = new UUID(0L, 3L);
+		for (double start = 10.0; start <= MAX_RADIUS; start += 0.041) {
+			java.util.Set<UUID> crossed = new java.util.HashSet<>();
+			double previous = start;
+			double at = start;
+			int hits = 0;
+			for (int step = 0; step <= life; step++) {
+				double outer = TrialEnderPulse.judgeRadius(step, TRAVEL, MAX_RADIUS);
+				double inner = TrialEnderPulse.judgeRadius(step - 1, TRAVEL, MAX_RADIUS);
+				if (TrialEnderPulse.crossesNow(crossed, who, previous, at, inner, outer)) {
+					hits++;
+				}
+				previous = at;
+				at = Math.max(0.0, at - sprint);
+			}
+			assertEquals(1, hits, start + "칸에서 안쪽으로 달린 사람이 " + hits + "번 맞았다");
+		}
+	}
+
+	/**
 	 * 바깥으로 도망쳐서는 못 피한다 — 그래서 대응이 「뛰기」 하나다.
 	 *
 	 * <p>여기가 뒤집히면 카드가 요구하는 행동이 둘이 되고, 그때는 예고 시간을 다시 봐야 한다.
@@ -1046,7 +1076,7 @@ class TrialLandingShockTest {
 	 * 먼지로 긋는 것이라 여섯 줄을 두 틱에 나눠도 점이 남는다). 2026-10-04 에 그 주석을 고쳤고,
 	 * 여기가 <b>고친 주석이 코드와 맞는지</b>를 묻는 자리다.
 	 *
-	 * <p>⚠ <b>수를 세 번째로 적지 않는다.</b> 최악 359(패턴 322 + 파도 37, 2026-10-04 전에는
+	 * <p>⚠ <b>수를 세 번째로 적지 않는다.</b> 최악 383(패턴 346 + 파도 37 — 2026-10-18 날갯짓에 종말의 비를 얹기 전 359, 2026-10-04 전에는
 	 * 397 = 360 + 37)는
 	 * {@code DragonLastStandPatternsTest} 와 {@code DragonLastStandObjectsTest} 가 <b>둘 다</b>
 	 * 못박고 있어 한쪽이 올리면 함께 멈춘다 — 일부러 만든 목 좁은 자리라 여기서 같은 수를 또

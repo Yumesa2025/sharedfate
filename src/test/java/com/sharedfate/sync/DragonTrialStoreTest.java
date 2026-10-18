@@ -178,4 +178,91 @@ class DragonTrialStoreTest {
 		assertEquals(Map.of("a", 1100L), loaded.grantedTicks,
 				"손으로 고친 파일이 들어와도 되살리는 쪽이 터지면 안 된다");
 	}
+
+	/**
+	 * 일시 중단(2026-10-18)이 저장을 지난다 — 엔드가 빈 사이에 서버가 꺼져도 돌아오면 그 자리에서 잇는다.
+	 */
+	@Test
+	void 일시_중단을_저장하고_되살린다(@TempDir Path dir) throws IOException {
+		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
+		DragonTrialSession before = new DragonTrialSession(
+				java.util.UUID.fromString("cccccccc-0000-0000-0000-000000000002"), 1000L, true);
+		before.suspend(true, 1777.5F, 1);
+		DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
+		entry.teamId = before.teamId().toString();
+		entry.startedTick = before.startedTick();
+		entry.suspended = before.suspended();
+		entry.introTick = before.entranceTick();
+		entry.replayIntro = before.replayEntrance();
+		entry.dragonHealth = before.dragonHealth();
+		entry.lastStandWaves = before.lastStandWaves();
+		DragonTrialStore.save(file, List.of(entry));
+
+		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
+		DragonTrialSession after = new DragonTrialSession(
+				java.util.UUID.fromString(loaded.teamId), loaded.startedTick, true);
+		after.restoreSuspension(loaded.suspended, loaded.introTick, loaded.replayIntro,
+				loaded.dragonHealth, loaded.lastStandWaves);
+
+		assertTrue(after.suspended(), "서버가 꺼졌다 켜지면 멈춘 전투가 싸우는 전투로 되살아난다");
+		assertTrue(after.replayEntrance());
+		assertEquals(1777.5F, after.dragonHealth(), 0.0F, "드래곤 실제 체력이 저장을 못 지난다");
+		assertEquals(1, after.lastStandWaves());
+		assertEquals(1000L, after.entranceTick());
+	}
+
+	/** 일시 중단 칸이 없는 옛 파일(0.41)도 읽힌다 — 싸우던 세션으로 되살아나고 첫 틱에 다시 판정한다. */
+	@Test
+	void 일시_중단_칸이_없는_옛_파일도_읽힌다(@TempDir Path dir) throws IOException {
+		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
+		Files.writeString(file,
+				"{\"sessions\":[{\"teamId\":\"cccccccc-0000-0000-0000-000000000001\","
+						+ "\"startedTick\":1000,\"chosen\":[\"a\"]}]}",
+				StandardCharsets.UTF_8);
+
+		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
+
+		assertFalse(loaded.suspended);
+		assertEquals(null, loaded.introTick);
+		assertEquals(null, loaded.dragonHealth, "모르는 체력을 0 으로 읽으면 드래곤을 죽이는 값이 된다");
+		assertEquals(0, loaded.lastStandWaves);
+		assertEquals(null, loaded.pausedTick, "모르는 멈춘 틱을 0 으로 읽으면 받은 틱이 수십만 틱 튄다");
+		assertEquals(null, loaded.lastStandClock);
+		assertNotNull(loaded.riskDone, "옛 파일의 빈 칸이 null 로 나가 되살릴 때 터진다");
+		assertTrue(loaded.riskDone.isEmpty());
+	}
+
+	/**
+	 * ⚠⚠ 저장 파일은 <b>월드 폴더</b>에 있다(2026-10-18 검토). 서버 폴더에 있으면 루프 스크립트가 월드만 지운 새
+	 * 회차에서 옛 회차의 일시 중단 전투가 되살아나 팀을 엔드로 끌고 갔다.
+	 */
+	@Test
+	void 저장_파일은_월드_폴더에_있다(@TempDir Path dir) {
+		Path server = dir.resolve("server");
+		Path world = server.resolve("world");
+		Path file = DragonTrialStore.locate(world.resolve("."));
+		assertEquals(world.toAbsolutePath().normalize(), file.getParent(), "월드 밖에 저장한다 — 월드를 지워도 남는다");
+		assertEquals(server.toAbsolutePath().normalize().resolve(DragonTrialStore.FILE_NAME),
+				DragonTrialStore.legacy(server, world), "옛 자리(서버 폴더)를 못 찾는다 — 옛 파일이 남는다");
+		assertEquals(null, DragonTrialStore.legacy(world, world), "옛 자리가 곧 지금 자리면 지금 파일을 지운다");
+	}
+
+	/** 멈춘 틱 · 지대 시계 · 한 번짜리 카드가 한 일이 저장을 지난다 — 재시작 뒤 부활이 또 살리지 않게. */
+	@Test
+	void 멈춘_틱과_한_일이_저장을_지난다(@TempDir Path dir) throws IOException {
+		Path file = dir.resolve(DragonTrialStore.FILE_NAME);
+		DragonTrialStore.Entry entry = new DragonTrialStore.Entry();
+		entry.teamId = "cccccccc-0000-0000-0000-000000000003";
+		entry.startedTick = 1000L;
+		entry.suspended = true;
+		entry.pausedTick = 5_100L;
+		entry.lastStandClock = 1_234L;
+		entry.riskDone = new LinkedHashMap<>(Map.of("sharedfate:night_host#0", 3));
+		DragonTrialStore.save(file, List.of(entry));
+
+		DragonTrialStore.Entry loaded = DragonTrialStore.load(file).getFirst();
+		assertEquals(5_100L, loaded.pausedTick);
+		assertEquals(1_234L, loaded.lastStandClock);
+		assertEquals(3, loaded.riskDone.get("sharedfate:night_host#0"));
+	}
 }

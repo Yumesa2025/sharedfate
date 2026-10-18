@@ -485,4 +485,22 @@ class DragonLastStandEntryTest {
 			return fail(failed);
 		}
 	}
+
+	/**
+	 * 일시 중단·재시작 뒤 다시 세우는 판(2026-10-18, {@code DragonLastStand.reenter})은 연출을 처음부터 다시
+	 * 돌리되 +20%p 를 다시 주지 않는다 — 연출 내내 들어온 체력 그대로다. 나갔다 들어올 때마다 20%p 씩
+	 * 회복하면 판이 끝나지 않는다.
+	 */
+	@Test
+	void 다시_세운_판은_회복을_주지_않는다() {
+		float max = 2400.0F;
+		float at = max * 0.22F;
+		for (int step = 0; step <= DragonLastStandEntry.LENGTH_TICKS; step++) {
+			assertEquals(at, DragonLastStandEntry.rampedHealth(at, max, step, false), 0.0F,
+					step + "틱째에 다시 세운 판이 드래곤을 회복시켰다");
+		}
+		assertEquals(DragonLastStandEntry.rampedHealth(at, max, 120),
+				DragonLastStandEntry.rampedHealth(at, max, 120, true), 0.0F,
+				"처음 들어온 판의 회복이 바뀌었다");
+	}
 }

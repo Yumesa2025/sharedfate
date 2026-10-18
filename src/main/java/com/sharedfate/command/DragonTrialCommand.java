@@ -169,6 +169,8 @@ public final class DragonTrialCommand {
 				"전투 " + elapsed + "초째 · 시련 " + session.trialCount() + "장 " + session.chosen()
 						+ " · 터진 자리 " + session.fired().size() + "/"
 						+ TrialCatalog.Trigger.values().length + " · " + next
+						// 엔드가 비어 멈춘 전투(DragonTrialSuspend). 「처치」로 닫히지 않고 돌아오면 잇는다.
+						+ (session.suspended() ? "\n일시 중단 — 팀원이 엔드로 돌아오면 그 자리에서 잇습니다" : "")
 						+ (enabled()
 								? "\n/shareteam trialtest give <카드id> · fire <자리> · clear"
 								: "")), false);
@@ -513,7 +515,8 @@ public final class DragonTrialCommand {
 			return 0;
 		}
 		source.sendSuccess(() -> Component.literal(
-				"쌓인 시련 " + count + "장을 비웠습니다. 터진 자리도 함께 풀립니다."), true);
+				"쌓인 시련 " + count + "장을 비웠습니다. 터진 자리도 함께 풀립니다(최후의 저항 자리는 남깁니다)."
+						+ " 드래곤 체력이 이미 문턱 아래면 그 자리가 곧 다시 터집니다."), true);
 		return 1;
 	}
 

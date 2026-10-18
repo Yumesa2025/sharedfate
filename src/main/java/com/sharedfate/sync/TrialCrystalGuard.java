@@ -76,7 +76,9 @@ import java.util.List;
  * 다시 채웠다 — 「부서진 것만 채운다」가 그 설계의 자랑이었고, 그래서 부숴도 2초 뒤에 돌아왔다.
  * 사람이 고른 답은 「한 번만 세우기」다. 이제는 카드를 받은 순간 남은 기둥 위 크리스탈 중
  * <b>무작위 {@value #CAGE_COUNT}개</b>(그 이하면 전부)에 한 번 세우고({@link #pickCaged}),
- * 그 뒤로는 다시 채우는 길이 <b>없다</b> — 부순 쇠창살은 부순 채로 남는다.
+ * 그 뒤로는 다시 채우는 길이 <b>없다</b> — 부순 쇠창살은 부순 채로 남는다. 고를 때는 우리가
+ * <b>대부분 빈 탑을 먼저</b> 집는다 — 바닐라 철창 탑을 섞어 집으면 새 우리가 다섯보다 적어진다
+ * (0.42.0-dev 검토).
  *
  * <p>「한 번」은 {@link #CAGED} 에 카드 열쇠를 적어 지킨다. 서버가 다시 켜지면 그 기억이
  * 비므로, 받은 지 {@value #CAGE_GRACE_TICKS}틱이 넘은 카드는 아예 세우지 않는다
@@ -200,6 +202,9 @@ public final class TrialCrystalGuard {
 	 */
 	static final int CAGE_TOP = 3;
 
+	/** 우리 한 채의 칸 수 — 5×5×4 에서 안쪽 3×3×3 을 뺀 73. {@link #cagePart} 와 맞물린다. */
+	static final int CAGE_CELLS = 73;
+
 	// ------------------------------------------------------------------ 상태
 
 	/**
@@ -280,13 +285,18 @@ public final class TrialCrystalGuard {
 		}
 
 		if (cageDue) {
-			List<EndCrystal> onSpikes = new ArrayList<>();
+			// 우리가 대부분 빈 탑과 이미 서 있는 탑(바닐라 철창 탑)을 가른다. 섞어서 고르면 이미
+			// 온전한 우리를 골라 「새 우리 다섯」이 다섯보다 적어진다.
+			List<EndCrystal> open = new ArrayList<>();
+			List<EndCrystal> guarded = new ArrayList<>();
 			for (EndCrystal crystal : crystals) {
-				if (spikeTop(end, crystal) != null) {
-					onSpikes.add(crystal);
+				BlockPos base = spikeTop(end, crystal);
+				if (base == null) {
+					continue;
 				}
+				(cageMostlyOpen(openCageCells(end, base)) ? open : guarded).add(crystal);
 			}
-			for (EndCrystal crystal : pickCaged(onSpikes, CAGE_COUNT, end.getRandom())) {
+			for (EndCrystal crystal : pickCaged(open, guarded, CAGE_COUNT, end.getRandom())) {
 				restoreCage(end, crystal);
 			}
 		}
@@ -365,6 +375,22 @@ public final class TrialCrystalGuard {
 		CAGED.clear();
 	}
 
+	/**
+	 * 이 카드가 이미 쇠창살을 세웠는가. 전투가 일시 중단될 때 {@code TrialRisks.snapshotDone} 이
+	 * {@link #clearState()} <b>전에</b> 읽어 세션에 적는다 — 이을 때 받은 틱을 멈춘 만큼 밀면 창이 다시 열리므로,
+	 * 이것을 다시 심지 않으면 다섯을 또 세운다(2026-10-18 검토).
+	 *
+	 * @param key 위험 열쇠({@link #tick} 이 받는 것)
+	 */
+	static boolean caged(String key, long granted) {
+		return CAGED.contains(key + "@" + granted);
+	}
+
+	/** 이은 판에 「이미 세웠다」를 다시 심는다. {@code granted} 는 밀어 둔 받은 틱이다. */
+	static void markCaged(String key, long granted) {
+		CAGED.add(key + "@" + granted);
+	}
+
 	// ------------------------------------------------------------------ 쇠창살 우리
 
 	/**
@@ -397,6 +423,26 @@ public final class TrialCrystalGuard {
 				}
 			}
 		}
+	}
+
+	/** 이 기둥 꼭대기의 우리 자리 {@value #CAGE_CELLS}칸 중 <b>비어 있는</b> 칸 수. */
+	private static int openCageCells(ServerLevel end, BlockPos base) {
+		BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+		int open = 0;
+		for (int dx = -CAGE_HALF_WIDTH; dx <= CAGE_HALF_WIDTH; dx++) {
+			for (int dz = -CAGE_HALF_WIDTH; dz <= CAGE_HALF_WIDTH; dz++) {
+				for (int dy = 0; dy <= CAGE_TOP; dy++) {
+					if (!cagePart(dx, dz, dy)) {
+						continue;
+					}
+					at.set(base.getX() + dx, base.getY() + dy, base.getZ() + dz);
+					if (end.getBlockState(at).isAir()) {
+						open++;
+					}
+				}
+			}
+		}
+		return open;
 	}
 
 	/**
@@ -459,15 +505,44 @@ public final class TrialCrystalGuard {
 	 * 우리가 선다. {@code TrialCrystalRevive.pickSeats} 와 같은 판단이다.
 	 */
 	static <T> List<T> pickCaged(List<T> candidates, int count, RandomSource random) {
+		return pickCaged(candidates, List.of(), count, random);
+	}
+
+	/**
+	 * 우리가 <b>대부분 빈 탑({@code open})을 먼저</b> 무작위로 고르고, 모자라면 이미 서 있는 탑
+	 * ({@code guarded})에서 무작위로 채운다.
+	 *
+	 * <p>카드 설명이 「남은 크리스탈 중 다섯 개에 쇠창살이 생깁니다」다. 바닐라는 철창 탑을 몇 개
+	 * 만들어 두므로 섞어서 고르면 이미 온전한 우리를 집어 <b>새 우리가 다섯보다 적어진다</b>
+	 * ({@link #restoreCage} 는 차 있는 칸을 건너뛴다). 빈 탑이 다섯 이상이면 정확히 다섯 개가 새로
+	 * 선다.
+	 */
+	static <T> List<T> pickCaged(List<T> open, List<T> guarded, int count, RandomSource random) {
 		if (count <= 0) {
 			return List.of();
 		}
-		if (candidates.size() <= count) {
-			return List.copyOf(candidates);
+		List<T> picked = new ArrayList<>(count);
+		for (List<T> group : List.of(open, guarded)) {
+			if (picked.size() >= count) {
+				break;
+			}
+			List<T> shuffled = new ArrayList<>(group);
+			if (shuffled.size() > count - picked.size()) {
+				Util.shuffle(shuffled, random);
+			}
+			picked.addAll(shuffled.subList(0, Math.min(shuffled.size(), count - picked.size())));
 		}
-		List<T> shuffled = new ArrayList<>(candidates);
-		Util.shuffle(shuffled, random);
-		return List.copyOf(shuffled.subList(0, count));
+		return List.copyOf(picked);
+	}
+
+	/**
+	 * 우리 자리가 <b>대부분 비었는가</b> — 빈 칸이 {@value #CAGE_CELLS}칸의 절반을 넘으면 참.
+	 *
+	 * <p>바닐라 철창 탑은 0칸, 우리가 없던 탑은 {@value #CAGE_CELLS}칸이다. 사람이 몇 칸 부순
+	 * 우리는 아직 우리로 친다.
+	 */
+	static boolean cageMostlyOpen(int openCells) {
+		return openCells * 2 > CAGE_CELLS;
 	}
 
 	/**

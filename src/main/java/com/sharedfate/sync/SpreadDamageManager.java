@@ -670,11 +670,20 @@ public final class SpreadDamageManager {
 		}
 
 		ShareTeam team = TeamManager.get(server).teamById(teamId);
-		ServerPlayer victim = team == null ? null : pickVictim(server, team, spread);
-		if (victim == null) {
-			// 받을 사람이 아무도 없다. 남은 몫을 들고 기다리면 다음 접속 때 영문 모를 피해가
-			// 되므로 여기서 버린다.
+		if (team == null) {
+			// 팀이 사라졌다. 받을 사람이 다시 올 일이 없다.
 			ACTIVE.remove(teamId);
+			return;
+		}
+		ServerPlayer victim = pickVictim(server, team, spread);
+		if (victim == null) {
+			// 받을 사람이 아무도 없다(전원 접속 종료). ⚠ 남은 몫을 버리지 않고 들고 기다린다(2026-10-18 검토).
+			// 전에는 여기서 버려 「완충」을 가진 팀이 전원 접속을 끊는 것이 미뤄 둔 피해를 지우는 버튼이었고,
+			// 0.42 부터는 엔드 전투가 끊었다 이어지므로 그 버튼이 전투 한가운데서 그대로 쓰였다. 몫은 줄지 않고
+			// 다음 조각 간격마다 다시 묻는다 — 끊긴 사이에 아무도 맞지 않으니 전멸도 없다. 팀원이 돌아오면 그
+			// 사람이 남은 몫을 이어 받는다. ⚠ 서버 재시작 사이에는 지키지 않는다(reset) — 서버를 내릴 수
+			// 있는 것은 운영자뿐이고 몫은 몇 초 분량이다.
+			spread.ticksToNextSlice = SpreadDamageEffect.SLICE_PERIOD_TICKS;
 			return;
 		}
 

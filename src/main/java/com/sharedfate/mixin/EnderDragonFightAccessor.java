@@ -56,6 +56,9 @@ import org.spongepowered.asm.mixin.gen.Accessor;
  * {@code private} 이라 믹스인이 한 벌 더 필요하고, <b>되살린 뒤에도 포털은 그대로 남는다</b> —
  * 같은 「영영」 함정이다. 그래서 {@code dragonKilled} 하나로 간다.
  *
+ * <p>⚠ 2026-10-18 밤에 {@code exitPortalLocation} 읽기를 <b>다른 까닭으로</b> 더했다 — 「끝났는가」가 아니라
+ * 최후의 저항 반구가 <b>포디움 원점의 높이</b>를 알아야 해서다(아래 {@link #sharedfate$exitPortalLocation}).
+ *
  * <h2>읽기만 만든다</h2>
  *
  * <p>이 깃발을 <b>쓰는</b> 접근자를 함께 만들어 두면 다음 사람이 바닐라 전투 상태를 우리 손으로
@@ -73,4 +76,18 @@ public interface EnderDragonFightAccessor {
 	 */
 	@Accessor("dragonKilled")
 	boolean sharedfate$dragonKilled();
+
+	/**
+	 * 출구 포털 포디움의 원점({@code EndPodiumFeature.place} 에 넘긴 자리). 아직 안 잡혔으면 {@code null}.
+	 * <b>읽기만 한다</b> — {@code DragonLastStandDome.podiumOriginY} 가 읽는 유일한 자리(2026-10-18 밤).
+	 *
+	 * <p>26.3 {@code javap -p} 로 {@code EnderDragonFight} 자신의 {@code private BlockPos exitPortalLocation}
+	 * 임을 확인했다(상위 {@code SavedData} 가 아니다). {@code spawnExitPortal} 이
+	 * {@code getHeightmapPos(MOTION_BLOCKING_NO_LEAVES, podium).below()} 로 잡으므로 <b>섬 맨 윗블록</b>
+	 * 높이이고, 기반암 기둥이 {@code y … y + 3} 이다. 위의 「영영」 함정(되살린 뒤에도 남는다)은 여기서는
+	 * 문제가 아니다 — 묻는 것이 「끝났는가」가 아니라 「포디움이 어디인가」다.
+	 */
+	@Accessor("exitPortalLocation")
+	@org.jetbrains.annotations.Nullable
+	net.minecraft.core.BlockPos sharedfate$exitPortalLocation();
 }

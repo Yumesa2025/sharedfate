@@ -312,6 +312,12 @@ public final class TrialNightHost {
 	}
 
 	/**
+	 * 일시 중단 뒤 이은 밤 — 다시 부를 수({@link #resume}). 한 마리라도 세우거나 창이 닫히면 지운다.
+	 * {@link #clearState()} 로 비운다.
+	 */
+	private static final Map<Key, Integer> RESUMED = new HashMap<>();
+
+	/**
 	 * 디스크에서 다시 올라온, 우리 손을 떠난 불러온 개체들. 다음 틱 끝에 {@link #sweepStrays} 가
 	 * 지운다.
 	 */
@@ -364,6 +370,7 @@ public final class TrialNightHost {
 			// 지난다 — 다음 틱부터는 host 가 없어 아무 일도 하지 않는다.
 			if (host != null) {
 				NIGHTS.remove(nightKey);
+				RESUMED.remove(nightKey);
 				// 명단이 비는 것은 dismiss 가 하는 일이므로 「알릴 것이 있었는가」를 먼저 묻는다.
 				boolean woke = !host.isEmpty();
 				vanish(end, host);
@@ -383,8 +390,17 @@ public final class TrialNightHost {
 		// 아무도 안 달려오는데 비명만 울리는 것을 막기 위해서다 — 첫 한 마리를 실제로 깨우는
 		// 틱에 울린다. 명단이 얼어붙는 자리도 여기다: 비어 있는 동안만 다시 고른다.
 		boolean waking = host.isEmpty();
+		// 일시 중단 뒤 이은 밤이면 멈출 때 살아 있던 수만큼만 다시 부른다 — 「통틀어 다섯」(사람 결정 2026-10-18).
+		// 0 이면 다 잡은 밤이라 다시 부르지 않는다. 한 마리라도 세우면 그 뒤로는 평소의 밤이다.
+		Integer quota = RESUMED.get(nightKey);
+		if (waking && quota != null && quota <= 0) {
+			waking = false;
+		}
 		if (waking) {
-			summon(end, members, host, risk);
+			summon(end, members, host, risk, quota == null ? risk.maxMobs() : quota);
+			if (!host.isEmpty()) {
+				RESUMED.remove(nightKey);
+			}
 		}
 		hold(members, host, calmAt(now, elapsed, risk.hostileTicks()));
 		if (waking && !host.isEmpty()) {
@@ -410,6 +426,37 @@ public final class TrialNightHost {
 		}
 		NIGHTS.clear();
 		STRAYS.clear();
+		RESUMED.clear();
+	}
+
+	/**
+	 * 이 밤에 <b>지금 살아 있는</b> 불러온 엔더맨 수. 아직 한 마리도 못 불렀으면(명단이 없거나 비었다) -1.
+	 * 전투가 일시 중단될 때 {@code TrialRisks.snapshotDone} 이 {@link #clearState()} <b>전에</b> 읽어 세션에 적는다.
+	 */
+	static int survivors(long granted, @Nullable TrialCatalog.Risk.NightHost risk) {
+		Set<Enderman> host = risk == null ? null : NIGHTS.get(new Key(granted, risk));
+		if (host == null || host.isEmpty()) {
+			return -1;
+		}
+		int alive = 0;
+		for (Enderman enderman : host) {
+			if (enderman.isAlive()) {
+				alive++;
+			}
+		}
+		return alive;
+	}
+
+	/**
+	 * 이은 밤 — 창이 남아 있으면 {@code survivors} 마리만 다시 부른다(0 이면 부르지 않는다). {@code granted} 는
+	 * 밀어 둔 받은 틱이다. 사람 결정(2026-10-18): 「남은 창 동안 멈출 때 살아 있던 수만큼만 다시 불러 통틀어 다섯을
+	 * 지킨다」 — 다시 부르지 않으면 전원이 끊는 것이 엔더맨을 지우는 버튼이 되고, 다섯을 새로 부르면 「통틀어
+	 * 다섯」이 깨진다.
+	 */
+	static void resume(long granted, @Nullable TrialCatalog.Risk.NightHost risk, int survivors) {
+		if (risk != null) {
+			RESUMED.put(new Key(granted, risk), Math.max(0, survivors));
+		}
 	}
 
 	/**
@@ -511,7 +558,7 @@ public final class TrialNightHost {
 	 * {@link #onEntityLoad} 를 부르는데, 명단에 없으면 방금 부른 놈을 「돌아온 떠돌이」로 읽는다.
 	 */
 	private static void summon(ServerLevel end, List<ServerPlayer> members, Set<Enderman> host,
-			TrialCatalog.Risk.NightHost risk) {
+			TrialCatalog.Risk.NightHost risk, int count) {
 		List<ServerPlayer> anchors = new ArrayList<>();
 		for (ServerPlayer member : members) {
 			if (huntable(member) && member.level() == end) {
@@ -523,8 +570,10 @@ public final class TrialNightHost {
 		}
 		RandomSource random = end.getRandom();
 		List<Vec3> spots = new ArrayList<>();
-		int tries = risk.maxMobs() * SPAWN_TRIES_PER_MOB;
-		for (int attempt = 0; attempt < tries && spots.size() < risk.maxMobs(); attempt++) {
+		// count 는 카드 값(maxMobs)이고, 일시 중단 뒤 이은 밤만 멈출 때 살아 있던 수다.
+		int limit = Math.min(count, risk.maxMobs());
+		int tries = limit * SPAWN_TRIES_PER_MOB;
+		for (int attempt = 0; attempt < tries && spots.size() < limit; attempt++) {
 			ServerPlayer anchor = anchors.get(random.nextInt(anchors.size()));
 			double angle = random.nextDouble() * Math.PI * 2.0;
 			double distance = spawnDistance(random.nextDouble(), risk.radius());
@@ -539,7 +588,7 @@ public final class TrialNightHost {
 			spots.add(spot);
 		}
 		// 천장은 이 한 줄이다 — 시험이 같은 함수로 묻는다.
-		int wanted = wakeCount(spots.size(), risk.maxMobs());
+		int wanted = wakeCount(spots.size(), limit);
 		for (int index = 0; index < wanted; index++) {
 			Vec3 spot = spots.get(index);
 			Enderman enderman = EntityTypes.ENDERMAN.create(end, EntitySpawnReason.MOB_SUMMONED);

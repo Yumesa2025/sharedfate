@@ -145,7 +145,10 @@ class DragonTrialManagerTest {
 	}
 
 	private static String read(java.nio.charset.Charset charset) {
-		String path = "/com/sharedfate/sync/DragonTrialManager.class";
+		return read("/com/sharedfate/sync/DragonTrialManager.class", charset);
+	}
+
+	private static String read(String path, java.nio.charset.Charset charset) {
 		try (InputStream in = DragonTrialManagerTest.class.getResourceAsStream(path)) {
 			if (in == null) {
 				return fail(path + " 을 찾지 못했다");
@@ -154,5 +157,89 @@ class DragonTrialManagerTest {
 		} catch (IOException failed) {
 			return fail(failed);
 		}
+	}
+
+	// ------------------------------------------------------------------ 일시 중단 (2026-10-18)
+
+	/**
+	 * ⚠ 멈춘 시련 세션은 시련 <b>자리</b>를 쥐지 않는다(사람 결정 2026-10-18 — 「멈춘 A 는 시련 자리를 쥐지 않는다.
+	 * B 는 B 설정대로 열고 … 그 순간 A 세션은 닫는다」). 처음 일시 중단이 들어왔을 때는 쥐었고, 그러자 A 가 멈춘
+	 * 사이 들어온 B 가 A 의 강화(2400)가 붙은 드래곤과 시련 없이 싸웠다. 판에 걸어 둔 것을 되돌릴지 묻는 자리도
+	 * 멈춘 세션을 세지 않는다. 다만 「이 판에 시련 세션의 흔적이 있는가」({@code anyTrialSession} — 저장에서
+	 * 되살릴 때 · 주인 없는 드래곤 되돌리기)는 멈춘 세션까지 센다.
+	 */
+	@Test
+	void 멈춘_시련_세션은_자리를_쥐지_않는다() {
+		UUID team = UUID.randomUUID();
+		DragonTrialSession paused = new DragonTrialSession(team, 100L, true);
+		paused.suspend(false, 1000.0F, -1);
+		List<DragonTrialSession> sessions = List.of(paused);
+		assertNull(DragonTrialManager.trialHolder(sessions, UUID.randomUUID()),
+				"멈춘 세션이 다른 팀의 시련 자리를 막는다 — 그 팀이 남의 강화가 붙은 드래곤과 시련 없이 싸운다");
+		assertEquals(team, DragonTrialManager.anyTrialSession(sessions, null),
+				"멈춘 세션의 드래곤 강화를 주인 없는 것으로 읽어 뗀다 / 옛 저장의 둘째 세션이 시련 켬으로 되살아난다");
+		assertNull(DragonTrialManager.anyTrialSession(sessions, team), "제 세션은 세지 않는다");
+		assertNull(DragonTrialManager.activeTrialHolder(sessions),
+				"멈춘 세션이 보더·시련 흔적을 붙든다 — 엔드가 빈 채로 섬 보더가 남는다");
+		paused.resume(200L);
+		assertEquals(team, DragonTrialManager.activeTrialHolder(sessions));
+		assertNull(DragonTrialManager.activeTrialHolder(
+				List.of(new DragonTrialSession(UUID.randomUUID(), 1L, false))), "끈 세션은 시련 세션이 아니다");
+	}
+
+	/**
+	 * ⚠⚠ 2026-10-18 검토의 배선 — 월드 초기화로 내려갈 때 전투를 일시 중단으로 남기지 않고, 저장 파일이 월드
+	 * 폴더에 있고, 멈춘 전투는 부르지 않으며, 다른 팀이 열면 멈춘 시련 세션을 닫고, 재개 직후 3초 보호를 준다.
+	 */
+	@Test
+	void 수명_주기_검토_배선이_있다() {
+		String bytes = managerBytes();
+		assertTrue(bytes.contains("discardForWorldReset"), "월드 초기화 길이 없다");
+		assertTrue(read("/com/sharedfate/sync/WorldResetCoordinator.class", StandardCharsets.ISO_8859_1)
+				.contains("discardForWorldReset"),
+				"월드 초기화(halt)가 엔드 전투를 버리지 않는다 — 새 회차에 옛 일시 중단 전투가 되살아난다");
+		assertTrue(read("/com/sharedfate/sync/DragonTrialStore.class", StandardCharsets.ISO_8859_1)
+				.contains("legacy"), "서버 폴더의 옛 저장 파일을 치우는 길이 없다");
+		assertTrue(bytes.contains("getWorldPath"), "저장 파일이 월드 폴더에 있지 않다");
+		assertTrue(bytes.contains("closePausedTrials"), "다른 팀이 열 때 멈춘 시련 세션을 닫지 않는다");
+		assertTrue(managerText().contains(DragonTrialManager.PAUSED_CLOSED_NOTICE),
+				"닫힌 팀에게 까닭을 알리는 문장이 없다");
+		assertTrue(bytes.contains("protectArrivals"), "재개 직후 3초 보호가 없다");
+		assertTrue(bytes.contains("snapshotDone") && bytes.contains("restoreDone"),
+				"한 번짜리 카드가 한 일을 멈출 때 적고 이을 때 심지 않는다");
+		assertTrue(bytes.contains("weakenDragon"), "시련 끔으로 열 때 남은 강화를 비율대로 떼지 않는다");
+	}
+
+	/** 강화 배율 — 0.41 과 같은 값이다(수정자를 저장되는 것으로 바꿨을 뿐). */
+	@Test
+	void 강화_배율은_그대로다() {
+		assertEquals(11.0, DragonTrialManager.healthBoost(200.0, 2400.0), 1.0E-9, "4인 600 × 4 = 2400");
+		assertTrue(Double.isNaN(DragonTrialManager.healthBoost(200.0, 200.0)), "강화할 것이 없는데 붙인다");
+		assertTrue(Double.isNaN(DragonTrialManager.healthBoost(200.0, 100.0)), "약화시킨다");
+		assertTrue(Double.isNaN(DragonTrialManager.healthBoost(0.0, 2400.0)));
+	}
+
+	/**
+	 * ⚠⚠ 배선. 체력 강화가 <b>저장되는</b> 수정자이고, 「처치」 판정이 일시 중단 판정을 지나며, 서버 종료가
+	 * 전투를 멈추고, 주인 없는 드래곤에서 강화를 뗀다.
+	 */
+	@Test
+	void 일시_중단_배선이_있다() {
+		String bytes = managerBytes();
+		assertTrue(bytes.contains("addOrReplacePermanentModifier"),
+				"강화가 저장되지 않는다 — 다시 올라온 드래곤의 체력이 200 에 잘린다");
+		assertTrue(!bytes.contains("addOrUpdateTransientModifier"),
+				"저장되지 않는 수정자가 남았다(6번 — 재시작한 전투의 드래곤이 200 으로 남는다)");
+		assertTrue(bytes.contains("com/sharedfate/sync/DragonTrialSuspend"), "판정이 일시 중단을 모른다");
+		assertTrue(bytes.contains("deadDragonInWorld") && bytes.contains("vanillaDragonKilled"),
+				"처치의 근거 둘 가운데 하나가 빠졌다");
+		assertTrue(bytes.contains("restrengthen"), "이을 때 강화를 다시 확인하지 않는다");
+		assertTrue(bytes.contains("removeModifier"), "주인 없는 드래곤에서 강화를 떼지 않는다");
+		assertTrue(bytes.contains("releaseOrphan"), "앉아서 굳은 드래곤을 풀지 않는다");
+		assertTrue(managerText().contains("전투 일시 중단") && managerText().contains("전투 재개"),
+				"로그 문장이 사람이 정한 것과 다르다");
+		String mod = read("/com/sharedfate/SharedFateMod.class", StandardCharsets.ISO_8859_1);
+		assertTrue(mod.contains("onServerStopping") && mod.contains("com/sharedfate/sync/DragonTrialManager"),
+				"서버 종료가 전투를 멈추지 않는다 — 실제 체력을 못 적고 앉힌 채 저장된다");
 	}
 }

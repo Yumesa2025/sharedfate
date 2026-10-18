@@ -26,8 +26,22 @@ import java.util.List;
  * 42-32-22-18 로 변경」</b>. 보더를 세우고 줄이고 되돌리는 것은 {@link DragonTrialBorder} 이고(전투가
  * 열리면 섬 가장자리에 서 있다가 진입 틱에 42 로), 여기는 <b>언제 몇으로</b>만 정한다({@link #driveBorder}).
  * 반경은 이제 <b>보더의 반변</b>(한 변의 절반)이다. 줄어드는 보더가 사람을 지나치면 피해 없이 안쪽으로
- * 옮긴다({@link #keepInside}). 아래 2026-10-04 문단은 그때의 기록으로 남긴다 — 그때 버린 까닭은 밖 피해가
- * 붙은 「갇힘」이었고, 이번에는 밖 피해를 함께 걷었다.
+ * 옮긴다({@link #keepInside}) — ⚠ <b>벽이 움직이는 동안만</b>이다(바로 아래). 아래 2026-10-04 문단은 그때의
+ * 기록으로 남긴다 — 그때 버린 까닭은 밖 피해가 붙은 「갇힘」이었고, 이번에는 밖 피해를 함께 걷었다.
+ *
+ * <h2>⚠ 2026-10-18 오후 — 옮기는 것은 <b>벽이 움직이는 동안만</b>이다. 멈춘 보더는 벽일 뿐이다</h2>
+ *
+ * <p>사람 말: <b>「보더 닿아도 순간이동하는 건 없애. 그냥 벽 역할만 하면 돼서」</b>. 0.41.0 의 {@link #keepInside}
+ * 는 <b>매 틱</b> 「몸이 벽에 걸렸거나 밖인가」({@link #crossed})를 물어서, 보더가 멈춰 있을 때도 벽에 기대거나
+ * 날갯짓에 벽으로 밀린 사람을 안쪽으로 옮겼다 — 사람이 겪은 「보더 닿아도 순간이동」이 그것이다. 지금은
+ * {@link #wallMoving} 이 참인 틱(각 걸음의 축소 5초 · 진입 때 105 → 42 로 들어오는 2초, <b>끝나는 틱까지</b>)에만
+ * 옮긴다. 줄어드는 벽이 사람을 지나치는 것은 그 구간에만 일어나므로 「벽에 지나쳐져 밖에 남는」 일은 그대로
+ * 막고, 멈춘 벽에 닿은 사람은 바닐라처럼 막히기만 한다.
+ *
+ * <p>⚠ <b>2026-10-18 밤 — 멈춘 벽 <u>너머</u>에 선 사람은 옮긴다</b>({@link #beyond}). 위처럼 좁히자 이미 밖에
+ * 선 사람(혼자 끊었다가 보더가 줄어든 뒤 접속 · 진주로 벽에 걸친 뒤 걸어 나감)이 끝까지 밖에 남아 번개 · 비 ·
+ * 브레스를 피하며 활을 쏠 수 있었다. 몸이 벽에 걸친 사람은 그대로 두고 <b>중심이 완전히 밖</b>인 사람만 벽이
+ * 멈춰 있어도 옮긴다.
  *
  * <h2>2026-10-04 — 월드 보더를 버리고 「나갈 수 있는 원」으로 바꿨었다(지금은 아니다)</h2>
  *
@@ -95,7 +109,7 @@ public final class DragonLastStandZone {
 	 *
 	 * <p>한 걸음 10칸을 {@link #SHRINK_TICKS}(5초)에 좁히므로 <b>초당 2칸</b>이다(마지막 4칸은 초당
 	 * 0.8칸). 걷는 속도가 초당 4.3칸이라 <b>벽을 등지고 걸어도 따라잡히지 않는다.</b> 따라잡혀도 피해 없이
-	 * 안쪽으로 옮겨진다({@link #keepInside}).
+	 * 안쪽으로 옮겨진다({@link #keepInside} — 벽이 움직이는 동안만).
 	 *
 	 * <p>상시 번개는 이 끝값의 <b>내접원</b>으로 재므로(사각형 안의 원) 18 이 되며 그쪽 자리도 함께
 	 * 넓어졌다. 오브젝트 파도 고리와 십자 균열의 셈은 사람이 옛 12 에 묶었다({@link #PATTERN_CORE_RADIUS}).
@@ -327,6 +341,35 @@ public final class DragonLastStandZone {
 		return RADII[RADII.length - 1];
 	}
 
+	/**
+	 * ⚠ <b>벽이 움직이는 틱인가</b> — {@link #keepInside} 를 돌리는 유일한 조건이다(2026-10-18 오후).
+	 *
+	 * <ul>
+	 *   <li><b>진입 연출</b>({@code elapsed < 0}) — 진입부터 {@value #ENTRY_SHRINK_TICKS}틱(섬 가장자리 105 →
+	 *       42) 동안. 진입 틱은 {@code elapsed + DragonLastStandEntry.LENGTH_TICKS = 0} 이다</li>
+	 *   <li><b>각 걸음</b> — 축소가 시작하는 틱({@link #shrinkBeginsAt})부터 끝나는 틱({@link #LEG_END_TICKS})까지</li>
+	 * </ul>
+	 *
+	 * <p>⚠ <b>끝나는 틱을 넣는다.</b> 그 틱에 {@link #driveBorder} 가 끝값으로 세우므로 바로 앞 틱에 지나쳐진
+	 * 사람은 그 틱에야 「걸렸다」로 읽힌다 — 빼면 마지막에 지나쳐진 사람이 밖에 남는다. 그 다음 틱부터는 멈춘
+	 * 벽이라 닿아도 안 옮긴다.
+	 *
+	 * <p>바닐라가 실제로 줄이고 있는지({@code getLerpTime})가 아니라 <b>시간표</b>로 묻는 것은 시험이 월드 없이
+	 * 붙들 수 있게 하려는 것이다. 보더는 그 시간표대로 {@link #driveBorder} 가 몬다.
+	 */
+	static boolean wallMoving(long elapsed) {
+		if (elapsed < 0L) {
+			long step = elapsed + DragonLastStandEntry.LENGTH_TICKS;
+			return step >= 0L && step <= ENTRY_SHRINK_TICKS;
+		}
+		for (int leg = 0; leg < LEG_END_TICKS.length; leg++) {
+			if (elapsed >= shrinkBeginsAt(leg) && elapsed <= LEG_END_TICKS[leg]) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** 사람 몸의 가로 반폭(칸). 바닐라 사람 상자가 0.6 이다. */
 	static final double BODY_HALF_WIDTH = 0.3;
 
@@ -339,6 +382,40 @@ public final class DragonLastStandZone {
 	 */
 	static boolean crossed(double dx, double dz, double half) {
 		return Math.max(Math.abs(dx), Math.abs(dz)) + BODY_HALF_WIDTH > half;
+	}
+
+	/**
+	 * ⚠ <b>멈춘 벽 너머에 선 사람인가</b> — 몸 <b>중심</b>이 벽 밖이다. 벽이 멈춰 있을 때 옮기는 유일한 조건이다
+	 * (2026-10-18 밤, 공개 배포 직전 검토).
+	 *
+	 * <p>오후에 「멈춘 보더는 벽일 뿐」으로 바꾸면서 옮기는 것을 벽이 움직이는 틱({@link #wallMoving})으로 좁혔는데,
+	 * 그러자 <b>벽 너머에 이미 서 있는 사람</b>이 끝까지 밖에 남았다. 그 사람은 번개 · 종말의 비 · 브레스가 닿지 않는
+	 * 자리에서 활을 쏠 수 있다. 그런 사람이 생기는 길(26.3 바이트코드로 확인했다):
+	 *
+	 * <ul>
+	 *   <li><b>혼자 접속을 끊었다가 보더가 줄어든 뒤 돌아온다</b> — 진입 데려오기는 진입 첫 틱뿐이다</li>
+	 *   <li><b>엔더 진주로 벽에 걸친 뒤 걸어 나간다</b> — 투사체는 보더에 맞아 멈추지만
+	 *       ({@code ProjectileUtil} → {@code Level.clipIncludingBorder}) 맞은 자리가 벽 위라 몸이 벽에 걸치고,
+	 *       바닐라 보더 충돌은 이미 겹친 상자를 밀어내지 않는다</li>
+	 *   <li>후렴과일은 넘지 못한다 — {@code LivingEntity.randomTeleport} 가 목적지를
+	 *       {@code WorldBorder.clampVec3ToBound} 로 벽 안에 자른다. 다만 벽에 딱 붙은 자리가 나올 수 있다</li>
+	 * </ul>
+	 *
+	 * <p>사람 원칙 둘(「보더 닿아도 순간이동 없애, 벽 역할만」 · 「줄어들 때만 안으로」)을 함께 지키는 선이 이것이다 —
+	 * <b>몸이 벽에 걸친 사람</b>(기대거나 넉백에 밀리거나 진주로 붙은 사람, 중심은 안)은 지금처럼 두고, <b>중심이
+	 * 완전히 밖</b>인 사람만 벽이 멈춰 있어도 옮긴다. 벽 안에서 밀려 닿은 사람은 바닐라 충돌이 몸을 벽 안에 붙들므로
+	 * 중심이 넘어갈 수 없다.
+	 */
+	static boolean beyond(double dx, double dz, double half) {
+		return Math.max(Math.abs(dx), Math.abs(dz)) > half;
+	}
+
+	/**
+	 * 이 틱에 이 사람을 안으로 옮기는가 — {@link #keepInside} 의 판단을 값으로만 적은 것. 벽이 움직이면 몸이
+	 * 걸린 사람까지({@link #crossed}), 멈춰 있으면 중심이 밖인 사람만({@link #beyond}).
+	 */
+	static boolean pulls(boolean wallMoving, double dx, double dz, double half) {
+		return wallMoving ? crossed(dx, dz, half) : beyond(dx, dz, half);
 	}
 
 	/**
@@ -361,9 +438,9 @@ public final class DragonLastStandZone {
 	/**
 	 * 매 틱. {@code DragonLastStand.tick} 이 붙박이 드래곤을 못박은 뒤에 부른다.
 	 *
-	 * <p>하는 일은 둘이다 — <b>보더를 시간표대로 세우고</b>({@link #driveBorder}) <b>지나쳐진 사람을
-	 * 안으로 옮긴다</b>({@link #keepInside}). 밖 피해 · 심장 박동 · 빨간 기둥 벽은 2026-10-18 에
-	 * 걷었다(사람 말 「넘어가서 딜 입히는 건 폐기」).
+	 * <p>하는 일은 둘이다 — <b>보더를 시간표대로 세우고</b>({@link #driveBorder}) <b>벽이 움직이는 동안</b>
+	 * ({@link #wallMoving}) <b>지나쳐진 사람을 안으로 옮긴다</b>({@link #keepInside}). 밖 피해 · 심장 박동 ·
+	 * 빨간 기둥 벽은 2026-10-18 에 걷었다(사람 말 「넘어가서 딜 입히는 건 폐기」).
 	 *
 	 * <p>보더는 월드에 남으므로 되돌리는 줄이 있다 — 전투가 닫히면 {@code DragonTrialManager.tick},
 	 * 서버가 내려가면 {@link DragonTrialBorder#onServerStopping}. 이 파일은 되돌리지 않는다.
@@ -387,7 +464,9 @@ public final class DragonLastStandZone {
 		}
 		long elapsed = now - beganAt;
 		driveBorder(end, center, elapsed, now);
-		keepInside(end, center, members, settledRadiusAt(elapsed));
+		// 멈춘 벽에 닿은 사람은 옮기지 않는다 — 사람 말 「보더 닿아도 순간이동하는 건 없애」(2026-10-18 오후).
+		// 다만 중심이 벽 <b>너머</b>인 사람은 벽이 멈춰 있어도 옮긴다(2026-10-18 밤 — beyond 의 설명).
+		keepInside(end, center, members, settledRadiusAt(elapsed), wallMoving(elapsed));
 	}
 
 	/**
@@ -438,6 +517,10 @@ public final class DragonLastStandZone {
 	 * 그냥 밖에 서 있게 되고(칸당 피해를 껐으므로 아프지도 않다) 거기서 더 멀리 걸어갈 수 있다. 그래서
 	 * 벽에 걸리는 순간({@link #crossed}) 그 사람을 옮긴다.
 	 *
+	 * <p>⚠ <b>벽이 움직이는 틱에만 불린다</b>({@link #wallMoving}, 2026-10-18 오후). 매 틱 부르던 때는 멈춘 벽에
+	 * 기대거나 넉백으로 밀려 닿은 사람까지 옮겼다 — 사람 말 「보더 닿아도 순간이동하는 건 없애. 그냥 벽
+	 * 역할만 하면 돼서」.
+	 *
 	 * <ul>
 	 *   <li><b>어디로</b> — 진입 데려오기와 같은 길이다({@code DragonLastStandEntry.pullTarget}). 중앙에서
 	 *       그 사람 방향으로 땅을 짚어 나가 땅이 끊기거나 포디움보다 {@code PULL_MAX_RISE} 넘게 높아지는
@@ -452,10 +535,14 @@ public final class DragonLastStandZone {
 	 * <p>관전자는 옮기지 않는다. 팀원만 본다 — 보더는 차원 전체에 서지만 다른 팀(시련 끔으로 같은 엔드에
 	 * 있는 팀)의 사람을 우리 판 한가운데로 끌어오지 않는다. 그 사람은 밖에 서 있어도 아프지 않다.
 	 *
+	 * <p>⚠ <b>2026-10-18 밤 — 벽이 멈춰 있어도 중심이 벽 너머인 사람은 옮긴다</b>({@link #beyond}). 벽이 움직이는
+	 * 틱에는 지금처럼 몸이 걸린 사람까지({@link #crossed}), 멈춘 틱에는 중심이 밖인 사람만이다.
+	 *
 	 * @param settled 벽이 가 닿을 반변
+	 * @param moving  벽이 움직이는 틱인가({@link #wallMoving})
 	 */
 	private static void keepInside(ServerLevel end, Vec3 center, List<ServerPlayer> members,
-			double settled) {
+			double settled, boolean moving) {
 		if (members.isEmpty() || !DragonTrialBorder.held()) {
 			return;
 		}
@@ -469,7 +556,7 @@ public final class DragonLastStandZone {
 			}
 			double dx = member.getX() - center.x;
 			double dz = member.getZ() - center.z;
-			if (!crossed(dx, dz, wall)) {
+			if (!pulls(moving, dx, dz, wall)) {
 				continue;
 			}
 			double from = Math.sqrt(dx * dx + dz * dz);

@@ -224,8 +224,10 @@ public final class TrialFireball {
 	private static Volley fire(ServerLevel end, List<ServerPlayer> members, long cycle,
 			TrialCatalog.Risk.TracedProjectile risk) {
 		List<Shot> shots = new ArrayList<>();
-		for (int index : TrialRisks.pickIndexes(risk.count(), members.size(), end.getRandom())) {
-			ServerPlayer target = members.get(index);
+		// 관전자·죽은 사람은 뽑지 않는다 — 뽑으면 그 발이 허공으로 간다(TrialRisks.targetable).
+		List<ServerPlayer> targets = TrialRisks.targetable(members);
+		for (int index : TrialRisks.pickIndexes(risk.count(), targets.size(), end.getRandom())) {
+			ServerPlayer target = targets.get(index);
 			Vec3 aim = target.position();
 			Vec3 muzzle = EndPillars.nearestTop(end, aim);
 			if (muzzle == null) {

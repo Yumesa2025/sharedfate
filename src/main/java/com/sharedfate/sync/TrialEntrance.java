@@ -36,19 +36,22 @@ import java.util.List;
  * {@value #ROULETTE_DELAY_TICKS}     입장 룰렛
  * </pre>
  *
- * <h2>상태를 하나도 들지 않는다 — 전부 {@code startedTick} 에서 나온다</h2>
+ * <h2>상태를 하나도 들지 않는다 — 전부 {@code entranceTick} 에서 나온다</h2>
  *
  * <p>이 클래스에는 정적 맵도 깃발도 없다. 지금이 몇 단계인지는
- * {@link DragonTrialSession#startedTick()} 에서 흐른 틱으로만 정해지고, 그 값은 <b>저장된다</b>
- * ({@code DragonTrialStore.Entry.startedTick}). 그래서
+ * {@link DragonTrialSession#entranceTick()} 에서 흐른 틱으로만 정해지고, 그 값은 <b>저장된다</b>
+ * ({@code DragonTrialStore.Entry.entranceTick}). 처음에는 전투가 열린 틱과 같고, <b>연출 도중 전투가
+ * 일시 중단됐다가 이어지면 이은 틱으로 옮겨 연출을 처음부터 다시 돈다</b>(2026-10-18,
+ * {@link DragonTrialSuspend#replaysEntrance}) — 크리스탈을 거둔 채 멈추면 되살리는 단계가 영영 안 와
+ * 0개로 남던 길이 그것으로 닫혔다. 그래서
  *
  * <ul>
  *   <li>{@code clearState()} 가 <b>필요 없다.</b> 되돌릴 것이 없으므로 빠뜨릴 자리도 없다 —
  *       이 저장소가 실행기마다 정적 맵을 두고 「빠뜨리면 다음 판으로 샌다」를 반복해 적어 둔
  *       바로 그 위험이 여기에는 없다</li>
- *   <li><b>연출 도중 서버가 내려갔다 올라와도 제자리를 찾는다.</b> 3단계 중간이었으면
- *       {@link TrialCrystalRevive} 가 스스로 「이미 끝난 연출」로 보고 곧바로 크리스탈을
- *       세운다(그쪽 클래스 설명의 같은 문단)</li>
+ *   <li><b>연출 도중 서버가 내려가거나 팀이 접속을 끊었다 돌아오면 처음부터 다시 돈다.</b> 둘 다
+ *       전투의 일시 중단으로 읽히고({@code DragonTrialManager.onServerStopping} · {@code tickSessions}),
+ *       이을 때 {@code entranceTick} 만 옮겨진다</li>
  * </ul>
  *
  * <p>딱 하나 남는 상태는 {@link TrialCrystalRevive} 의 것이고, 그쪽은
@@ -297,7 +300,7 @@ public final class TrialEntrance {
 		if (session == null) {
 			return false;
 		}
-		return TrialRisks.elapsedSinceGrant(now, session.startedTick()) <= CINEMATIC_TICKS;
+		return TrialRisks.elapsedSinceGrant(now, session.entranceTick()) <= CINEMATIC_TICKS;
 	}
 
 	/**
@@ -314,7 +317,9 @@ public final class TrialEntrance {
 		if (end == null || session == null) {
 			return;
 		}
-		long started = session.startedTick();
+		// 원점은 전투가 열린 틱이 아니라 입장 연출의 원점이다 — 연출 도중 전투가 멈췄다 이어지면 그것만
+		// 이은 틱으로 옮겨 처음부터 다시 돈다(DragonTrialSession.entranceTick).
+		long started = session.entranceTick();
 		long elapsed = TrialRisks.elapsedSinceGrant(now, started);
 		if (elapsed > CINEMATIC_TICKS) {
 			return;
