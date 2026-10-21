@@ -44,13 +44,16 @@ class DefaultPerkSetTypesTest {
 		// 「작아진 몸」이 무유형에서 화력으로 들어와 8 → 9.
 		expected.put(PerkSetType.POWER, 9);
 		// 「숨죽인 걸음」이 무유형에서 기동으로 들어와 7 → 8.
-		expected.put(PerkSetType.MOBILITY, 8);
+		// 「엇박자」(골드)가 무유형에서 들어와 8 → 9.
+		expected.put(PerkSetType.MOBILITY, 9);
 		expected.put(PerkSetType.DEFENSE, 8);
 		expected.put(PerkSetType.SUPPLY, 7);
-		expected.put(PerkSetType.WEAPON, 7);
+		// 「밀어내기」(골드)가 무유형에서 들어와 7 → 8.
+		expected.put(PerkSetType.WEAPON, 8);
 		// 0.29.1-dev 에서 「환골탈태」가 빠져 5 → 4 가 됐다. 세트 3단계(셋)는 그대로 닿는다.
 		expected.put(PerkSetType.GAMBLE, 4);
-		expected.put(PerkSetType.SURVIVAL, 5);
+		// 「타지 않는 살갗」(골드)·「고행자」(프리즘)가 무유형에서 들어와 5 → 7.
+		expected.put(PerkSetType.SURVIVAL, 7);
 		expected.put(PerkSetType.HUNT, 6);
 		expected.put(PerkSetType.SWAP, 6);
 		// 「가벼운 위장」(무유형에서)·「무한 회복, 무한 식비」(생존 겸업)·「비상식량」(보급 겸업)이
@@ -70,7 +73,8 @@ class DefaultPerkSetTypesTest {
 		long none = PerkRegistry.all().stream().filter(p -> p.setTypes().isEmpty()).count();
 		// 「굳은살」(실버, 무유형)이 들어오며 11 → 12. 「가벼운 위장」이 회복으로,
 		// 「숨죽인 걸음」이 기동으로 가며 12 → 10. 「작아진 몸」이 화력으로 가며 10 → 9.
-		assertEquals(9, none, "무유형");
+		// 위 넷(밀어내기·엇박자·타지 않는 살갗·고행자)이 유형으로 가며 9 → 5.
+		assertEquals(5, none, "무유형");
 	}
 
 	/**

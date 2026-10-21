@@ -144,7 +144,7 @@ class TeamManagerTest {
 	 * 사라진다. 실제로 돌려주는 것은 {@code GameStartManager} 다.
 	 */
 	@Test
-	void 유산으로_몰수했던_아이템은_시작할_때까지_들려_있는다() {
+	void 유산이_남긴_아이템은_시작할_때까지_들려_있는다() {
 		ShareTeam team = manager.createTeam("원정대", A, 40.0F);
 		ItemStack pickaxe = new ItemStack(Items.DIAMOND_PICKAXE);
 

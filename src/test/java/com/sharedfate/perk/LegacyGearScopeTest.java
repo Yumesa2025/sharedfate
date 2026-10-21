@@ -119,20 +119,6 @@ class LegacyGearScopeTest {
 				"보조 손에 쌓아 둔 흙까지 넘기면 「인벤토리를 통째로 넘기는 증강」이 된다");
 	}
 
-	@Test
-	void 몰수도_인벤토리의_도구를_비운다(@TempDir Path dir) throws IOException {
-		Perk perk = 유산_증강(dir);
-		TeamState state = TeamState.fresh(20.0F);
-		state.mainItems.set(0, new ItemStack(Items.DIAMOND_PICKAXE));
-		state.mainItems.set(1, new ItemStack(Items.STONE, 64));
-		state.equipment.set(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
-
-		assertEquals(2, PerkLegacyGear.sacrificeOnChoice(null, null, state, perk));
-		assertTrue(state.mainItems.get(0).isEmpty(), "고른 대가로 곡괭이도 사라져야 한다");
-		assertTrue(state.equipment.get(EquipmentSlot.OFFHAND).isEmpty());
-		assertTrue(state.mainItems.get(1).is(Items.STONE), "돌까지 뺏으면 안 된다");
-	}
-
 	// ------------------------------------------------------------------ 온전히 따라오는가
 
 	@Test

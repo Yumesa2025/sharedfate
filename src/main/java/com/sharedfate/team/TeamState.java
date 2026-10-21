@@ -220,7 +220,7 @@ public class TeamState {
 	/** 아직 고르지 않은 선택권. 구간 순서대로 쌓이며 여러 개일 수 있다. */
 	public final List<PendingOffer> pending = new ArrayList<>();
 	/**
-	 * 「유산」처럼 증강을 고른 순간 몰수했다가, 팀이 전멸하면 다음 회차 시작 인벤토리로
+	 * 「유산」처럼 팀이 전멸하는 순간 스냅샷으로 남겨 두었다가, 다음 회차 시작 인벤토리로
 	 * 돌려주기로 예약된 아이템들. {@link #resetAfterDeath}에서도 일부러 비우지 않는다 —
 	 * 전멸을 넘겨야 뜻이 있는 값이고, 실제로 넘기는 일은 {@code TeamRosterStore}와
 	 * {@code TeamManager#restoreFreshRoster}가 맡는다.

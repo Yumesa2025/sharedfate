@@ -205,6 +205,9 @@
       "name": "고행자",
       "description": "허기가 어떤 상황에서도 줄지 않습니다. 대신 기본 최대 체력이 16 이 됩니다.",
       "rarity": "prism",
+      "set_types": [
+        "survival"
+      ],
       "effects": [
         {
           "type": "no_hunger_drain",
@@ -376,7 +379,7 @@
       "id": "sharedfate:blind_giant",
       "icon": "minecraft:heart_of_the_sea",
       "name": "장님 거인",
-      "description": "최대 체력이 15 증가합니다. 대신 체력과 허기 표시가 가려집니다.",
+      "description": "최대 체력이 20 증가합니다. 대신 체력과 허기 표시가 가려집니다.",
       "rarity": "prism",
       "set_types": [
         "survival"
@@ -384,7 +387,7 @@
       "effects": [
         {
           "type": "max_health_bonus",
-          "amount": 15.0
+          "amount": 20.0
         },
         {
           "type": "hide_hud",
@@ -1452,6 +1455,9 @@
       "name": "타지 않는 살갗",
       "description": "화염 피해를 받지 않습니다. 대신 받는 피해가 ×1.2 가 됩니다.",
       "rarity": "gold",
+      "set_types": [
+        "survival"
+      ],
       "effects": [
         {
           "type": "damage_taken_from",
@@ -1687,6 +1693,9 @@
       "name": "밀어내기",
       "description": "때린 적이 크게 날아갑니다. 대신 엔더 드래곤을 제외한 모든 몹의 체력이 ×1.3 이 됩니다.",
       "rarity": "gold",
+      "set_types": [
+        "weapon"
+      ],
       "effects": [
         {
           "type": "attribute",
@@ -1727,6 +1736,9 @@
       "name": "엇박자",
       "description": "15초간 공격력이 3, 이동 속도가 40% 증가합니다. 대신 이어지는 5초간은 아무 효과도 받지 못하고, 이것이 계속 반복됩니다.",
       "rarity": "gold",
+      "set_types": [
+        "mobility"
+      ],
       "effects": [
         {
           "type": "periodic",
@@ -1939,7 +1951,7 @@
       "id": "sharedfate:legacy",
       "icon": "minecraft:knowledge_book",
       "name": "유산",
-      "description": "전멸할 때 팀이 가진 도구·무기·방어구가 다음 회차로 넘어옵니다. 대신 고르는 즉시 지금 가진 것을 전부 잃습니다.",
+      "description": "전멸할 때 팀이 가진 도구·무기·방어구가 다음 회차로 넘어옵니다.",
       "rarity": "prism",
       "effects": [
         {
@@ -2417,7 +2429,7 @@
       "id": "sharedfate:ripple",
       "icon": "minecraft:conduit",
       "name": "파문",
-      "description": "팀원 전원이 25칸 안에 있으면 5초마다 충격파가 퍼져 주변 8칸의 적대적 몹을 크게 밀어냅니다.",
+      "description": "5초마다 충격파가 퍼져 팀원 각자 주변 2칸의 적대적 몹을 크게 밀어냅니다. 전원이 25칸 안에 있으면 무리 주변 10칸으로 커집니다.",
       "rarity": "gold",
       "set_types": [
         "bond"
@@ -2426,7 +2438,8 @@
         {
           "type": "shockwave",
           "distance": 25,
-          "radius": 8,
+          "radius": 10,
+          "solo_radius": 2,
           "interval_seconds": 5,
           "strength": 2.4
         }

@@ -36,7 +36,7 @@ public final class TeamRosterStore {
 	/**
 	 * 2: 팀 설정(증강 사용 여부·최대 체력·위치 교환 주기)을 함께 적기 시작했다.
 	 * 3: 피격 알림·사망 알림 표시 여부를 함께 적기 시작했다.
-	 * 4: 「유산」이 몰수한 도구·무기·방어구 목록({@code legacyGear})을 함께 적기 시작했다.
+	 * 4: 「유산」이 전멸 때 남긴 도구·무기·방어구 목록({@code legacyGear})을 함께 적기 시작했다.
 	 * 5: 난이도 상승 켜고 끄기({@code difficultyEscalationEnabled})를 함께 적기 시작했다.
 	 * 6: 증강 다시 뽑기의 회차당 횟수({@code rerollCount})를 함께 적기 시작했다.
 	 * 7: 엔더 드래곤 시련 켜고 끄기({@code dragonTrialsEnabled})를 함께 적기 시작했다.
@@ -66,7 +66,7 @@ public final class TeamRosterStore {
 	 * 안 되고, 이어져야 하는 것은 <b>"이 팀은 증강을 쓰기로 했다"</b> 는 결정뿐이다.
 	 * 최대 체력과 위치 교환 주기도 같은 이유로 결정에 해당한다.
 	 *
-	 * <p>{@code legacyGear} 는 결정이 아니라 「유산」이 몰수한 실제 아이템이라 성격이 다르지만,
+	 * <p>{@code legacyGear} 는 결정이 아니라 「유산」이 남긴 실제 아이템이라 성격이 다르지만,
 	 * 회차 경계를 넘겨야 하는 값이라는 점은 같아서 같은 파일, 같은 자리에 싣는다. 아이템은
 	 * NBT 텍스트(SNBT)로 직렬화해 문자열 하나로 담는다 — Gson 은 {@code ItemStack} 을 모르지만
 	 * 문자열은 그대로 다루므로, {@code ItemStack.CODEC} 과 {@code NbtOps} 로 한 번 감싸면
@@ -77,7 +77,7 @@ public final class TeamRosterStore {
 	 * @param swapIntervalTicks   위치 교환 주기(틱). 꺼져 있으면 0
 	 * @param damageAlertEnabled  피격 알림을 켜기로 한 팀인가
 	 * @param deathAlertEnabled   사망 알림을 켜기로 한 팀인가
-	 * @param legacyGear          「유산」이 몰수해 다음 회차로 넘기는 아이템(SNBT 문자열 목록)
+	 * @param legacyGear          「유산」이 전멸 때 남겨 다음 회차로 넘기는 아이템(SNBT 문자열 목록)
 	 * @param difficultyEscalationEnabled 난이도 상승을 켜기로 한 팀인가
 	 * @param rerollCount         증강 다시 뽑기의 회차당 횟수. 예전 형식에는 없어 {@code null} 일 수 있다
 	 * @param dragonTrialsEnabled 엔더 드래곤 시련을 켜기로 한 팀인가. 예전 형식에는 없고,

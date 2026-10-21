@@ -8,9 +8,10 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * 골드 「파문」. 팀원이 모두 가까이 뭉쳐 있으면 주기마다 충격파가 퍼져 주변 몹을 밀어낸다.
+ * 뭉쳐 있지 않으면 {@code solo_radius} 를 적은 정의에 한해 팀원 각자 주변에 작은 충격파가 인다.
  *
  * <pre>{@code
- * { "type": "shockwave", "distance": 10, "radius": 8,
+ * { "type": "shockwave", "distance": 10, "radius": 8, "solo_radius": 2,
  *   "interval_seconds": 10, "strength": 1.2 }
  * }</pre>
  *
@@ -21,6 +22,11 @@ import org.jetbrains.annotations.Nullable;
  *       경고만 남기고 그 범위로 자른다.</li>
  *   <li>{@code radius} — 충격파가 닿는 반경(칸). 안 적으면 {@value #DEFAULT_RADIUS} 다.
  *       {@value #MIN_RADIUS}~{@value #MAX_RADIUS} 로 자른다.</li>
+ *   <li>{@code solo_radius} — <b>뭉쳐 있지 않을 때</b> 접속 중인 팀원 각자를 중심으로 터지는
+ *       작은 충격파의 반경(칸). 안 적으면 작은 충격파가 없다(뭉쳐 있지 않으면 아무 일도 없다 —
+ *       이 필드가 생기기 전의 정의와 같다). 적으면 {@value #MIN_RADIUS}~{@value #MAX_RADIUS} 로
+ *       자른다. 뭉쳐 있을 때는 이 작은 충격파를 따로 터뜨리지 않는다(큰 충격파가 대신한다).
+ *       세기와 주기는 {@code radius} 와 같다.</li>
  *   <li>{@code interval_seconds} — 몇 초마다 터지는가. 안 적으면
  *       {@value #DEFAULT_INTERVAL_SECONDS} 다. {@value #MIN_INTERVAL_SECONDS}~
  *       {@value #MAX_INTERVAL_SECONDS} 로 자른다.</li>
@@ -111,14 +117,24 @@ public final class ShockwaveEffect implements PerkEffect {
 	 */
 	public static final double MAX_STRENGTH = 5.0;
 
+	/** {@code solo_radius} 를 안 적었다는 표시. 작은 충격파가 없다. */
+	public static final int NO_SOLO = 0;
+
 	private final int distance;
 	private final int radius;
+	private final int soloRadius;
 	private final int intervalSeconds;
 	private final double strength;
 
 	public ShockwaveEffect(int distance, int radius, int intervalSeconds, double strength) {
+		this(distance, radius, NO_SOLO, intervalSeconds, strength);
+	}
+
+	public ShockwaveEffect(int distance, int radius, int soloRadius, int intervalSeconds,
+			double strength) {
 		this.distance = distance;
 		this.radius = radius;
+		this.soloRadius = soloRadius;
 		this.intervalSeconds = intervalSeconds;
 		this.strength = strength;
 	}
@@ -139,7 +155,21 @@ public final class ShockwaveEffect implements PerkEffect {
 		int seconds = clampInt(perkId, "interval_seconds",
 				PerkEffectType.readInt(json, intervalKey(json), DEFAULT_INTERVAL_SECONDS),
 				MIN_INTERVAL_SECONDS, MAX_INTERVAL_SECONDS);
-		return new ShockwaveEffect(distance, radius, seconds, readStrength(perkId, json));
+		return new ShockwaveEffect(distance, radius, readSoloRadius(perkId, json), seconds,
+				readStrength(perkId, json));
+	}
+
+	/**
+	 * 안 적었거나 숫자가 아니면 {@link #NO_SOLO}, 적었으면 {@code radius} 와 같은 범위로 자른다.
+	 * 카멜케이스({@code soloRadius})로 적어도 읽는다.
+	 */
+	private static int readSoloRadius(String perkId, JsonObject json) {
+		String key = json.has("soloRadius") ? "soloRadius" : "solo_radius";
+		if (!json.has(key) || PerkEffectType.readDouble(json, key) == null) {
+			return NO_SOLO;
+		}
+		return clampInt(perkId, "solo_radius", PerkEffectType.readInt(json, key, NO_SOLO),
+				MIN_RADIUS, MAX_RADIUS);
 	}
 
 	/** 카멜케이스로 적어도 읽어 준다. 나머지 셋은 한 낱말이라 갈릴 일이 없다. */
@@ -193,6 +223,19 @@ public final class ShockwaveEffect implements PerkEffect {
 	/** 충격파가 닿는 반경(칸). 세트 배율은 부르는 쪽이 {@code TeamProximity.scaled} 로 먹인다. */
 	public int radius() {
 		return radius;
+	}
+
+	/**
+	 * 뭉쳐 있지 않을 때 팀원 각자 주변에 터지는 작은 충격파의 반경(칸). 없으면 {@link #NO_SOLO}.
+	 * 세트 배율은 {@code radius} 와 같이 부르는 쪽이 {@code TeamProximity.scaled} 로 먹인다.
+	 */
+	public int soloRadius() {
+		return soloRadius;
+	}
+
+	/** 작은 충격파가 정의돼 있는가. */
+	public boolean hasSolo() {
+		return soloRadius != NO_SOLO;
 	}
 
 	/** 몇 초마다 터지는가. */

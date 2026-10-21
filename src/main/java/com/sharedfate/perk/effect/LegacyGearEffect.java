@@ -9,8 +9,8 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 증강을 고른 그 순간, 팀이 지금 들고·입고·쌓아 둔 도구·무기·방어구를 전부 몰수하고,
- * 전멸하는 순간 가진 도구·무기·방어구를 다음 회차 시작 인벤토리로 넘기는 효과.
+ * 전멸하는 순간 팀이 가진 도구·무기·방어구를 다음 회차 시작 인벤토리로 넘기는 효과.
+ * 증강을 고를 때는 아무것도 빼앗지 않는다.
  *
  * <p>JSON 형식:
  * <pre>
@@ -41,11 +41,8 @@ import org.jetbrains.annotations.Nullable;
  * 장비도 저절로 따라온다. 단위 시험에서 태그 없이도 판정을 확인할 수 있는 것도 이쪽이다.
  *
  * <h2>이 효과는 {@link #apply}/{@link #remove}에서 아무 일도 하지 않는다</h2>
- * <p>몰수는 {@link com.sharedfate.perk.PerkManager#applyChoice}가 부르는
- * {@link com.sharedfate.perk.PerkLegacyGear#sacrificeOnChoice} 한 곳에서 딱 한 번 일어난다.
- * {@code item_grant}({@link ItemGrantEffect})와 정반대 방향(주는 대신 뺏는다)이지만 "고른
- * 순간 한 번"이라는 시점은 같다. 접속·부활 때마다 다시 도는 {@link #apply}에서 몰수를 하면
- * 접속할 때마다 아이템이 또 사라지므로 절대 거기서 하면 안 된다.
+ * <p>스냅샷은 {@link com.sharedfate.perk.PerkLegacyGear} 가 전멸하는 순간에 한 번 뜬다. 증강을
+ * 고를 때도, 접속·부활 때마다 도는 {@link #apply}에서도 인벤토리를 건드리지 않는다.
  *
  * <h2>지금 입고 있는 방어구 네 칸은 판정을 거치지 않는다</h2>
  * <p>착용 중인 방어구는 {@link com.sharedfate.team.SharedEquipmentStore}의 HEAD·CHEST·

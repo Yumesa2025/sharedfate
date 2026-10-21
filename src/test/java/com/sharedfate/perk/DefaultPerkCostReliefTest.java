@@ -131,7 +131,13 @@ class DefaultPerkCostReliefTest {
 
 		ShockwaveEffect shockwave = assertInstanceOf(ShockwaveEffect.class, perk.effects().get(0));
 		assertEquals(25, shockwave.distance());
+		assertEquals(10, shockwave.radius());
+		assertEquals(2, shockwave.soloRadius());
+		assertEquals(2.4, shockwave.strength(), 1.0e-9);
+		assertEquals(5, shockwave.intervalSeconds());
 		assertTrue(perk.description().contains("25칸"));
+		assertTrue(perk.description().contains("10칸"));
+		assertTrue(perk.description().contains("2칸"));
 	}
 
 	@Test

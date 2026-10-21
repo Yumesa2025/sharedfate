@@ -52,6 +52,12 @@ import java.util.UUID;
  * 각자 살기를 뿜지만, 파문은 <b>뭉쳐 있을 때만</b> 터지므로 팀 전체가 이미 한 덩어리다. 상자
  * 하나로 훑어도 넓어지지 않는다.
  *
+ * <h2>뭉치지 않으면 팀원 각자 주변에서 작게 터진다</h2>
+ * <p>정의에 {@code solo_radius} 가 있고 팀이 {@code distance} 안에 뭉쳐 있지 않으면, 같은 주기
+ * 경계에서 접속 중인 팀원 각자 주변의 작은 반경만 민다({@link #soloBursts}). 뭉쳐 있으면 큰
+ * 충격파 하나만 터지고 작은 것은 따로 터지지 않는다. 한 주기에 몹은 어느 쪽이든 <b>한 번만</b>
+ * 밀린다.
+ *
  * <h2>어디를 중심으로 터지는가 — 팀원들의 무게중심이다</h2>
  * <p>중심은 <b>접속 중인 팀원 좌표의 평균</b>이다. 특정 한 명(예: 증강을 고른 사람)을 중심으로
  * 삼지 않는 까닭은 두 가지다.
@@ -113,6 +119,12 @@ public final class ShockwaveManager {
 
 	/** 충격파가 지나간 자리에 그리는 고리의 높이(칸). 발밑보다 조금 위여야 땅에 묻히지 않는다. */
 	private static final double RING_HEIGHT = 0.2;
+
+	/** 충격파 소리 크기. 처음엔 1.0 이었는데 너무 커서 절반으로 줄였다. */
+	private static final float SOUND_VOLUME = 0.5F;
+
+	/** 작은 충격파 소리가 한 자리에서만 나도록 묶는 거리(칸). 이 안의 팀원은 소리를 건너뛴다. */
+	private static final double SOUND_MERGE_DISTANCE = 16.0;
 
 	/** 고리를 그리는 점의 수. 반경에 비례하되 이 범위를 벗어나지 않는다. */
 	private static final int MIN_RING_POINTS = 12;
@@ -287,12 +299,19 @@ public final class ShockwaveManager {
 		if (!advance(team.teamId(), effect.intervalTicks(), time)) {
 			return;
 		}
-		// 정의에 적힌 거리를 그대로 넘긴다. 세트 「결속 3」의 배율은 together 안에서 먹는다.
-		if (!TeamProximity.together(team.teamId(), effect.distance())) {
-			return;
-		}
 		List<ServerPlayer> online = onlineMembers(server, team);
 		if (online.isEmpty()) {
+			return;
+		}
+		// 정의에 적힌 거리를 그대로 넘긴다. 세트 「결속 3」의 배율은 together 안에서 먹는다.
+		if (!TeamProximity.together(team.teamId(), effect.distance())) {
+			// 흩어져 있다. 작은 충격파가 정의돼 있으면 팀원 각자 주변에서만 터진다.
+			// 뭉쳐 있을 때는 이 갈래를 타지 않는다 — 큰 충격파가 그 자리를 대신한다.
+			if (effect.hasSolo()) {
+				soloBursts(online,
+						TeamProximity.scaled(team.teamId(), effect.soloRadius()),
+						effect.strength());
+			}
 			return;
 		}
 		ServerLevel level = sharedLevel(online);
@@ -302,6 +321,55 @@ public final class ShockwaveManager {
 		}
 		burst(level, center(online), TeamProximity.scaled(team.teamId(), effect.radius()),
 				effect.strength());
+	}
+
+	/**
+	 * 흩어진 팀의 작은 충격파. 접속 중인 팀원 각자를 중심으로 터진다.
+	 *
+	 * <p>⚠ 팀원 둘 사이에 있는 몹이 <b>두 번 밀리면</b> 세기가 곱해지므로, 몹마다 <b>가장 가까운
+	 * 팀원 한 명</b>만 골라 한 번만 민다. 차원이 다르면 서로 닿을 수 없으니 차원별로 따로
+	 * 모은다. 반경은 큰 충격파와 똑같이 {@code TeamProximity.scaled} 로 「결속」 배율을 먹인 값이다.
+	 *
+	 * <p>소리도 한 주기에 겹겹이 커지지 않게, 이미 소리를 낸 자리에서 {@link #SOUND_MERGE_DISTANCE}
+	 * 칸 안인 팀원은 건너뛴다(파티클은 각자 그린다).
+	 */
+	private static void soloBursts(List<ServerPlayer> online, double radius, double strength) {
+		Map<Mob, Pusher> nearest = new HashMap<>();
+		List<Vec3> sounded = new ArrayList<>();
+		double radiusSquared = radius * radius;
+		for (ServerPlayer member : online) {
+			ServerLevel level = member.level();
+			Vec3 center = member.position();
+			AABB box = new AABB(center, center).inflate(radius);
+			for (Mob mob : level.getEntitiesOfClass(Mob.class, box, AuraDamageManager::hostile)) {
+				double distance = mob.distanceToSqr(center);
+				if (distance > radiusSquared) {
+					continue;
+				}
+				Pusher known = nearest.get(mob);
+				if (known == null || distance < known.distanceSquared()) {
+					nearest.put(mob, new Pusher(center, distance));
+				}
+			}
+			boolean sound = true;
+			for (Vec3 other : sounded) {
+				if (other.distanceToSqr(center) <= SOUND_MERGE_DISTANCE * SOUND_MERGE_DISTANCE) {
+					sound = false;
+					break;
+				}
+			}
+			if (sound) {
+				sounded.add(center);
+			}
+			showWave(level, center, radius, sound);
+		}
+		for (Map.Entry<Mob, Pusher> entry : nearest.entrySet()) {
+			push(entry.getKey(), entry.getValue().center(), strength);
+		}
+	}
+
+	/** 몹을 미는 기준점(가장 가까운 팀원의 자리)과 그 거리 제곱. */
+	private record Pusher(Vec3 center, double distanceSquared) {
 	}
 
 	/**
@@ -342,7 +410,7 @@ public final class ShockwaveManager {
 			}
 			push(mob, center, strength);
 		}
-		showWave(level, center, radius);
+		showWave(level, center, radius, true);
 	}
 
 	/**
@@ -374,7 +442,7 @@ public final class ShockwaveManager {
 	 * <p>중심에 돌풍을 한 번 터뜨리고 반경 자리에 고리를 그린다. 고리 점의 수는 반경에 비례하되
 	 * 상한을 둔다 — 점 하나에 패킷 한 장이라 반경이 커질수록 그대로 늘어난다.
 	 */
-	private static void showWave(ServerLevel level, Vec3 center, double radius) {
+	private static void showWave(ServerLevel level, Vec3 center, double radius, boolean sound) {
 		level.sendParticles(ParticleTypes.GUST_EMITTER_LARGE,
 				center.x, center.y + RING_HEIGHT, center.z, 1, 0.0, 0.0, 0.0, 0.0);
 		int points = ringPoints(radius);
@@ -387,8 +455,11 @@ public final class ShockwaveManager {
 					center.z + Math.sin(angle) * radius,
 					1, 0.0, 0.0, 0.0, 0.0);
 		}
-		level.playSound(null, center.x, center.y, center.z,
-				SoundEvents.BREEZE_WIND_CHARGE_BURST.value(), SoundSource.PLAYERS, 1.0F, 0.8F);
+		if (sound) {
+			level.playSound(null, center.x, center.y, center.z,
+					SoundEvents.BREEZE_WIND_CHARGE_BURST.value(), SoundSource.PLAYERS,
+					SOUND_VOLUME, 0.8F);
+		}
 	}
 
 	/** 이 반경에 고리를 그릴 점의 수. */

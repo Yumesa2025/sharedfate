@@ -157,6 +157,40 @@ class ShockwaveEffectTest {
 		assertEquals(ShockwaveEffect.DEFAULT_STRENGTH, effect.strength());
 	}
 
+	// ------------------------------------------------------------------ 작은 충격파 (solo_radius)
+
+	/** 안 적으면 작은 충격파가 없다 — 이 필드가 생기기 전의 정의가 그대로 읽힌다. */
+	@Test
+	void solo_radius_를_안_적으면_작은_충격파가_없다() {
+		ShockwaveEffect effect = create("{ \"type\": \"shockwave\", \"radius\": 8 }");
+
+		assertFalse(effect.hasSolo());
+		assertEquals(ShockwaveEffect.NO_SOLO, effect.soloRadius());
+	}
+
+	@Test
+	void solo_radius_를_읽는다() {
+		ShockwaveEffect effect = create("""
+				{ "type": "shockwave", "distance": 25, "radius": 10, "solo_radius": 2,
+				  "interval_seconds": 5, "strength": 2.4 }
+				""");
+
+		assertTrue(effect.hasSolo());
+		assertEquals(2, effect.soloRadius());
+		assertEquals(10, effect.radius());
+	}
+
+	@Test
+	void solo_radius_는_카멜케이스로도_읽고_범위를_벗어나면_자른다() {
+		assertEquals(3, create("{ \"type\": \"shockwave\", \"soloRadius\": 3 }").soloRadius());
+		assertEquals(ShockwaveEffect.MIN_RADIUS,
+				create("{ \"type\": \"shockwave\", \"solo_radius\": 1 }").soloRadius());
+		assertEquals(ShockwaveEffect.MAX_RADIUS,
+				create("{ \"type\": \"shockwave\", \"solo_radius\": 99 }").soloRadius());
+		assertFalse(create("{ \"type\": \"shockwave\", \"solo_radius\": \"둘\" }").hasSolo(),
+				"숫자가 아니면 없는 것으로 본다");
+	}
+
 	// ------------------------------------------------------------------ 주기 경계
 
 	/**

@@ -224,7 +224,7 @@ class PerkStateCodecTest {
 	// ------------------------------------------------------------------ 유산(legacyGear)
 
 	@Test
-	void 유산으로_몰수한_아이템도_왕복_직렬화된다() {
+	void 유산이_남긴_아이템도_왕복_직렬화된다() {
 		TeamState state = TeamState.fresh(20.0F);
 		state.legacyGear.add(new ItemStack(Items.DIAMOND_PICKAXE));
 		state.legacyGear.add(new ItemStack(Items.DIAMOND_CHESTPLATE));
@@ -241,7 +241,7 @@ class PerkStateCodecTest {
 		CompoundTag encoded = encode(TeamState.fresh(20.0F));
 
 		assertFalse(encoded.contains("legacyGear"),
-				"몰수한 것이 없으면 저장 형태가 기존과 같아야 한다");
+				"승계분이 없으면 저장 형태가 기존과 같아야 한다");
 		assertTrue(decode(encoded).legacyGear.isEmpty());
 	}
 }

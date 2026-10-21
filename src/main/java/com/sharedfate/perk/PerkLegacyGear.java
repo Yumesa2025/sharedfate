@@ -6,7 +6,6 @@ import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.SharedItemList;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
@@ -24,14 +23,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * {@code legacy_gear} 증강(프리즘 「유산」)의 몰수와, 전멸 시점 승계분 스냅샷을 실행한다.
+ * {@code legacy_gear} 증강(프리즘 「유산」)의 전멸 시점 승계분 스냅샷을 실행한다.
  *
- * <h2>몰수(고르는 순간)와 승계(전멸하는 순간)는 서로 다른 시점이다</h2>
- * <p>고른 즉시 {@link #sacrificeOnChoice}가 그 순간 가진 도구·무기·방어구를 전부 없앤다 —
- * 이것이 이 증강의 대가다. 하지만 <b>다음 회차로 넘어가는 물건은 이 몰수분이 아니다.</b>
- * 몰수 이후에 팀이 새로 갖춘 장비도 승계 대상이어야 하므로, "무엇이 넘어가는가"는
- * {@link #captureAtDeath}가 <b>전멸하는 그 순간</b>에 다시 스냅샷을 떠서 정한다. 몰수는 물건을
- * 없애는 일만 하고 {@link TeamState#legacyGear}는 건드리지 않는다.
+ * <h2>고를 때는 아무것도 빼앗지 않는다</h2>
+ * <p>이 증강은 대가가 없다. <b>전멸하는 그 순간</b>에 {@link #captureAtDeath}가 스냅샷을 떠서
+ * 다음 회차로 넘길 물건을 정하는 일만 하고, {@link TeamState#legacyGear}만 채울 뿐 인벤토리는
+ * 건드리지 않는다.
  *
  * <h2>무엇을 훑는가</h2>
  * <ul>
@@ -75,7 +72,7 @@ import java.util.UUID;
  * 묶음을 통째로 들고 오므로 인챈트도, 모루에서 붙인 이름도, 닳은 내구도도 그대로다.
  * {@code new ItemStack(item)} 으로 다시 만들면 그 자리에서 전부 날아간다.
  *
- * <h2>몰수한 것은 어디로 가는가(승계분)</h2>
+ * <h2>승계분은 어디로 가는가</h2>
  * <p>{@link TeamState#legacyGear}에 담아 둔다. {@code TeamRosterStore}가 이 목록을 회차
  * 경계 너머로 실어 날라, 다음 회차의 시작 인벤토리에 그대로 돌려준다
  * ({@code TeamManager#restoreFreshRoster}). 전멸하지 않고 회차가 끝나면(승리) 이 자리
@@ -98,48 +95,6 @@ public final class PerkLegacyGear {
 	private static final Map<UUID, Long> LAST_CAPTURE_TICK = new HashMap<>();
 
 	private PerkLegacyGear() {
-	}
-
-	// ------------------------------------------------------------------ 몰수(고르는 순간)
-
-	/** @return 몰수한 아이템 묶음 수. 가리키는 것이 없거나 가진 게 없었으면 0 */
-	public static int sacrificeOnChoice(@Nullable MinecraftServer server, @Nullable ShareTeam team,
-			@Nullable TeamState state, @Nullable Perk perk) {
-		if (state == null || perk == null) {
-			return 0;
-		}
-		LegacyGearEffect effect = find(perk);
-		if (effect == null) {
-			return 0;
-		}
-
-		List<ItemStack> seized = new ArrayList<>();
-		seizeFromList(state.mainItems, effect, seized);
-		seizeFromList(state.extraItems, effect, seized);
-		seizeFromEnderChest(state.enderContainer, effect, seized);
-		seizeEquipment(state, effect, seized);
-
-		if (seized.isEmpty()) {
-			return 0;
-		}
-		// 다음 회차로 넘길 것은 이 몰수분이 아니라 전멸하는 순간의 스냅샷이다(아래 captureAtDeath).
-		// 여기서는 없애기만 한다.
-		SharedFateMod.LOGGER.info("[PERK] 증강 {} 로 팀 장비 {}개를 몰수했습니다.",
-				perk.id(), seized.size());
-
-		if (server != null && team != null) {
-			refreshScreens(server, team);
-			Component message = Component.literal(
-					"[증강] 「" + perk.name() + "」의 대가로 지금 가진 도구·무기·방어구 " + seized.size()
-							+ "개를 잃었습니다. 전멸하면 그 시점에 가진 도구·무기·방어구가 다음 회차로 넘어옵니다.");
-			for (UUID member : team.members()) {
-				ServerPlayer online = server.getPlayerList().getPlayer(member);
-				if (online != null) {
-					online.sendSystemMessage(message);
-				}
-			}
-		}
-		return seized.size();
 	}
 
 	// ------------------------------------------------------------------ 승계(전멸하는 순간)
@@ -218,8 +173,7 @@ public final class PerkLegacyGear {
 	 * 이 팀이 「유산」을 가졌으면, 지금(전멸하는 이 순간) 가진 도구·무기·방어구를 스냅샷으로
 	 * 남긴다. 없으면 아무것도 하지 않는다.
 	 *
-	 * <p>{@link TeamState#legacyGear}를 통째로 다시 채운다 — 고를 때 몰수한 것과는 무관하게,
-	 * 지금 이 순간의 보유물이 유일한 기준이다.
+	 * <p>{@link TeamState#legacyGear}를 통째로 다시 채운다 — 지금 이 순간의 보유물이 유일한 기준이다.
 	 *
 	 * @return 스냅샷에 담긴 아이템 묶음 수. 「유산」이 없거나 가진 게 없었으면 0
 	 */
@@ -325,54 +279,5 @@ public final class PerkLegacyGear {
 	 */
 	public static void reset() {
 		LAST_CAPTURE_TICK.clear();
-	}
-
-	private static void seizeFromList(SharedItemList items, LegacyGearEffect effect,
-			List<ItemStack> seized) {
-		for (int slot = 0; slot < items.size(); slot++) {
-			ItemStack stack = items.get(slot);
-			if (effect.matches(stack)) {
-				seized.add(stack.copy());
-				items.set(slot, ItemStack.EMPTY);
-			}
-		}
-	}
-
-	private static void seizeFromEnderChest(PlayerEnderChestContainer container,
-			LegacyGearEffect effect, List<ItemStack> seized) {
-		for (int slot = 0; slot < container.getContainerSize(); slot++) {
-			ItemStack stack = container.getItem(slot);
-			if (effect.matches(stack)) {
-				seized.add(stack.copy());
-				container.setItem(slot, ItemStack.EMPTY);
-			}
-		}
-	}
-
-	/** {@link #collectEquipment} 와 같은 기준으로 고르고, 고른 칸은 비운다. */
-	private static void seizeEquipment(TeamState state, LegacyGearEffect effect,
-			List<ItemStack> seized) {
-		for (EquipmentSlot slot : EquipmentSlot.values()) {
-			if (slot == EquipmentSlot.MAINHAND) {
-				continue;
-			}
-			ItemStack worn = state.equipment.get(slot);
-			if (worn.isEmpty()) {
-				continue;
-			}
-			if (ARMOR_SLOTS.contains(slot) || effect.matches(worn)) {
-				seized.add(worn.copy());
-				state.equipment.set(slot, ItemStack.EMPTY);
-			}
-		}
-	}
-
-	private static void refreshScreens(MinecraftServer server, ShareTeam team) {
-		for (UUID member : team.members()) {
-			ServerPlayer online = server.getPlayerList().getPlayer(member);
-			if (online != null && online.containerMenu != null) {
-				online.containerMenu.broadcastChanges();
-			}
-		}
 	}
 }

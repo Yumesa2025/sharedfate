@@ -196,7 +196,7 @@ class TeamRosterStoreTest {
 	// ------------------------------------------------------------------ 유산(legacyGear)
 
 	@Test
-	void 유산으로_몰수한_아이템도_회차를_넘겨_왕복한다(@TempDir Path server) throws Exception {
+	void 유산이_남긴_아이템도_회차를_넘겨_왕복한다(@TempDir Path server) throws Exception {
 		Path file = server.resolve(TeamRosterStore.FILE_NAME);
 		ShareTeam team = new ShareTeam(TEAM, "원정대", List.of(A, B));
 		ItemStack pickaxe = new ItemStack(Items.DIAMOND_PICKAXE);

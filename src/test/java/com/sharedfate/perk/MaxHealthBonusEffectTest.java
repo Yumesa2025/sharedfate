@@ -270,16 +270,16 @@ class MaxHealthBonusEffectTest {
 		assertEquals(26.0F,
 				PerkHealthRules.effectiveMaxHealth(perkTeam("sharedfate:health_over_helmet")),
 				"실버 「뚝배기 대신 피통」 은 최대 체력 +6 이다");
-		assertEquals(35.0F,
+		assertEquals(40.0F,
 				PerkHealthRules.effectiveMaxHealth(perkTeam("sharedfate:blind_giant")),
-				"프리즘 「장님 거인」 은 최대 체력 +15 이다");
+				"프리즘 「장님 거인」 은 최대 체력 +20 이다");
 		assertEquals(16.0F,
 				PerkHealthRules.effectiveMaxHealth(perkTeam("sharedfate:ascetic")),
 				"프리즘 「고행자」 는 최대 체력 16 고정이다 — 12 는 너무 빡빡해 2026-09-30 에 올렸다");
 		TeamState both = perkTeam("sharedfate:ascetic");
 		both.ownedPerks.add("sharedfate:blind_giant");
-		assertEquals(31.0F, PerkHealthRules.effectiveMaxHealth(both),
-				"고행자의 16 위에 장님 거인 +15 가 얹힌다 — 「다른 증강으로도 오르지 않는다」는 2026-10-16 에 걷어냈다");
+		assertEquals(36.0F, PerkHealthRules.effectiveMaxHealth(both),
+				"고행자의 16 위에 장님 거인 +20 이 얹힌다 — 「다른 증강으로도 오르지 않는다」는 2026-10-16 에 걷어냈다");
 	}
 
 	@Test

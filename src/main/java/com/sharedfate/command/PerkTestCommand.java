@@ -56,8 +56,7 @@ import java.util.UUID;
  * 재사용한다 — 끌 때 모든 효과가 걷히고, 켤 때 지금 보유 목록으로 다시 붙으며 동기화까지
  * 나간다. 몹에게 걸린 배율만 {@link MobPerkModifiers#invalidateNow} 로 따로 깨운다.
  *
- * <p><b>한 번만 일어나는 효과는 재현되지 않는다.</b> 즉시 지급({@code item_grant})이나
- * 「유산」의 몰수는 증강을 <b>고르는 순간</b>에만 일어나고 {@code apply}/{@code remove} 에서는
+ * <p><b>한 번만 일어나는 효과는 재현되지 않는다.</b> 즉시 지급({@code item_grant})은 증강을 <b>고르는 순간</b>에만 일어나고 {@code apply}/{@code remove} 에서는
  * 아무 일도 하지 않는다. 그래서 이 명령으로 넣은 증강은 아이템을 주지 않는다. 반대로 이
  * 덕분에 넣었다 뺐다를 반복해도 아이템이 불어나지 않는다.
  */
@@ -236,7 +235,7 @@ public final class PerkTestCommand {
 		context.getSource().sendSuccess(() -> Component.literal(
 				"증강을 넣었습니다: " + perk.rarity().displayName() + " " + perk.name()
 						+ " (" + perk.id() + ")"
-						+ "\n즉시 지급·몰수처럼 고르는 순간에만 일어나는 효과는 재현되지 않습니다."), true);
+						+ "\n즉시 지급처럼 고르는 순간에만 일어나는 효과는 재현되지 않습니다."), true);
 		return 1;
 	}
 
