@@ -32,6 +32,10 @@ public class SharedFateConfig {
 	public static final double MIN_EXPERIENCE_MULTIPLIER = 0.1;
 	public static final double MAX_EXPERIENCE_MULTIPLIER = 10.0;
 	public static final double DEFAULT_EXPERIENCE_MULTIPLIER = 1.2;
+	/** 세트 모으기 보정 확률(%)의 허용 범위와 기본값. 0 이면 보정을 끈다. */
+	public static final int MIN_SET_FOCUS_PERCENT = 0;
+	public static final int MAX_SET_FOCUS_PERCENT = 100;
+	public static final int DEFAULT_SET_FOCUS_PERCENT = 50;
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	public int maxTeamSize = 4;
@@ -206,6 +210,18 @@ public class SharedFateConfig {
 	 */
 	public boolean overrideServerMotd = true;
 
+	/**
+	 * 증강 후보를 뽑을 때 <b>모으는 중인 세트</b>의 증강을 한 장 끼워 넣을 확률(퍼센트 정수).
+	 * 기본 50, 0 이면 끈다.
+	 *
+	 * <p>모으는 중인 세트란 팀이 그 유형을 한 개 이상 가졌고 마지막 단계는 아직 안 열린 세트다.
+	 * 그런 세트가 있을 때 이 확률로 후보 한 장이 그 유형 중에서 나온다. 나머지 칸은 그대로
+	 * 무작위다. 규칙 자체는 {@link com.sharedfate.perk.PerkDraft} 에 적어 뒀다.
+	 *
+	 * <p>0~100 밖의 값은 {@link #sanitize} 가 가까운 끝으로 잘라 쓰고 경고를 남긴다.
+	 */
+	public int setFocusPercent = DEFAULT_SET_FOCUS_PERCENT;
+
 	public static SharedFateConfig loadOrCreate(Path file) {
 		if (Files.exists(file)) {
 			try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
@@ -287,6 +303,14 @@ public class SharedFateConfig {
 				|| experienceMultiplier < MIN_EXPERIENCE_MULTIPLIER
 				|| experienceMultiplier > MAX_EXPERIENCE_MULTIPLIER) {
 			experienceMultiplier = DEFAULT_EXPERIENCE_MULTIPLIER;
+			changed = true;
+		}
+		if (setFocusPercent < MIN_SET_FOCUS_PERCENT || setFocusPercent > MAX_SET_FOCUS_PERCENT) {
+			int clamped = Math.max(MIN_SET_FOCUS_PERCENT,
+					Math.min(MAX_SET_FOCUS_PERCENT, setFocusPercent));
+			SharedFateMod.LOGGER.warn("setFocusPercent 는 0~100 이어야 합니다. {} 대신 {} 을 씁니다.",
+					setFocusPercent, clamped);
+			setFocusPercent = clamped;
 			changed = true;
 		}
 		return changed;

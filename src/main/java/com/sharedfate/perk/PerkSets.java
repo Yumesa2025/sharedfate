@@ -5,8 +5,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -124,6 +126,46 @@ public final class PerkSets {
 			}
 		}
 		return counts;
+	}
+
+	// ------------------------------------------------------------------ 모으는 중인 세트
+
+	/**
+	 * 팀이 <b>모으는 중인</b> 세트 유형들.
+	 *
+	 * <p>그 유형을 <b>한 개 이상</b> 가졌고, 정의된 단계 중 <b>가장 높은 단계가 아직 열리지
+	 * 않은</b> 유형이다. 하나도 없으면 아직 시작하지 않은 것이고, 마지막 단계까지 열었으면 더
+	 * 모을 이유가 없다. 단계가 하나도 정의되지 않은 유형도 뺀다.
+	 *
+	 * <p>순수 계산이라 월드 없이 시험할 수 있다. 돌려주는 집합은 {@link PerkSetType} 선언 순서다.
+	 */
+	public static Set<PerkSetType> collectingTypes(@Nullable Map<PerkSetType, Integer> counts,
+			@Nullable Map<PerkSetType, List<Tier>> defined) {
+		Set<PerkSetType> types = EnumSet.noneOf(PerkSetType.class);
+		if (counts == null || defined == null) {
+			return types;
+		}
+		for (PerkSetType type : PerkSetType.values()) {
+			int owned = counts.getOrDefault(type, 0);
+			if (owned < 1) {
+				continue;
+			}
+			int top = 0;
+			for (Tier tier : sortedTiers(defined.get(type))) {
+				top = Math.max(top, tier.count());
+			}
+			if (top > 0 && owned < top) {
+				types.add(type);
+			}
+		}
+		return types;
+	}
+
+	/** 보유 목록에서 곧바로 모으는 중인 세트를 낸다. */
+	public static Set<PerkSetType> collectingTypes(@Nullable Collection<String> ownedPerkIds,
+			@Nullable Function<String, Perk> lookup,
+			@Nullable Map<PerkSetType, List<Tier>> defined) {
+		return collectingTypes(countByType(ownedPerkIds, lookup), defined);
 	}
 
 	// ------------------------------------------------------------------ 켜진 단계

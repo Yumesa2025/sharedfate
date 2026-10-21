@@ -1,6 +1,7 @@
 package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
+import com.sharedfate.config.SharedFateConfig;
 import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkSyncPayload;
 import com.sharedfate.perk.effect.DamageIncreaseReliefEffect;
@@ -20,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -154,7 +156,7 @@ public final class PerkManager {
 			// 뜨면 골라도 아무 일이 없는 죽은 카드가 된다.
 			List<String> options = PerkDraft.drawFor(rarity, milestone, PerkRegistry.all(),
 					claimed, List.of(), PerkSwapRules.satisfiedRequirements(state),
-					random, OPTION_COUNT, silverBlocked);
+					random, OPTION_COUNT, silverBlocked, collectingTypes(state.ownedPerks), focusPercent());
 			claimed.addAll(options);
 			state.lastPerkMilestone = milestone;
 			if (options.isEmpty()) {
@@ -565,7 +567,7 @@ public final class PerkManager {
 		List<String> options = PerkDraft.drawFor(rarity, milestone, PerkRegistry.all(),
 				state.ownedPerks, offer.optionIds(),
 				PerkSwapRules.satisfiedRequirements(state), random, OPTION_COUNT,
-				silverOffersBlocked(state));
+				silverOffersBlocked(state), collectingTypes(state.ownedPerks), focusPercent());
 		if (prismOnly) {
 			// PerkDraft.fallbackOrder(PRISM) 은 프리즘 → 골드 → 실버라, 아직 안 가진 프리즘이
 			// 3장 미만이면 골드가 섞여 들어온다. 남은 프리즘이 두 장이면 카드도 두 장이다.
@@ -612,7 +614,8 @@ public final class PerkManager {
 		}
 		List<String> options = PerkDraft.drawFor(rarity, milestone, PerkRegistry.all(),
 				state.ownedPerks, offer.optionIds(), PerkSwapRules.satisfiedRequirements(state),
-				server.overworld().getRandom(), OPTION_COUNT, blocked);
+				server.overworld().getRandom(), OPTION_COUNT, blocked,
+				collectingTypes(state.ownedPerks), focusPercent());
 		if (options.isEmpty()) {
 			SharedFateMod.LOGGER.error(
 					"{}렙 구간의 후보를 다시 뽑지 못했습니다. 제한시간의 무작위 선택에 맡깁니다.",
@@ -747,6 +750,21 @@ public final class PerkManager {
 	 * <p><b>첫 번째(지금 떠 있는) 선택권은 건드리지 않는다.</b> 부르는 자리가
 	 * {@code commit} 이라 그것은 이미 대기열에서 빠진 뒤다.
 	 */
+	/**
+	 * 이 증강 목록을 가진 팀이 모으는 중인 세트 유형들. 보정 칸의 기준이다. 아직 고르지 않은
+	 * 대기 후보는 세지 않고 팀이 실제로 가진 증강만 센다.
+	 */
+	private static Set<PerkSetType> collectingTypes(List<String> owned) {
+		return PerkSets.collectingTypes(owned, id -> PerkRegistry.byId(id).orElse(null),
+				PerkSetRegistry.all());
+	}
+
+	/** 세트 모으기 보정 확률(%). 설정이 아직 없으면 기본값. */
+	private static int focusPercent() {
+		return SharedFateMod.config == null
+				? SharedFateConfig.DEFAULT_SET_FOCUS_PERCENT : SharedFateMod.config.setFocusPercent;
+	}
+
 	private static void revalidatePendingOffers(MinecraftServer server, TeamState state,
 			RandomSource random) {
 		if (state.pending.isEmpty()) {
@@ -764,7 +782,8 @@ public final class PerkManager {
 			}
 			List<String> options = PerkDraft.drawFor(rarity, offer.milestone(),
 					PerkRegistry.all(), state.ownedPerks, List.of(),
-					PerkSwapRules.satisfiedRequirements(state), random, OPTION_COUNT, blocked);
+					PerkSwapRules.satisfiedRequirements(state), random, OPTION_COUNT, blocked,
+					collectingTypes(state.ownedPerks), focusPercent());
 			if (options.isEmpty()) {
 				// 뽑을 것이 없으면 옛 후보를 그대로 둔다. 비워 두면 그 구간이 빈 창으로 뜬다.
 				SharedFateMod.LOGGER.warn(

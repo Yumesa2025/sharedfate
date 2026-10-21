@@ -310,6 +310,33 @@ public final class PerkDraft {
 	public static List<String> drawFor(PerkRarity rarity, int milestone, List<Perk> pool,
 			List<String> owned, List<String> avoid, Set<Perk.Requirement> satisfied,
 			RandomSource random, int count, boolean silverBlocked) {
+		return drawFor(rarity, milestone, pool, owned, avoid, satisfied, random, count,
+				silverBlocked, Set.of(), 0);
+	}
+
+	/**
+	 * 세트 모으기 보정까지 함께 지정해 뽑는다. <b>모든 뽑기가 결국 여기로 모인다.</b>
+	 *
+	 * <h2>보정 칸</h2>
+	 * <p>{@code focusTypes} 가 비어 있지 않고 {@code focusPercent} 가 0 보다 크면, 후보를 뽑기
+	 * 전에 {@code focusPercent}% 확률로 <b>한 칸을 보정 칸</b>으로 쓴다. 이번에 실제로 뽑는
+	 * 등급(실버 차단으로 건너뛰는 등급을 뺀 폴백 순서의 첫 등급)의 적격 후보 가운데 「모으는
+	 * 유형을 하나라도 가진」 것 하나를 균등하게 고른다. 회피 대상은 기존 원칙대로 <b>뒤로
+	 * 미룬다</b> — 회피 아닌 후보가 하나라도 있으면 그중에서만 고르고, 없을 때만 회피 대상에서
+	 * 고른다. 나머지 칸은 보정 칸으로 뽑힌 것을 뺀 채 기존 방식 그대로 채운다. 보정 칸이
+	 * 들어간 경우에만 최종 순서를 섞어 늘 첫 자리에 오지 않게 한다.
+	 *
+	 * <p><b>보정이 일어날 수 없으면 난수를 하나도 더 쓰지 않는다.</b> 모으는 세트가 없거나
+	 * 확률이 0 이거나 그 등급에 해당 후보가 없으면, 같은 시드에서 보정이 생기기 전과 결과가
+	 * 똑같다.
+	 *
+	 * @param focusTypes   팀이 모으는 중인 세트 유형들({@link PerkSets#collectingTypes})
+	 * @param focusPercent 보정 칸이 들어갈 확률(0~100). 0 이하이면 끈다
+	 */
+	public static List<String> drawFor(PerkRarity rarity, int milestone, List<Perk> pool,
+			List<String> owned, List<String> avoid, Set<Perk.Requirement> satisfied,
+			RandomSource random, int count, boolean silverBlocked,
+			Set<PerkSetType> focusTypes, int focusPercent) {
 		if (rarity == null || pool == null || pool.isEmpty() || random == null || count <= 0) {
 			return List.of();
 		}
@@ -317,6 +344,8 @@ public final class PerkDraft {
 		Map<PerkRarity, List<Perk>> remaining = eligibleByRarity(pool, owned, milestone, satisfied);
 		Map<PerkRarity, List<Perk>> avoided = extract(remaining, idSet(avoid));
 		List<String> drawn = new ArrayList<>(count);
+		boolean focused = takeFocusSlot(drawn, rarity, silverBlocked, remaining, avoided, random,
+				focusTypes, focusPercent);
 		for (PerkRarity bucketRarity : fallbackOrder(rarity)) {
 			if (silverBlocked && bucketRarity == PerkRarity.SILVER) {
 				continue;
@@ -330,7 +359,76 @@ public final class PerkDraft {
 				break;
 			}
 		}
+		if (focused) {
+			shuffle(drawn, random);
+		}
 		return List.copyOf(drawn);
+	}
+
+	/**
+	 * 보정 칸 한 장을 {@code drawn} 에 먼저 담는다. 담았으면 참.
+	 *
+	 * <p>후보가 없으면 확률을 굴리지도 않는다 — 보정할 수 없는 추첨이 난수를 쓰면 기존 시드의
+	 * 결과가 달라진다.
+	 */
+	private static boolean takeFocusSlot(List<String> drawn, PerkRarity rarity,
+			boolean silverBlocked, Map<PerkRarity, List<Perk>> remaining,
+			Map<PerkRarity, List<Perk>> avoided, RandomSource random,
+			Set<PerkSetType> focusTypes, int focusPercent) {
+		if (focusPercent <= 0 || focusTypes == null || focusTypes.isEmpty()) {
+			return false;
+		}
+		PerkRarity actual = null;
+		for (PerkRarity candidate : fallbackOrder(rarity)) {
+			if (!(silverBlocked && candidate == PerkRarity.SILVER)) {
+				actual = candidate;
+				break;
+			}
+		}
+		if (actual == null) {
+			return false;
+		}
+		// 회피 아닌 후보를 먼저 보고, 하나도 없을 때만 회피 대상에서 고른다.
+		List<Perk> source = remaining.get(actual);
+		List<Perk> bucket = focusCandidates(source, focusTypes);
+		if (bucket.isEmpty()) {
+			source = avoided.get(actual);
+			bucket = focusCandidates(source, focusTypes);
+		}
+		if (bucket.isEmpty()) {
+			return false;
+		}
+		if (focusPercent < 100 && random.nextInt(100) >= focusPercent) {
+			return false;
+		}
+		Perk picked = bucket.get(random.nextInt(bucket.size()));
+		source.remove(picked);
+		drawn.add(picked.id());
+		return true;
+	}
+
+	/** 통에서 모으는 유형을 하나라도 가진 증강만 모은다. */
+	private static List<Perk> focusCandidates(List<Perk> bucket, Set<PerkSetType> focusTypes) {
+		List<Perk> found = new ArrayList<>();
+		for (Perk perk : bucket) {
+			for (PerkSetType type : perk.setTypes()) {
+				if (focusTypes.contains(type)) {
+					found.add(perk);
+					break;
+				}
+			}
+		}
+		return found;
+	}
+
+	/** 피셔-예이츠 섞기. */
+	private static void shuffle(List<String> list, RandomSource random) {
+		for (int i = list.size() - 1; i > 0; i--) {
+			int j = random.nextInt(i + 1);
+			String held = list.get(i);
+			list.set(i, list.get(j));
+			list.set(j, held);
+		}
 	}
 
 	/** {@code count} 가 차거나 통이 빌 때까지 그 통에서 무작위로 꺼내 담는다. */

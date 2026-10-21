@@ -76,6 +76,21 @@ class ConfigTest {
 	}
 
 	@Test
+	void 세트_보정_확률은_기본_50이고_범위_밖은_잘라_쓴다(@TempDir Path dir) throws Exception {
+		Path file = dir.resolve("sharedfate.json");
+		assertEquals(50, SharedFateConfig.loadOrCreate(file).setFocusPercent);
+
+		Files.writeString(file, "{\"setFocusPercent\": 0}", StandardCharsets.UTF_8);
+		assertEquals(0, SharedFateConfig.loadOrCreate(file).setFocusPercent, "0 은 끔");
+		Files.writeString(file, "{\"setFocusPercent\": 100}", StandardCharsets.UTF_8);
+		assertEquals(100, SharedFateConfig.loadOrCreate(file).setFocusPercent);
+		Files.writeString(file, "{\"setFocusPercent\": 250}", StandardCharsets.UTF_8);
+		assertEquals(100, SharedFateConfig.loadOrCreate(file).setFocusPercent);
+		Files.writeString(file, "{\"setFocusPercent\": -5}", StandardCharsets.UTF_8);
+		assertEquals(0, SharedFateConfig.loadOrCreate(file).setFocusPercent);
+	}
+
+	@Test
 	void 저장한_값을_다시_읽는다(@TempDir Path dir) throws Exception {
 		Path file = dir.resolve("sharedfate.json");
 		SharedFateConfig config = SharedFateConfig.loadOrCreate(file);
