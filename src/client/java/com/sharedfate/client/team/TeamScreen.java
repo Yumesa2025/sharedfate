@@ -943,8 +943,11 @@ public class TeamScreen extends Screen {
 		graphics.text(this.font, "팀 레벨 " + ClientTeamState.teamLevel(), left, y, TEXT_GOOD);
 		y += ROW_HEIGHT;
 		int remaining = ClientTeamState.levelsToNextPerk();
-		graphics.text(this.font, remaining < 0 ? "남은 증강 없음" : "다음 증강까지 " + remaining,
-				left, y, TEXT_WARN);
+		// 41~50 구간이면 「드래곤전 대비 증강까지 N」을 엔더 연보라로(HUD 와 같은 말과 색).
+		boolean prep = ClientTeamState.nextPerkIsPrep();
+		graphics.text(this.font, remaining < 0 ? "남은 증강 없음"
+						: com.sharedfate.ui.DragonPrepStyle.remainingText(remaining, prep),
+				left, y, prep && remaining >= 0 ? com.sharedfate.ui.DragonPrepStyle.COLOR : TEXT_WARN);
 		y += ROW_HEIGHT + 2;
 
 		// 현재 체력은 적지 않는다. 여기서는 팀의 상한만 확인하고, 지금 얼마나 남았는지는
@@ -1347,6 +1350,8 @@ public class TeamScreen extends Screen {
 		return switch (rarity) {
 			case "gold" -> 0xFFFFC63A;
 			case "prism" -> 0xFF5FE0D8;
+			// 「드래곤전 대비」 — 등급이 아닌 분류. 엔더 연보라.
+			case "trial" -> com.sharedfate.ui.DragonPrepStyle.COLOR;
 			default -> 0xFFC0C6CC;
 		};
 	}

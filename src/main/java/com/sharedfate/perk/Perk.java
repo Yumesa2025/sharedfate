@@ -34,6 +34,10 @@ import java.util.Set;
  *                    <b>자리가 맨 뒤인 것은 뜻이 아니라 사정 때문이다</b> — 개념으로는
  *                    {@link #minLevel} 옆에 있어야 하지만, 그 자리에 끼우면 여덟 인자짜리
  *                    표준 생성자를 쓰는 기존 코드가 전부 깨진다
+ * @param weight      후보 추첨 가중치(0.44.0-dev). 기본 {@value #DEFAULT_WEIGHT}. 같은 통 안에서
+ *                    이 값에 비례해 뽑힌다 — 0.5 면 다른 것의 절반쯤만 나온다. 통 안의 가중치가
+ *                    <b>모두 같으면</b> 예전 균등 추첨과 난수 소비까지 똑같다({@link PerkDraft}).
+ *                    {@code requires} 와 같은 사정으로 맨 뒤에 붙였다
  */
 public record Perk(
 		String id,
@@ -44,7 +48,13 @@ public record Perk(
 		int minLevel,
 		List<PerkSetType> setTypes,
 		List<PerkEffect> effects,
-		@Nullable Requirement requires) {
+		@Nullable Requirement requires,
+		double weight) {
+
+	/** 가중치를 적지 않은 증강의 값. */
+	public static final double DEFAULT_WEIGHT = 1.0;
+	/** 정의 파일이 적을 수 있는 가장 큰 가중치. 넘으면 그 증강을 버린다({@link PerkRegistry}). */
+	public static final double MAX_WEIGHT = 100.0;
 
 	/**
 	 * 증강이 후보에 들기 위해 팀이 갖춰야 하는 조건.
@@ -108,6 +118,19 @@ public record Perk(
 	public Perk {
 		setTypes = List.copyOf(setTypes);
 		effects = List.copyOf(effects);
+		// 정의 파일은 PerkRegistry 가 범위를 먼저 본다. 여기서는 코드로 직접 만든 증강이 추첨을
+		// 깨뜨리지 않게만 접는다 — 0 이하·NaN 은 「한 번도 안 나옴」이 아니라 기본값으로 본다.
+		if (!(weight > 0.0) || !Double.isFinite(weight)) {
+			weight = DEFAULT_WEIGHT;
+		}
+	}
+
+	/** 가중치를 적지 않으면 {@value #DEFAULT_WEIGHT} 이다. {@code weight} 가 생기기 전의 아홉 인자짜리 자리다. */
+	public Perk(String id, String name, String description, PerkRarity rarity,
+			@Nullable Identifier icon, int minLevel, List<PerkSetType> setTypes,
+			List<PerkEffect> effects, @Nullable Requirement requires) {
+		this(id, name, description, rarity, icon, minLevel, setTypes, effects, requires,
+				DEFAULT_WEIGHT);
 	}
 
 	/** 아이콘·최소 레벨을 따로 정하지 않은 무유형 증강. 화면은 등급별 기본 아이콘을 쓰고 언제나 나올 수 있다. */

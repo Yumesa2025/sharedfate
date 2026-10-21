@@ -295,7 +295,19 @@ public final class SharedFateNetworking {
 	//     칸이 하나 늘어 형식 자체가 바뀌었으므로 옛 클라이언트는 이 묶음을 읽지 못한다. 올려도
 	//     된다는 것은 사람이 확인했다(2026-10-18).
 	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다.
-	public static final int PROTOCOL_VERSION = 39;
+	// 40: 「드래곤전 대비」 증강(0.44.0-dev) — PerkClientFeaturesPayload 에 화살통(endlessQuiver) 칸 하나.
+	//
+	//     사람이 정한 것(2026-10-22) — 시련 팀의 45·50 구간 전용 풀 열두 장. 그중 「마르지 않는 화살통」은
+	//     화살이 0 개여도 활을 쏘게 하는데, 활을 당기기 시작하는 것은 클라이언트가 먼저
+	//     Player.getProjectile 을 묻고 정하므로 클라이언트도 「팀이 가졌는가」를 알아야 한다. 39 의 허기
+	//     상한과 같은 사정이다. 칸이 하나 늘어 형식 자체가 바뀌었다.
+	//
+	//     겸해서 클라이언트가 새 분류 rarity = "trial" 을 읽어 엔더 연보라 카드 · 「드래곤전 대비」 띠로
+	//     그리고, 다음 증강 레벨이 40 을 넘으면(45·50) HUD 를 같은 색으로 바꾼다. 이 둘은 기존 칸
+	//     (PerkOption.rarity 문자열 · TeamSyncPayload.nextPerkLevel)만으로 되지만, 옛 클라이언트는 "trial"
+	//     을 실버로 그리고 45·50 을 노랑으로 그린다 — 위 칸 때문에 어차피 접속이 막힌다.
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다. 공개판 v0.42.0-dev 이하(규약 39)와는 접속 불가.
+	public static final int PROTOCOL_VERSION = 40;
 
 	private SharedFateNetworking() {
 	}

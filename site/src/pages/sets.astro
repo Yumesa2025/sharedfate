@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import PerkCard from '../components/PerkCard.astro';
-import { loadPerks } from '../lib/perks';
+import { RARITY_NAME, loadPerks } from '../lib/perks';
 import { loadSets, setsByType } from '../lib/sets';
 import { href } from '../lib/url';
 
@@ -11,7 +11,6 @@ const byType = setsByType(sets);
 
 const owned = (type: string) => perks.filter((perk) => perk.setTypes.includes(type));
 const typeless = perks.filter((perk) => perk.setTypes.length === 0);
-const RARITY_NAME = { silver: '실버', gold: '골드', prism: '프리즘' } as const;
 ---
 <Base title="세트 — SharedFate" description={`SharedFate 의 세트 ${sets.length}유형과 단계별 효과 전체 표.`}>
   <div class="wrap">

@@ -30,10 +30,30 @@ import java.util.Set;
  *
  * <p>조건 집합을 받지 않는 옛 시그니처들은 {@link Perk.Requirement#ALL} 을 넘긴 것과 같아
  * 아무것도 거르지 않는다 — 전제조건이 생기기 전과 결과가 똑같다.
+ *
+ * <h2>「드래곤전 대비」 풀 (0.44.0-dev)</h2>
+ * <p>{@link PerkRarity#TRIAL} 은 드래곤 시련 팀의 45·50 구간({@link PerkMilestones#isTrialMilestone})
+ * 에서만 쓰는 따로 된 통이다. {@link #rarityFor} 가 그 두 구간에 난수 없이 이 값을 돌려주고,
+ * {@link #fallbackOrder} 가 이 통과 등급 셋을 서로 끌어오지 않으며, {@link #eligibleByRarity} 가
+ * 40 이하 구간에서는 이 통을 아예 비워 둔다 — 세 겹이다. 후보 수는 {@link #TRIAL_OPTIONS} 장이다
+ * ({@link #optionCount}).
+ *
+ * <h2>가중치({@link Perk#weight})</h2>
+ * <p>한 통에서 꺼낼 때 가중치에 비례해 뽑는다(비복원). <b>통 안의 가중치가 모두 같으면</b> 예전처럼
+ * {@code nextInt(크기)} 한 번으로 고르므로, 가중치를 안 쓰는 통은 같은 시드에서 결과도 난수
+ * 소비도 그대로다({@link #pickFrom}).
  */
 public final class PerkDraft {
 	/** 한 번에 제시하는 기본 후보 수. */
 	public static final int DEFAULT_OPTIONS = 3;
+
+	/**
+	 * 「드래곤전 대비」 구간(45·50)에 내놓는 후보 수.
+	 *
+	 * <p>풀이 열두 장뿐이고 두 번만 고르므로, 세 장씩 보여 주면 두 구간이 풀의 절반을 훑어 회차마다
+	 * 같은 판이 된다. 사람이 「3장이 아니라 2장」으로 정했다.
+	 */
+	public static final int TRIAL_OPTIONS = 2;
 
 	/**
 	 * 프리즘 라운드로 <b>고정된</b> 구간들. 15 하나뿐이다.
@@ -131,6 +151,10 @@ public final class PerkDraft {
 	 */
 	public static PerkRarity rarityFor(int milestone, int extraPrismCount, boolean silverBlocked,
 			boolean prismBoost, RandomSource random) {
+		// 시련 팀의 45·50 은 굴리지 않는다. 난수도 쓰지 않으므로 그 앞 구간들의 결과가 그대로다.
+		if (PerkMilestones.isTrialMilestone(milestone)) {
+			return PerkRarity.TRIAL;
+		}
 		if (PRISM_MILESTONES.contains(milestone)) {
 			return PerkRarity.PRISM;
 		}
@@ -170,7 +194,15 @@ public final class PerkDraft {
 			case SILVER -> List.of(PerkRarity.SILVER, PerkRarity.GOLD, PerkRarity.PRISM);
 			case GOLD -> List.of(PerkRarity.GOLD, PerkRarity.SILVER, PerkRarity.PRISM);
 			case PRISM -> List.of(PerkRarity.PRISM, PerkRarity.GOLD, PerkRarity.SILVER);
+			// 「드래곤전 대비」는 모자라도 등급에서 끌어오지 않고, 등급도 이 통을 끌어오지 않는다.
+			// 모자라면 카드가 적게 뜬다 — 45·50 에 실버가 끼거나 40 이하에 이 풀이 끼는 것보다 낫다.
+			case TRIAL -> List.of(PerkRarity.TRIAL);
 		};
+	}
+
+	/** 이 분류의 라운드가 내놓는 후보 수. 「드래곤전 대비」만 {@link #TRIAL_OPTIONS}, 나머지는 3. */
+	public static int optionCount(PerkRarity rarity) {
+		return rarity == PerkRarity.TRIAL ? TRIAL_OPTIONS : DEFAULT_OPTIONS;
 	}
 
 	/**
@@ -378,6 +410,10 @@ public final class PerkDraft {
 		if (focusPercent <= 0 || focusTypes == null || focusTypes.isEmpty()) {
 			return false;
 		}
+		// 「드래곤전 대비」에는 세트 유형이 없다. 보정할 것이 없으므로 난수도 안 쓰고 돌아간다.
+		if (rarity == PerkRarity.TRIAL) {
+			return false;
+		}
 		PerkRarity actual = null;
 		for (PerkRarity candidate : fallbackOrder(rarity)) {
 			if (!(silverBlocked && candidate == PerkRarity.SILVER)) {
@@ -401,7 +437,7 @@ public final class PerkDraft {
 		if (focusPercent < 100 && random.nextInt(100) >= focusPercent) {
 			return false;
 		}
-		Perk picked = bucket.get(random.nextInt(bucket.size()));
+		Perk picked = bucket.get(pickIndex(bucket, random));
 		source.remove(picked);
 		drawn.add(picked.id());
 		return true;
@@ -435,8 +471,49 @@ public final class PerkDraft {
 	private static void takeFrom(List<String> drawn, List<Perk> bucket, RandomSource random,
 			int count) {
 		while (drawn.size() < count && !bucket.isEmpty()) {
-			drawn.add(bucket.remove(random.nextInt(bucket.size())).id());
+			drawn.add(bucket.remove(pickIndex(bucket, random)).id());
 		}
+	}
+
+	/**
+	 * 통에서 하나를 고를 자리. 가중치에 비례한다({@link Perk#weight}).
+	 *
+	 * <p><b>통 안의 가중치가 모두 같으면 예전과 똑같이 {@code nextInt(크기)} 한 번이다.</b> 기본값 1.0
+	 * 만 있는 통(지금의 실버·골드·프리즘 전부)은 같은 시드에서 고르는 자리도, 쓰는 난수의 수도 예전과
+	 * 같다 — 고정 시드 시험이 그대로 지나가는 근거가 이것이다. 가중치가 섞인 통만 {@code nextDouble}
+	 * 한 번으로 누적 가중치를 짚는다.
+	 */
+	static int pickIndex(List<Perk> bucket, RandomSource random) {
+		if (sameWeight(bucket)) {
+			return random.nextInt(bucket.size());
+		}
+		double total = 0.0;
+		for (Perk perk : bucket) {
+			total += perk.weight();
+		}
+		double roll = random.nextDouble() * total;
+		for (int index = 0; index < bucket.size(); index++) {
+			roll -= bucket.get(index).weight();
+			if (roll < 0.0) {
+				return index;
+			}
+		}
+		// 부동소수 끝자리로 한 칸 모자랄 때. 마지막 것을 고른다.
+		return bucket.size() - 1;
+	}
+
+	/** 통 안의 가중치가 모두 같은가. 비었거나 하나뿐이면 참. */
+	private static boolean sameWeight(List<Perk> bucket) {
+		if (bucket.size() <= 1) {
+			return true;
+		}
+		double first = bucket.getFirst().weight();
+		for (Perk perk : bucket) {
+			if (Double.compare(perk.weight(), first) != 0) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -493,6 +570,11 @@ public final class PerkDraft {
 				continue;
 			}
 			if (perk.minLevel() > milestone) {
+				continue;
+			}
+			// 「드래곤전 대비」는 40 이하 구간에서 통째로 뺀다. fallbackOrder 가 이미 이 통을 끌어오지
+			// 않지만, 「40 이하에서는 절대」는 한 겹으로 지키지 않는다 — 다음 사람이 폴백을 고치다 열 수 있다.
+			if (perk.rarity() == PerkRarity.TRIAL && milestone <= PerkMilestones.MAX) {
 				continue;
 			}
 			// 팀이 갖추지 못한 전제조건이 붙어 있으면 뺀다. 전제조건이 없는 증강(대부분)은

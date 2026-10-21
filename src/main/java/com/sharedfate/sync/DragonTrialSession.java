@@ -207,6 +207,18 @@ public final class DragonTrialSession {
 		return true;
 	}
 
+	/**
+	 * 자리 하나를 <b>시련 없이</b> 넘긴다 — 터진 것으로 세되 줄에는 올리지 않는다(「첫 봉인」, 0.44.0-dev).
+	 *
+	 * <p>{@link #fire} 와 같은 {@code fired} 에 적으므로 저장되고, 일시 중단 뒤 이어 가도 서버를 다시
+	 * 켜도 그 자리가 다시 터지지 않는다. 줄에 안 올리니 룰렛도 안 돌고 카드도 안 쌓인다.
+	 *
+	 * @return 처음 넘긴 것이면 참. 이미 센 자리이거나 시련을 끈 팀이면 거짓
+	 */
+	public boolean seal(@Nullable Trigger trigger) {
+		return trialsEnabled && trigger != null && fired.add(trigger);
+	}
+
 	/** 지금 선택창을 띄울 때인가. */
 	public boolean shouldOfferTrial() {
 		return !awaitingChoice && !queued.isEmpty();

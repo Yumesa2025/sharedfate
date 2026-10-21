@@ -1093,7 +1093,9 @@ public final class TrialEndRain {
 			if (!TrialRisks.insideMark(member.position(), at, risk.radius())) {
 				continue;
 			}
-			member.hurtServer(end, end.damageSources().explosion(null, null), risk.damage());
+			// 「바닥 감각」 — 보라 바닥 면이 먼저 깔린다. 카드와 「폭풍 날갯짓」의 비가 모두 이 자리를 지난다.
+			member.hurtServer(end, end.damageSources().explosion(null, null),
+					com.sharedfate.perk.DragonPrep.floorStrike(member, risk.damage()));
 			// 고리 하나는 한 발이다. 나머지는 같은 발의 두 번째 몫이라 세지 않는다.
 			return;
 		}

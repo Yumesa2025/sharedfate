@@ -926,7 +926,9 @@ public final class DragonFireBarrage {
 		victim.damageCooldownTime = cooldownForStrike(saved);
 		striking = true;
 		try {
-			victim.hurtServer(end, end.damageSources().explosion(null, null), DAMAGE_PER_BLAST);
+			// 「바닥 감각」(0.44.0-dev) — 바닥에 표식이 먼저 뜨는 공격이다. 맞는 사람마다 따로 깎는다.
+			victim.hurtServer(end, end.damageSources().explosion(null, null),
+					com.sharedfate.perk.DragonPrep.floorStrike(victim, DAMAGE_PER_BLAST));
 		} finally {
 			striking = false;
 			victim.damageCooldownTime = cooldownAfterStrike(saved, victim.damageCooldownTime);

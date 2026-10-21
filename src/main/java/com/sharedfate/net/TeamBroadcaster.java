@@ -167,9 +167,12 @@ public final class TeamBroadcaster {
 		if (!state.perksEnabled) {
 			return 0;
 		}
-		int cleared = PerkMilestones.clampMilestone(Math.max(0, state.lastPerkMilestone));
+		// 시련을 켠 팀은 45·50 이 남아 있다. 그 두 구간이 다음이면 클라이언트가 HUD 를 엔더 연보라로
+		// 바꾼다(다음 증강 레벨이 40 을 넘는가만 보면 되므로 통신 칸을 늘리지 않았다).
+		int max = PerkMilestones.maxFor(state.dragonTrialsEnabled);
+		int cleared = PerkMilestones.clampMilestone(Math.max(0, state.lastPerkMilestone), max);
 		int next = cleared + PerkMilestones.STEP;
-		return next > PerkMilestones.MAX ? 0 : next;
+		return next > max ? 0 : next;
 	}
 
 	/**
@@ -177,7 +180,7 @@ public final class TeamBroadcaster {
 	 *
 	 * <p>자리를 넉넉히 떼어 <b>서로를 덮지 않게</b> 한다. 겹치면 「레벨이 1 오르고 칸이 9 줄었다」
 	 * 같은 조합이 우연히 같은 키가 되어 그때만 복구가 안 되는데, 그런 버그는 재현이 거의
-	 * 불가능하다. 다음 증강 레벨은 40 이하, 열린 칸은 27 이하라 각각 한 바이트면 남는다.
+	 * 불가능하다. 다음 증강 레벨은 50 이하(시련 팀), 열린 칸은 27 이하라 각각 한 바이트면 남는다.
 	 */
 	static long packSyncKey(int xpLevel, int nextPerkLevel, int unlockedExtraSlots) {
 		return ((long) xpLevel << 16)

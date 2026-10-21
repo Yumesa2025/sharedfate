@@ -275,6 +275,8 @@ public final class OwnedPerkPanel {
 		return switch (rarity) {
 			case "gold" -> 0xFFFFC63A;
 			case "prism" -> 0xFF5FE0D8;
+			// 「드래곤전 대비」 — 등급이 아닌 분류. 엔더 연보라.
+			case "trial" -> com.sharedfate.ui.DragonPrepStyle.COLOR;
 			default -> 0xFFC0C6CC;
 		};
 	}

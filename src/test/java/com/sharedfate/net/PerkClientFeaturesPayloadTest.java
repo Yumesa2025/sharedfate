@@ -143,4 +143,18 @@ class PerkClientFeaturesPayloadTest {
 		assertEquals(0, buffer.readableBytes(), "한 바이트도 실리지 않는다");
 		assertEquals(DoubleJumpPayload.INSTANCE, DoubleJumpPayload.CODEC.decode(buffer));
 	}
+
+	@Test
+	void 화살통_칸이_직렬화를_그대로_통과한다() {
+		// 규약 40 — 「마르지 않는 화살통」. 화살 0 개에서 활을 당기는 판정을 클라이언트도 해야 한다.
+		PerkClientFeaturesPayload on = roundTrip(PerkClientFeaturesPayload.of(
+				false, 0.0, EnumSet.noneOf(HideHudEffect.Element.class), 20, true));
+		assertTrue(on.endlessQuiver());
+		assertFalse(PerkClientFeaturesPayload.NONE.endlessQuiver(), "증강이 없으면 꺼져 있다");
+		assertFalse(new PerkClientFeaturesPayload(false, 0.0, List.of(), 20).endlessQuiver());
+		assertNotEquals(PerkClientFeaturesPayload.NONE, PerkClientFeaturesPayload.of(
+				false, 0.0, EnumSet.noneOf(HideHudEffect.Element.class), 20, true),
+				"얻거나 잃은 것이 다시 보내진다");
+	}
+
 }

@@ -64,6 +64,8 @@ public class SharedFateClient implements ClientModInitializer {
 		// 「먹방」 — 클라이언트의 Player.canEat 이 서버가 내려 준 허기 상한을 보게 한다. 먹는 동작은
 		// 클라이언트가 먼저 시작하므로 이것 없이는 배가 부를 때 우클릭해도 손이 움직이지 않는다.
 		com.sharedfate.perk.PerkFoodCapacity.setClientCapacity(ClientPerkFeatures::foodCapacity);
+		// 「마르지 않는 화살통」 — 활을 당기기 시작하는 판정을 서버와 같게 한다.
+		com.sharedfate.perk.DragonPrep.setClientQuiver(ClientPerkFeatures::endlessQuiver);
 		ClientConfigurationNetworking.registerGlobalReceiver(HandshakePayload.TYPE,
 				(payload, context) -> {
 					if (payload.protocolVersion() != SharedFateNetworking.PROTOCOL_VERSION) {

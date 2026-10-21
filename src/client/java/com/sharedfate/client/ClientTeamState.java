@@ -107,6 +107,14 @@ public final class ClientTeamState {
 		return teamLevel;
 	}
 
+	/**
+	 * 다음 증강 구간이 「드래곤전 대비」(45·50)인가. 시련 팀이 41~50 구간에 들어서면 참이다.
+	 * HUD 와 팀 화면이 이 값으로 엔더 연보라를 쓴다({@link com.sharedfate.ui.DragonPrepStyle}).
+	 */
+	public static boolean nextPerkIsPrep() {
+		return com.sharedfate.ui.DragonPrepStyle.nextIsPrep(nextPerkLevel);
+	}
+
 	/** 다음 증강까지 남은 레벨. 더 이상 받을 증강이 없으면 -1. */
 	public static int levelsToNextPerk() {
 		return nextPerkLevel <= 0 ? -1 : Math.max(0, nextPerkLevel - teamLevel);

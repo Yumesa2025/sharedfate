@@ -1792,6 +1792,8 @@ public final class DragonLastStandPatterns {
 		if (!(distance > 0.0)) {
 			return;
 		}
+		// 「닻」(0.44.0-dev) — 천장과 땅 확인을 다 지난 거리를 줄이기만 한다. 사람마다 따로다.
+		distance *= com.sharedfate.perk.DragonPrep.knockbackScale(member);
 		double speed = shoveSpeed(distance, isAirborne(end, ground, member));
 		Vec3 motion = member.getDeltaMovement();
 		// 수평을 더하지 않고 덮어쓰는 것은 들고 있던 속도가 얹혀 천장이 계산한 목적지를 넘지
@@ -2887,8 +2889,9 @@ public final class DragonLastStandPatterns {
 			// 사람이 지난 틱에 실제로 간 만큼. 서버의 deltaMovement 는 사람 입력이 없는 서버 혼자의
 			// 수라 「사람의 속도」로 읽으면 안 된다 — 옛 줄이 그 수를 읽고 그 수로 덮어썼다.
 			Vec3 known = member.getKnownMovement();
+			// 「닻」 — 끌려가는 한 번치도 같은 배율로 줄인다. 천장(suckImpulse)을 지난 뒤라 더 세지지 않는다.
 			double pull = suckImpulse(known.x * outX + known.z * outZ,
-					isAirborne(end, ground, member));
+					isAirborne(end, ground, member)) * com.sharedfate.perk.DragonPrep.knockbackScale(member);
 			if (!(pull > 0.0)) {
 				continue;
 			}
@@ -3239,8 +3242,9 @@ public final class DragonLastStandPatterns {
 			}
 			// 피해원에 실체를 달지 않는다. 실체가 붙으면 바닐라가 스스로 밀어내고, 사람이 정한
 			// 것은 「낙사·섬 밖으로 미는 것 없음」이다.
+			// 「바닥 감각」 — 십자 균열은 빨간 투명 면이 바닥에 먼저 깔린다.
 			member.hurtServer(end, end.damageSources().explosion(null, null),
-					DragonLastStand.CROSS_FISSURE_DAMAGE);
+					com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.CROSS_FISSURE_DAMAGE));
 			// ⚠ 피해 뒤에 띄운다. 앞에 두면 hurtServer 가 지나가며 속도를 건드릴 수 있고, 그러면
 			// 「12칸」이 맞는 사람마다 달라진다.
 			liftCross(end, member);
@@ -3794,8 +3798,9 @@ public final class DragonLastStandPatterns {
 				if (!TrialRisks.insideMark(member.position(), spot, LIGHTNING_RADIUS)) {
 					continue;
 				}
+				// 「바닥 감각」 — 상시 번개도 바닥 표식이 먼저 뜬다.
 				member.hurtServer(end, end.damageSources().lightningBolt(),
-						DragonLastStand.LIGHTNING_DAMAGE);
+						com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.LIGHTNING_DAMAGE));
 				// 사람이 정한 것 — 「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」.
 				// 맞은 그 사람에게만이고, 상태이상이 아니라 이동 속도를 직접 깎는다.
 				slowStruck(end, member, now);

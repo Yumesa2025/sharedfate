@@ -27,6 +27,8 @@ public final class ClientPerkFeatures {
 	private static boolean doubleJump;
 	private static double doubleJumpPower;
 	private static int foodCapacity = PerkFoodCapacity.VANILLA_MAX_FOOD;
+	/** 팀이 「마르지 않는 화살통」을 가졌는가. 엔드에 있는지는 {@code DragonPrep.quiverActive} 가 따로 본다. */
+	private static boolean endlessQuiver;
 	private static final Set<HideHudEffect.Element> HIDDEN =
 			EnumSet.noneOf(HideHudEffect.Element.class);
 
@@ -44,6 +46,7 @@ public final class ClientPerkFeatures {
 		HIDDEN.clear();
 		HIDDEN.addAll(payload.hidden());
 		foodCapacity = payload.foodCapacity();
+		endlessQuiver = payload.endlessQuiver();
 		if (!doubleJump) {
 			// 공중 점프가 꺼지면 남아 있던 사용 표시도 뜻이 없어진다.
 			DoubleJumpHandler.reset();
@@ -76,6 +79,11 @@ public final class ClientPerkFeatures {
 		return foodCapacity;
 	}
 
+	/** 팀이 「마르지 않는 화살통」을 가졌는가. */
+	public static boolean endlessQuiver() {
+		return endlessQuiver;
+	}
+
 	/** 이 HUD 칸을 가려야 하는가. */
 	public static boolean isHidden(@Nullable HideHudEffect.Element element) {
 		return element != null && HIDDEN.contains(element);
@@ -87,5 +95,6 @@ public final class ClientPerkFeatures {
 		doubleJumpPower = 0.0;
 		HIDDEN.clear();
 		foodCapacity = PerkFoodCapacity.VANILLA_MAX_FOOD;
+		endlessQuiver = false;
 	}
 }

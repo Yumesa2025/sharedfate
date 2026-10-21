@@ -720,7 +720,8 @@ class DefaultPerkPoolValuesTest {
 	void 기본_풀은_하나도_버려지지_않고_읽힌다(@TempDir Path dir) throws IOException {
 		loadDefaultPool(dir);
 
-		assertEquals(98, PerkRegistry.all().size(),
+		// 0.44.0-dev 에서 「드래곤전 대비」 열두 장이 들어와 98 → 110.
+		assertEquals(110, PerkRegistry.all().size(),
 				"파일에 적힌 수와 읽힌 수가 다르면 효과 타입이 등록되지 않은 것이다");
 
 		long silver = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.SILVER).count();
@@ -732,6 +733,8 @@ class DefaultPerkPoolValuesTest {
 		assertEquals(36, silver, "실버");
 		assertEquals(36, gold, "골드");
 		assertEquals(26, prism, "프리즘");
+		long trial = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.TRIAL).count();
+		assertEquals(12, trial, "드래곤전 대비");
 
 		// 등록을 빠뜨리면 여기서 먼저 걸린다.
 		for (String id : new String[] {"sharedfate:grounded_guard", "sharedfate:arcane_workshop",

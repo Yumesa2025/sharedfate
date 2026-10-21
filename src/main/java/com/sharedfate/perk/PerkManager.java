@@ -36,7 +36,6 @@ import java.util.UUID;
 public final class PerkManager {
 	/** 구간 감지는 매 틱 할 필요가 없다. 1초에 한 번이면 충분하다. */
 	private static final int CHECK_INTERVAL_TICKS = 20;
-	private static final int OPTION_COUNT = 3;
 	/**
 	 * 프리즘 확률을 {@link PerkDraft#PRISM_BOOST_PERCENT} 만큼 얹어 주는 증강.
 	 *
@@ -134,7 +133,9 @@ public final class PerkManager {
 
 	/** 아직 처리하지 않은 구간들을 대기열로 밀어넣는다. */
 	private static boolean advanceMilestones(MinecraftServer server, ShareTeam team, TeamState state) {
-		List<Integer> reached = PerkMilestones.newlyReached(state.lastPerkMilestone, state.xpLevel);
+		// 시련을 켠 팀만 45·50 까지 센다. 끈 팀은 40 이 끝이라 예전과 같다.
+		List<Integer> reached = PerkMilestones.newlyReached(state.lastPerkMilestone, state.xpLevel,
+				PerkMilestones.maxFor(state.dragonTrialsEnabled));
 		if (reached.isEmpty()) {
 			return false;
 		}
@@ -149,14 +150,16 @@ public final class PerkManager {
 		// 그래서 이 루프 안에서 뽑은 것을 함께 쌓아 「이미 가진 것」으로 넘긴다.
 		List<String> claimed = new ArrayList<>(state.ownedPerks);
 		for (int milestone : reached) {
-			// 등급을 여기서 먼저 정하고 뽑기는 그 등급으로 부른다.
+			// 등급을 여기서 먼저 정하고 뽑기는 그 등급으로 부른다. 45·50 은 굴리지 않고
+			// 「드래곤전 대비」다(난수도 안 쓴다).
 			PerkRarity rarity = PerkDraft.rarityFor(milestone, state.extraPrismRounds,
 					silverBlocked, prismBoost, random);
 			// 팀 설정을 못 채우는 증강은 후보에서 뺀다 — 위치 교환을 끈 팀에게 교환 증강이
 			// 뜨면 골라도 아무 일이 없는 죽은 카드가 된다.
 			List<String> options = PerkDraft.drawFor(rarity, milestone, PerkRegistry.all(),
 					claimed, List.of(), PerkSwapRules.satisfiedRequirements(state),
-					random, OPTION_COUNT, silverBlocked, collectingTypes(state.ownedPerks), focusPercent());
+					random, PerkDraft.optionCount(rarity), silverBlocked,
+					collectingTypes(state.ownedPerks), focusPercent());
 			claimed.addAll(options);
 			state.lastPerkMilestone = milestone;
 			if (options.isEmpty()) {
@@ -550,8 +553,14 @@ public final class PerkManager {
 		//
 		// 유일한 예외가 세트 「도박 3단계 — 어차피 프리즘」이다. 그 팀만 등급이 프리즘으로
 		// 올라간다.
-		boolean prismOnly = prismRerollActive(state);
-		PerkRarity rarity = prismOnly ? PerkRarity.PRISM : offerRarity(offer);
+		//
+		// 「드래곤전 대비」 라운드(45·50)는 예외의 예외다 — 「어차피 프리즘」도 이 풀을 프리즘으로
+		// 바꾸지 않는다. 그 세트의 약속은 등급 라운드의 것이고, 45·50 에 프리즘이 끼면 「이 구간은
+		// 이 풀에서만」이 깨진다.
+		PerkRarity offered = offerRarity(offer);
+		boolean trialRound = offered == PerkRarity.TRIAL || PerkMilestones.isTrialMilestone(milestone);
+		boolean prismOnly = !trialRound && prismRerollActive(state);
+		PerkRarity rarity = prismOnly ? PerkRarity.PRISM : trialRound ? PerkRarity.TRIAL : offered;
 		if (rarity == null) {
 			return;
 		}
@@ -566,7 +575,7 @@ public final class PerkManager {
 		// 직전 한 번만 피하므로 두 번 이상 다시 뽑으면 그전 것은 다시 나올 수 있다.
 		List<String> options = PerkDraft.drawFor(rarity, milestone, PerkRegistry.all(),
 				state.ownedPerks, offer.optionIds(),
-				PerkSwapRules.satisfiedRequirements(state), random, OPTION_COUNT,
+				PerkSwapRules.satisfiedRequirements(state), random, PerkDraft.optionCount(rarity),
 				silverOffersBlocked(state), collectingTypes(state.ownedPerks), focusPercent());
 		if (prismOnly) {
 			// PerkDraft.fallbackOrder(PRISM) 은 프리즘 → 골드 → 실버라, 아직 안 가진 프리즘이
@@ -606,7 +615,9 @@ public final class PerkManager {
 			ShareTeam team, TeamState state, PendingOffer offer, int milestone) {
 		PerkRarity rarity = offerRarity(offer);
 		if (rarity == null) {
-			rarity = PerkRarity.SILVER;
+			// 후보가 전부 풀에서 사라졌다. 45·50 이면 「드래곤전 대비」로 다시 뽑는다 — 실버로 채우면
+			// 그 구간에 등급 카드가 뜬다.
+			rarity = PerkMilestones.isTrialMilestone(milestone) ? PerkRarity.TRIAL : PerkRarity.SILVER;
 		}
 		boolean blocked = silverOffersBlocked(state);
 		if (blocked && rarity == PerkRarity.SILVER) {
@@ -614,7 +625,7 @@ public final class PerkManager {
 		}
 		List<String> options = PerkDraft.drawFor(rarity, milestone, PerkRegistry.all(),
 				state.ownedPerks, offer.optionIds(), PerkSwapRules.satisfiedRequirements(state),
-				server.overworld().getRandom(), OPTION_COUNT, blocked,
+				server.overworld().getRandom(), PerkDraft.optionCount(rarity), blocked,
 				collectingTypes(state.ownedPerks), focusPercent());
 		if (options.isEmpty()) {
 			SharedFateMod.LOGGER.error(
@@ -777,12 +788,16 @@ public final class PerkManager {
 				continue;
 			}
 			PerkRarity rarity = offerRarity(offer);
-			if (rarity == null || (blocked && rarity == PerkRarity.SILVER)) {
+			if (PerkMilestones.isTrialMilestone(offer.milestone())) {
+				// 45·50 은 언제나 「드래곤전 대비」다. 실버 차단이 이 풀을 골드로 바꾸면 안 된다.
+				rarity = PerkRarity.TRIAL;
+			} else if (rarity == null || (blocked && rarity == PerkRarity.SILVER)) {
 				rarity = PerkRarity.GOLD;
 			}
 			List<String> options = PerkDraft.drawFor(rarity, offer.milestone(),
 					PerkRegistry.all(), state.ownedPerks, List.of(),
-					PerkSwapRules.satisfiedRequirements(state), random, OPTION_COUNT, blocked,
+					PerkSwapRules.satisfiedRequirements(state), random,
+					PerkDraft.optionCount(rarity), blocked,
 					collectingTypes(state.ownedPerks), focusPercent());
 			if (options.isEmpty()) {
 				// 뽑을 것이 없으면 옛 후보를 그대로 둔다. 비워 두면 그 구간이 빈 창으로 뜬다.
@@ -813,7 +828,7 @@ public final class PerkManager {
 	}
 
 	private static String gradeAndName(Perk perk) {
-		return perk.rarity().displayName() + " 등급 " + perk.name();
+		return perk.rarity().gradeLabel() + " " + perk.name();
 	}
 
 	// ------------------------------------------------------------------ 효과 적용
@@ -1139,7 +1154,7 @@ public final class PerkManager {
 	/** 이 선택권의 등급 표시 문자열. 등급을 알 수 없으면 그냥 "증강". */
 	static String offerGradeLabel(PendingOffer offer) {
 		PerkRarity rarity = offerRarity(offer);
-		return rarity == null ? "증강" : rarity.displayName() + " 등급 증강";
+		return rarity == null ? "증강" : rarity.gradeLabel() + " 증강";
 	}
 
 	/**

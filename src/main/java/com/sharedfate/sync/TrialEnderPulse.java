@@ -744,6 +744,8 @@ public final class TrialEnderPulse {
 		// pushReach 가 0 보다 큰 값을 돌려줬다면 중앙에서 떨어져 있다는 뜻이라 나눗셈이 안전하다.
 		double from = TrialLandingShock.fromCenter(x, z);
 		boolean up = airborne(member.onGround(), member.getY(), ground.surfaceAt(end, x, z));
+		// 「닻」(0.44.0-dev) — 천장과 땅 확인을 다 지난 거리를 줄이기만 한다. 사람마다 따로다.
+		distance *= com.sharedfate.perk.DragonPrep.knockbackScale(member);
 		double speed = pushSpeed(distance, up);
 		Vec3 motion = member.getDeltaMovement();
 		// 수평은 덮어쓴다. ⚠ 세로는 「읽은 그대로」가 아니라 TrialVelocity.syncedVertical 을

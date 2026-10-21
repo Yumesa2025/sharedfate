@@ -131,7 +131,8 @@ public final class PerkClientRules {
 			}
 		}
 		return PerkClientFeaturesPayload.of(doubleJump, power, hidden,
-				PerkFoodCapacity.capacityOf(active));
+				PerkFoodCapacity.capacityOf(active),
+				DragonPrep.held(active, com.sharedfate.perk.effect.DragonPrepEffect.Kind.ENDLESS_QUIVER));
 	}
 
 	/** 이 팀원이 지금 받아야 할 내용. 서버의 팀원이 아니면 {@code NONE}. */

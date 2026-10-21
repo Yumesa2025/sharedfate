@@ -91,6 +91,24 @@ public class TeamState {
 	 */
 	public boolean dragonTrialsEnabled;
 	/**
+	 * 「불사의 맹세」를 이번 회차에 이미 썼는가(0.44.0-dev). 저장된다.
+	 *
+	 * <p>쓴 뒤로 이 회차 동안 팀 최대 체력이 절반이다 — 그 절반은 {@code PerkHealthRules} 가 이 값을
+	 * 보고 매번 다시 건다. 그래서 서버를 껐다 켜도, 체력 증강을 새로 골라도 절반이 유지된다. 회차가
+	 * 바뀌면 팀 상태를 새로 만들거나({@link #fresh}) {@link #resetAfterDeath} 가 내린다.
+	 */
+	public boolean undyingOathSpent;
+	/** 지금 시련 팀이 쓰는 경험치 곡선의 번호. 저장의 {@code xpCurve} 다({@link #migrateExperienceCurve}). */
+	static final int TRIAL_XP_CURVE = 1;
+	/**
+	 * 접속한 팀원이 한 명이라도 엔드에 있는가. <b>저장하지 않는 파생 값</b>이다.
+	 *
+	 * <p>「엔드 적응」(엔드에 있는 동안 최대 체력 +6)이 본다. {@code PerkHealthRules.tick} 이 1초마다
+	 * 월드를 보고 다시 적으므로, 서버가 켜진 뒤 첫 점검 전까지는 거짓이다 — 그 1초 동안 +6 이 늦게
+	 * 붙을 뿐 체력을 잃지는 않는다.
+	 */
+	public boolean presentInEnd;
+	/**
 	 * 이 회차에서 <b>팀원이 한 명이라도 접속해 있던</b> 시간(틱). 난이도 상승 단계를 이걸로 센다.
 	 *
 	 * <p>월드 저장에 들어가므로 서버를 껐다 켜도 이어지고, <b>서버가 꺼져 있던 시간은 세지
@@ -307,6 +325,9 @@ public class TeamState {
 	 * 살아남은 것들까지 지운다.</b>
 	 */
 	public void resetAfterDeath(float maxHealth, boolean keepExperience) {
+		// 「불사의 맹세」는 회차에 한 번이다. 월드를 지우지 않는 서버에서 같은 팀 상태로 다음 회차를
+		// 이어 가면 여기서 다시 쓸 수 있게 된다.
+		undyingOathSpent = false;
 		this.maxHealth = sanitizeMaximum(maxHealth, 20.0F);
 		health = this.maxHealth;
 		absorption = 0.0F;
@@ -737,7 +758,9 @@ public class TeamState {
 	 * <p>증강 시스템의 손상된 저장이 본 게임을 막으면 안 되므로 예외를 던지지 않고 조용히 고친다.
 	 */
 	public void sanitizePerks() {
-		lastPerkMilestone = PerkMilestones.clampMilestone(lastPerkMilestone);
+		// 팀의 끝으로 접는다. 시련 팀의 45·50 을 40 끝으로 접으면 45 구간을 한 번 더 준다.
+		lastPerkMilestone = PerkMilestones.clampMilestone(lastPerkMilestone,
+				PerkMilestones.maxFor(dragonTrialsEnabled));
 		// 손상된 저장이나 이 항목을 모르는 예전 서버가 적어 둔 값이 표 밖을 짚지 않게 접는다.
 		// PerkDraft 도 스스로 한 번 더 접지만, 저장에 남는 값 자체가 범위 안이어야 다음에
 		// 열었을 때 「프리즘가 다섯 번 나왔다」 같은 값이 굳어 있지 않다.
@@ -820,7 +843,14 @@ public class TeamState {
 			// dragonTrialsEnabled 필드 문서에 적어 뒀다. 끈 팀은 저장에도 적히지 않아
 			// 형태가 예전과 같다.
 			Codec.BOOL.optionalFieldOf("dragonTrials", false)
-					.<TeamState>forGetter(state -> state.dragonTrialsEnabled)
+					.<TeamState>forGetter(state -> state.dragonTrialsEnabled),
+			// 0.44.0-dev. 쓰지 않은 팀은 저장에도 적히지 않아 형태가 예전과 같다.
+			Codec.BOOL.optionalFieldOf("undyingOath", false)
+					.<TeamState>forGetter(state -> state.undyingOathSpent),
+			// 시련 팀이 어느 경험치 곡선으로 점수를 적었는가. 0 = 옛 곡선(바닐라), 1 = 41~50 이 바닐라
+			// 10~20 값인 곡선. 시련 팀만 1 로 적힌다 — 끈 팀은 곡선이 하나뿐이라 적을 것이 없다.
+			Codec.INT.optionalFieldOf("xpCurve", 0)
+					.<TeamState>forGetter(state -> state.dragonTrialsEnabled ? TRIAL_XP_CURVE : 0)
 	).apply(instance, TeamState::withStoredSections));
 
 	/**
@@ -844,8 +874,10 @@ public class TeamState {
 			Optional<Float> baseMaxHealth, AlertSection alerts, List<ItemStack> legacyGear,
 			DifficultySection difficulty, boolean perkTestUsed, RerollSection reroll,
 			boolean runStarted, int extraPrismRounds, long supplyAnchorTick,
-			boolean dragonTrials) {
+			boolean dragonTrials, boolean undyingOath, int xpCurve) {
 		state.dragonTrialsEnabled = dragonTrials;
+		state.undyingOathSpent = undyingOath;
+		migrateExperienceCurve(state, xpCurve);
 		state.supplyAnchorTick = Math.max(0L, supplyAnchorTick);
 		state.runStarted = runStarted;
 		// applyPerkSection 이 sanitizePerks 로 이 값까지 접으므로 그보다 먼저 채워야 한다.
@@ -859,6 +891,25 @@ public class TeamState {
 		state.legacyGear.clear();
 		legacyGear.stream().filter(stack -> !stack.isEmpty()).forEach(state.legacyGear::add);
 		return state;
+	}
+
+	/**
+	 * 0.43 이하가 적은 시련 팀의 경험치 점수를 새 곡선으로 옮긴다.
+	 *
+	 * <p>점수는 「바닐라 곡선의 누적」으로 적혀 있었다. 그대로 새 곡선으로 읽으면 레벨 42(옛 곡선 3333점)가
+	 * 새 곡선의 상한 3310 을 넘어 <b>곧장 50 이 되고 45·50 선택권이 한꺼번에 열린다.</b> 그래서 점수가
+	 * 아니라 화면에 보이던 <b>레벨과 막대</b>({@code xpLevel}·{@code xpProgress})를 그대로 두고 점수만 새
+	 * 곡선으로 다시 센다. 40 아래는 두 곡선이 같아 손댈 것이 없다.
+	 *
+	 * <p>한 번 옮긴 저장은 {@code xpCurve} 가 1 로 적혀 다시 옮기지 않는다.
+	 */
+	static void migrateExperienceCurve(TeamState state, int storedCurve) {
+		if (!state.dragonTrialsEnabled || storedCurve >= TRIAL_XP_CURVE
+				|| state.xpLevel < com.sharedfate.sync.TrialExperience.CURVE_FROM) {
+			return;
+		}
+		state.totalExperience = com.sharedfate.sync.TrialExperience.pointsFor(
+				state.xpLevel, state.xpProgress, true);
 	}
 
 	private static TeamState fromCodec(SharedItemList mainItems, Optional<SharedItemList> extraItems,

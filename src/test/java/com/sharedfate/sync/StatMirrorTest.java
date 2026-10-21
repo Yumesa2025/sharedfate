@@ -91,9 +91,10 @@ class StatMirrorTest {
 		trials.dragonTrialsEnabled = true;
 
 		assertEquals(2920, StatMirror.experienceCap(plain));
-		assertEquals(5345, StatMirror.experienceCap(trials));
+		// 0.44.0-dev — 시련 팀은 40→50 이 바닐라 10→20 값이라 2920 + 390 = 3310(전에는 바닐라 50 의 5345).
+		assertEquals(3310, StatMirror.experienceCap(trials));
 		assertEquals(StatMirror.experiencePointsFor(40, 0.0F), StatMirror.experienceCap(plain));
-		assertEquals(StatMirror.experiencePointsFor(50, 0.0F), StatMirror.experienceCap(trials));
+		assertEquals(TrialExperience.pointsFor(50, 0.0F, true), StatMirror.experienceCap(trials));
 	}
 
 	@Test
@@ -119,7 +120,7 @@ class StatMirrorTest {
 		StatMirror.applyDeltas(trials, 40.0F, 4.0F,
 				new StatMirror.StatDelta(0.0F, 0.0F, 0.0F, 0.0F, 0, 0.0F, 99_999), true);
 
-		assertEquals(StatMirror.experiencePointsFor(50, 0.0F), trials.totalExperience);
+		assertEquals(TrialExperience.pointsFor(50, 0.0F, true), trials.totalExperience);
 	}
 
 	@Test

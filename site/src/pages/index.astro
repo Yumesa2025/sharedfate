@@ -57,7 +57,7 @@ const counts = countByRarity(perks);
     <Pillar
       index="02"
       eyebrow="증강"
-      title="회차마다 최대 여덟 번 고릅니다"
+      title="5레벨마다 한 장씩 고릅니다"
       image={perkChoice}
       alt="증강 선택 화면 — 프리즘 카드 세 장이 펼쳐져 있고 왼쪽에 지금 켜진 세트가 보인다"
       flip
@@ -73,8 +73,10 @@ const counts = countByRarity(perks);
       </p>
       <p>
         기본 풀은 {perks.length}개입니다 — 실버 {counts.silver} · 골드 {counts.gold} ·
-        프리즘 {counts.prism}. 구간마다 세 등급이 확률로 나오고{' '}
-        <b>15레벨만 프리즘으로 고정</b>입니다.{' '}
+        프리즘 {counts.prism} · 드래곤전 대비 {counts.trial}. 5~40레벨 여덟 구간에서는 세 등급이
+        확률로 나오고 <b>15레벨만 프리즘으로 고정</b>입니다.{' '}
+        <a href={href('/trials')}>드래곤 시련</a>을 켠 팀은 45 · 50레벨에 두 번 더, 전용 분류
+        「드래곤전 대비」에서 고릅니다.{' '}
         <a href={href('/perks')}>전체 목록</a>을 걸러 볼 수 있습니다.
       </p>
     </Pillar>

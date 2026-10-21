@@ -1234,6 +1234,12 @@ public final class DragonTrialManager {
 			int wavesBefore = session.lastStandWaves();
 			DragonLastStand.Standing standing = DragonLastStand.tick(server, end, dragon, team,
 					session, members, lastStandBegins, now);
+			if (lastStandBegins) {
+				// 「결전의 함성」. HEALTH_30 이 처음 터진 이 틱에만 온다 — 그 자리는 세션에 저장되므로 일시
+				// 중단 뒤 이어 가도 다시 주지 않는다.
+				com.sharedfate.perk.DragonPrep.onLastStandBegins(team,
+						TeamManager.get(server).stateByTeamId(team.teamId()), members);
+			}
 			if (session.lastStandWaves() != wavesBefore) {
 				// 최후의 저항에서 회복 크리스탈 소환을 끝까지 치렀다(2026-10-18 밤). 바로 저장하지 않으면 강제
 				// 종료 뒤에 그 파도를 다시 받는다 — DragonTrialSession.recordLastStandWaves.
@@ -1664,7 +1670,7 @@ public final class DragonTrialManager {
 			int atStart = recorded == null ? 0 : recorded;
 			if (atStart > 0) {
 				if (crystals < atStart) {
-					session.fire(TrialCatalog.Trigger.FIRST_CRYSTAL);
+					fireFirstCrystal(end, session);
 				}
 				if (crystals == 0) {
 					session.fire(TrialCatalog.Trigger.ALL_CRYSTALS);
@@ -1687,6 +1693,34 @@ public final class DragonTrialManager {
 		// 않고 「터졌는가」만 받으므로 실제로 재는 곳은 여기 하나다.
 		return ratio <= DragonLastStand.ENTRY_HEALTH_RATIO
 				&& session.fire(TrialCatalog.Trigger.HEALTH_30);
+	}
+
+	/**
+	 * 「첫 크리스탈」 자리. 팀이 「첫 봉인」을 가졌으면 그 자리를 <b>시련 없이</b> 넘긴다(0.44.0-dev) —
+	 * 룰렛이 돌지 않고 카드가 쌓이지 않는다. 넘긴 것도 {@code fired} 에 적혀 저장되므로 다시 터지지 않는다.
+	 */
+	private static void fireFirstCrystal(ServerLevel end, DragonTrialSession session) {
+		if (session.fired().contains(TrialCatalog.Trigger.FIRST_CRYSTAL)) {
+			return;
+		}
+		MinecraftServer server = end.getServer();
+		com.sharedfate.team.TeamState state = server == null ? null
+				: TeamManager.get(server).stateByTeamId(session.teamId());
+		if (!com.sharedfate.perk.DragonPrep.sealsFirstCrystal(state)) {
+			session.fire(TrialCatalog.Trigger.FIRST_CRYSTAL);
+			return;
+		}
+		if (session.seal(TrialCatalog.Trigger.FIRST_CRYSTAL)) {
+			ShareTeam team = TeamManager.get(server).teamById(session.teamId());
+			if (team != null) {
+				for (ServerPlayer member : membersOf(server, team, end)) {
+					member.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+							"[증강] 「첫 봉인」 — 첫 크리스탈 자리의 시련이 봉인되었습니다."));
+				}
+			}
+			SharedFateMod.LOGGER.info("[END] 첫 크리스탈 자리 — 「첫 봉인」으로 시련 없이 넘깁니다");
+			persist();
+		}
 	}
 
 	/** 지금 엔드에 살아 있는 크리스탈 수. 철장에 갇힌 것도 센다. */
@@ -2106,6 +2140,14 @@ public final class DragonTrialManager {
 	/** 지금 전투 중인 팀의 세션. 시험과 명령에서 상태를 들여다볼 때 쓴다. */
 	public static @Nullable DragonTrialSession sessionOf(@Nullable UUID teamId) {
 		return teamId == null ? null : SESSIONS.get(teamId);
+	}
+
+	/**
+	 * 이 팀이 지금 <b>시련 전투를 치르는 중</b>인가 — 시련을 켠 세션이 열려 있고 일시 중단되지 않았다.
+	 * 「드래곤전 대비」의 전투 증강(착지 노리기 · 하늘 사수)이 묻는다.
+	 */
+	public static boolean fighting(@Nullable UUID teamId) {
+		return com.sharedfate.perk.DragonPrep.fighting(sessionOf(teamId));
 	}
 
 	/**

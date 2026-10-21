@@ -56,6 +56,7 @@ import com.sharedfate.perk.effect.NoNaturalRegenEffect;
 import com.sharedfate.perk.effect.OffhandLockEffect;
 import com.sharedfate.perk.effect.DoubleJumpEffect;
 import com.sharedfate.perk.effect.DropReplaceEffect;
+import com.sharedfate.perk.effect.DragonPrepEffect;
 import com.sharedfate.perk.effect.DurabilityMultiplierEffect;
 import com.sharedfate.perk.effect.HideHudEffect;
 import com.sharedfate.perk.effect.OnBreakEffect;
@@ -216,6 +217,8 @@ public enum PerkEffectType {
 	VILLAGER_TRADE("villager_trade", VillagerTradeEffect::fromJson),
 	RUIN_SURVEY("ruin_survey", RuinSurveyEffect::fromJson),
 	FOOD_CAPACITY("food_capacity", FoodCapacityEffect::fromJson),
+	/** 「드래곤전 대비」 열두 장의 표시(0.44.0-dev). 종류는 {@code kind} 로 가른다. */
+	DRAGON_PREP("dragon_prep", DragonPrepEffect::fromJson),
 	CUSTOM("custom", CustomEffect::fromJson);
 
 	/** 효과 하나를 만드는 팩토리. 정의가 잘못됐으면 {@code null}을 돌려준다. */

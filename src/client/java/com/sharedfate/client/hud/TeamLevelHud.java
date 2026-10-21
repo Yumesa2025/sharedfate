@@ -1,6 +1,7 @@
 package com.sharedfate.client.hud;
 
 import com.sharedfate.client.ClientTeamState;
+import com.sharedfate.ui.DragonPrepStyle;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -46,7 +47,10 @@ public class TeamLevelHud implements HudElement {
 		}
 		graphics.text(font, "팀 레벨 " + ClientTeamState.teamLevel(),
 				left, baseline - BottomLeftStack.LINE_HEIGHT, LEVEL_COLOR);
-		graphics.text(font, "다음 증강까지 " + remaining, left, baseline, REMAINING_COLOR);
+		// 41~50 구간(다음이 45·50)이면 「드래곤전 대비 증강까지 N」을 엔더 연보라로. 40 이하는 그대로다.
+		boolean prep = ClientTeamState.nextPerkIsPrep();
+		graphics.text(font, DragonPrepStyle.remainingText(remaining, prep), left, baseline,
+				prep ? DragonPrepStyle.COLOR : REMAINING_COLOR);
 	}
 
 }

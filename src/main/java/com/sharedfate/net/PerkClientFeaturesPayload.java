@@ -32,14 +32,15 @@ import java.util.Set;
  *                           ({@code ClientboundSetHealthPacket} 의 허기는 VarInt 다)
  */
 public record PerkClientFeaturesPayload(boolean doubleJump, double doubleJumpPower,
-		List<String> hiddenHudElements, int foodCapacity) implements CustomPacketPayload {
+		List<String> hiddenHudElements, int foodCapacity, boolean endlessQuiver)
+		implements CustomPacketPayload {
 
 	/** 가릴 수 있는 칸의 개수 상한. {@link HideHudEffect.Element} 의 개수와 같다. */
 	public static final int MAX_HIDDEN_ELEMENTS = 4;
 
 	/** 클라이언트가 따로 할 일이 없는 상태. 팀이 없거나 해당 증강이 없을 때 보낸다. */
 	public static final PerkClientFeaturesPayload NONE =
-			new PerkClientFeaturesPayload(false, 0.0, List.of(), PerkFoodCapacity.VANILLA_MAX_FOOD);
+			new PerkClientFeaturesPayload(false, 0.0, List.of(), PerkFoodCapacity.VANILLA_MAX_FOOD, false);
 
 	public static final Type<PerkClientFeaturesPayload> TYPE =
 			new Type<>(SharedFateMod.id("perk_client_features"));
@@ -50,7 +51,17 @@ public record PerkClientFeaturesPayload(boolean doubleJump, double doubleJumpPow
 					ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list(MAX_HIDDEN_ELEMENTS)),
 					PerkClientFeaturesPayload::hiddenHudElements,
 					ByteBufCodecs.VAR_INT, PerkClientFeaturesPayload::foodCapacity,
+					// 규약 40 — 「마르지 않는 화살통」. 화살 0 개에서 활을 당기는 것은 클라이언트가 먼저
+					// 정하므로 클라이언트도 알아야 한다(DragonPrep.quiverActive). 엔드에 있는지는 클라이언트가
+					// 스스로 본다 — 여기 싣는 것은 「팀이 가졌는가」뿐이다.
+					ByteBufCodecs.BOOL, PerkClientFeaturesPayload::endlessQuiver,
 					PerkClientFeaturesPayload::new);
+
+	/** 화살통 칸이 생기기 전의 네 칸짜리 자리. 화살통은 꺼져 있다. */
+	public PerkClientFeaturesPayload(boolean doubleJump, double doubleJumpPower,
+			List<String> hiddenHudElements, int foodCapacity) {
+		this(doubleJump, doubleJumpPower, hiddenHudElements, foodCapacity, false);
+	}
 
 	public PerkClientFeaturesPayload {
 		hiddenHudElements = List.copyOf(hiddenHudElements);
@@ -73,6 +84,11 @@ public record PerkClientFeaturesPayload(boolean doubleJump, double doubleJumpPow
 	/** 허기 상한까지 담아 만든다. 나머지는 {@link #of(boolean, double, Set)} 과 같다. */
 	public static PerkClientFeaturesPayload of(boolean doubleJump, double doubleJumpPower,
 			Set<HideHudEffect.Element> hidden, int foodCapacity) {
+		return of(doubleJump, doubleJumpPower, hidden, foodCapacity, false);
+	}
+
+	public static PerkClientFeaturesPayload of(boolean doubleJump, double doubleJumpPower,
+			Set<HideHudEffect.Element> hidden, int foodCapacity, boolean endlessQuiver) {
 		List<String> names = new ArrayList<>(MAX_HIDDEN_ELEMENTS);
 		// 들어온 묶음의 차례에 기대지 않고 선언 순서로 훑는다.
 		for (HideHudEffect.Element element : HideHudEffect.Element.values()) {
@@ -81,7 +97,7 @@ public record PerkClientFeaturesPayload(boolean doubleJump, double doubleJumpPow
 			}
 		}
 		return new PerkClientFeaturesPayload(doubleJump, doubleJump ? doubleJumpPower : 0.0, names,
-				foodCapacity);
+				foodCapacity, endlessQuiver);
 	}
 
 	/** 패킷에 실린 이름을 칸 묶음으로 되돌린다. 모르는 이름은 버린다. */

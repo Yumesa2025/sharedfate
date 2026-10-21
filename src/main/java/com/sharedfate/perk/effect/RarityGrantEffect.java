@@ -44,8 +44,9 @@ public final class RarityGrantEffect implements PerkEffect {
 	public static @Nullable PerkEffect fromJson(String perkId, int index, JsonObject json) {
 		String rawRarity = PerkEffectType.readString(json, "rarity");
 		PerkRarity rarity = PerkRarity.fromId(rawRarity);
-		if (rarity == null) {
-			SharedFateMod.LOGGER.warn("증강 {}: rarity_grant 의 rarity 를 알 수 없습니다 ({})",
+		if (rarity == null || !rarity.isGrade()) {
+			// 「드래곤전 대비」는 등급이 아니라 덤으로 줄 수 없다 — 45·50 에서 고르는 것만이 그 길이다.
+			SharedFateMod.LOGGER.warn("증강 {}: rarity_grant 의 rarity 를 알 수 없거나 등급이 아닙니다 ({})",
 					perkId, rawRarity);
 			return null;
 		}

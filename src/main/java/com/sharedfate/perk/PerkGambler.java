@@ -111,6 +111,11 @@ public final class PerkGambler {
 			if (state.ownedPerks.contains(candidate.id())) {
 				continue;
 			}
+			// 「드래곤전 대비」는 덤으로 주지 않는다. 45·50 구간에서 고르는 것만이 이 풀에 닿는 길이다 —
+			// 여기서 섞이면 시련을 끈 팀이 이 풀을 받거나 40 이하에서 미리 받는다.
+			if (candidate.rarity() == PerkRarity.TRIAL) {
+				continue;
+			}
 			// 팀 설정을 못 채우는 증강은 덤으로도 주지 않는다. 후보 추첨(PerkDraft)만 막으면
 			// 위치 교환을 끈 팀이 이 길로 교환 증강을 받아 죽은 카드를 쥐게 된다.
 			if (!candidate.requirementMet(PerkSwapRules.satisfiedRequirements(state))) {

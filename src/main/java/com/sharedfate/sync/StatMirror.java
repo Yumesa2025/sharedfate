@@ -39,11 +39,10 @@ public final class StatMirror {
 	 * <p>시련을 켠 팀은 회차가 드래곤전까지 이어지므로 10 레벨을 더 준다. 이 값을 가르는 설정은
 	 * 팀을 만들 때 정해지고 그 뒤로 바뀌는 경로가 없어, 한 회차 안에서 상한이 움직이는 일은 없다.
 	 *
-	 * <p><b>⚠ 41~50 구간에는 아직 증강도 세트도 없다.</b> {@code PerkMilestones.MAX} 는 40
-	 * 그대로라 41~50 에서는 증강 선택권이 한 번도 열리지 않는다. 레벨만 오르고 보상이 비는
-	 * 것이 <b>지금은 맞는 상태다</b> — 그 구간의 증강·세트는 「추후 추가 예정」이고 아직 무엇을
-	 * 줄지 정해진 것이 없다. 나중에 채우는 사람은 여기와 {@code PerkMilestones} 두 곳을 함께
-	 * 보면 된다.
+	 * <p>41~50 구간은 0.44.0-dev 에 채워졌다 — 45·50 에서 「드래곤전 대비」 증강을 고른다
+	 * ({@code PerkMilestones.TRIAL_MAX}). 그 구간은 경험치 곡선도 다르다(레벨 40→50 이 바닐라
+	 * 10→20 값, 합 390 — {@link TrialExperience}). 그래서 이 파일의 점수 ↔ 레벨 환산은 팀마다
+	 * 곡선을 골라 쓴다. 엔드에 선 시련 팀원의 경험치 증가는 공유 풀에 넣지 않는다(같은 파일).
 	 */
 	public static final int TRIAL_LEVEL_CAP = 50;
 
@@ -91,7 +90,7 @@ public final class StatMirror {
 	 * 오르지 않아, 사람이 버그로 읽는다. 빈 막대로 멈추면 「여기가 끝이다」가 한눈에 보인다.
 	 */
 	public static int experienceCap(@Nullable TeamState state) {
-		return experiencePointsFor(levelCap(state), 0.0F);
+		return TrialExperience.pointsFor(levelCap(state), 0.0F, TrialExperience.usesTrialCurve(state));
 	}
 
 	/**
@@ -134,11 +133,14 @@ public final class StatMirror {
 			return;
 		}
 		long delta = 0;
+		boolean trial = TrialExperience.usesTrialCurve(state);
 		for (UUID member : team.members()) {
 			ServerPlayer player = server.getPlayerList().getPlayer(member);
 			Snapshot last = LAST.get(member);
 			if (player != null && last != null && last.teamId().equals(team.teamId())) {
-				delta += currentExperiencePoints(player) - last.experiencePoints();
+				delta += TrialExperience.admitted(
+						currentExperiencePoints(player, trial) - last.experiencePoints(),
+						TrialExperience.blocksGain(state, player));
 			}
 		}
 		state.totalExperience = clampToLevelCap(state, (long) state.totalExperience + delta);
@@ -172,7 +174,7 @@ public final class StatMirror {
 					continue;
 				}
 
-				StatDelta delta = collectDeltas(team, online, state.damageAlertEnabled);
+				StatDelta delta = collectDeltas(team, state, online, state.damageAlertEnabled);
 				// 「먹방」을 가진 팀은 남는 허기 완충을 쓰지 않는다. 100 을 넘게 먹은 몫은 버리고,
 				// 이미 쌓인 완충은 얼려 두었다가 증강을 잃으면 다시 쓴다(사람이 정했다).
 				int adjustedFoodDelta = PerkFoodCapacity.eatsWhenFull(PerkFoodCapacity.capacityOf(state))
@@ -185,7 +187,11 @@ public final class StatMirror {
 				applyDeltas(state, state.maxHealth,
 						sharedMaxAbsorption(online),
 						delta, SharedFateMod.config.shareExperience);
-				if (state.health <= 0.0F) {
+				if (state.health <= 0.0F
+						&& !com.sharedfate.perk.DragonPrep.tryUndyingOath(server, team, state, online)) {
+					// 「불사의 맹세」가 막지 못했으면(없거나 이미 썼으면) 팀이 죽는다. 막았으면 체력이 새 최대치로
+					// 찬 채 아래 writeBack 이 팀원에게 써 준다 — 그 안에서 스냅샷도 갱신해 다음 바퀴가
+					// 차오른 체력을 회복으로 세지 않는다.
 					forgetTeam(team);
 					DeathHandler.killTeamFromMirror(team, online);
 					continue;
@@ -276,9 +282,10 @@ public final class StatMirror {
 	 * @param damageAlert 이 팀이 피격 알림을 쓰는가. 꺼져 있으면 <b>서버가 패킷을 아예 보내지
 	 *                    않는다.</b>
 	 */
-	private static StatDelta collectDeltas(ShareTeam team, List<ServerPlayer> online,
+	private static StatDelta collectDeltas(ShareTeam team, TeamState state, List<ServerPlayer> online,
 			boolean damageAlert) {
 		UUID teamId = team.teamId();
+		boolean trial = TrialExperience.usesTrialCurve(state);
 		List<PlayerDelta> deltas = new ArrayList<>(online.size());
 
 		for (ServerPlayer player : online) {
@@ -303,7 +310,11 @@ public final class StatMirror {
 					playerHealthDelta, playerAbsorptionDelta, consumedAbsorption,
 					foodData.getFoodLevel() - last.foodLevel(),
 					foodData.getSaturationLevel() - last.saturation(),
-					currentExperiencePoints(player) - last.experiencePoints()));
+					// 엔드에 선 시련 팀원의 증가는 여기서 0 이 된다. 입구(PlayerExperienceRulesMixin)를
+					// 모르는 길로 올라간 경험치도 다음 writeBack 이 팀 값으로 되돌린다.
+					TrialExperience.admitted(
+							currentExperiencePoints(player, trial) - last.experiencePoints(),
+							TrialExperience.blocksGain(state, player))));
 		}
 		return fold(deltas);
 	}
@@ -448,6 +459,7 @@ public final class StatMirror {
 	}
 
 	private static void writeBack(UUID teamId, TeamState state, List<ServerPlayer> online) {
+		boolean trial = TrialExperience.usesTrialCurve(state);
 		for (ServerPlayer player : online) {
 			if (player.getHealth() != state.health) {
 				player.setHealth(state.health);
@@ -465,14 +477,14 @@ public final class StatMirror {
 			}
 
 			if (SharedFateMod.config.shareExperience
-					&& currentExperiencePoints(player) != state.totalExperience) {
-				applyTotalExperience(player, state.totalExperience);
+					&& currentExperiencePoints(player, trial) != state.totalExperience) {
+				applyTotalExperience(player, state.totalExperience, trial);
 			}
 
 			LAST.put(player.getUUID(), new Snapshot(
 					teamId, player.getHealth(), player.getAbsorptionAmount(), player.getMaxAbsorption(),
 					food.getFoodLevel(),
-					food.getSaturationLevel(), currentExperiencePoints(player)));
+					food.getSaturationLevel(), currentExperiencePoints(player, trial)));
 		}
 
 		if (SharedFateMod.config.shareExperience) {
@@ -489,21 +501,32 @@ public final class StatMirror {
 		return Math.max(0.0F, maximum);
 	}
 
-	private static void applyTotalExperience(ServerPlayer player, int total) {
+	/**
+	 * 점수를 그 사람의 레벨·막대로 써 준다. 곡선은 그 사람 팀의 것이다 — 시련 팀이면 40 위가 바닐라
+	 * 10→20 값이다({@link TrialExperience}). 바닐라가 보내는 경험치 묶음이 레벨과 막대를 그대로 실어
+	 * 가므로 클라이언트의 경험치 바도 같은 곡선으로 그려진다.
+	 */
+	private static void applyTotalExperience(ServerPlayer player, int total, boolean trial) {
 		int safeTotal = Math.max(0, total);
-		int level = levelForExperiencePoints(safeTotal);
-		int base = experiencePointsFor(level, 0.0F);
+		int level = TrialExperience.levelFor(safeTotal, trial);
+		long base = TrialExperience.base(level, trial);
 		player.experienceLevel = level;
-		player.experienceProgress = (safeTotal - base) / (float) xpNeededForLevel(level);
+		player.experienceProgress = (safeTotal - base) / (float) TrialExperience.needed(level, trial);
 		player.totalExperience = safeTotal;
 	}
 
+	/** 이 사람의 레벨·막대를 점수로. 곡선은 그 사람 팀의 것이다. */
 	public static int currentExperiencePoints(ServerPlayer player) {
-		return experiencePointsFor(player.experienceLevel, player.experienceProgress);
+		return currentExperiencePoints(player, TrialExperience.usesTrialCurve(player));
+	}
+
+	/** 곡선을 이미 아는 자리. 팀원을 도는 바퀴는 팀 상태를 한 번만 본다. */
+	static int currentExperiencePoints(ServerPlayer player, boolean trial) {
+		return TrialExperience.pointsFor(player.experienceLevel, player.experienceProgress, trial);
 	}
 
 	public static void setTotalExperience(ServerPlayer player, int total) {
-		applyTotalExperience(player, total);
+		applyTotalExperience(player, total, TrialExperience.usesTrialCurve(player));
 	}
 
 	public static void addSharedExperience(TeamState state, int points) {
@@ -511,50 +534,9 @@ public final class StatMirror {
 				(long) state.totalExperience + Math.max(0, points));
 	}
 
+	/** 바닐라 곡선의 점수. 식은 {@link TrialExperience} 한 벌을 쓴다. */
 	static int experiencePointsFor(int level, float progress) {
-		int safeLevel = Math.max(0, level);
-		long base = baseExperienceForLevel(safeLevel);
-		long current = base + Math.round(clamp(progress, 0.0F, 1.0F) * xpNeededForLevel(safeLevel));
-		return (int) Math.min(Integer.MAX_VALUE, current);
-	}
-
-	private static long baseExperienceForLevel(int safeLevel) {
-		if (safeLevel <= 15) {
-			return (long) safeLevel * safeLevel + 6L * safeLevel;
-		} else if (safeLevel <= 30) {
-			long steps = safeLevel - 15L;
-			return 315L + 37L * steps + 5L * steps * (steps - 1L) / 2L;
-		} else {
-			long steps = safeLevel - 30L;
-			return 1395L + 112L * steps + 9L * steps * (steps - 1L) / 2L;
-		}
-	}
-
-	private static int xpNeededForLevel(int level) {
-		if (level >= 30) {
-			return 112 + (level - 30) * 9;
-		}
-		if (level >= 15) {
-			return 37 + (level - 15) * 5;
-		}
-		return 7 + level * 2;
-	}
-
-	private static int levelForExperiencePoints(int points) {
-		int low = 0;
-		int high = 1;
-		while (high < 100_000 && baseExperienceForLevel(high) <= points) {
-			high *= 2;
-		}
-		while (low + 1 < high) {
-			int middle = low + (high - low) / 2;
-			if (baseExperienceForLevel(middle) <= points) {
-				low = middle;
-			} else {
-				high = middle;
-			}
-		}
-		return low;
+		return TrialExperience.pointsFor(level, progress, false);
 	}
 
 	private static float clamp(float value, float min, float max) {

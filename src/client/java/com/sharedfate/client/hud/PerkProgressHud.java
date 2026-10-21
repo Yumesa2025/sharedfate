@@ -2,6 +2,7 @@ package com.sharedfate.client.hud;
 
 import com.sharedfate.client.ClientTeamState;
 import com.sharedfate.perk.PerkMilestones;
+import com.sharedfate.ui.DragonPrepStyle;
 import com.sharedfate.ui.PerkGauge;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.minecraft.client.DeltaTracker;
@@ -103,7 +104,9 @@ public class PerkProgressHud implements HudElement {
 		int filled = Math.round(WIDTH
 				* PerkGauge.fraction(ClientTeamState.levelsToNextPerk(), PerkMilestones.STEP));
 		if (filled > 0) {
-			graphics.fill(left, top, left + filled, bottom, FILL_COLOR);
+			// 41~50 구간(다음이 45·50)이면 「드래곤전 대비」의 엔더 연보라. 40 이하는 그대로 노랑이다.
+			graphics.fill(left, top, left + filled, bottom,
+					ClientTeamState.nextPerkIsPrep() ? DragonPrepStyle.COLOR : FILL_COLOR);
 		}
 	}
 

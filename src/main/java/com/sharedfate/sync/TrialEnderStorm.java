@@ -773,6 +773,8 @@ public final class TrialEnderStorm {
 		if (!(distance > 0.0)) {
 			return false;
 		}
+		// 「닻」(0.44.0-dev) — 천장 둘을 다 지난 거리를 줄이기만 한다. 사람마다 따로다.
+		distance *= com.sharedfate.perk.DragonPrep.knockbackScale(member);
 		double speed = pushVelocity(distance);
 		Vec3 motion = member.getDeltaMovement();
 		// 수평은 덮어쓴다. ⚠ 세로는 「읽은 그대로」가 아니라 TrialVelocity.syncedVertical 을

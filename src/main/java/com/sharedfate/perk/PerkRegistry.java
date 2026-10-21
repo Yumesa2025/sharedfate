@@ -229,6 +229,20 @@ public final class PerkRegistry {
 
 			// 세트 유형. 안 적으면 빈 목록(무유형)이고, 그것이 정상이라 경고하지 않는다.
 			List<PerkSetType> setTypes = parseSetTypes(id, json);
+			if (rarity == PerkRarity.TRIAL && !setTypes.isEmpty()) {
+				// 「드래곤전 대비」는 세트 밖이다. 유형이 붙으면 세트 개수와 모으기 보정이 이 풀을 세게
+				// 되는데, 45·50 구간은 세트 단계를 열려고 오는 자리가 아니다. 증강은 살리고 유형만 뗀다.
+				SharedFateMod.LOGGER.warn("증강 {}: 드래곤전 대비 분류에는 세트 유형을 붙일 수 없어 떼어 냅니다 ({})",
+						id, setTypes);
+				setTypes = List.of();
+			}
+
+			// 후보 추첨 가중치. 안 적으면 1.0. 적혀 있는데 범위 밖이면 증강을 버린다 — requires 와 같은
+			// 까닭이다. 이 값은 「이 증강이 얼마나 자주 나오는가」를 정하므로 잘못 읽으면 조용히 안 나온다.
+			double weight = parseWeight(id, json);
+			if (Double.isNaN(weight)) {
+				return null;
+			}
 
 			// 전제조건. 안 적으면 null(언제나 후보), 적혀 있는데 모르는 값이면 증강을 버린다.
 			// "안 적었다"와 "잘못 적었다"를 구분해야 하므로 결과를 두 값으로 받는다.
@@ -243,7 +257,7 @@ public final class PerkRegistry {
 			}
 
 			return new Perk(id, name, description, rarity, parseIcon(id, json), minLevel,
-					setTypes, effects, requires.value());
+					setTypes, effects, requires.value(), weight);
 		} catch (Exception error) {
 			SharedFateMod.LOGGER.warn("증강 항목을 읽다가 실패해 건너뜁니다", error);
 			return null;
@@ -319,6 +333,27 @@ public final class PerkRegistry {
 			return Requirement.REJECTED;
 		}
 		return new Requirement(requirement, false);
+	}
+
+	/**
+	 * 증강의 최상위 {@code weight} 를 읽는다. 안 적었으면 {@link Perk#DEFAULT_WEIGHT}.
+	 *
+	 * <p>0 보다 크고 {@link Perk#MAX_WEIGHT} 이하인 수만 받는다. 숫자가 아니거나 범위 밖이면 경고를
+	 * 남기고 {@code NaN} 을 돌려준다 — 부르는 쪽이 그 증강을 버린다. 0 을 「안 나옴」으로 받지 않는
+	 * 까닭은, 안 나오게 하려면 정의에서 지우는 것이 맞고 0 은 대개 오타이기 때문이다.
+	 */
+	static double parseWeight(String perkId, JsonObject json) {
+		JsonElement raw = json.get("weight");
+		if (raw == null || raw.isJsonNull()) {
+			return Perk.DEFAULT_WEIGHT;
+		}
+		Double value = PerkEffectType.readDouble(json, "weight");
+		if (value == null || !(value > 0.0) || value > Perk.MAX_WEIGHT) {
+			SharedFateMod.LOGGER.warn("증강 {}: weight 는 0 초과 {} 이하의 수여야 해서 증강을 버립니다 ({})",
+					perkId, Perk.MAX_WEIGHT, raw);
+			return Double.NaN;
+		}
+		return value;
 	}
 
 	/**

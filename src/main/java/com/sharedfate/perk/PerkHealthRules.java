@@ -139,6 +139,8 @@ public final class PerkHealthRules {
 				}
 			}
 		}
+		// 「엔드 적응」(0.44.0-dev) — 팀원이 엔드에 있는 동안만. 팀 상한에 한 번 더한다(사람 수와 무관).
+		total += DragonPrep.endBonus(state);
 		// 세트가 주는 최대 체력도 같은 규칙으로 더한다. 생존 2단계가 이 길을 탄다.
 		// 여기서 세지 않으면 max_health_bonus 를 붙여도 MaxHealthAttribute 의 덮어쓰기가
 		// 정확히 상쇄해 아무 일도 일어나지 않는다 — 그 함정은 MaxHealthBonusEffect 에 적혀 있다.
@@ -165,7 +167,9 @@ public final class PerkHealthRules {
 		}
 		OptionalDouble locked = lockedMaxHealth(state);
 		double base = locked.isPresent() ? locked.getAsDouble() : state.baseMaxHealth;
-		double target = base + bonusMaxHealth(state);
+		// 「불사의 맹세」를 쓴 팀은 이번 회차 내내 절반이다. 보너스까지 더한 뒤에 곱해야 맹세 뒤에 고른
+		// 체력 증강도 함께 절반이 된다 — 「최대 체력이 절반」의 뜻이 그것이다.
+		double target = (base + bonusMaxHealth(state)) * DragonPrep.oathScale(state);
 		if (!Double.isFinite(target)) {
 			return state.maxHealth;
 		}
@@ -214,6 +218,8 @@ public final class PerkHealthRules {
 			if (state == null || !state.perksEnabled || state.ownedPerks.isEmpty()) {
 				continue;
 			}
+			// 「엔드 적응」이 보는 값. 최대 체력을 세기 직전에 월드에서 다시 읽는다.
+			DragonPrep.refreshEndPresence(server, team, state);
 			float target = effectiveMaxHealth(state);
 			if (state.maxHealth != target) {
 				state.maxHealth = target;

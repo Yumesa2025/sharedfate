@@ -1,4 +1,5 @@
 ---
+import { RARITY_NAME, RARITY_ORDER, type Rarity } from '../lib/perks';
 import type { PerkSet } from '../lib/sets';
 
 interface Props {
@@ -7,11 +8,10 @@ interface Props {
 }
 
 const { sets, total } = Astro.props;
-const RARITIES = [
-  { id: 'silver', name: '실버' },
-  { id: 'gold', name: '골드' },
-  { id: 'prism', name: '프리즘' },
-];
+// 등급 셋에 드래곤전 대비(분류)까지. 차례와 이름은 증강 목록과 같은 표를 쓴다.
+const RARITIES = (Object.keys(RARITY_ORDER) as Rarity[])
+  .sort((a, b) => RARITY_ORDER[a] - RARITY_ORDER[b])
+  .map((id) => ({ id, name: RARITY_NAME[id] }));
 ---
 <form class="filter" id="perk-filter" hidden>
   <div class="row">

@@ -26,6 +26,13 @@ const perkPage = read('perks/index.html');
 const cards = countOf(perkPage, 'class="perk"');
 check(cards === perks.length, `증강 카드가 ${cards}장이다. 정의는 ${perks.length}개다.`);
 
+// 1-1. 드래곤전 대비(분류) 카드가 정의 파일의 수만큼 있고, 그 이름이 페이지에 찍혀 있다.
+//      정의 파일에 아직 하나도 없으면 0장으로 통과한다.
+const trialPerks = perks.filter((perk) => perk.rarity === 'trial').length;
+const trialCards = countOf(perkPage, 'data-rarity="trial"');
+check(trialCards === trialPerks, `드래곤전 대비 카드가 ${trialCards}장이다. 정의는 ${trialPerks}개다.`);
+check(perkPage.includes('드래곤전 대비'), '증강 페이지에 「드래곤전 대비」 표식이 없다.');
+
 // 2. 세트 페이지에 유형이 모두 있다.
 const setPage = read('sets/index.html');
 const sections = countOf(setPage, '<section id=');
@@ -91,4 +98,4 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`결과물 확인 통과 — 증강 ${cards}장 · 세트 ${sections}유형 · 가이드 6꼭지 · 시련 카드 ${trialCount}장`);
+console.log(`결과물 확인 통과 — 증강 ${cards}장 · 세트 ${sections}유형 · 가이드 6꼭지 · 시련 카드 ${trialCount}장 · 드래곤전 대비 ${trialCards}장`);

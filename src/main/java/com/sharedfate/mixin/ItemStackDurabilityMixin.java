@@ -57,6 +57,10 @@ public abstract class ItemStackDurabilityMixin {
 			return amount;
 		}
 		ItemStack self = (ItemStack) (Object) this;
+		// 「무뎌지지 않는 갑주」(0.44.0-dev) — 방어구·방패는 아예 닳지 않는다. 난수도 쓰지 않는다.
+		if (com.sharedfate.perk.DragonPrep.keepsDurability(PerkGearRules.activeState(player), self)) {
+			return 0;
+		}
 		return PerkGearRules.reduceDurabilityLoss(
 				PerkGearRules.activeState(player), self, amount, level.getRandom());
 	}

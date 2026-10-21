@@ -516,7 +516,10 @@ public final class PerkChoiceSession {
 
 		sendDraw(server, offer, audience);
 		broadcast(server, team, Component.literal(
-				"[증강] " + offer.milestone() + "렙 달성. 시간을 멈추고 선택자를 뽑습니다."));
+				"[증강] " + offer.milestone() + "렙 달성"
+						// 45·50 은 등급 라운드가 아니다. 무엇을 고르는 자리인지 채팅에도 한 번 적는다.
+						+ (PerkMilestones.isTrialMilestone(offer.milestone()) ? " — 드래곤전 대비 증강" : "")
+						+ ". 시간을 멈추고 선택자를 뽑습니다."));
 		return true;
 	}
 

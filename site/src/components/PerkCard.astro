@@ -11,6 +11,8 @@ interface Props {
 const { perk, sets } = Astro.props;
 const tags = perk.setTypes.map((type) => sets.get(type)).filter((set): set is PerkSet => !!set);
 const search = `${perk.name} ${perk.description}`;
+// 가중치가 1 보다 작은 증강은 후보로 잘 안 나온다. 이름 아래 유형 자리에 작게 적는다.
+const rare = perk.weight < 1;
 ---
 <article
   class="perk"
@@ -25,6 +27,7 @@ const search = `${perk.name} ${perk.description}`;
 
     <div class="tags">
       {tags.map((set) => <SetTypeTag set={set} />)}
+      {rare && <span class="weight">잘 안 나옴 · 가중치 {perk.weight}</span>}
     </div>
 
     <div class="rule"></div>
@@ -59,6 +62,7 @@ const search = `${perk.name} ${perk.description}`;
   }
   .perk[data-rarity='gold'] { --rarity: var(--gold); }
   .perk[data-rarity='prism'] { --rarity: var(--prism); }
+  .perk[data-rarity='trial'] { --rarity: var(--trial); }
 
   /* 마우스를 올리면 게임처럼 바탕과 테두리가 함께 밝아진다. */
   .perk:hover,
@@ -120,6 +124,13 @@ const search = `${perk.name} ${perk.description}`;
      * 그려진다(실측 27.19px, 뷰포트를 바꿔도 유형이 있는 카드는 늘 이 값이었다).
      */
     min-height: 1.7rem;
+  }
+
+  /* 가중치 표시는 유형 이름표보다 한 단계 죽인다 — 눈여겨볼 것이지 이름의 일부가 아니다. */
+  .weight {
+    font-size: 0.72rem;
+    color: color-mix(in srgb, var(--rarity) 70%, #9aa3b2);
+    align-self: center;
   }
 
   .rule {

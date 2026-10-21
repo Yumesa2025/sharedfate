@@ -80,7 +80,9 @@ public final class PerkDamage {
 			// 조회 실패가 피해 처리를 막으면 안 된다. 어떤 예외든 원래 값으로 돌아간다.
 			Entity attacker = source == null ? null : source.getEntity();
 			factor = dealtFactor(attacker) * takenFactor(victim) * mobDealtFactor(attacker)
-					* takenSourceFactor(victim, source) * takenBlockingFactor(victim);
+					* takenSourceFactor(victim, source) * takenBlockingFactor(victim)
+					// 「착지 노리기」·「하늘 사수」(0.44.0-dev). 드래곤이 맞을 때, 시련 전투 중에만 1 이 아니다.
+					* DragonPrep.dragonHitFactor(victim, source);
 		} catch (RuntimeException error) {
 			warnOnce(error);
 			return amount;

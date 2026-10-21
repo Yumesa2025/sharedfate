@@ -114,6 +114,8 @@ public class PerkOfferScreen extends Screen {
 	private static final int COLOR_SILVER = 0xFFC0C6CC;
 	private static final int COLOR_GOLD = 0xFFFFC63A;
 	private static final int COLOR_PRISM = 0xFF5FE0D8;
+	/** 「드래곤전 대비」(45·50 구간 전용 분류)의 엔더 연보라. HUD 와 같은 값이다. */
+	private static final int COLOR_TRIAL = com.sharedfate.ui.DragonPrepStyle.COLOR;
 
 	/** 카드 배경 그라데이션의 위/아래 색. 여기에 등급색을 조금 섞어서 쓴다. */
 	private static final int CARD_TOP = 0xE81A1A24;
@@ -1600,8 +1602,11 @@ public class PerkOfferScreen extends Screen {
 		if (canChoose) {
 			if (roundRarity != null) {
 				// 어떤 구간에서 무슨 등급을 고르는 중인지 한 줄로 알려 준다.
+				// 「드래곤전 대비」는 등급이 아니라 분류라 「라운드」가 아니라 「증강」이라 적는다.
 				return Component.literal("공유 레벨 " + milestone + " 달성 · "
-						+ roundRarity.displayName() + " 라운드");
+						+ (roundRarity == PerkRarity.TRIAL
+								? roundRarity.displayName() + " 증강 · 둘 중 하나"
+								: roundRarity.displayName() + " 라운드"));
 			}
 			return Component.literal(
 					"공유 레벨 " + milestone + " 달성 · 증강 하나를 고르세요");
@@ -1678,6 +1683,7 @@ public class PerkOfferScreen extends Screen {
 			case SILVER -> COLOR_SILVER;
 			case GOLD -> COLOR_GOLD;
 			case PRISM -> COLOR_PRISM;
+			case TRIAL -> COLOR_TRIAL;
 		};
 	}
 
@@ -1723,6 +1729,7 @@ public class PerkOfferScreen extends Screen {
 			case SILVER -> Items.IRON_INGOT;
 			case GOLD -> Items.GOLD_INGOT;
 			case PRISM -> Items.DIAMOND;
+			case TRIAL -> Items.ENDER_EYE;
 		};
 	}
 

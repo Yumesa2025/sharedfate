@@ -70,7 +70,14 @@ class DefaultPerkSetTypesTest {
 			assertEquals(expected.get(type).intValue(), (int) count, type.displayName());
 		}
 
-		long none = PerkRegistry.all().stream().filter(p -> p.setTypes().isEmpty()).count();
+		// 「드래곤전 대비」(0.44.0-dev)는 세트 밖이라 무유형 셈에서 뺀다 — 열두 장 모두 유형이 없어야 한다.
+		assertTrue(PerkRegistry.all().stream()
+						.filter(p -> p.rarity() == com.sharedfate.perk.PerkRarity.TRIAL)
+						.allMatch(p -> p.setTypes().isEmpty()),
+				"드래곤전 대비에는 세트 유형이 없다");
+		long none = PerkRegistry.all().stream()
+				.filter(p -> p.rarity().isGrade())
+				.filter(p -> p.setTypes().isEmpty()).count();
 		// 「굳은살」(실버, 무유형)이 들어오며 11 → 12. 「가벼운 위장」이 회복으로,
 		// 「숨죽인 걸음」이 기동으로 가며 12 → 10. 「작아진 몸」이 화력으로 가며 10 → 9.
 		// 위 넷(밀어내기·엇박자·타지 않는 살갗·고행자)이 유형으로 가며 9 → 5.

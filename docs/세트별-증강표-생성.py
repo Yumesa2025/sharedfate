@@ -38,7 +38,11 @@ TYPES = OrderedDict([
 RARITY = {"silver": "실버", "gold": "골드", "prism": "프리즘"}
 RARITY_ORDER = {"silver": 0, "gold": 1, "prism": 2}
 
-perks = json.load(io.open(PERKS, encoding="utf-8"))["perks"]
+all_perks = json.load(io.open(PERKS, encoding="utf-8"))["perks"]
+# 「드래곤전 대비」(rarity "trial", 0.44.0-dev)는 등급이 아니고 세트 유형도 없다 — 세트 표에 넣으면
+# 「유형 없음」을 열두 장 부풀린다. 따로 세어 머리에 한 줄만 적는다.
+prep = [p for p in all_perks if p["rarity"] == "trial"]
+perks = [p for p in all_perks if p["rarity"] != "trial"]
 sets = {s["type"]: s["tiers"] for s in json.load(io.open(SETS, encoding="utf-8"))["sets"]}
 
 by_type = {key: [] for key in TYPES}
@@ -84,6 +88,10 @@ total = len(perks)
 counts = {r: sum(1 for p in perks if p["rarity"] == r) for r in RARITY}
 w("모두 **%d개**입니다 — 실버 %d · 골드 %d · 프리즘 %d."
   % (total, counts["silver"], counts["gold"], counts["prism"]))
+if prep:
+    w("")
+    w("이 밖에 드래곤 시련 팀의 45 · 50 구간 전용 분류 **「드래곤전 대비」 %d개**가 있습니다. 세트 유형이 없어"
+      " 이 표에는 넣지 않았습니다 — [증강 목록](증강-목록.md)을 보십시오." % len(prep))
 w("")
 
 # ------------------------------------------------------------------ 한눈에

@@ -15,10 +15,16 @@ const counts = countByRarity(perks);
   <div class="wrap">
     <h1>증강</h1>
     <p class="lead">
-      모두 {perks.length}개입니다 — 실버 {counts.silver} · 골드 {counts.gold} · 프리즘 {counts.prism}.
+      모두 {perks.length}개입니다 — 실버 {counts.silver} · 골드 {counts.gold} · 프리즘 {counts.prism}
+      · 드래곤전 대비 {counts.trial}.
       정의 파일에서 그대로 뽑으므로 낡지 않습니다.
       유형 이름표를 누르거나 마우스를 올리면 그 세트의 단계가 보입니다.
       증강이 어떻게 굴러가는지는 <a href={href('/guide/perks')}>가이드</a>에 있습니다.
+    </p>
+    <p class="lead">
+      <b class="trial">드래곤전 대비</b>는 등급이 아니라 따로 된 분류입니다.{' '}
+      <a href={href('/trials')}>드래곤 시련</a>을 켠 팀만, 레벨 <b>45 · 50</b> 구간에서 이 풀의 두 장 중
+      하나를 고릅니다. 40 이하에서는 나오지 않고 세트 유형도 없습니다.
     </p>
 
     <PerkFilter sets={sets} total={perks.length} />
@@ -31,6 +37,7 @@ const counts = countByRarity(perks);
 
 <style>
   .lead { color: var(--muted); max-width: var(--measure); }
+  .trial { color: var(--trial); }
   /*
    * 카드는 전부 같은 크기다. grid-auto-rows: 1fr 이 모든 줄의 높이를 가장 큰 줄에
    * 맞추고, 칸 안에서는 카드가 늘어나 채운다 — 그래서 설명이 짧은 카드는 아래가 빈다.

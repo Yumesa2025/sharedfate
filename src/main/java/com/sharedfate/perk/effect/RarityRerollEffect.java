@@ -44,8 +44,9 @@ public final class RarityRerollEffect implements PerkEffect {
 	public static @Nullable PerkEffect fromJson(String perkId, int index, JsonObject json) {
 		String rawRarity = PerkEffectType.readString(json, "rarity");
 		PerkRarity rarity = PerkRarity.fromId(rawRarity);
-		if (rarity == null) {
-			SharedFateMod.LOGGER.warn("증강 {}: rarity_reroll 의 rarity 를 알 수 없습니다 ({})",
+		if (rarity == null || !rarity.isGrade()) {
+			// 「드래곤전 대비」로 갈아 끼우면 40 이하에 그 풀이 섞인다. 등급만 받는다.
+			SharedFateMod.LOGGER.warn("증강 {}: rarity_reroll 의 rarity 를 알 수 없거나 등급이 아닙니다 ({})",
 					perkId, rawRarity);
 			return null;
 		}

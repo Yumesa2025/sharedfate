@@ -198,6 +198,14 @@ public final class DragonPerch {
 	private static volatile boolean held;
 	/** 지금 원거리를 막아야 하는가. <b>{@code EnderDragonPerchRangedImmunityMixin} 이 읽는다.</b> */
 	private static volatile boolean rangedImmune;
+	/**
+	 * 이번 전투의 착지 고정 길이(틱). 보통은 {@link #HOLD_TICKS}, 팀이 「날개 꺾기」를 가졌으면 그 값
+	 * (0.44.0-dev — {@code DragonPrep.perchHoldTicks}). {@link #tick} 이 매 틱 다시 적는다.
+	 *
+	 * <p>위의 「더 늘리지 말 것」은 <b>모든 팀의 바닥값</b>에 대한 말이다. 이쪽은 45·50 에서 그 대가로
+	 * 다른 카드를 포기하고 고른 팀만 받는 값이라 바닥값을 건드리지 않는다.
+	 */
+	private static volatile int holdTicks = HOLD_TICKS;
 
 	// ------------------------------------------------------------------ 상태
 
@@ -276,7 +284,8 @@ public final class DragonPerch {
 		// seatedAt 이 MIN_VALUE 로 남아 고정이 걸리지 않고 원거리 면역만 걸린다. 못 본 착지의
 		// 시계를 지어내면 사람이 본 것과 어긋난다.
 		rangedImmune = down;
-		held = down && holding(seatedAt, now);
+		holdTicks = com.sharedfate.perk.DragonPrep.perchHoldTicks(members, HOLD_TICKS);
+		held = down && holding(seatedAt, now, holdTicks);
 	}
 
 	/**
@@ -294,6 +303,7 @@ public final class DragonPerch {
 	public static void standDown() {
 		held = false;
 		rangedImmune = false;
+		holdTicks = HOLD_TICKS;
 		seated = null;
 		seatedAt = Long.MIN_VALUE;
 	}
@@ -340,11 +350,16 @@ public final class DragonPerch {
 	 *                 고정하지 않는다 — 못 본 착지의 시계를 지어내지 않는다
 	 */
 	static boolean holding(long seatedAt, long now) {
+		return holding(seatedAt, now, HOLD_TICKS);
+	}
+
+	/** 고정 길이를 함께 받는다. 「날개 꺾기」 팀은 {@link #HOLD_TICKS} 보다 길다. */
+	static boolean holding(long seatedAt, long now, int hold) {
 		if (seatedAt == Long.MIN_VALUE) {
 			return false;
 		}
 		long age = now - seatedAt;
-		return age >= 0L && age < HOLD_TICKS;
+		return age >= 0L && age < hold;
 	}
 
 	/**
@@ -437,6 +452,16 @@ public final class DragonPerch {
 
 	/** 지금 원거리를 막아야 하는가. 칸 하나를 읽는 것 이상을 하지 않는다. */
 	public static boolean rangedImmune() {
+		return rangedImmune;
+	}
+
+	/**
+	 * 드래곤이 지금 <b>일반 전투에서 착지해 앉아 있는가</b>. 「착지 노리기」·「하늘 사수」가 묻는다.
+	 *
+	 * <p>{@link #rangedImmune} 과 같은 칸이다 — 앉은 내내 참이고, 최후의 저항이 열리면
+	 * {@link #standDown} 이 내려 거짓이 된다. 이름을 따로 둔 것은 묻는 뜻이 다르기 때문이다.
+	 */
+	public static boolean seatedNow() {
 		return rangedImmune;
 	}
 

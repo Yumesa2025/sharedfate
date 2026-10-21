@@ -33,7 +33,8 @@ class DefinitionSourceTest {
 	@Test
 	void 증강은_모드_안의_정의에서_읽힌다() {
 		PerkRegistry.loadBundled();
-		assertEquals(98, PerkRegistry.all().size(),
+		// 0.44.0-dev 에서 「드래곤전 대비」 열두 장이 들어와 98 → 110.
+		assertEquals(110, PerkRegistry.all().size(),
 				"모드 안의 기본 풀을 못 읽었다. config/ 없이도 증강이 있어야 한다");
 	}
 

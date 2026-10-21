@@ -512,7 +512,9 @@ public final class TrialRisks {
 			if (!insideMark(nearby.position(), at, strike.radius())) {
 				continue;
 			}
-			nearby.hurtServer(end, end.damageSources().lightningBolt(), strike.damage());
+			// 「바닥 감각」 — 자리 폭격·낙뢰는 바닥 표식이 먼저 뜬다. 맞는 사람마다 따로 깎는다.
+			nearby.hurtServer(end, end.damageSources().lightningBolt(),
+					com.sharedfate.perk.DragonPrep.floorStrike(nearby, strike.damage()));
 			launch(nearby, strike.launch(), now);
 		}
 	}
