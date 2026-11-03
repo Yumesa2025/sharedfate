@@ -5,7 +5,7 @@ import com.sharedfate.client.ClientTeamState;
 import com.sharedfate.client.team.TeamScreen;
 import com.sharedfate.ui.InventoryStatPanel;
 import com.sharedfate.ui.InventoryTeamButton;
-import com.sharedfate.ui.StatRow;
+import com.sharedfate.ui.PanelRow;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -48,8 +48,8 @@ import java.util.List;
  * <p>조합법 책을 펼치면 바닐라는 창을 오른쪽으로 밀면서 <b>조합법 책 단추만</b> 새 자리로
  * 옮긴다({@code AbstractRecipeBookScreen} 의 단추 콜백). 화면을 다시 만들지 않으므로 여기서
  * {@code init} 때 잡아 둔 자리는 그대로 남아 펼쳐진 책에 깔린다. 그림을 뽑기 직전에 다시
- * 재면 한 프레임도 어긋나지 않는다. 능력치 값도 같은 자리에서 다시 읽으므로, 무기를 바꾸면
- * 창을 닫지 않아도 숫자가 따라온다.
+ * 재면 한 프레임도 어긋나지 않는다. 능력치 값도 같은 자리에서 다시 읽으므로, 증강을 고르거나
+ * 조건부 효과가 켜지면 창을 닫지 않아도 숫자가 따라온다.
  *
  * <p>{@code TAIL} 로 넣는 이유는 {@code InventoryScreen.init} 에 <b>return 이 둘</b>이기
  * 때문이다. 앞의 것은 크리에이티브 모드라 화면을 크리에이티브 인벤토리로 갈아 끼우고 곧바로
@@ -186,7 +186,8 @@ public abstract class InventoryScreenTeamButtonMixin {
 				: 0;
 		int rowWidth = InventoryTeamButton.buttonRowWidth(leadWidth, perkWidth);
 
-		List<List<StatRow>> groups = ClientStatRows.groups(Minecraft.getInstance().player);
+		// 최종값이 아니라 증강·세트가 얹은 보정치다. 무기를 바꿔도 숫자가 출렁이지 않는다.
+		List<List<PanelRow>> groups = ClientStatRows.bonusGroups();
 		sharedfate$stats = InventoryStatPanel.layout(groups, available,
 				InventoryTeamButton.statHeight(self.height, window.sharedfate$getTopPos()),
 				font::width);

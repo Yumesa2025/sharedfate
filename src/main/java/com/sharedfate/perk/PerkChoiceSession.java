@@ -1,6 +1,7 @@
 package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
+import com.sharedfate.net.DragonPrepVotePayload;
 import com.sharedfate.net.PerkCloseOfferPayload;
 import com.sharedfate.net.PerkDrawPayload;
 import com.sharedfate.net.PerkResultPayload;
@@ -78,8 +79,11 @@ public final class PerkChoiceSession {
 	 */
 	public static final int RESULT_TICKS = 100;
 
-	/** 세션이 지나가는 세 단계. */
-	private enum Phase {
+	/**
+	 * 세션이 지나가는 세 단계. 패키지 안에 여는 것은 {@code PerkResultHoldTest} 가 결과 단계를
+	 * {@link #offerSettledElsewhere} 에 넘기기 위해서다.
+	 */
+	enum Phase {
 		/** 누가 고를지 뽑는 연출 중. 아직 선택창은 뜨지 않았다. */
 		DRAW,
 		/** 선택창이 떠 있고 제한시간이 흐르는 중. */
@@ -149,6 +153,18 @@ public final class PerkChoiceSession {
 		@Nullable String resultPerkId;
 		/** 고른 사람 이름. 시간이 다 되어 무작위로 정해졌으면 빈 문자열. */
 		String resultChooserName = "";
+		/**
+		 * 「드래곤전 대비」(45·50) 팀 투표. 그 구간의 세션에서만 있고, 있으면 {@link #phase} 대신 이것이
+		 * 단계를 정한다 — 선택자 뽑기 · 다시 뽑기 · 제안 표 · 선택자의 고르기가 전부 없다
+		 * ({@link DragonPrepVote}). 시간 정지 · 무적 · 공기 고정 · 「영원히 얼지 않게 하는 장치」는 일반
+		 * 증강과 같은 길을 그대로 지난다.
+		 */
+		@Nullable DragonPrepVote prep;
+		/**
+		 * 표를 던진 사람의 이름. 던진 순간에 적어 둔다 — 결과 화면에서는 표를 거두지 않으므로, 그 사이에
+		 * 나간 사람의 이름을 플레이어 목록에서 다시 찾을 수 없다.
+		 */
+		final Map<UUID, String> voterNames = new HashMap<>();
 		int remainingTicks;
 		int nextWarnIndex;
 		Phase phase = Phase.DRAW;
@@ -211,7 +227,8 @@ public final class PerkChoiceSession {
 	 */
 	public static boolean acceptsReroll(@Nullable UUID teamId, int milestone) {
 		State current = state;
-		return current != null && current.phase == Phase.CHOOSE
+		// 「드래곤전 대비」 투표에는 다시 뽑기가 없다(사람 말 「리롤 선택권은 없애고」).
+		return current != null && current.prep == null && current.phase == Phase.CHOOSE
 				&& current.teamId.equals(teamId) && current.milestone == milestone;
 	}
 
@@ -257,6 +274,11 @@ public final class PerkChoiceSession {
 	 */
 	public static void castVote(ServerPlayer player, int milestone, String target) {
 		State current = state;
+		if (player != null && current != null && current.prep != null) {
+			// 「드래곤전 대비」 투표는 같은 C2S 묶음을 쓴다. 이쪽은 제안이 아니라 결정이다.
+			castPrepVote(player, current, milestone, target);
+			return;
+		}
 		if (player == null || current == null || current.phase != Phase.CHOOSE
 				|| current.milestone != milestone) {
 			return;
@@ -291,6 +313,31 @@ public final class PerkChoiceSession {
 			current.votes.put(voter, next);
 		}
 		broadcastVotes(server, team, current);
+	}
+
+	/**
+	 * 「드래곤전 대비」 투표의 한 표를 받는다.
+	 *
+	 * <p>일반 증강의 제안 표와 거르는 자리가 같다 — 구간이 다르거나, 이 세션의 팀이 아니거나, 관전자면
+	 * 조용히 버린다. 단계와 후보는 {@link DragonPrepVote#vote} 가 다시 본다. <b>선택자를 가리지 않는다</b> —
+	 * 이 투표에는 선택자가 없다.
+	 */
+	private static void castPrepVote(ServerPlayer player, State current, int milestone, String target) {
+		if (current.milestone != milestone || player.isSpectator()) {
+			return;
+		}
+		MinecraftServer server = player.level().getServer();
+		if (server == null) {
+			return;
+		}
+		ShareTeam team = TeamManager.get(server).teamById(current.teamId);
+		if (team == null || !team.members().contains(player.getUUID())) {
+			return;
+		}
+		if (current.prep.vote(player.getUUID(), target, playableIds(onlineMembers(server, team)))) {
+			current.voterNames.put(player.getUUID(), player.getGameProfile().name());
+			broadcastPrep(server, team, current);
+		}
 	}
 
 	/** 표를 던질 수 있는 대상인가. 후보 증강이거나, 쓸 수 있는 「다시 뽑자」다. */
@@ -502,6 +549,13 @@ public final class PerkChoiceSession {
 		ServerTickRateManager tickRate = server.tickRateManager();
 		boolean frozenBefore = tickRate.isFrozen();
 		State opened = new State(team.teamId(), offer.milestone(), frozenBefore, timeoutTicks);
+		if (PerkMilestones.isTrialMilestone(offer.milestone())) {
+			// 「드래곤전 대비」는 선택자를 뽑지 않고 팀 투표로 정한다. 카드 차례는 화면에 보낸 후보 차례다 —
+			// 풀에서 사라진 id 는 describeOptions 가 이미 뺐다.
+			opened.prep = new DragonPrepVote(
+					options.stream().map(PerkOfferPayload.PerkOption::id).toList());
+			opened.options = List.copyOf(options);
+		}
 		for (ServerPlayer member : audience) {
 			opened.guarded.add(member.getUUID());
 			captureAir(opened, member);
@@ -514,6 +568,14 @@ public final class PerkChoiceSession {
 					"증강 선택을 시작하지만 서버가 이미 정지 상태였습니다. 선택이 끝나도 정지 상태를 그대로 둡니다.");
 		}
 
+		if (opened.prep != null) {
+			// 사람 말 「룰렛 대신 새로운 애니메이션으로 드래곤전 대비 증강을 뽑습니다」. 선택자 뽑기 연출이
+			// 없고, 투표 창이 등장 연출부터 시작한다.
+			broadcastPrep(server, team, opened);
+			broadcast(server, team, Component.literal(
+					"[증강] " + offer.milestone() + "렙 달성 — 드래곤전 대비 증강. 시간을 멈추고 팀 투표로 정합니다."));
+			return true;
+		}
 		sendDraw(server, offer, audience);
 		broadcast(server, team, Component.literal(
 				"[증강] " + offer.milestone() + "렙 달성"
@@ -553,8 +615,7 @@ public final class PerkChoiceSession {
 			finish(server, "팀 상태가 바뀌어 증강 선택을 종료합니다.");
 			return;
 		}
-		if (teamState.pending.isEmpty()
-				|| teamState.pending.getFirst().milestone() != current.milestone) {
+		if (offerSettledElsewhere(teamState.pending, current.milestone, current.phase, current.prep)) {
 			// 다른 경로로 이미 처리된 선택권이다.
 			finish(server, null);
 			return;
@@ -580,6 +641,11 @@ public final class PerkChoiceSession {
 		// 하는 이유는, 관전 모드로 바꾼 사람에게는 그런 사건이 없기 때문이다. 표는 많아야
 		// 팀원 수만큼이라 매 틱 훑어도 값이 없다.
 		pruneVotes(server, team, current, audience);
+
+		if (current.prep != null) {
+			tickPrep(server, team, current, audience);
+			return;
+		}
 
 		if (current.phase == Phase.DRAW) {
 			if (current.phaseTicks > 0) {
@@ -620,6 +686,78 @@ public final class PerkChoiceSession {
 		if (state != null && state.phase != Phase.RESULT) {
 			finish(server, null);
 		}
+	}
+
+	/**
+	 * 「드래곤전 대비」 투표를 한 틱 진행한다.
+	 *
+	 * <p>나갔거나 관전자가 된 사람의 표는 매 틱 거둔다({@link DragonPrepVote#prune}) — 일반 증강의 제안 표와
+	 * 같은 까닭이다(관전 모드로 바꾼 사람에게는 접속 끊김 사건이 없다). 거두고 나니 남은 사람 전원이 던진
+	 * 상태면 거기서 5초로 준다.
+	 *
+	 * <p><b>뽑힌 순간 팀에 준다</b>({@link DragonPrepVote.Event#DECIDED}) — 결과 화면 5초는 시간이 멈춘 채
+	 * 보여 주기만 한다. 끝날 때 주면 그 5초 사이에 서버가 멈추거나 전원이 나갔을 때 정해진 결과가 사라지고
+	 * 처음부터 다시 투표하게 된다. 동점이면 룰렛이 멈춘 뒤에 준다 — 룰렛이 도는 동안 채팅에 결과가 먼저
+	 * 뜨면 룰렛이 뜻이 없다.
+	 */
+	private static void tickPrep(MinecraftServer server, ShareTeam team, State current,
+			List<ServerPlayer> audience) {
+		DragonPrepVote prep = current.prep;
+		boolean changed = prep.prune(playableIds(audience));
+		switch (prep.tick(server.overworld().getRandom())) {
+			case VOTE_OPENED -> {
+				changed = true;
+				broadcast(server, team, Component.literal("[증강] 두 장 중 하나에 표를 던지십시오. 제한시간 "
+						+ seconds(DragonPrepVote.VOTE_TICKS) + "초, 표는 바꿀 수 있습니다."));
+			}
+			case ROULETTE_STARTED -> {
+				changed = true;
+				broadcast(server, team, Component.literal("[증강] 표가 같아 룰렛으로 정합니다."));
+			}
+			case DECIDED -> {
+				String applied = PerkManager.applyVotedChoice(server, current.teamId, current.milestone,
+						prep.winner(), prep.byRoulette());
+				if (applied == null) {
+					// 줄 수 있는 후보가 하나도 없었다. 선택권은 이미 버려졌다 — 결과 화면 없이 녹인다.
+					finish(server, null);
+					return;
+				}
+				prep.settle(applied);
+				current.resultPerkId = applied;
+				changed = true;
+			}
+			case FINISHED -> {
+				finish(server, null);
+				return;
+			}
+			case NONE -> {
+			}
+		}
+		if (changed) {
+			broadcastPrep(server, team, current);
+		}
+	}
+
+	/**
+	 * 이 세션의 선택권이 대기열에서 사라졌는가 — 다른 경로로 이미 처리됐다. 참이면 매 틱이 세션을 닫는다.
+	 *
+	 * <p>⚠ <b>결과를 보여 주는 동안은 언제나 거짓이다</b>(2026-11-04). 고르는 순간 {@code PerkManager.commit} 이
+	 * 그 선택권을 대기열에서 빼므로, 그때 이 검사를 그대로 하면 고른 <b>다음 틱</b>에 창이 닫혀 결과 화면
+	 * ({@link #RESULT_TICKS}, 5초)이 사실상 없다. 0.7.0-dev 에 결과 화면을 붙일 때부터 이 검사가 결과 단계 확인보다
+	 * 앞에 있어서 줄곧 그랬다. 「드래곤전 대비」 투표의 결과 단계도 같은 까닭으로 뺀다.
+	 *
+	 * <p>대기열에 다음 선택권이 기다리고 있어도(한꺼번에 여러 구간에 닿은 경우) 결과를 끝까지 보여 준다. 결과
+	 * 단계가 끝나면 {@link #finish} 가 닫고, 다음 감지 주기에 {@code PerkManager.beginSessionIfIdle} 이 다음
+	 * 선택권으로 새 세션을 연다 — 예전부터 선택권 사이를 넘어가던 길 그대로다.
+	 *
+	 * <p>세션도 서버도 읽지 않는다. 매 틱이 넘기는 값만 보고 정한다({@code PerkResultHoldTest}).
+	 */
+	static boolean offerSettledElsewhere(List<PendingOffer> pending, int milestone, Phase phase,
+			@Nullable DragonPrepVote prep) {
+		if (phase == Phase.RESULT || (prep != null && prep.stage() == DragonPrepVote.Stage.RESULT)) {
+			return false;
+		}
+		return pending.isEmpty() || pending.getFirst().milestone() != milestone;
 	}
 
 	private static void warnIfNeeded(MinecraftServer server, ShareTeam team, State current) {
@@ -695,6 +833,11 @@ public final class PerkChoiceSession {
 			current.guarded.add(member.getUUID());
 			captureAir(current, member);
 		}
+		if (current.prep != null) {
+			// 투표에는 선택자가 없어 바뀔 권한이 없다. 지금 상태를 다시 그려 주기만 한다.
+			broadcastPrep(server, team, current);
+			return;
+		}
 		if (current.phase == Phase.DRAW) {
 			// 아직 뽑기 연출 중이다. 선택창을 미리 보내면 남은 연출이 통째로 건너뛰어지고,
 			// 그러고도 연출이 끝나는 틱에 sendOffer 가 한 번 더 와서 창이 두 번 만들어진다.
@@ -763,6 +906,12 @@ public final class PerkChoiceSession {
 		current.guarded.add(player.getUUID());
 		captureAir(current, player);
 
+		if (current.prep != null) {
+			// 투표 창을 지금 단계 그대로 세워 준다. 투표 중이면 들어온 사람도 표를 던질 수 있다 — 아직 안
+			// 던졌으니 「전원이 골랐다」도 그 사람까지 기다린다(이미 5초로 줄었으면 그대로).
+			ServerPlayNetworking.send(player, prepPayload(current, player));
+			return;
+		}
 		if (current.phase == Phase.RESULT) {
 			sendResultTo(server, player, current);
 			return;
@@ -827,7 +976,8 @@ public final class PerkChoiceSession {
 	public static void onRerolled(MinecraftServer server, UUID teamId, int milestone) {
 		State current = state;
 		if (server == null || current == null || !current.teamId.equals(teamId)
-				|| current.milestone != milestone || current.phase != Phase.CHOOSE) {
+				|| current.milestone != milestone || current.phase != Phase.CHOOSE
+				|| current.prep != null) {
 			return;
 		}
 		TeamManager manager = TeamManager.get(server);
@@ -964,6 +1114,58 @@ public final class PerkChoiceSession {
 					offer.milestone(), offer.isChooser(member.getUUID()), true, remaining,
 					rerolls, options));
 		}
+	}
+
+	/** 「드래곤전 대비」 투표 창의 지금 상태를 접속한 팀원 전원에게 보낸다. 받는 사람마다 내 표가 다르다. */
+	private static void broadcastPrep(MinecraftServer server, ShareTeam team, State current) {
+		if (server == null || team == null || current.prep == null) {
+			return;
+		}
+		for (ServerPlayer member : onlineMembers(server, team)) {
+			ServerPlayNetworking.send(member, prepPayload(current, member));
+		}
+	}
+
+	/** 한 사람에게 보낼 투표 창 상태. */
+	private static DragonPrepVotePayload prepPayload(State current, ServerPlayer viewer) {
+		DragonPrepVote prep = current.prep;
+		List<DragonPrepVotePayload.Ballot> ballots = new ArrayList<>();
+		for (Map.Entry<UUID, String> vote : prep.votes().entrySet()) {
+			ballots.add(new DragonPrepVotePayload.Ballot(
+					current.voterNames.getOrDefault(vote.getKey(), "팀원"), vote.getValue()));
+		}
+		return new DragonPrepVotePayload(current.milestone, prep.stage().ordinal(), prep.stageTicks(),
+				prep.stageTotal(), prep.shortened(), current.options, ballots,
+				prep.votes().getOrDefault(viewer.getUUID(), ""), !viewer.isSpectator(),
+				prep.winner() == null ? "" : prep.winner(), prep.byRoulette());
+	}
+
+	/**
+	 * 「드래곤전 대비」 투표가 이 팀·구간으로 돌고 있으면 이 사람에게 지금 창을 다시 보낸다.
+	 *
+	 * <p>{@code /shareteam perk} 로 창을 잃어버린 사람이 되찾는 길이다({@code PerkManager.openOffer}).
+	 *
+	 * @return 보냈으면 참
+	 */
+	static boolean resendPrep(ServerPlayer player, UUID teamId, int milestone) {
+		State current = state;
+		if (player == null || current == null || current.prep == null
+				|| !current.teamId.equals(teamId) || current.milestone != milestone) {
+			return false;
+		}
+		ServerPlayNetworking.send(player, prepPayload(current, player));
+		return true;
+	}
+
+	/** 지금 표를 던질 수 있는 사람 — 접속해 있고 관전자가 아닌 팀원. */
+	private static Set<UUID> playableIds(List<ServerPlayer> audience) {
+		Set<UUID> playable = new LinkedHashSet<>();
+		for (ServerPlayer member : audience) {
+			if (!member.isSpectator()) {
+				playable.add(member.getUUID());
+			}
+		}
+		return playable;
 	}
 
 	/**

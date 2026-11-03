@@ -1,0 +1,18 @@
+{
+  "description": { "text": "체력 증가" },
+  "supported_items": "minecraft:shield",
+  "weight": 5,
+  "max_level": 6,
+  "min_cost": { "base": 22, "per_level_above_first": 1 },
+  "max_cost": { "base": 60, "per_level_above_first": 1 },
+  "anvil_cost": 4,
+  "slots": ["hand"],
+  "effects": {
+    "minecraft:attributes": [{
+      "id": "sharedfate:shield_health",
+      "attribute": "minecraft:max_health",
+      "amount": { "type": "minecraft:linear", "base": 1.0, "per_level_above_first": 1.0 },
+      "operation": "add_value"
+    }]
+  }
+}

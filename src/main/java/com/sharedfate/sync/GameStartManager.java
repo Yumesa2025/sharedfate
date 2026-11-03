@@ -434,6 +434,7 @@ public final class GameStartManager {
 		state.xpLevel = 0;
 		state.xpProgress = 0.0F;
 		state.totalExperience = 0;
+		state.runXpRemainder = 0.0;
 		state.effects.clear();
 		state.lastPerkMilestone = 0;
 		state.pending.clear();

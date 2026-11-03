@@ -985,4 +985,80 @@ class DragonLastStandDomeTest {
 			return fail(failed);
 		}
 	}
+
+	// ------------------------------------------------------------------ 메우기 (2026-11-04)
+
+	/** 메우는 맨 위 칸은 훑기 바닥 바로 아래 — 섬 맨 윗블록의 층(포디움 원점)이다. 셈을 새로 하지 않는다. */
+	@Test
+	void 메우는_높이는_훑기_바닥_바로_아래다() {
+		for (int podiumY : new int[] {48, 63, 64, 70}) {
+			assertEquals(DragonLastStandDome.sweepFloorY(podiumY) - 1,
+					DragonLastStandDome.fillTopY(podiumY));
+			assertEquals(podiumY, DragonLastStandDome.fillTopY(podiumY),
+					"섬 맨 윗블록의 층이어야 메운 뒤 깎기와 한 평면이 된다");
+		}
+		assertSame(Blocks.END_STONE, DragonLastStandDome.fillBlock().getBlock(),
+				"사람이 「섬 표면 기준(엔드 스톤)」이라고 했다");
+	}
+
+	/** 움푹 판 자리는 땅을 만날 때까지 메우고, 섬 표면이 멀쩡하면 아무것도 안 한다. */
+	@Test
+	void 구덩이는_땅까지_메우고_멀쩡한_열은_건드리지_않는다() {
+		int top = 63;
+		// 세 칸 판 구덩이 — 60 이 땅이다.
+		int pit = DragonLastStandDome.fillBottomY(top, 60, -64, y -> y > 60);
+		assertEquals(61, pit, "땅 바로 위부터 메운다");
+		// 표면이 멀쩡하다(그 층에 블록이 있다).
+		assertEquals(DragonLastStandDome.NO_FILL,
+				DragonLastStandDome.fillBottomY(top, top, -64, y -> false));
+		// 하이트맵이 그 층 이상이면 메울 구멍이 아니다(깎기 몫이다).
+		assertEquals(DragonLastStandDome.NO_FILL,
+				DragonLastStandDome.fillBottomY(top, top + 3, -64, y -> true));
+	}
+
+	/** ⚠ 블록이 한 칸도 없는 열은 공허다 — 섬 바깥을 메우면 허공에 다리가 생긴다. */
+	@Test
+	void 공허_열은_메우지_않는다() {
+		assertEquals(DragonLastStandDome.NO_FILL,
+				DragonLastStandDome.fillBottomY(63, -65, -64, y -> true),
+				"하이트맵이 월드 바닥 아래면 블록이 없는 열이다");
+	}
+
+	/** 깊은 구멍은 위 몇 칸만 막는다 — 한 열이 한 훑기 천장을 다 먹지 않게. */
+	@Test
+	void 깊은_구멍은_깊이_천장까지만_메운다() {
+		int top = 63;
+		int bottom = DragonLastStandDome.fillBottomY(top, 10, -64, y -> y > 10);
+		assertEquals(top - DragonLastStandDome.MAX_FILL_DEPTH + 1, bottom);
+		assertTrue(DragonLastStandDome.MAX_FILL_DEPTH * 3 <= DragonLastStandDome.MAX_FILLS_PER_SWEEP,
+				"깊은 구멍 몇 열에 한 훑기 천장이 다 먹히면 넓은 구덩이가 안 메워진다");
+	}
+
+	/** 물·용암 웅덩이도 메운다(깎기가 물·용암을 지우는 것과 같은 판단). 다른 블록은 땅이다. */
+	@Test
+	void 물과_용암은_메우고_다른_블록은_땅으로_본다() {
+		assertTrue(DragonLastStandDome.fillable(Blocks.AIR.defaultBlockState()));
+		assertTrue(DragonLastStandDome.fillable(Blocks.WATER.defaultBlockState()));
+		assertTrue(DragonLastStandDome.fillable(Blocks.LAVA.defaultBlockState()));
+		assertFalse(DragonLastStandDome.fillable(Blocks.END_STONE.defaultBlockState()));
+		assertFalse(DragonLastStandDome.fillable(Blocks.BEDROCK.defaultBlockState()),
+				"포디움 바닥 기반암에서 멈춰야 한다");
+	}
+
+	/** 출구 포털 자리(싸움 중에는 공기)를 막지 않는다 — 포디움 원점 층 반경 3.5 를 덮는다. */
+	@Test
+	void 포디움_자리는_메우지_않는다() {
+		assertTrue(DragonLastStandDome.PODIUM_KEEP_RADIUS > 3.5,
+				"podiumPart 의 원점 층 반경 3.5 보다 커야 포털 자리가 빠진다");
+		assertTrue(DragonLastStandDome.PODIUM_KEEP_RADIUS < DragonLastStandDome.RADIUS);
+		for (int dx = -3; dx <= 3; dx++) {
+			for (int dz = -3; dz <= 3; dz++) {
+				if (DragonLastStandDome.podiumPart(dx, 0, dz)) {
+					assertTrue(dx * dx + dz * dz
+							< DragonLastStandDome.PODIUM_KEEP_RADIUS * DragonLastStandDome.PODIUM_KEEP_RADIUS);
+				}
+			}
+		}
+		assertTrue(classBytes().contains("isUnobstructed"), "사람이 선 칸을 메우면 질식한다");
+	}
 }

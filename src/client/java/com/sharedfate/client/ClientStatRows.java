@@ -2,6 +2,8 @@ package com.sharedfate.client;
 
 import com.sharedfate.client.perk.ClientPerkFeatures;
 import com.sharedfate.perk.effect.HideHudEffect;
+import com.sharedfate.ui.BonusRows;
+import com.sharedfate.ui.PanelRow;
 import com.sharedfate.ui.StatRow;
 import com.sharedfate.ui.StatSummary;
 import net.minecraft.client.player.LocalPlayer;
@@ -17,8 +19,12 @@ import java.util.List;
 /**
  * 능력치 줄들을 <b>한 곳에서</b> 만든다.
  *
- * <p>같은 줄을 두 화면이 그린다 — 인벤토리 화면(E) 왼쪽의 상시 표시와 팀 화면의 「능력치」 탭.
- * 줄의 차례, 이름, 단위, 색이 뒤집히는 줄이 어느 것인지는 <b>여기가 유일한 출처</b>다.
+ * <p>두 화면이 서로 다른 줄을 그린다. 팀 화면의 「능력치」 탭은 「공격 1 → 7.5」처럼 <b>최종값</b>을
+ * ({@link #playerRows}·{@link #mobRows}), 인벤토리 화면(E) 왼쪽의 상시 표시는 「추가 공격력 +35%」처럼
+ * 증강·세트가 얹은 <b>보정치</b>를({@link #bonusGroups}) 적는다. 사람이 정한 것(2026-11-04) —
+ * 인벤토리 옆 숫자가 무기를 바꿀 때마다 출렁이지 않아야 한다. 보정치 줄의 차례·이름은
+ * {@link BonusRows} 에 있다. 최종값 줄의 차례, 이름, 단위, 색이 뒤집히는 줄이 어느 것인지는
+ * <b>여기가 유일한 출처</b>다.
  *
  * <p>값은 {@link LocalPlayer} 와 {@link ClientStatSnapshot} 에서 읽는다. 줄의 글자 모양·자리는
  * {@link StatRow}·{@link com.sharedfate.ui.InventoryStatPanel} 에 있다.
@@ -49,18 +55,19 @@ public final class ClientStatRows {
 	private ClientStatRows() {
 	}
 
-	/** 두 묶음을 차례대로. 비어 있는 묶음은 빼고 돌려준다. */
-	public static List<List<StatRow>> groups(@Nullable LocalPlayer player) {
-		List<List<StatRow>> groups = new ArrayList<>(2);
-		List<StatRow> mine = playerRows(player);
-		if (!mine.isEmpty()) {
-			groups.add(mine);
+	/**
+	 * 인벤토리 옆 패널의 보정치 두 묶음 — 팀 보정치와 이 판의 몹.
+	 *
+	 * <p>서버가 값을 알려 주기 전에는 빈 목록이다. 「증강 보정 없음」도 서버가 정말 아무것도
+	 * 없다고 말한 뒤에만 적는다.
+	 */
+	public static List<List<PanelRow>> bonusGroups() {
+		if (!ClientStatSnapshot.known()) {
+			return List.of();
 		}
-		List<StatRow> mobs = mobRows();
-		if (!mobs.isEmpty()) {
-			groups.add(mobs);
-		}
-		return groups;
+		return BonusRows.groups(ClientStatSnapshot.bonuses(), ClientStatSnapshot.damageTaken(),
+				ClientStatSnapshot.mobHealth(), ClientStatSnapshot.mobDamage(),
+				ClientPerkFeatures.isHidden(HideHudEffect.Element.ARMOR));
 	}
 
 	/**

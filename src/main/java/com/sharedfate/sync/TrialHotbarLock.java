@@ -28,7 +28,7 @@ import java.util.UUID;
  *
  * <h2>무엇을 해야 하는가</h2>
  *
- * <p>30초({@code interval})마다 핫바 두 칸({@code slots})이 굳는다.
+ * <p>1분({@code interval})마다 핫바 두 칸({@code slots})이 굳는다. <b>팀 전원이 같은 두 칸</b>이다.
  *
  * <ul>
  *   <li><b>쌓이지 않는다.</b> 굳은 칸이 옮겨 다닐 뿐 개수는 늘 두 칸이다</li>
@@ -81,18 +81,23 @@ import java.util.UUID;
  *
  * <p>「휘두르거나 쓸 수 없다」에 곡괭이질이 드는지는 정해진 바가 없다. <b>막지 않는 쪽을
  * 골랐다.</b> 근거는 이 카드가 나오는 자리다 — 「굳는 손」은 첫 크리스탈 풀이 아니라 <b>입장
- * 풀</b>({@code POOL_ENTRY})이라 전투 처음부터 끝까지 돈다. 크리스탈 깨기를 막으면 30초마다 두
+ * 풀</b>({@code POOL_ENTRY})이라 전투 처음부터 끝까지 돈다. 크리스탈 깨기를 막으면 1분마다 두
  * 칸씩, 전투 내내, 곡괭이가 그 칸에 있는 사람이 크리스탈을 못 깬다. 그것은 「손이 굳는다」가
  * 아니라 「전투가 진행되지 않는다」이고, 카드의 무게가 완전히 달라진다.
  *
  * <p>그래서 {@code AttackBlockCallback} 과 {@code PlayerBlockBreakEvents} 에는 <b>붙지 않는다.</b>
  * 붙이는 줄을 실수로 더하지 말 것.
  *
- * <h2>사람마다 따로 뽑는다</h2>
+ * <h2>팀 전원이 같은 칸이다 (2026-11-04)</h2>
  *
- * <p>카드 값에 팀 칸이 없고, 사람마다 핫바에 둔 물건이 다르다. 같은 번호를 팀 전원에게 걸면
- * 누구에게는 검이 굳고 누구에게는 빈 칸이 굳어 <b>같은 카드가 사람마다 다른 무게</b>가 된다.
- * 굴림을 사람마다 따로 하면 모두가 「내 두 칸」을 잃는다.
+ * <p>전에는 <b>사람마다 따로</b> 뽑았다 — 사람마다 핫바에 둔 물건이 달라 같은 번호를 걸면 누구는
+ * 검이 굳고 누구는 빈 칸이 굳는다는 것이 근거였다. 사람이 <b>「잠기는 칸이 사람마다 다르지 않고
+ * 팀원 전부 같은 칸이 잠기게」</b>라고 해서 굴림을 <b>팀(이 위험의 열쇠 {@code key}) 하나</b>로
+ * 모았다({@link #SHARED} · {@link #sharedMask}). 이제 「몇 번 칸이 굳었다」를 한 사람이 외치면 팀
+ * 전원에게 같은 말이 된다. 무게가 사람마다 갈리는 대가는 사람이 알고 고른 것이다.
+ *
+ * <p>⚠ <b>사람마다의 자물쇠({@link #LOCKS})는 그대로 남겼다.</b> 막는 일({@link #stiff})과 다시
+ * 알리기·재접속 처리가 사람 단위라서다 — 그 맵의 칸 값이 이제 팀 굴림을 베껴 쓸 뿐이다.
  *
  * <h2>지난 칸은 피해서 뽑는다</h2>
  *
@@ -105,8 +110,8 @@ import java.util.UUID;
  *
  * <p><b>둘 다 풀리지 않는다.</b> 자물쇠의 열쇠는 {@link ServerPlayer} 가 아니라 <b>UUID</b> 라,
  * 죽어서 객체가 갈려도 리스폰한 사람에게 그대로 붙어 있다. 재접속은 그 사이 명단에서 빠지므로
- * 자물쇠가 버려지는데, 돌아온 첫 틱에 {@code cycle} 이 맞는 자물쇠가 없어 <b>그 자리에서 두 칸을
- * 다시 뽑는다.</b> 즉 어느 쪽으로도 「굳은 칸 없는 30초」가 생기지 않는다.
+ * 자물쇠가 버려지는데, 돌아온 첫 틱에 {@code cycle} 이 맞는 자물쇠가 없어 <b>그 자리에서 팀이 지금
+ * 굳혀 둔 두 칸을 받는다</b>(다시 뽑지 않는다 — 혼자 다른 칸이 되면 「팀 전원이 같은 칸」이 깨진다). 즉 어느 쪽으로도 「굳은 칸 없는 1분」이 생기지 않는다.
  *
  * <p>이렇게 정한 이유는 하나다 — 조용히 풀리면 그것이 <b>이 카드를 우회하는 길</b>이 된다.
  * 죽는 것도 재접속도 사람이 마음대로 할 수 있는 일이라, 풀어 주는 순간 「불편하면 나갔다
@@ -165,6 +170,26 @@ public final class TrialHotbarLock {
 	private static final Map<UUID, Lock> LOCKS = new HashMap<>();
 
 	/**
+	 * 팀의 굴림. 열쇠는 이 위험의 {@code key} 다 — 시련 세션은 한 번에 하나라 열쇠 하나가 곧 팀
+	 * 하나다({@code DragonTrialManager}).
+	 *
+	 * <p>사람마다의 {@link #LOCKS} 가 칸 값을 여기서 베껴 간다. 주기가 바뀌는 틱에 <b>한 번만</b>
+	 * 뽑아야 넷이 같은 칸을 받는다 — 사람마다 {@link #move} 를 부르면 다시 넷이 갈린다.
+	 */
+	private static final Map<String, Draw> SHARED = new HashMap<>();
+
+	/**
+	 * 팀 하나의 굳은 칸.
+	 *
+	 * @param granted 카드를 받은 틱. 다른 판의 굴림을 이어 쓰지 않게 함께 적는다
+	 * @param mask    굳은 핫바 칸
+	 * @param cycle   몇 번째 주기의 굴림인가
+	 * @param seenAt  마지막으로 {@link #tick} 을 받은 시각
+	 */
+	private record Draw(long granted, int mask, long cycle, long seenAt) {
+	}
+
+	/**
 	 * 한 사람의 굳은 칸.
 	 *
 	 * @param mask   굳은 핫바 칸. 비트 {@code n} 이 {@code n} 번 칸이다
@@ -193,7 +218,7 @@ public final class TrialHotbarLock {
 	 * <p><b>받은 그 틱({@code elapsed == 0})에 이미 굳는다.</b> {@link TrialRisks#firesAt} 가
 	 * 첫 주기를 비우는 것은 예고 없이 <b>맞는</b> 것을 막기 위해서인데, 이 카드는 피해를 주지
 	 * 않으므로 예고할 것이 없다({@link TrialCrystalGuard#refreshesAt} 와 같은 판단이다). 오히려
-	 * 30초를 늦추면 카드 설명을 읽고 나서 30초 동안 아무 일도 일어나지 않아 고장으로 보인다.
+	 * 1분을 늦추면 카드 설명을 읽고 나서 1분 동안 아무 일도 일어나지 않아 고장으로 보인다.
 	 *
 	 * <p>{@code key} 는 이 위험을 가리키는 열쇠다({@code 카드 id + '#' + 카드 안 위험
 	 * 순번}). {@link TrialRisks} 가 겹침 금지 목록을 이 열쇠로 관리하므로, 자리를 잡는
@@ -218,6 +243,8 @@ public final class TrialHotbarLock {
 		// 전부 같은 틱에 몰린다.
 		long cycle = TrialRisks.elapsedSinceGrant(now, granted) / interval;
 		boolean resend = heartbeat(now, granted);
+		// 팀 굴림을 먼저 정한다. 사람마다 뽑지 않는 것이 「팀 전원이 같은 칸」의 전부다.
+		int shared = sharedMask(end.getRandom(), key, granted, cycle, slots, now);
 
 		// 이번 틱에 칸이 옮겨진 사람들. 소리는 루프 안에서 내지 않고 여기 모아 뒤에서 한 번에
 		// 낸다 — 까닭은 announce 설명에 적어 두었다.
@@ -225,12 +252,11 @@ public final class TrialHotbarLock {
 		for (ServerPlayer member : members) {
 			UUID memberId = member.getUUID();
 			Lock lock = LOCKS.get(memberId);
-			if (lock == null || lock.cycle() != cycle) {
-				// 지난 칸을 피해 뽑는다. 자물쇠가 없는 사람(첫 틱·재접속)은 피할 것이 없다.
-				int mask = move(end.getRandom(), slots, lock == null ? 0 : lock.mask());
-				LOCKS.put(memberId, new Lock(mask, cycle, now));
+			if (lock == null || lock.cycle() != cycle || lock.mask() != shared) {
+				// 팀이 굳혀 둔 칸을 받는다. 주기가 바뀐 틱이면 모두가, 첫 틱·재접속이면 그 사람만이다.
+				LOCKS.put(memberId, new Lock(shared, cycle, now));
 				moved.add(member);
-				send(member, mask);
+				send(member, shared);
 				continue;
 			}
 			// 같은 주기다. 굳은 칸은 그대로 두고 「아직 살아 있다」만 적는다.
@@ -248,6 +274,25 @@ public final class TrialHotbarLock {
 		// 뽑아 굳은 칸이 초당 스무 번 뛰어다닌다. 시각으로 재면 누구의 틱이든 남의 것을
 		// 건드리지 않는다.
 		LOCKS.values().removeIf(entry -> now - entry.seenAt() > LAPSE_TICKS);
+		SHARED.values().removeIf(entry -> now - entry.seenAt() > LAPSE_TICKS);
+	}
+
+	/**
+	 * 이 주기에 팀 전원이 받을 굳은 칸. 주기가 바뀐 첫 부름에서만 뽑고, 같은 주기의 다음 부름은
+	 * 같은 값을 돌려준다 — 그래서 누가 몇 번째로 물어도 같은 칸이다.
+	 *
+	 * <p>지난 칸을 피해 뽑는 것({@link #move})은 사람마다였을 때와 같다. 다른 판({@code granted} 가
+	 * 다른)의 굴림은 피할 것으로 치지 않는다.
+	 */
+	static int sharedMask(RandomSource random, String key, long granted, long cycle, int slots,
+			long now) {
+		Draw draw = SHARED.get(key);
+		if (draw == null || draw.granted() != granted || draw.cycle() != cycle) {
+			int avoid = draw == null || draw.granted() != granted ? 0 : draw.mask();
+			draw = new Draw(granted, move(random, slots, avoid), cycle, now);
+		}
+		SHARED.put(key, new Draw(granted, draw.mask(), cycle, now));
+		return draw.mask();
 	}
 
 	/**
@@ -264,6 +309,7 @@ public final class TrialHotbarLock {
 	 */
 	public static void clearState() {
 		LOCKS.clear();
+		SHARED.clear();
 	}
 
 	/**
@@ -361,7 +407,7 @@ public final class TrialHotbarLock {
 	/**
 	 * 칸이 옮겨 갔다고 알리는 소리. 이번 틱에 <b>실제로 옮겨진 사람들</b>만 받는다.
 	 *
-	 * <p>사람마다 굳는 칸이 다르므로 <b>사람마다 그 자리에서</b> 울린다. 같은 틱에 모두가 함께
+	 * <p><b>사람마다 그 자리에서</b> 울린다(굳는 칸은 2026-11-04 부터 팀 전원이 같다). 같은 틱에 모두가 함께
 	 * 굳으므로 넷이 동시에 한 번씩 들으면 그것이 곧 「지금 전원이 옮길 때」라는 신호가 된다.
 	 *
 	 * <h2>⚠ 루프 안에서 한 사람씩 내지 않는다</h2>

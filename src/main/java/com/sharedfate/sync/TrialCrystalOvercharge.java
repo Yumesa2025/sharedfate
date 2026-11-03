@@ -2,9 +2,12 @@ package com.sharedfate.sync;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.core.particles.PowerParticleOption;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -317,23 +320,39 @@ public final class TrialCrystalOvercharge {
 	/** 구체가 발이 아니라 가슴에 닿게 하는 높이. 발밑 보라 고리와 겹치면 둘 다 안 읽힌다. */
 	private static final double ORB_LIFT = 1.0;
 
-	/** 구체 머리에 찍는 점 수. 「덩어리 하나가 날아온다」로 읽힐 만큼만. */
-	private static final int ORB_HEAD_POINTS = 12;
+	/**
+	 * ⚠⚠ <b>2026-11-04 — 구체가 「보라 화염구」가 됐다.</b> 사람 말 — 「레이저처럼 이어지는 연출(크리스탈→대상
+	 * 빔/선)을 없애고, 보라색 화염구(드래곤 화염구 계열) 10발이 날아오게」.
+	 *
+	 * <p><b>레이저로 보인 까닭.</b> 전에는 머리를 보라 먼지 12점으로 찍고 그 뒤에 1.5칸 간격 꼬리 6점을 매 틱
+	 * 다시 그렸다. 먼지는 <b>그 자리에 0.4~2초 머문다</b>(수명 8~40틱 — {@code TrialWarning.markGround} 설명).
+	 * 머리는 한 틱에 2~6칸을 뛰고 발은 1초마다라, 앞 발이 남긴 점이 사라지기 전에 다음 발이 같은 줄을 긋는다 —
+	 * 크리스탈에서 사람까지 <b>끊기지 않는 점선</b>이 늘 떠 있었다.
+	 *
+	 * <p><b>지금은 머리만 그리고, 그 입자가 구체와 함께 날아간다.</b> 입자는 바닐라 드래곤 화염구가 꼬리로
+	 * 남기는 바로 그것({@code DRAGON_BREATH}, 보라 불꽃)이고, 개수 0 꼴의 {@code sendParticles} 로 <b>이번
+	 * 틱 구체의 속도</b>를 실어 보낸다 — 제자리에 머무는 점이 없으니 줄이 서지 않고, 마찰(0.96)로 조금씩 처지는
+	 * 몫이 짧은 불꼬리가 된다. 꼬리 점은 걷었다.
+	 *
+	 * <h2>⚠ 바닐라 {@code DragonFireball} 개체는 쓰지 않았다</h2>
+	 *
+	 * <p>그 개체는 착탄 자리에 <b>독구름({@code AreaEffectCloud})</b>을 남긴다(클래스 설명의 표 · 26.3
+	 * 바이트코드). 사람이 「구름이 생기면 의도에 맞는지 묻거나 <b>구름 없이 보라색 화염구로 보이게</b>」라고 해서
+	 * 뒤쪽을 골랐다 — 피해·「블록 뒤에 숨으면 막힌다」·「한 틱에 한 발」 셈이 전부 이 파일의 계산이라 개체를
+	 * 띄우면 그 셋을 바닐라 물리와 다시 맞춰야 하고, 구름이 남으면 「장판」 카드와 갈리지 않는다.
+	 */
+	private static final int ORB_FLAME_POINTS = 4;
 
-	/** 구체 머리를 흩뿌리는 폭(블록). */
-	private static final double ORB_SPREAD = 0.35;
+	/** 화염구 머리를 흩뜨리는 폭(블록). 입자마다 머리에서 이만큼 안쪽으로 비켜 선다. */
+	private static final double ORB_SPREAD = 0.2;
 
 	/**
-	 * 구체 뒤에 남기는 꼬리 점 수.
-	 *
-	 * <p>궤적 전체를 매 틱 다시 그리면 「구체」가 아니라 「실」로 읽힌다. 꼬리는 <b>어느 쪽에서
-	 * 왔는가</b>만 말하면 되므로 몇 점이면 충분하고, 기둥 꼭대기에서 바닥까지 90 블록을 24틱에
-	 * 지나면 한 틱에 3~4 블록을 뛰므로 이만큼은 있어야 점이 이어져 보인다.
+	 * 화염구 불꽃 — 바닐라 드래곤 화염구의 꼬리 입자. 세기 1.0 은 바닐라 화염구 꼬리와 같은 값이다
+	 * ({@code DragonLastStandPatterns} 의 브레스 장판도 같은 꼴로 만든다).
 	 */
-	private static final int ORB_TAIL_POINTS = 6;
-
-	/** 꼬리 점 사이 거리(블록). */
-	private static final double ORB_TAIL_STEP = 1.5;
+	private static ParticleOptions flame() {
+		return PowerParticleOption.create(ParticleTypes.DRAGON_BREATH, 1.0F);
+	}
 
 	/** 떠나는 자리에 얹는 점 수. 「저 크리스탈에서 나왔다」를 말하는 것이 이 한 덩이다. */
 	private static final int MUZZLE_POINTS = 8;
@@ -783,19 +802,20 @@ public final class TrialCrystalOvercharge {
 		Vec3 to = target.position().add(0.0, ORB_LIFT, 0.0);
 		Vec3 head = orb.from().add(to.subtract(orb.from())
 				.scale(flightProgress(inStep, orb.firedAt(), orb.landsAt())));
-		ParticleOptions dust = TrialWarning.dust(TrialWarning.Colors.MARKED);
-		end.sendParticles(dust, true, false, head.x, head.y, head.z, ORB_HEAD_POINTS,
-				ORB_SPREAD, ORB_SPREAD, ORB_SPREAD, 0.0);
-		// 꼬리는 「어느 쪽에서 왔는가」만 말하면 되므로 몇 점이면 충분하다.
-		Vec3 back = orb.from().subtract(head);
-		if (back.lengthSqr() <= 0.0) {
-			return;
-		}
-		// 이름을 step 으로 쓰지 말 것 — 걸음을 들고 있는 정적 칸과 겹쳐 읽기가 흐려진다.
-		Vec3 stride = back.normalize().scale(ORB_TAIL_STEP);
-		for (int index = 1; index <= ORB_TAIL_POINTS; index++) {
-			Vec3 point = head.add(stride.scale(index));
-			end.sendParticles(dust, true, false, point.x, point.y, point.z, 1, 0.0, 0.0, 0.0, 0.0);
+		// 다음 틱의 머리까지가 이번 틱의 속도다. 입자에 실어 보내면 구체와 함께 날아간다(ORB_FLAME_POINTS).
+		Vec3 next = orb.from().add(to.subtract(orb.from())
+				.scale(flightProgress(inStep + 1, orb.firedAt(), orb.landsAt())));
+		Vec3 velocity = next.subtract(head);
+		ParticleOptions flame = flame();
+		RandomSource random = end.getRandom();
+		for (int index = 0; index < ORB_FLAME_POINTS; index++) {
+			// ⚠ 개수 0 꼴이다 — 그때 바닐라 클라이언트가 (dx, dy, dz) × speed 를 입자의 속도로 쓴다.
+			// 개수를 1 이상으로 주면 그 셋이 흩뿌림 폭이 되어 입자가 제자리에 머물고, 그것이 레이저였다.
+			end.sendParticles(flame, true, false,
+					head.x + (random.nextDouble() - 0.5) * 2.0 * ORB_SPREAD,
+					head.y + (random.nextDouble() - 0.5) * 2.0 * ORB_SPREAD,
+					head.z + (random.nextDouble() - 0.5) * 2.0 * ORB_SPREAD,
+					0, velocity.x, velocity.y, velocity.z, 1.0);
 		}
 	}
 
@@ -879,9 +899,10 @@ public final class TrialCrystalOvercharge {
 	}
 
 	/**
-	 * 한 점에 보라 먼지를 뿌린다 — 떠나는 자리·맞은 자리·막힌 자리가 모두 이것이다.
+	 * 한 점에 보라 불꽃을 터뜨린다 — 떠나는 자리·맞은 자리·막힌 자리가 모두 이것이다. 2026-11-04 에 보라 먼지에서
+	 * 화염구와 같은 {@code DRAGON_BREATH} 로 바꿨다({@link #ORB_FLAME_POINTS}). 수는 그대로다.
 	 *
-	 * <p>색은 {@link TrialWarning.Colors#MARKED}(「너 하나를 노린다」)다. 구체가 노리는 것이 한
+	 * <p>색은 {@link TrialWarning.Colors#MARKED}(「너 하나를 노린다」)와 같은 보라 계열이다. 구체가 노리는 것이 한
 	 * 사람이고, 「표적」의 구체도 같은 색이라 <b>사람이 한 가지만 배운다.</b> 크리스탈 쪽의 빨강
 	 * (「서 있으면 죽는다」)과 갈라 두는 것이 요점이다 — 둘이 같은 색이면 달아오른 크리스탈과
 	 * 날아오는 구체가 한 덩이로 보인다.
@@ -893,8 +914,9 @@ public final class TrialCrystalOvercharge {
 		if (count <= 0) {
 			return;
 		}
-		end.sendParticles(TrialWarning.dust(TrialWarning.Colors.MARKED), true, false,
-				at.x, at.y, at.z, count, spread, spread, spread, 0.0);
+		// 2026-11-04 — 떠나는·맞는·막히는 덩이도 화염구와 같은 보라 불꽃이다. 구름은 만들지 않는다.
+		end.sendParticles(flame(), true, false, at.x, at.y, at.z, count, spread, spread, spread,
+				0.02);
 	}
 
 	/**

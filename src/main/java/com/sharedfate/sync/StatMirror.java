@@ -143,7 +143,8 @@ public final class StatMirror {
 						TrialExperience.blocksGain(state, player));
 			}
 		}
-		state.totalExperience = clampToLevelCap(state, (long) state.totalExperience + delta);
+		applySharedExperienceDelta(state, delta);
+		if (delta != 0) TeamManager.get(server).setDirty();
 	}
 
 	public static void captureDamageBeforeDeath(MinecraftServer server, ShareTeam team) {
@@ -187,6 +188,9 @@ public final class StatMirror {
 				applyDeltas(state, state.maxHealth,
 						sharedMaxAbsorption(online),
 						delta, SharedFateMod.config.shareExperience);
+				if (SharedFateMod.config.shareExperience && delta.totalExperience() != 0) {
+					manager.setDirty();
+				}
 				if (state.health <= 0.0F
 						&& !com.sharedfate.perk.DragonPrep.tryUndyingOath(server, team, state, online)) {
 					// 「불사의 맹세」가 막지 못했으면(없거나 이미 썼으면) 팀이 죽는다. 막았으면 체력이 새 최대치로
@@ -453,8 +457,7 @@ public final class StatMirror {
 		if (shareExperience) {
 			// 상한을 넘은 몫은 여기서 사라진다. 다음 writeBack 이 팀원의 경험치를 잘린 값으로
 			// 되돌리므로, 레벨은 상한에서 멈추고 막대도 더 차지 않는다.
-			state.totalExperience = clampToLevelCap(state,
-					(long) state.totalExperience + delta.totalExperience());
+			applySharedExperienceDelta(state, delta.totalExperience());
 		}
 	}
 
@@ -532,6 +535,13 @@ public final class StatMirror {
 	public static void addSharedExperience(TeamState state, int points) {
 		state.totalExperience = clampToLevelCap(state,
 				(long) state.totalExperience + Math.max(0, points));
+	}
+
+	/** 팀이 새로 얻은 경험치는 이 한 곳에서만 회차 배율을 받는다. 가입 시 이관은 제외한다. */
+	private static void applySharedExperienceDelta(TeamState state, long delta) {
+		long scaled = RunBonuses.scaleExperience(state, delta, RunBonuses.experienceMultiplier());
+		state.totalExperience = clampToLevelCap(state,
+				(long) state.totalExperience + Math.min(scaled, Integer.MAX_VALUE));
 	}
 
 	/** 바닐라 곡선의 점수. 식은 {@link TrialExperience} 한 벌을 쓴다. */

@@ -147,5 +147,52 @@ class StatSnapshotSyncTest {
 		assertEquals(0.0F, pending(-3.0F).spreadPending());
 		assertEquals(0.0F, pending(Float.POSITIVE_INFINITY).spreadPending());
 	}
-}
 
+	// ------------------------------------------------------------------ 팀 보정치(규약 41)
+
+	private static StatSnapshotPayload bonus(StatBonuses bonuses) {
+		return new StatSnapshotPayload(1.0F, 7.0F, 1.0F, 1.0F, 1.0F, 0.0F, bonuses);
+	}
+
+	private static StatBonuses attack(float fraction) {
+		return new StatBonuses(0, fraction, 0, 0, 0, 0, 0);
+	}
+
+	/** 보정치를 싣지 않고 만든 것은 「아무것도 안 걸렸다」다. */
+	@Test
+	void 보정치를_빼고_만들면_아무것도_안_걸린_것이다() {
+		assertEquals(StatBonuses.NONE, snapshot(1.0F, 1.0F).bonuses());
+		assertEquals(StatBonuses.NONE, bonus(null).bonuses());
+	}
+
+	/** 조건부 효과가 켜지거나 증강을 고르면 보정치만 달라진다. 그것만으로도 보내야 한다. */
+	@Test
+	void 보정치만_달라져도_다시_보낸다() {
+		assertTrue(bonus(attack(0.35F)).differsFrom(bonus(attack(0.2F))));
+		assertTrue(bonus(new StatBonuses(0, 0, 0, 0, 0, 0, 0.03F)).differsFrom(bonus(StatBonuses.NONE)),
+				"회차 경험치");
+		assertTrue(bonus(new StatBonuses(6.0F, 0, 0, 0, 0, 0, 0)).differsFrom(bonus(StatBonuses.NONE)),
+				"최대 체력");
+	}
+
+	/** 패널은 정수 % 로 적는다. 같은 글자가 될 차이로는 보내지 않는다. */
+	@Test
+	void 패널이_같은_글자로_적을_보정치_차이로는_보내지_않는다() {
+		assertFalse(bonus(attack(0.351F)).differsFrom(bonus(attack(0.349F))));
+		assertFalse(bonus(attack(0.35F)).differsFrom(bonus(attack(0.35F))));
+	}
+
+	@Test
+	void 이상한_보정치는_0_으로_눕힌다() {
+		StatBonuses odd = new StatBonuses(Float.NaN, Float.POSITIVE_INFINITY, Float.NaN,
+				-5.0F, Float.NEGATIVE_INFINITY, Float.NaN, -2.0F);
+
+		assertEquals(0.0F, odd.maxHealth());
+		assertEquals(0.0F, odd.attack());
+		assertEquals(0.0F, odd.attackFlat());
+		assertEquals(-1.0F, odd.attackSpeed(), "−100% 아래는 없다");
+		assertEquals(0.0F, odd.armor());
+		assertEquals(0.0F, odd.moveSpeed());
+		assertEquals(-1.0F, odd.experience());
+	}
+}

@@ -758,4 +758,22 @@ class TrialCrystalOverchargeTest {
 			return fail(failed);
 		}
 	}
+
+	// ------------------------------------------------------------------ 보라 화염구 (2026-11-04)
+
+	/**
+	 * 레이저처럼 이어지던 꼬리 점을 걷고 <b>보라 화염구</b>(드래곤 화염구의 꼬리 입자)로 날린다.
+	 * 바닐라 {@code DragonFireball} 개체는 독구름을 남겨 쓰지 않는다.
+	 */
+	@Test
+	void 구체는_구름_없는_보라_화염구다() {
+		String bytes = classBytes();
+		assertTrue(bytes.contains("DRAGON_BREATH"), "보라 화염구는 드래곤 화염구의 꼬리 입자로 그린다");
+		assertFalse(bytes.contains("DragonFireball"), "바닐라 화염구 개체는 착탄 자리에 독구름을 남긴다");
+		assertFalse(bytes.contains("AreaEffectCloud"), "구름을 만들지 않는다");
+		assertFalse(bytes.contains("ORB_TAIL"), "제자리에 머무는 꼬리 점이 레이저였다");
+		TrialCatalog.Trial trial = TrialCatalog.byId("sharedfate:crystal_overcharge");
+		assertTrue(trial != null && trial.description().contains("보라색 화염구를 10발"),
+				"카드 설명이 날아오는 것을 말해야 한다");
+	}
 }

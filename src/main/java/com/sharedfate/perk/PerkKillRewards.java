@@ -2,6 +2,11 @@ package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.effect.OnKillEffect;
+import com.sharedfate.perk.effect.HostileDiamondDropEffect;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
@@ -100,6 +105,14 @@ public final class PerkKillRewards {
 		}
 
 		grantTemporaryEffects(killer, state);
+		// 기존 처치 보상과 같은 가해자·팀 판정을 통과한 적대 몹만 센다.
+		for (PerkEffect effect : PerkSetEffects.activeEffectsOf(state)) {
+			if (effect instanceof HostileDiamondDropEffect drop
+					&& drop.drops(victim instanceof Enemy, killer.getRandom().nextDouble())) {
+				victim.level().addFreshEntity(new ItemEntity(victim.level(), victim.getX(),
+						victim.getY(), victim.getZ(), new ItemStack(Items.DIAMOND)));
+			}
+		}
 
 		Reward reward = rewardFor(state);
 		if (reward.isEmpty()) {
@@ -173,6 +186,8 @@ public final class PerkKillRewards {
 			for (PerkEffect effect : perk.effects()) {
 				if (effect instanceof OnKillEffect onKill) {
 					onKill.grantTemporaryEffects(killer);
+					// 처치한 사람 화면에 「⟡ 전리품 사냥꾼」. 회복만 주는 것(「포식」)도 처치 순간 한 번이다.
+					PerkProcFeedback.fire(killer, perk.id());
 				}
 			}
 		}

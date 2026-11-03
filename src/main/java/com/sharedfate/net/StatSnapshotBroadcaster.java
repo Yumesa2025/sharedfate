@@ -2,17 +2,27 @@ package com.sharedfate.net;
 
 import com.sharedfate.perk.MobPerkModifiers;
 import com.sharedfate.perk.PerkDamage;
+import com.sharedfate.perk.PerkHealthRules;
+import com.sharedfate.perk.PerkManager;
+import com.sharedfate.perk.PerkStatBonuses;
 import com.sharedfate.sync.DifficultyEscalation;
+import com.sharedfate.sync.RunBonuses;
 import com.sharedfate.sync.SpreadDamageManager;
+import com.sharedfate.team.TeamLookup;
+import com.sharedfate.team.TeamState;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.Holder;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -114,7 +124,52 @@ public final class StatSnapshotBroadcaster {
 		return new StatSnapshotPayload(
 				(float) attribute.getBaseValue(), (float) attribute.getValue(),
 				(float) PerkDamage.takenMultiplier(player), mobHealth, mobDamage,
-				SpreadDamageManager.expectedLoss(player));
+				SpreadDamageManager.expectedLoss(player), bonusesOf(player, attribute));
+	}
+
+	/**
+	 * 인벤토리 옆 패널이 적을 팀 보정치.
+	 *
+	 * <p>속성 보정은 <b>지금 붙어 있는 수정자</b>에서 읽는다({@link PerkStatBonuses}). 조건부 효과가
+	 * 꺼져 있으면 수정자도 없으므로 저절로 빠진다. 주는 피해 배율({@code damage_dealt})은 수정자가
+	 * 아니라 {@link PerkManager#damageDealtMultiplier} 가 피해 때마다 곱하는 값이라 그것을 함께
+	 * 곱한다 — 그 자리도 조건부 판정을 거친다({@code ConditionalPerkManager.beginMultiplierLookup}).
+	 *
+	 * <p>증강 배율과 체력 보너스는 {@code PerkDamage.perksActive} 와 같은 조건(증강을 켠 팀이고
+	 * 하나라도 가졌다)에서만 센다. 증강을 끈 팀에 배율을 적으면 실제 피해와 갈라진다.
+	 *
+	 * <p>회차 경험치는 팀에 속한 사람에게만 적는다. 팀이 쌓는 경험치에 붙는 보너스이기 때문이다.
+	 */
+	static StatBonuses bonusesOf(ServerPlayer player, AttributeInstance attackDamage) {
+		TeamState state = TeamLookup.stateOf(player.getUUID());
+		boolean perksActive = state != null && state.perksEnabled && !state.ownedPerks.isEmpty();
+
+		List<AttributeModifier> attackMods = PerkStatBonuses.perkModifiers(attackDamage);
+		double dealt = perksActive ? PerkManager.damageDealtMultiplier(player) : 1.0;
+		double attack = PerkStatBonuses.multiplicative(attackMods) * dealt - 1.0;
+		double attackFlat = PerkStatBonuses.additive(attackMods);
+
+		double maxHealth = perksActive
+				? PerkHealthRules.effectiveMaxHealth(state) - state.baseMaxHealth
+				: 0.0;
+		double experience = state == null ? 0.0 : RunBonuses.experienceBonusPercent() / 100.0;
+
+		return new StatBonuses((float) maxHealth, (float) attack, (float) attackFlat,
+				(float) (ratioOf(player, Attributes.ATTACK_SPEED) - 1.0),
+				(float) PerkStatBonuses.additive(
+						PerkStatBonuses.perkModifiers(player.getAttribute(Attributes.ARMOR))),
+				(float) (ratioOf(player, Attributes.MOVEMENT_SPEED) - 1.0),
+				(float) experience);
+	}
+
+	/** 증강·세트 수정자만 얹은 값이 기본값의 몇 배인가. 속성이 없으면 1. */
+	private static double ratioOf(ServerPlayer player, Holder<Attribute> attribute) {
+		AttributeInstance instance = player.getAttribute(attribute);
+		if (instance == null) {
+			return 1.0;
+		}
+		return PerkStatBonuses.ratio(instance.getBaseValue(),
+				PerkStatBonuses.perkModifiers(instance));
 	}
 
 	/** 한 사람의 기록을 버린다. 접속이 끊길 때 부른다. */

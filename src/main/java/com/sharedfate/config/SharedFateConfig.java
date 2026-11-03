@@ -61,6 +61,10 @@ public class SharedFateConfig {
 	 * {@link com.sharedfate.sync.ExperienceBonus} 에 적어 뒀다.
 	 */
 	public double experienceMultiplier = DEFAULT_EXPERIENCE_MULTIPLIER;
+	/** 회차마다 더하는 팀 경험치 비율(%). 0이면 끈다. */
+	public double runXpBonusPercent = 3.0;
+	/** 1회용 소집의 조각을 지급하기 시작하는 회차. 0이면 끈다. */
+	public int rallyShardFromRun = 5;
 	public int damageAlertDurationTicks = 30;
 	public boolean requireClientMod = true;
 	public boolean resetWorldOnTeamDeath = true;
@@ -249,6 +253,14 @@ public class SharedFateConfig {
 
 	private boolean sanitize() {
 		boolean changed = false;
+		if (!Double.isFinite(runXpBonusPercent) || runXpBonusPercent < 0.0) {
+			runXpBonusPercent = 3.0;
+			changed = true;
+		}
+		if (rallyShardFromRun < 0) {
+			rallyShardFromRun = 5;
+			changed = true;
+		}
 		if (maxTeamSize < 1) {
 			maxTeamSize = 4;
 			changed = true;

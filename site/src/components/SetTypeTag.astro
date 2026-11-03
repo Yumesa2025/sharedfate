@@ -1,4 +1,5 @@
 ---
+import SetName from "./SetName.astro";
 import type { PerkSet } from '../lib/sets';
 
 interface Props {
@@ -8,10 +9,10 @@ interface Props {
 const { set } = Astro.props;
 ---
 <div class="tag" data-type={set.type}>
-  <button type="button" class="label" aria-expanded="false">{set.name}</button>
+  <button type="button" class="label" aria-expanded="false"><SetName type={set.type} name={set.name} /></button>
   <div class="pop">
     <div class="pop-head">
-      <b>{set.name}</b>
+      <b><SetName type={set.type} name={set.name} /></b>
       <span class="muted">{set.opensAt}개부터 열립니다</span>
     </div>
     <ul>

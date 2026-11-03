@@ -20,6 +20,8 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
@@ -1316,6 +1318,26 @@ public final class DragonLastStandPatterns {
 	static final int LIGHTNING_MARK_STRIDE = TrialEndRain.MARK_MAX_STRIDE;
 
 	/**
+	 * 번개 예고 자리를 <b>칸 전체로 채우는</b> 노란 면의 블록(2026-11-04).
+	 *
+	 * <p>사람 말 — <b>「바닥이 잘 안 보이니 번개 경고 바닥 표시를 노란색으로 아예 채워서 보이게」</b>.
+	 * 전에는 반경 {@link #LIGHTNING_RADIUS} 둘레의 노란 먼지 고리뿐이었다. 안을 점으로 채우면 한 자리에
+	 * 80점 남짓이라 열 곳이면 여섯 틱에 나눠도 한 틱 130점을 더 써 예산 400 을 넘는다
+	 * ({@code DragonLastStandZoneTest}). 그래서 「종말의 비」의 보라 면({@link TrialEndRainPanel})을
+	 * <b>노란 색유리로</b> 그대로 쓴다 — 디스플레이 개체라 <b>점을 한 개도 쓰지 않고</b>
+	 * ({@link #lightningPoints} 가 그대로다) 자리마다 판 다섯 장, 한 볼리에 50개다.
+	 *
+	 * <p>고리는 <b>남겼다</b> — 면이 안쪽으로 0.1칸 남짓 모자라므로({@code TrialEndRainPanel.edgeGap})
+	 * 경계는 여전히 고리가 말한다. 면은 볼리가 열리는 틱에 깔고 내리치는 틱에 걷는다.
+	 *
+	 * <p>⚠ 투명 유리인 것은 부채꼴(빨강)·종말의 비(보라)와 같은 「투명면」 말씨에 맞춘 것이다. 엔드석이
+	 * 옅은 노랑이라 대비가 모자라 보이면 이 한 줄을 불투명 블록(예: 노란 콘크리트)으로 바꾸면 된다.
+	 */
+	static final BlockState LIGHTNING_PANEL_BLOCK = TrialEndRainPanel.glass(DyeColor.YELLOW);
+	/** 노란 면의 열쇠. 「종말의 비」의 열쇠(카드 id 꼴)와 겹치지 않아 서로의 판을 지우지 않는다. */
+	static final String LIGHTNING_PANEL_KEY = "sharedfate:last_stand_lightning";
+
+	/**
 	 * ⚠⚠ 번개에 맞은 사람의 <b>이동 속도를 직접 깎는 수정자 이름.</b> 상태이상이 아니다.
 	 *
 	 * <h2>사람 말</h2>
@@ -1574,6 +1596,7 @@ public final class DragonLastStandPatterns {
 		lightningNextVolleyAt = 0L;
 		lightningStrikeAt = Long.MIN_VALUE;
 		lightningSpots = List.of();
+		TrialEndRainPanel.drop(LIGHTNING_PANEL_KEY);
 		releaseSlows();
 		DragonLastStandConePanel.drop();
 		DragonLastStandCrossPanel.drop();
@@ -3722,6 +3745,7 @@ public final class DragonLastStandPatterns {
 			lightningNextVolleyAt = beganAt + DragonLastStand.ENTRY_GRACE_TICKS;
 			lightningStrikeAt = Long.MIN_VALUE;
 			lightningSpots = List.of();
+			TrialEndRainPanel.drop(LIGHTNING_PANEL_KEY);
 		}
 		if (lightningStrikeAt == Long.MIN_VALUE) {
 			if (now < lightningNextVolleyAt) {
@@ -3735,6 +3759,9 @@ public final class DragonLastStandPatterns {
 				return;
 			}
 			lightningStrikeAt = now + LIGHTNING_WARN_TICKS;
+			// 노란 면 — 볼리마다 한 번 깔고 내리치는 틱에 걷는다(LIGHTNING_PANEL_BLOCK).
+			TrialEndRainPanel.raise(end, LIGHTNING_PANEL_KEY, lightningSpots, LIGHTNING_RADIUS,
+					LIGHTNING_WARN_TICKS, LIGHTNING_PANEL_BLOCK);
 		}
 		if (now < lightningStrikeAt) {
 			warnLightning(end, members, lightningSpots,
@@ -3743,6 +3770,8 @@ public final class DragonLastStandPatterns {
 		}
 		// 부등호가 「같다」가 아니라 「지났다」인 것이 요점이다. 틱을 건너뛰어도(렉·시간 정지)
 		// 예고를 보여 준 볼리는 반드시 내리친다.
+		// 내리친 자리는 즉시 안전하다 — 면을 그 틱에 걷는다(종말의 비가 터진 틱에 걷는 것과 같은 규칙).
+		TrialEndRainPanel.drop(LIGHTNING_PANEL_KEY);
 		strikeLightning(end, members, lightningSpots, now);
 		lightningStrikeAt = Long.MIN_VALUE;
 		lightningSpots = List.of();

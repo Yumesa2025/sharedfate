@@ -136,7 +136,7 @@ public final class PerkTriggers {
 			}
 			for (PerkEffect effect : perk.effects()) {
 				if (effect instanceof OnTeamHurtEffect onHurt) {
-					grantToTeam(server, team, hurt, onHurt);
+					grantToTeam(server, team, hurt, onHurt, perk.id());
 				}
 			}
 		}
@@ -144,7 +144,7 @@ public final class PerkTriggers {
 		// 빌드도 통과하고 로그도 없는 채로 아무 일도 하지 않는다.
 		for (PerkEffect effect : PerkSetEffects.activeEffectsOf(state)) {
 			if (effect instanceof OnTeamHurtEffect onHurt) {
-				grantToTeam(server, team, hurt, onHurt);
+				grantToTeam(server, team, hurt, onHurt, null);
 			}
 		}
 
@@ -158,7 +158,7 @@ public final class PerkTriggers {
 	 * 맞으면 팀 전체의 체력이 깎이고, 그러면 맞은 본인에게도 "팀원이 맞았다"가 일어난 것이다.
 	 */
 	private static void grantToTeam(MinecraftServer server, ShareTeam team, ServerPlayer hurt,
-			OnTeamHurtEffect effect) {
+			OnTeamHurtEffect effect, @Nullable String perkId) {
 		for (UUID member : team.members()) {
 			if (!effect.includesVictim() && member.equals(hurt.getUUID())) {
 				continue;
@@ -166,6 +166,10 @@ public final class PerkTriggers {
 			ServerPlayer online = server.getPlayerList().getPlayer(member);
 			if (online != null && !online.isRemoved() && !online.isDeadOrDying()) {
 				effect.grantTo(online);
+				// 받은 사람 화면에 「⟡ 반격」. 세트 것은 이름이 없어 띄우지 않는다.
+				if (perkId != null) {
+					PerkProcFeedback.fire(online, perkId);
+				}
 			}
 		}
 	}
@@ -324,6 +328,7 @@ public final class PerkTriggers {
 			for (PerkEffect effect : perk.effects()) {
 				if (effect instanceof OnCriticalEffect onCritical) {
 					onCritical.grantTo(attacker);
+					PerkProcFeedback.fire(attacker, perk.id());
 				}
 			}
 		}

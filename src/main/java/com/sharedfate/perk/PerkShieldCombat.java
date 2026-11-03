@@ -1,0 +1,194 @@
+package com.sharedfate.perk;
+
+import com.sharedfate.perk.effect.*;
+import com.sharedfate.team.TeamLookup;
+import com.sharedfate.team.TeamState;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.Vec3;
+import java.util.*;
+
+/** 방패를 실제로 막은 사람과 오른손으로 돌진한 사람의 전투 상태. */
+public final class PerkShieldCombat {
+	private static final Map<UUID, Long> COUNTERS = new HashMap<>();
+	private static final Map<UUID, Long> RUSH_READY = new HashMap<>();
+	private static final Map<AbstractArrow, ReturnShot> RETURNS = new WeakHashMap<>();
+	private static final Map<Mob, Stun> STUNS = new HashMap<>();
+	private static final ThreadLocal<Integer> BLOCK_WEAR = ThreadLocal.withInitial(() -> 1);
+	private record ReturnShot(ServerPlayer player, LivingEntity shooter, double speed) {}
+	private record Stun(long until) {}
+	private PerkShieldCombat() {}
+
+	public static void register() {
+		UseItemCallback.EVENT.register((player, level, hand) -> {
+			if (player instanceof ServerPlayer serverPlayer && hand == InteractionHand.MAIN_HAND)
+				rush(serverPlayer);
+			// 쿨타임 동안에도 평소처럼 방패로 막을 수 있다.
+			return InteractionResult.PASS;
+		});
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			long now = server.getTickCount();
+			COUNTERS.values().removeIf(expiry -> expiry < now);
+			RUSH_READY.values().removeIf(expiry -> expiry <= now);
+			STUNS.entrySet().removeIf(entry -> {
+				if (entry.getKey().isRemoved() || entry.getValue().until() <= now) {
+					return true;
+				}
+				entry.getKey().setDeltaMovement(Vec3.ZERO);
+				return false;
+			});
+		});
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> clear());
+	}
+
+	public static List<PerkEffect> effects(TeamState state) {
+		if (state == null || !state.perksEnabled) return List.of();
+		List<PerkEffect> result = new ArrayList<>();
+		for (String id : state.ownedPerks) PerkRegistry.byId(id).ifPresent(p -> result.addAll(p.effects()));
+		result.addAll(PerkSetEffects.activeEffectsOf(state));
+		return result;
+	}
+	public static boolean has(ServerPlayer player, Class<? extends PerkEffect> type) {
+		return effects(TeamLookup.stateOf(player.getUUID())).stream().anyMatch(type::isInstance);
+	}
+	public static boolean turtle(Entity entity) {
+		return entity instanceof ServerPlayer player && player.getUseItem().is(Items.SHIELD)
+				&& has(player, TurtleShellEffect.class);
+	}
+	public static boolean ordinaryEnemy(Entity entity) {
+		return entity instanceof Mob && entity instanceof Enemy
+				&& !(entity instanceof EnderDragon) && !(entity instanceof WitherBoss);
+	}
+	static boolean skeletonShooter(Entity entity) { return entity instanceof AbstractSkeleton; }
+	public static int blockWearMultiplier(Entity entity, DamageSource source) {
+		return entity instanceof ServerPlayer player && source.getDirectEntity() instanceof AbstractArrow
+				&& has(player, ShieldRicochetEffect.class) ? 3 : 1;
+	}
+	public static int wearContext() { return BLOCK_WEAR.get(); }
+	public static void wearContext(int multiplier) { BLOCK_WEAR.set(multiplier); }
+
+	/** 바닐라가 실제로 막아 낸 양만 받는다. 방향·관통·지연 판정은 바닐라 몫이다. */
+	public static void onBlocked(Entity entity, DamageSource source, float blocked) {
+		if (!(entity instanceof ServerPlayer player) || !(blocked > 0)) return;
+		if (has(player, ShieldCounterEffect.class)) arm(player.getUUID(), player.level().getServer().getTickCount());
+		if (has(player, ShieldRicochetEffect.class)
+				&& source.getDirectEntity() instanceof AbstractArrow arrow
+				&& source.getEntity() instanceof LivingEntity shooter && skeletonShooter(shooter)) {
+			RETURNS.put(arrow, new ReturnShot(player, shooter, Math.max(1, arrow.getDeltaMovement().length())));
+		}
+		if (has(player, TurtleShellEffect.class) && ordinaryEnemy(source.getEntity())) {
+			Entity attacker = source.getEntity();
+			if (attacker.hurtServer(player.level(), player.damageSources().thorns(player), blocked * 0.5F))
+				PerkProcFeedback.fire(player, "sharedfate:turtle_shell");
+		}
+	}
+
+	/** 화살의 바닐라 반동 직전에 실행하여 감속·소멸로 덮어쓰이지 않게 한다. */
+	public static boolean returnArrow(AbstractArrow arrow) {
+		ReturnShot shot = RETURNS.remove(arrow);
+		if (shot == null || !shot.shooter().isAlive()) return false;
+		Vec3 direction = shot.shooter().getEyePosition().subtract(shot.player().getEyePosition()).normalize();
+		arrow.setOwner(shot.player());
+		arrow.setPos(shot.player().getEyePosition().add(direction.scale(0.8)));
+		arrow.shoot(direction.x, direction.y, direction.z, (float) shot.speed(), 0);
+		arrow.needsSync = true;
+		arrow.syncVelocity = true;
+		PerkProcFeedback.fire(shot.player(), "sharedfate:shield_ricochet");
+		return true;
+	}
+
+	static void arm(UUID player, long now) { COUNTERS.put(player, now + 60); }
+	static double consume(UUID player, long now, boolean melee) {
+		if (!melee) return 1;
+		Long expiry = COUNTERS.remove(player);
+		return expiry != null && now <= expiry ? 2 : 1;
+	}
+	public static double counterMultiplier(DamageSource source) {
+		if (source == null || !(source.getEntity() instanceof ServerPlayer player)) return 1;
+		if (!has(player, ShieldCounterEffect.class)) { COUNTERS.remove(player.getUUID()); return 1; }
+		double multiplier = consume(player.getUUID(), player.level().getServer().getTickCount(),
+				source.is(DamageTypes.PLAYER_ATTACK) && source.getDirectEntity() == player);
+		if (multiplier > 1) PerkProcFeedback.fire(player, "sharedfate:shield_counter");
+		return multiplier;
+	}
+
+	/** 내구성 마법과 기존 장비 배율을 지난 뒤 방패에만 적용한다. */
+	public static int durability(TeamState state, ItemStack stack, int amount, net.minecraft.util.RandomSource random) {
+		if (amount <= 0 || !stack.is(Items.SHIELD)) return amount;
+		int loss = (int) Math.min(Integer.MAX_VALUE, (long) amount * wearContext());
+		for (PerkEffect effect : effects(state)) {
+			if (effect instanceof ShieldDurabilityEffect shield)
+				loss = ShieldDurabilityEffect.loss(loss, shield.multiplier(), shield.ignoreChance(),
+						random.nextDouble(), random.nextDouble());
+		}
+		return loss;
+	}
+
+	public static int rushRemaining(ServerPlayer player) {
+		return (int) Math.max(0, RUSH_READY.getOrDefault(player.getUUID(), 0L) - player.level().getServer().getTickCount());
+	}
+	static boolean startRush(UUID player, long now) {
+		if (RUSH_READY.getOrDefault(player, 0L) > now) return false;
+		RUSH_READY.put(player, now + 200);
+		return true;
+	}
+	static float rushDamage(int armor) { return Math.max(0, armor) * 0.5F; }
+	private static void rush(ServerPlayer player) {
+		ItemStack shield = player.getMainHandItem();
+		if (!shield.is(Items.SHIELD) || player.isSpectator() || !player.isAlive()
+				|| player.isPassenger() || !has(player, ShieldRushEffect.class) || rushRemaining(player) > 0) return;
+		if (!startRush(player.getUUID(), player.level().getServer().getTickCount())) return;
+		Vec3 look = player.getLookAngle();
+		Vec3 step = new Vec3(look.x, 0, look.z).normalize().scale(0.25);
+		Set<UUID> hit = new HashSet<>();
+		for (int i = 0; i < 20; i++) {
+			Vec3 before = player.position();
+			player.move(MoverType.SELF, step);
+			for (Entity target : player.level().getEntities(player, player.getBoundingBox().inflate(0.35))) {
+				Entity victim = target instanceof EnderDragonPart part ? part.parentMob : target;
+				if (!(victim instanceof Mob) || !(victim instanceof Enemy) || !hit.add(victim.getUUID())) continue;
+				float damage = rushDamage(player.getArmorValue());
+				boolean hurt = victim instanceof EnderDragon dragon
+						? dragon.hurt(player.level(), target instanceof EnderDragonPart part ? part : dragon.head,
+								player.damageSources().playerAttack(player), damage)
+						: victim.hurtServer(player.level(), player.damageSources().playerAttack(player), damage);
+				if (hurt) {
+					PerkProcFeedback.fire(player, "sharedfate:shield_rush");
+					shield.hurtAndBreak(5, player, InteractionHand.MAIN_HAND);
+					if (ordinaryEnemy(victim)) {
+						Mob mob = (Mob) victim;
+						STUNS.put(mob, new Stun(player.level().getServer().getTickCount() + 20L));
+						mob.setDeltaMovement(Vec3.ZERO);
+					}
+				}
+			}
+			if (shield.isEmpty() || player.position().distanceToSqr(before) < 0.001) break;
+		}
+		player.teleportTo(player.getX(), player.getY(), player.getZ());
+	}
+	/** 저장되는 NoAI 값을 건드리지 않아 경직 중 청크를 떠나도 영구 정지하지 않는다. */
+	public static boolean stunned(Mob mob) {
+		Stun stun = STUNS.get(mob);
+		return stun != null && mob.level().getServer() != null
+				&& stun.until() > mob.level().getServer().getTickCount();
+	}
+	static void clear() {
+		STUNS.clear(); COUNTERS.clear(); RUSH_READY.clear(); RETURNS.clear(); BLOCK_WEAR.remove();
+	}
+}

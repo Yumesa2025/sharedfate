@@ -169,7 +169,8 @@ public final class PerkHealthRules {
 		double base = locked.isPresent() ? locked.getAsDouble() : state.baseMaxHealth;
 		// 「불사의 맹세」를 쓴 팀은 이번 회차 내내 절반이다. 보너스까지 더한 뒤에 곱해야 맹세 뒤에 고른
 		// 체력 증강도 함께 절반이 된다 — 「최대 체력이 절반」의 뜻이 그것이다.
-		double target = (base + bonusMaxHealth(state)) * DragonPrep.oathScale(state);
+		double target = (base + bonusMaxHealth(state)
+				+ com.sharedfate.enchant.ShieldEnchantments.teamHealth(state)) * DragonPrep.oathScale(state);
 		if (!Double.isFinite(target)) {
 			return state.maxHealth;
 		}
@@ -188,11 +189,12 @@ public final class PerkHealthRules {
 			return;
 		}
 		TeamState state = TeamLookup.stateOf(player.getUUID());
-		if (state == null || state.ownedPerks.isEmpty()) {
+		if (state == null) {
 			return;
 		}
 		float target = effectiveMaxHealth(state);
 		state.maxHealth = target;
+		state.health = Math.min(state.health, target);
 		applyIfDifferent(player, target);
 	}
 
@@ -215,14 +217,16 @@ public final class PerkHealthRules {
 		TeamManager manager = TeamManager.get(server);
 		for (ShareTeam team : List.copyOf(manager.allTeams())) {
 			TeamState state = manager.stateByTeamId(team.teamId());
-			if (state == null || !state.perksEnabled || state.ownedPerks.isEmpty()) {
+			if (state == null || !state.perksEnabled) {
 				continue;
 			}
 			// 「엔드 적응」이 보는 값. 최대 체력을 세기 직전에 월드에서 다시 읽는다.
 			DragonPrep.refreshEndPresence(server, team, state);
+			com.sharedfate.enchant.ShieldEnchantments.refreshTeamHealth(server, team, state);
 			float target = effectiveMaxHealth(state);
 			if (state.maxHealth != target) {
 				state.maxHealth = target;
+				state.health = Math.min(state.health, target);
 				manager.setDirty();
 			}
 			for (UUID member : team.members()) {
@@ -246,5 +250,6 @@ public final class PerkHealthRules {
 	/** 테스트나 서버 종료 때 주기 카운터를 지운다. */
 	public static void reset() {
 		tickCounter = 0;
+		com.sharedfate.enchant.ShieldEnchantments.reset();
 	}
 }

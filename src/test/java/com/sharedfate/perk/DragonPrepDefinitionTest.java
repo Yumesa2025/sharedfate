@@ -46,7 +46,10 @@ class DragonPrepDefinitionTest {
 			Map.entry("sharedfate:endless_quiver", Kind.ENDLESS_QUIVER),
 			Map.entry("sharedfate:wing_break", Kind.WING_BREAK),
 			Map.entry("sharedfate:end_adaptation", Kind.END_ADAPTATION),
-			Map.entry("sharedfate:last_rally", Kind.LAST_RALLY));
+			Map.entry("sharedfate:last_rally", Kind.LAST_RALLY),
+			Map.entry("sharedfate:cracked_crystal", Kind.CRACKED_CRYSTAL),
+			Map.entry("sharedfate:battle_supply", Kind.BATTLE_SUPPLY),
+			Map.entry("sharedfate:easy_mode", Kind.EASY_MODE));
 
 	@BeforeAll
 	static void bootstrap() {
@@ -74,10 +77,10 @@ class DragonPrepDefinitionTest {
 	// ------------------------------------------------------------------ 정의 파일
 
 	@Test
-	void 열두_장이_새_분류로_읽힌다() {
+	void 열다섯_장이_새_분류로_읽힌다() {
 		PerkRegistry.loadBundled();
 		List<Perk> trial = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.TRIAL).toList();
-		assertEquals(12, trial.size());
+		assertEquals(15, trial.size());
 		for (Map.Entry<String, Kind> entry : EXPECTED.entrySet()) {
 			Perk perk = PerkRegistry.byId(entry.getKey()).orElseThrow(() -> new AssertionError(entry.getKey()));
 			assertEquals(PerkRarity.TRIAL, perk.rarity(), perk.name());

@@ -1,4 +1,5 @@
 ---
+import SetName from "../components/SetName.astro";
 import Base from '../layouts/Base.astro';
 import PerkCard from '../components/PerkCard.astro';
 import { RARITY_NAME, loadPerks } from '../lib/perks';
@@ -29,7 +30,7 @@ const typeless = perks.filter((perk) => perk.setTypes.length === 0);
       <tbody>
         {sets.map((set) => (
           <tr>
-            <td><a href={`#${set.type}`}>{set.name}</a></td>
+            <td><a href={`#${set.type}`}><SetName type={set.type} name={set.name} /></a></td>
             <td>{owned(set.type).length}</td>
             <td>{set.tiers.map((tier) => tier.count).join(' · ')}</td>
           </tr>
@@ -42,7 +43,7 @@ const typeless = perks.filter((perk) => perk.setTypes.length === 0);
 
     {sets.map((set) => (
       <section id={set.type}>
-        <h2>{set.name}</h2>
+        <h2><SetName type={set.type} name={set.name} /></h2>
         <ol class="tiers">
           {set.tiers.map((tier) => (
             <li><span class="count">{tier.count}개</span><span>{tier.description}</span></li>

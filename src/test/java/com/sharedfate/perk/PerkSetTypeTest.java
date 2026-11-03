@@ -36,8 +36,8 @@ class PerkSetTypeTest {
 	}
 
 	@Test
-	void 유형은_열네_개다() {
-		assertEquals(14, PerkSetType.values().length);
+	void 유형은_열다섯_개다() {
+		assertEquals(15, PerkSetType.values().length);
 	}
 
 	@Test
@@ -52,7 +52,7 @@ class PerkSetTypeTest {
 		assertEquals(
 				Set.of("weapon", "power", "hunt", "mining", "supply", "defense",
 						"survival", "recovery", "swap", "gamble", "mobility", "blessing", "bond",
-						"pioneer"),
+						"pioneer", "shield"),
 				EnumSet.allOf(PerkSetType.class).stream().map(PerkSetType::id)
 						.collect(java.util.stream.Collectors.toSet()));
 	}
@@ -94,8 +94,9 @@ class PerkSetTypeTest {
 	void 임계값은_채굴과_화력만_3이다() {
 		assertEquals(3, PerkSetType.MINING.threshold());
 		assertEquals(3, PerkSetType.POWER.threshold());
+		assertEquals(1, PerkSetType.SHIELD.threshold());
 		for (PerkSetType type : PerkSetType.values()) {
-			if (type == PerkSetType.MINING || type == PerkSetType.POWER) {
+			if (type == PerkSetType.MINING || type == PerkSetType.POWER || type == PerkSetType.SHIELD) {
 				continue;
 			}
 			assertEquals(2, type.threshold(), type + " 의 임계값");

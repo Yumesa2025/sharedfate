@@ -2,6 +2,7 @@ package com.sharedfate.sync;
 
 import com.sharedfate.SharedFateMod;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.network.chat.Component;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -38,7 +39,7 @@ import java.util.List;
  *   <tr><td>오는 때</td><td>드래곤 체력 <b>25%와 10%, 두 번만</b>. 주기적이 아니다</td></tr>
  *   <tr><td>개수</td><td>1명 <b>2</b> · 2명 <b>4</b> · 3명 <b>5</b> · 4명 <b>6</b>. 두 번 다 같은 수</td></tr>
  *   <tr><td>체력</td><td><b>30</b></td></tr>
- *   <tr><td>연결</td><td>박힌 뒤 <b>2초</b>에 드래곤에 붙는다({@link #LINK_DELAY_TICKS})</td></tr>
+ *   <tr><td>연결</td><td>박힌 뒤 <b>5초</b>에 드래곤에 붙는다({@link #LINK_DELAY_TICKS}. 2026-11-04 에 2초에서)</td></tr>
  *   <tr><td>회복</td><td>연결된 뒤로 <b>초당 최대 체력의 0.5%</b>({@link #LEAK_FRACTION_PER_SECOND}).
  *       <b>부술 때까지</b> 계속이고 <b>크리스탈마다 따로</b> 센다</td></tr>
  *   <tr><td>타이머</td><td><b>없다.</b> 「시간 안에 부숴라」가 아니라 <b>「살아 있는 동안 계속
@@ -57,7 +58,7 @@ import java.util.List;
  *
  * <p>그 앞은 <b>「15초 안에 못 부수면 하나마다 5%」</b>였다. 바뀐 것이 셋이다 — ① <b>타이머가
  * 없다</b>(부술 때까지다) ② 회복이 <b>못 부순 벌</b>이 아니라 <b>살아 있는 동안의 누수</b>다
- * ③ <b>크리스탈마다 제 시계로</b> 샌다(박힌 뒤 2초).
+ * ③ <b>크리스탈마다 제 시계로</b> 샌다(박힌 뒤 2초 — 2026-11-04 에 5초가 됐다. {@link #LINK_DELAY_TICKS}).
  *
  * <h2>⚠⚠ 수로 읽은 이 파도의 무게 — <b>값에서 직접 센 것이다</b></h2>
  *
@@ -270,9 +271,9 @@ import java.util.List;
  * </pre>
  *
  * <p>⚠ <b>하나의 시계가 아니라 여섯 개의 시계다.</b> 옛 타이머는 「마지막이 박힌 뒤 전부에게
- * 15초」였고 그래서 하나로 셀 수 있었다. 이제 각자 <b>제가 박힌 뒤 2초</b>에 붙으므로
+ * 15초」였고 그래서 하나로 셀 수 있었다. 이제 각자 <b>제가 박힌 뒤 5초</b>에 붙으므로
  * ({@link Slot#plantedAt}) 먼저 떨어진 것이 먼저 샌다 — 여섯이 모두 연결되는 것은
- * {@code plantTicks(6) + 2초} = <b>130틱</b>이고, 그 앞 2.5초는 <b>샘이 하나씩 늘어나는 구간</b>이다.
+ * {@code plantTicks(6) + 5초} = <b>190틱</b>이고, 그 앞 2.5초는 <b>샘이 하나씩 늘어나는 구간</b>이다.
  * 사람이 그것을 <b>선이 한 줄씩 늘어나는 것</b>으로 본다.
  *
  * <h2>회복은 연결된 동안 계속 돈다 — <b>부술 때까지</b></h2>
@@ -283,7 +284,7 @@ import java.util.List;
  *
  * <ul>
  *   <li><b>연결선이 거짓이 아니다.</b> 선은 {@link #leak} 안에서만 나가고 {@link Slot#linked} 가
- *       참인 자리만 그린다 — <b>박힌 뒤 2초 동안은 선도 회복도 하나도 없다</b></li>
+ *       참인 자리만 그린다 — <b>박힌 뒤 5초 동안은 선도 회복도 하나도 없다</b></li>
  *   <li><b>부서지면 그 크리스탈 몫이 그 틱에 멈춘다.</b> 살아 있는 것만 세므로({@link #linkedCount})
  *       「선이 끊긴 자리에서 회복만 계속되는」 틱이 구조적으로 없다</li>
  *   <li><b>소리에 주기가 필요하다.</b> 매 틱 울리면 초당 20번이고, 이제 <b>끝이 없으므로</b>
@@ -389,17 +390,22 @@ public final class DragonLastStandObjects {
 	 *
 	 * <p>다이아 검 7 이면 <b>다섯 대</b>, 힘껏 당긴 활(9 남짓)이면 <b>네 발</b>이다.
 	 *
-	 * <p>⚠ <b>이 값이 「2초 안에 다 부수기」를 불가능하게 만든다.</b> 여섯이면 180 이고 4인이
-	 * 2초(40틱) 안에 나눠 부수려면 사람마다 45 를 넣어야 하는데, 다이아 검의 쿨타임이 0.625초라
-	 * 2초에 <b>네 번</b>(28)이 한계다. 곧 <b>연결은 반드시 일어난다</b> — 누수를 피하는 싸움이
-	 * 아니라 <b>줄이는 싸움</b>이고, 그것이 {@link #LEAK_FRACTION_PER_SECOND} 를 1% 에서 0.5% 로
-	 * 내린 근거다.
+	 * <p>⚠ <b>연결이 2초이던 때는 이 값이 「연결 전에 다 부수기」를 불가능하게 만들었다.</b> 여섯이면
+	 * 180 이고 4인이 2초(40틱) 안에 나눠 부수려면 사람마다 45 를 넣어야 하는데, 다이아 검의 쿨타임이
+	 * 0.625초라 2초에 <b>네 번</b>(28)이 한계였다 — 그것이 {@link #LEAK_FRACTION_PER_SECOND} 를 1% 에서
+	 * 0.5% 로 내린 근거다. ⚠⚠ <b>2026-11-04 에 연결이 5초가 되면서 그 전제가 풀렸다</b>
+	 * ({@link #LINK_DELAY_TICKS}) — 5초면 사람마다 일곱 번(49)이라 넷이 손을 나누면 연결 전에 다 부술
+	 * 수 있다. 사람이 정한 값이고, 0.5% 를 되올릴지는 사람에게 물을 일이다.
 	 */
 	static final float OBJECT_HEALTH = 30.0F;
 
 	/**
-	 * 박힌 뒤 드래곤에 <b>연결되기까지</b>의 시간(틱). 2초. <b>사람이 정한 값이다</b> —
-	 * 「소환되고 2초뒤부터 엔더드래곤에 연결되고」.
+	 * 박힌 뒤 드래곤에 <b>연결되기까지</b>의 시간(틱). <b>5초. 사람이 정한 값이다</b> — 처음은
+	 * 「소환되고 2초뒤부터 엔더드래곤에 연결되고」(40틱)였고, 2026-11-04 에 <b>「땅에 박힌 뒤 회복이
+	 * 시작되기까지 2초 → 5초」</b>로 바뀌었다.
+	 *
+	 * <p>⚠ <b>누수 소리 주기(40틱)의 배수가 아니다.</b> 전에는 2초가 그 주기와 같아 「첫 연결 틱에
+	 * 첫 소리」가 우연히 맞았는데, 이제 소리 시계를 <b>첫 연결 틱에서</b> 센다({@link #leakSoundDue}).
 	 *
 	 * <p>⚠ <b>크리스탈마다 따로 돈다.</b> 재는 자리가 「파도가 열린 때」가 아니라 <b>그것이 박힌
 	 * 때</b>({@link Slot#plantedAt})인 까닭은 사람 말이 <b>「소환되고」</b>이기 때문이다 — 크리스탈이
@@ -410,7 +416,7 @@ public final class DragonLastStandObjects {
 	 * 뜨는 것과 사람이 돌아보는 것이 같은 틱이라 「무엇이 생겼나」를 읽을 틈이 없다.
 	 * ② <b>선이 뜨는 것이 사건이 된다</b> — 박힘과 연결이 갈라져 있어야 「붙었다」가 눈에 보인다.
 	 */
-	static final int LINK_DELAY_TICKS = 40;
+	static final int LINK_DELAY_TICKS = 100;
 
 	/**
 	 * ⚠⚠ <b>연결된 크리스탈 하나가 1초에 드래곤에게 돌려주는 최대 체력 비율.</b>
@@ -437,8 +443,8 @@ public final class DragonLastStandObjects {
 	 * </table>
 	 *
 	 * <p>⚠ <b>1% 가 과했던 까닭은 「피할 수 없다」였다.</b> {@link #OBJECT_HEALTH} 의 ⚠ 가 그것이고
-	 * — 체력 30짜리 여섯을 2초 안에 다 부수는 것은 어떤 무기로도 불가능하므로 <b>연결은 반드시
-	 * 일어난다.</b> 그 위에 8.3초면 페이즈가 통째로 되돌아간다는 것은 「대응을 잘하면 줄어드는
+	 * — 연결이 2초이던 그때 체력 30짜리 여섯을 2초 안에 다 부수는 것은 어떤 무기로도 불가능했으므로
+	 * <b>연결은 반드시 일어났다</b>(2026-11-04 에 5초가 되며 풀렸다 — {@link #OBJECT_HEALTH}). 그 위에 8.3초면 페이즈가 통째로 되돌아간다는 것은 「대응을 잘하면 줄어드는
 	 * 벌」이 아니라 <b>이 페이즈를 끝낼 수 없게 만드는 수</b>다. 0.5% 면 그 시간이 16.6초가 되어
 	 * <b>부수는 속도가 실제로 결과를 가른다.</b>
 	 *
@@ -632,8 +638,9 @@ public final class DragonLastStandObjects {
 	 * <p><b>2초인 까닭.</b> ① 바닐라 신호기 주변음이 <b>80틱(4초)</b> 주기인데 그보다 촘촘해야
 	 * 「주변음」이 아니라 「지금 일어나는 일」로 들린다 ② 10~20초 싸움에 <b>5~10번</b>이라
 	 * <b>떨어지는 물방울</b>로 읽힌다 — 사람이 「샌다」로 알아야 하는 것이 정확히 그 느낌이다
-	 * ③ {@link #LINK_DELAY_TICKS}(40)과 같은 수라 <b>첫 연결이 일어나는 틱에 첫 소리가 맞는다</b>
-	 * (첫 크리스탈이 박히는 40틱 + 2초 = 80틱이 이 주기의 배수다).
+	 * ③ <b>첫 연결이 일어나는 틱에 첫 소리가 맞는다</b> — 시계를 그 틱에서 센다({@link #leakSoundDue}).
+	 * ⚠ 전에는 연결 지연이 이 주기와 같은 40틱이라 파도 시계의 나머지로 셌는데, 2026-11-04 에 연결이
+	 * 5초(100틱)가 되어 그 셈이 첫 소리를 1초 늦추게 됐다.
 	 *
 	 * <p>⚠ <b>음량도 함께 내렸다</b>({@link #LEAK_VOLUME}). 주기를 늘리는 것만으로는 「영원히
 	 * 울린다」가 안 풀린다 — 끝이 없는 소리는 <b>싸움 소리 아래</b>에 있어야 한다.
@@ -810,13 +817,27 @@ public final class DragonLastStandObjects {
 	}
 
 	/**
-	 * <b>전부가 연결되는</b> 틱(파도 시작부터). 마지막이 박힌 뒤 2초다.
+	 * <b>전부가 연결되는</b> 틱(파도 시작부터). 마지막이 박힌 뒤 5초다.
 	 *
-	 * <p>여섯이면 90 + 40 = <b>130틱</b>이고 그 틱이 <b>점 예산에서 가장 바쁜 틱</b>이다
+	 * <p>여섯이면 90 + 100 = <b>190틱</b>이고 그 틱이 <b>점 예산에서 가장 바쁜 틱</b>이다
 	 * ({@link #worstCasePointsPerTick}). 그 앞 2.5초는 <b>선이 한 줄씩 늘어나는 구간</b>이다.
 	 */
 	static int allLinkedTicks(int count) {
 		return plantTicks(count) + LINK_DELAY_TICKS;
+	}
+
+	/**
+	 * 이 틱에 누수 소리를 낼 차례인가. <b>첫 연결 틱에서</b> {@link #LEAK_SOUND_TICKS} 마다다.
+	 *
+	 * <p>파도 시계의 나머지로 세면 연결 지연이 그 주기의 배수일 때만 첫 연결과 첫 소리가 맞는다 —
+	 * 2026-11-04 에 연결이 5초(100틱)가 되어 깨진 셈이다. 첫 연결 틱을 원점으로 잡으면 지연이
+	 * 몇이든 맞는다.
+	 *
+	 * @param leakBeganAt 첫 연결이 일어난 파도 틱. 아직이면 음수
+	 */
+	static boolean leakSoundDue(int step, int leakBeganAt) {
+		return leakBeganAt >= 0 && step >= leakBeganAt
+				&& (step - leakBeganAt) % LEAK_SOUND_TICKS == 0;
 	}
 
 	/**
@@ -1198,6 +1219,7 @@ public final class DragonLastStandObjects {
 		// block/beacon/power1~3 이다(sounds.json 에서 확인했다). 이 저장소의 어느 카드도 쓰지
 		// 않는 소리이고, 사람이 말한 것이 「신호기 선」이므로 신호기 소리가 맞는 답이다.
 		TrialWarning.playEach(end, members, SoundEvents.BEACON_POWER_SELECT, 1.0F, 1.2F);
+		announceSummon(end, members);
 		wave = new Wave(now, firedWaves, anchor, slots, plantTicks(count));
 		SharedFateMod.LOGGER.info(
 				"[END] 회복 크리스탈 소환(오브젝트 파도) — 체력 {}% · {}개 · 체력 {} · 크기 {}칸 · 타이머 없음 · "
@@ -1206,6 +1228,34 @@ public final class DragonLastStandObjects {
 				CRYSTAL_HEIGHT, LINK_DELAY_TICKS / (float) SECOND_TICKS,
 				LEAK_FRACTION_PER_SECOND * 100.0F);
 	}
+
+	/**
+	 * 「회복 크리스탈 소환」을 <b>소리와 화면 가운데 글자</b>로 알린다. 2026-11-04 사람 지시 —
+	 * <b>「회복 크리스탈이 소환될 때 효과음과 화면 자막으로 『크리스탈 소환』이 보이게」</b>.
+	 *
+	 * <p>글자는 이 페이즈에 이미 있는 알림과 같은 길이다 — 진입의 「최후의 저항」
+	 * ({@code DragonLastStandEntry.boom})이 쓰는 {@link TitleMessenger#showTitle}. 바닐라 패킷이라
+	 * 통신 규약이 올라가지 않는다. 제목이 패턴 타이머 HUD 의 줄 이름({@link TrialTimers#OBJECTS_LABEL})
+	 * 과 같은 말이라 화면 가운데에서 본 것을 HUD 에서 다시 찾을 수 있다. ⚠ 액션바({@code TrialWarning.shout})
+	 * 는 쓰지 않는다 — 그 길은 사람이 걷으라고 해서 {@code TrialWarningTest} 가 아무도 부르지 않는지를 지킨다.
+	 *
+	 * <p>소리는 {@code entity/evocation_illager/prepare_summon} 이다 — 이 저장소의 어느 카드도 쓰지
+	 * 않는 파일이고 이름 그대로 「소환」이다. 신호기 선 소리({@code BEACON_POWER_SELECT})는 그대로
+	 * 두고 그 위에 얹는다. 머무는 시간이 진입 글자(45틱)보다 짧은 것은 싸움 한가운데에 오는 글자라서다.
+	 */
+	private static void announceSummon(ServerLevel end, List<ServerPlayer> members) {
+		TrialWarning.playEach(end, members, SoundEvents.EVOKER_PREPARE_SUMMON, 1.0F, 1.0F);
+		TitleMessenger.showTitle(members, SUMMON_TITLE, SUMMON_SUBTITLE, SUMMON_FADE_IN_TICKS,
+				SUMMON_STAY_TICKS, SUMMON_FADE_OUT_TICKS);
+	}
+
+	/** 소환 알림의 큰 글자 — 패턴 타이머 HUD 의 줄 이름과 같은 말이다. */
+	static final Component SUMMON_TITLE = Component.literal(TrialTimers.OBJECTS_LABEL);
+	/** 소환 알림의 작은 글자 — 무엇을 해야 하는지만 적는다. */
+	static final Component SUMMON_SUBTITLE = Component.literal("부수기 전까지 드래곤이 회복합니다");
+	static final int SUMMON_FADE_IN_TICKS = 5;
+	static final int SUMMON_STAY_TICKS = 35;
+	static final int SUMMON_FADE_OUT_TICKS = 10;
 
 	// ------------------------------------------------------------------ 파도 한 틱
 
@@ -1228,7 +1278,8 @@ public final class DragonLastStandObjects {
 		}
 		int step = (int) Math.max(0L, now - current.beganAt);
 		for (Slot slot : current.slots) {
-			advance(end, slot, step);
+			advance(end, slot, step, com.sharedfate.perk.DragonPrep.recoveryCrystalHealth(
+					members.isEmpty() ? null : com.sharedfate.team.TeamLookup.stateOf(members.getFirst().getUUID()), OBJECT_HEALTH));
 		}
 		if (liveCount() <= 0 && step >= current.plantedAt) {
 			// 전부 부쉈다. ⚠ 「마지막이 박히는 틱」을 함께 묻는 것은 아직 하늘에 있는 것이 있을 때
@@ -1246,7 +1297,7 @@ public final class DragonLastStandObjects {
 	}
 
 	/** 자리 하나를 한 틱 나아가게 한다 — 떨어지고, 박히고, 반짝인다. */
-	private static void advance(ServerLevel end, Slot slot, int step) {
+	private static void advance(ServerLevel end, Slot slot, int step, float health) {
 		if (slot.plantedAt < 0) {
 			if (step < slot.dropsAt) {
 				return;
@@ -1256,7 +1307,7 @@ public final class DragonLastStandObjects {
 				streak(end, slot, falling);
 				return;
 			}
-			plant(end, slot, step);
+			plant(end, slot, step, health);
 			return;
 		}
 		if (!slot.standing()) {
@@ -1301,13 +1352,13 @@ public final class DragonLastStandObjects {
 	 * 실패가 이어질 때 박히는 소리와 빛이 매 틱 난다. 그때 {@code shard} 가 {@code null} 로 남으므로
 	 * {@link Slot#linked} 가 영영 거짓이고, 곧 <b>세상에 없는 크리스탈이 회복시키는 일이 없다.</b>
 	 */
-	private static void plant(ServerLevel end, Slot slot, int step) {
+	private static void plant(ServerLevel end, Slot slot, int step, float health) {
 		slot.plantedAt = step;
 		DragonLastStandLights.drop(slot.line);
 		slot.line = null;
 
 		double centerY = crystalCenterY(slot.seat.y);
-		Shard shard = new Shard(end, FUSE_TICKS);
+		Shard shard = new Shard(end, FUSE_TICKS, health);
 		shard.snapTo(slot.seat.x, standFeetY(slot.seat.y), slot.seat.z, 0.0F, 0.0F);
 		if (!end.addFreshEntity(shard)) {
 			return;
@@ -1366,9 +1417,9 @@ public final class DragonLastStandObjects {
 			current.healed += give;
 		}
 		beams(end, dragon, current, step);
-		// ⚠ 주기는 파도 시계의 나머지다(now 를 다시 읽지 않는다). 2초마다이고 음량이 절반이다 —
+		// ⚠ 주기는 첫 연결 틱에서 센다(now 를 다시 읽지 않는다). 2초마다이고 음량이 절반이다 —
 		// 끝이 없는 소리라 그렇게 잡았다({@link #LEAK_SOUND_TICKS} · {@link #LEAK_VOLUME}).
-		if (step % LEAK_SOUND_TICKS == 0) {
+		if (leakSoundDue(step, current.leakBeganAt)) {
 			// block/amethyst/resonate1~4 다(sounds.json 에서 확인했다 — chime 은 shimmer,
 			// hit 은 step*, break 는 break* 라 넷이 전부 다른 파일이다). 이 저장소의 어느 카드도
 			// 쓰지 않고, 수정이 울리는 소리라 「크리스탈이 뭔가를 보내고 있다」가 들린다.
@@ -1495,9 +1546,10 @@ public final class DragonLastStandObjects {
 		/** 이 상자가 들고 있는 그림. 부서지는 틱에 <b>같은 틱에</b> 거두려고 들고 있다. */
 		private @Nullable DragonLastStandShells.Shell shell;
 
-		private Shard(Level level, int fuse) {
+		private Shard(Level level, int fuse, float health) {
 			super(EntityTypes.ARMOR_STAND, level);
 			this.fuse = Math.max(1, fuse);
+			this.remaining = health;
 			setInvisible(true);
 			setNoBasePlate(true);
 			// noGravity 가 ArmorStand.hasPhysics() 를 거짓으로 만들어 travel() 이 첫 줄에서

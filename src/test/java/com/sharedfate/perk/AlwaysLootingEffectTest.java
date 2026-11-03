@@ -103,23 +103,23 @@ class AlwaysLootingEffectTest {
 	// ------------------------------------------------------------------ 겹칠 때의 셈
 
 	/**
-	 * 세트 단계는 누적이라 사냥 셋을 모으면 2단계(약탈 I)와 3단계(약탈 III)가 둘 다 켜진다.
-	 * 그때 결과는 <b>III</b> 이어야 한다. 더해서 IV 가 되면 3단계 설명 「약탈이 III 으로
+	 * 세트 단계는 누적이라 사냥 셋을 모으면 2단계(약탈 I)와 3단계(약탈 IV)가 둘 다 켜진다.
+	 * 그때 결과는 <b>IV</b> 이어야 한다. 더해서 V 가 되면 3단계 설명 「약탈이 IV 으로
 	 * 오릅니다」와 실제가 어긋난다.
 	 */
 	@Test
-	void 약탈_1과_3이_함께_켜지면_3이지_4가_아니다() {
-		List<PerkEffect> both = List.of(always(1), always(3));
+	void 약탈_1과_4가_함께_켜지면_4이지_5가_아니다() {
+		List<PerkEffect> both = List.of(always(1), always(4));
 
-		assertEquals(3, PerkLootRules.bonusLootingLevels(both, ItemStack.EMPTY));
-		assertEquals(3, PerkLootRules.bonusLootingLevels(both, new ItemStack(Items.DIAMOND_SWORD)));
+		assertEquals(4, PerkLootRules.bonusLootingLevels(both, ItemStack.EMPTY));
+		assertEquals(4, PerkLootRules.bonusLootingLevels(both, new ItemStack(Items.DIAMOND_SWORD)));
 	}
 
 	/** 적은 순서가 뒤바뀌어도 답이 같다. 정의 파일에 단계를 거꾸로 적어도 흔들리면 안 된다. */
 	@Test
 	void 순서가_뒤바뀌어도_더_높은_쪽이_이긴다() {
-		assertEquals(3, PerkLootRules.bonusLootingLevels(
-				List.of(always(3), always(1)), ItemStack.EMPTY));
+		assertEquals(4, PerkLootRules.bonusLootingLevels(
+				List.of(always(4), always(1)), ItemStack.EMPTY));
 	}
 
 	/** 사냥 2단계만 켜졌으면 약탈 I 그대로다. */

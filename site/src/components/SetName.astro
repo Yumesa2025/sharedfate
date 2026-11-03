@@ -1,0 +1,12 @@
+---
+interface Props { type: string; name: string; }
+const { type, name } = Astro.props;
+---
+<span class:list={['set-name', { shield: type === 'shield' }]}>
+  {type === 'shield' && <svg aria-hidden="true" data-item="minecraft:shield" viewBox="0 0 16 18"><path d="M2 2h12v8l-6 6-6-6Z" fill="#ad9574" stroke="currentColor" stroke-width="2"/><path d="M8 3v10" stroke="#665542" stroke-width="2"/></svg>}
+  {name}
+</span>
+<style>
+  .shield { color: #b9d4e8; }
+  svg { width: 0.9em; height: 1em; vertical-align: -0.15em; margin-right: 0.2em; }
+</style>

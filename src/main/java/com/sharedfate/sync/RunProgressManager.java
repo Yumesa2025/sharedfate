@@ -202,6 +202,7 @@ public final class RunProgressManager {
 		VictoryCelebration.tick(server);
 		if (++bossBarCooldown >= BOSS_BAR_SCAN_INTERVAL_TICKS) {
 			bossBarCooldown = 0;
+			com.sharedfate.perk.PerkRallyShard.grantRunRewards(server);
 			refreshBossBar(server);
 		}
 	}

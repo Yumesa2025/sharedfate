@@ -509,7 +509,7 @@ class DefenseSetRewardTest {
 	 * {@link PerkDrawbacks#builtInWaived} 로 끈다 — {@code DefenseDrawbackCoverageTest} 참고.
 	 */
 	@Test
-	void 기본_풀의_대가는_방어_증강_일곱_개뿐이다(@TempDir Path dir) throws IOException {
+	void 기본_풀의_대가는_방어_증강_여섯_개뿐이다(@TempDir Path dir) throws IOException {
 		loadBundled(dir);
 
 		List<String> owners = new ArrayList<>();
@@ -531,9 +531,8 @@ class DefenseSetRewardTest {
 						"sharedfate:arrow_guard",
 						"sharedfate:bare_skin_resolve",
 						"sharedfate:iron_wall",
-						"sharedfate:unbroken",
-						"sharedfate:grounded_guard"),
-				owners, "표시가 붙은 증강은 이 일곱뿐이다");
+						"sharedfate:unbroken"),
+				owners, "표시가 붙은 증강은 이 여섯뿐이다");
 	}
 
 	/**
@@ -547,7 +546,7 @@ class DefenseSetRewardTest {
 	void 몹_체력은_대가로_표시했다(@TempDir Path dir) throws IOException {
 		loadBundled(dir);
 
-		for (String perkId : List.of("sharedfate:grounded_guard", "sharedfate:iron_wall")) {
+		for (String perkId : List.of("sharedfate:iron_wall")) {
 			Perk perk = PerkRegistry.byId(perkId).orElseThrow();
 			assertTrue(perk.hasSetType(PerkSetType.DEFENSE));
 			for (PerkEffect effect : perk.effects()) {

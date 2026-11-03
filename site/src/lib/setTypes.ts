@@ -17,6 +17,7 @@ export const SET_TYPE_NAMES: Record<string, string> = {
   blessing: '가호',
   pioneer: '개척',
   bond: '결속',
+  shield: '방패',
 };
 
 /** 화면에 늘어놓는 차례. PerkSetType.java 의 선언 순서다. */

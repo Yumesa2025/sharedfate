@@ -56,7 +56,7 @@ export function loadPerks(): Perk[] {
     });
 }
 
-/** 등급별 개수. 화면에 「실버 36 · 골드 36 · 프리즘 26 · 드래곤전 대비 12」를 찍을 때 쓴다. */
+/** 등급별 개수. 화면에 「등급별 최신 개수」를 찍을 때 쓴다. */
 export function countByRarity(perks: Perk[]): Record<Rarity, number> {
   return {
     silver: perks.filter((p) => p.rarity === 'silver').length,

@@ -25,4 +25,22 @@ public final class PerkGauge {
 		int safeStep = Math.max(1, step);
 		return Math.clamp((safeStep - levelsRemaining) / (float) safeStep, 0.0F, 1.0F);
 	}
+
+	/**
+	 * {@link #fraction(int, int)} 에 <b>지금 레벨 안에서 찬 몫</b>까지 더한다. 막대가 레벨마다 한 칸씩
+	 * 뛰지 않고 경험치 구슬을 먹을 때마다 조금씩 찬다.
+	 *
+	 * <p>한 칸보다 많이 남았으면(이전 구간 아래로 내려갔으면) 레벨 안의 몫을 더하지 않고 0 이다.
+	 * 더하면 아직 이전 구간에도 못 닿았는데 막대가 차오르는 것처럼 보인다.
+	 *
+	 * @param levelProgress 바닐라 {@code experienceProgress}(0~1). 모르면 0
+	 */
+	public static float fraction(int levelsRemaining, int step, float levelProgress) {
+		int safeStep = Math.max(1, step);
+		if (levelsRemaining > safeStep) {
+			return 0.0F;
+		}
+		float progress = Float.isFinite(levelProgress) ? Math.clamp(levelProgress, 0.0F, 1.0F) : 0.0F;
+		return Math.clamp((safeStep - levelsRemaining + progress) / safeStep, 0.0F, 1.0F);
+	}
 }

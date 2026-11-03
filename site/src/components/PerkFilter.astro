@@ -1,4 +1,5 @@
 ---
+import SetName from "./SetName.astro";
 import { RARITY_NAME, RARITY_ORDER, type Rarity } from '../lib/perks';
 import type { PerkSet } from '../lib/sets';
 
@@ -38,7 +39,7 @@ const RARITIES = (Object.keys(RARITY_ORDER) as Rarity[])
     {sets.map((set) => (
       <label class="chip">
         <input type="checkbox" name="type" value={set.type} />
-        <span>{set.name}</span>
+        <span><SetName type={set.type} name={set.name} /></span>
       </label>
     ))}
     <label class="chip">

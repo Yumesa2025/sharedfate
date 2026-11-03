@@ -37,7 +37,8 @@ public enum PerkSetType {
 	 * 1.5배로 늘리는 것</b> — 즉 이 유형의 제약 자체를 풀어 준다. 뭉치기 힘들어서 못 쓰던 것이
 	 * 모을수록 흩어져도 되는 것으로 바뀐다.
 	 */
-	BOND("결속", 2);
+	BOND("결속", 2),
+	SHIELD("방패", 1);
 
 	private final String displayName;
 	private final int threshold;

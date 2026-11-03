@@ -791,9 +791,10 @@ public final class TrialCatalog {
 					POOL_ENTRY,
 					new Risk.EnderPulse(400, 80, 42.0, 60)),
 			new Trial("sharedfate:hotbar_lock", "굳는 손",
-					"30초마다 핫바 두 칸이 굳습니다. 굳은 칸의 물건은 휘두를 수도 쓸 수도 없습니다.",
+					"1분마다 팀원 모두의 핫바 같은 두 칸이 굳습니다. 굳은 칸의 물건은 휘두를 수도 쓸 수도 없습니다.",
 					POOL_ENTRY,
-					new Risk.HotbarLock(600, 2)),
+					// 2026-11-04 사람 지시 — 30초(600) → 1분(1200), 사람마다 다르던 칸을 팀 전원 같은 칸으로.
+					new Risk.HotbarLock(1200, 2)),
 			new Trial("sharedfate:crystal_link", "연결된 수정",
 					"크리스탈을 부수면 가장 가까운 다른 크리스탈이 30초 동안 보호막을 두릅니다. 그동안은 어떤 피해도 통하지 않습니다.",
 					POOL_FIRST_CRYSTAL,
@@ -801,7 +802,7 @@ public final class TrialCatalog {
 					// 갔다 오는 시간이라, 이 카드가 말하는 「순서를 다시 짜라」가 성립한다.
 					new Risk.CrystalLink(600)),
 			new Trial("sharedfate:crystal_overcharge", "수정 과충전",
-					"크리스탈 하나가 달아오르고, 15초 안에 부수지 못하면 한 명에게 1초마다 구체를 10발 던집니다. 한 발에 6씩 아프고 블록 뒤에 숨으면 막힙니다.",
+					"크리스탈 하나가 달아오르고, 15초 안에 부수지 못하면 한 명에게 1초마다 보라색 화염구를 10발 던집니다. 한 발에 6씩 아프고 블록 뒤에 숨으면 막힙니다.",
 					POOL_FIRST_CRYSTAL,
 					// 초당 1 로 냈더니 「딜이 너무 낮다」 — 다 맞아도 10 이라 크리스탈을
 					// 우선할 이유가 안 됐다. 세 배로 올렸다(3). 2026-10-01 에 빔이 구체 열 발로

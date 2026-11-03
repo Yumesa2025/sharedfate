@@ -64,6 +64,7 @@ class DefaultPerkSetTypesTest {
 		// 개척은 기존 무유형 둘(길잡이 나침반·요새 탐지기)을 데려오고 새 증강 둘
 		// (유적 감별사·흥정의 달인)을 더해 만들어졌다. 그래서 무유형이 13 에서 11 로 줄었다.
 		expected.put(PerkSetType.PIONEER, 4);
+		expected.put(PerkSetType.SHIELD, 8);
 
 		for (PerkSetType type : PerkSetType.values()) {
 			long count = PerkRegistry.all().stream().filter(p -> p.hasSetType(type)).count();
@@ -104,10 +105,10 @@ class DefaultPerkSetTypesTest {
 				.map(Perk::id)
 				.toList();
 
-		assertEquals(List.of("sharedfate:emergency_ration", "sharedfate:expedition_kit",
+		assertEquals(List.of("sharedfate:deflated_shield", "sharedfate:emergency_ration", "sharedfate:expedition_kit",
 				"sharedfate:endless_recovery", "sharedfate:price_of_blood",
 				"sharedfate:shared_pickaxe", "sharedfate:cudgel",
-				"sharedfate:swap_exempt"), multi);
+				"sharedfate:swap_exempt", "sharedfate:shield_rush"), multi);
 		assertEquals(List.of(PerkSetType.SUPPLY, PerkSetType.RECOVERY),
 				PerkRegistry.byId("sharedfate:emergency_ration").orElseThrow().setTypes(),
 				"비상식량 = 보급·회복");

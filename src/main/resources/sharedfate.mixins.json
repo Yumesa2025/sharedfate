@@ -53,6 +53,9 @@
     "LivingEntityEquipBanMixin",
     "PlayerBannedToolMixin",
     "ItemStackDurabilityMixin",
+    "LivingEntityShieldCombatMixin",
+    "ArrowShieldReturnMixin",
+    "MobShieldStunMixin",
     "PlayerDropLockMixin",
     "SlotFlightCharmLockMixin",
     "SlotOffhandLockMixin",
@@ -80,7 +83,13 @@
     "LivingEntityUndyingOathMixin",
     "EndermanGazeMixin",
     "EndlessQuiverMixin",
-    "EndlessQuiverPlayerMixin"
+    "EndlessQuiverPlayerMixin",
+    "ShieldCraftingMenuMixin",
+    "ExperienceOrbMendingMixin",
+    "ShieldEnchantmentMenuMixin",
+    "ShieldEnchantmentSlotsMixin",
+    "ShieldCraftingResultMixin",
+    "ShieldRecipePickupMixin"
   ],
   "injectors": {
     "defaultRequire": 1

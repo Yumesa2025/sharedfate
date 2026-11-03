@@ -25,6 +25,9 @@ import org.jetbrains.annotations.Nullable;
  *   <li><b>「완충」이 앞으로 깎을 체력</b> — 미뤄 둔 몫은 서버의 큐에만 있다. 체력바가 곧 깎일
  *       만큼을 겹쳐 그리는 데 쓴다. 능력치 화면 값은 아니지만, 「서버만 알고 바뀔 때만 보내면
  *       되는 값」이라 묶음을 하나 더 만들지 않고 여기에 얹었다(통신 규약 38).</li>
+ *   <li><b>팀 보정치</b>({@link StatBonuses}) — 증강·세트가 얹은 몫만 골라 「+35%」로 바꾼 값과
+ *       회차 경험치 보너스. 조건부 효과가 지금 켜져 있는지는 서버만 알아 서버가 센다
+ *       (통신 규약 41).</li>
  *   <li><b>공격 속도</b>는 여기 없다. {@code minecraft:attack_speed} 는 공격력과 달리
  *       {@code setSyncable(true)} 로 등록되어 <b>수정자까지 그대로 클라이언트에 온다.</b>
  *       이미 있는 값을 또 보내면 두 값이 어긋날 자리만 생긴다.</li>
@@ -40,9 +43,12 @@ import org.jetbrains.annotations.Nullable;
  * @param mobDamage           적대적 몹이 주는 피해에 곱해지는 배율(증강 × 난이도 상승)
  * @param spreadPending       「완충」으로 미뤄 둔 몫이 앞으로 깎을 체력(흡수 포함)의 예상치. 방어구
  *                            계산을 지난 값이다({@code SpreadDamageManager.expectedLoss}). 없으면 0
+ * @param bonuses             인벤토리 옆 패널이 「추가 공격력 +35%」 꼴로 적는 팀 보정치(통신 규약 41).
+ *                            무엇이 들고 무엇이 빠지는지는 {@link StatBonuses} 에 있다
  */
 public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurrent,
-		float damageTaken, float mobHealth, float mobDamage, float spreadPending)
+		float damageTaken, float mobHealth, float mobDamage, float spreadPending,
+		StatBonuses bonuses)
 		implements CustomPacketPayload {
 
 	public static final Type<StatSnapshotPayload> TYPE =
@@ -55,7 +61,15 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 					ByteBufCodecs.FLOAT, StatSnapshotPayload::mobHealth,
 					ByteBufCodecs.FLOAT, StatSnapshotPayload::mobDamage,
 					ByteBufCodecs.FLOAT, StatSnapshotPayload::spreadPending,
+					StatBonuses.CODEC, StatSnapshotPayload::bonuses,
 					StatSnapshotPayload::new);
+
+	/** 보정치 없이 만든다. 보정치를 보지 않는 시험과 옛 호출 자리가 쓴다. */
+	public StatSnapshotPayload(float attackDamageBase, float attackDamageCurrent,
+			float damageTaken, float mobHealth, float mobDamage, float spreadPending) {
+		this(attackDamageBase, attackDamageCurrent, damageTaken, mobHealth, mobDamage,
+				spreadPending, StatBonuses.NONE);
+	}
 
 	public StatSnapshotPayload {
 		attackDamageBase = sanitize(attackDamageBase, 0.0F);
@@ -66,6 +80,9 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 		mobHealth = sanitizeMultiplier(mobHealth);
 		mobDamage = sanitizeMultiplier(mobDamage);
 		spreadPending = sanitize(spreadPending, 0.0F);
+		if (bonuses == null) {
+			bonuses = StatBonuses.NONE;
+		}
 	}
 
 	/**
@@ -93,8 +110,9 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 	 * 패킷을 쓸 이유가 없기 때문이다. 「무엇이 달라진 것인가」의 답이 화면과 네트워크에서
 	 * 갈라지지 않도록 한 곳에서만 정한다.
 	 *
-	 * <p>여섯 값을 모두 본다. 무기를 바꾸면 공격력이, 증강을 고르면 배율이 달라지는데 어느
-	 * 하나만 보면 나머지가 바뀐 순간을 놓친다.
+	 * <p>여섯 값과 보정치 묶음을 모두 본다. 무기를 바꾸면 공격력이, 증강을 고르면 배율이
+	 * 달라지는데 어느 하나만 보면 나머지가 바뀐 순간을 놓친다. 보정치는 패널이 적는 글자
+	 * 기준으로 견준다({@link StatBonuses#differsFrom}).
 	 *
 	 * <p>「완충」의 남은 피해만은 화면 글자가 아니라 하트 위의 칸이라 기준이 다르다 —
 	 * {@link #PENDING_STEP} 보다 크게 움직였거나 0 이 되고 안 되고가 바뀌었을 때 보낸다.
@@ -108,7 +126,8 @@ public record StatSnapshotPayload(float attackDamageBase, float attackDamageCurr
 				|| StatSummary.changed(sent.damageTaken, damageTaken)
 				|| StatSummary.changed(sent.mobHealth, mobHealth)
 				|| StatSummary.changed(sent.mobDamage, mobDamage)
-				|| pendingChanged(sent.spreadPending, spreadPending);
+				|| pendingChanged(sent.spreadPending, spreadPending)
+				|| bonuses.differsFrom(sent.bonuses);
 	}
 
 	/**

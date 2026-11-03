@@ -6,6 +6,13 @@ import com.sharedfate.perk.effect.RallyShardEffect;
 import com.sharedfate.sync.EndFightTeleportLock;
 import com.sharedfate.sync.RallyShardCooldown;
 import com.sharedfate.sync.RallyShardManager;
+import com.sharedfate.sync.RunBonuses;
+import com.sharedfate.sync.RunProgressManager;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.util.Prediction;
 import com.sharedfate.team.ShareTeam;
 import com.sharedfate.team.TeamManager;
 import com.sharedfate.team.TeamState;
@@ -48,8 +55,47 @@ public final class PerkRallyShard {
 	public static final String PREFIX = "[증강] ";
 
 	private static volatile boolean warned;
+	private static final String SINGLE_USE_MARKER = "rally_shard_single_use";
+	private static final RallyShardEffect SINGLE_USE_EFFECT = new RallyShardEffect(60, 0);
 
 	private PerkRallyShard() {
+	}
+
+	/** 증강 없이도 쓸 수 있는 회차 시작 보상. 재사용 조각과 표식부터 다르다. */
+	public static ItemStack createSingleUseItem() {
+		ItemStack stack = new ItemStack(Items.ECHO_SHARD);
+		CompoundTag marker = new CompoundTag();
+		marker.putString(RallyShardEffect.MARKER_KEY, SINGLE_USE_MARKER);
+		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(marker));
+		stack.set(DataComponents.CUSTOM_NAME, Component.literal("소집의 조각 (1회용)")
+				.withStyle(style -> style.withItalic(false).withColor(ChatFormatting.AQUA)));
+		return stack;
+	}
+
+	public static boolean isSingleUseItem(@Nullable ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+		return data != null && SINGLE_USE_MARKER.equals(
+				data.copyTag().getStringOr(RallyShardEffect.MARKER_KEY, ""));
+	}
+
+	/** 자동 시작 때는 팀장이 아직 접속 전이다. 접속할 때까지 기다렸다 딱 한 번 지급한다. */
+	public static void grantRunRewards(MinecraftServer server) {
+		TeamManager manager = TeamManager.get(server);
+		int run = RunProgressManager.runNumber();
+		int fromRun = SharedFateMod.config.rallyShardFromRun;
+		for (ShareTeam team : manager.allTeams()) {
+			TeamState state = manager.stateByTeamId(team.teamId());
+			if (state == null || !RunBonuses.shouldGrantShard(state, run, fromRun)) continue;
+			UUID recipient = team.leader();
+			if (recipient == null && !team.members().isEmpty()) recipient = team.members().getFirst();
+			ServerPlayer player = recipient == null ? null : server.getPlayerList().getPlayer(recipient);
+			if (player == null) continue;
+			if (RunBonuses.grantShardOnce(state, run, fromRun, () -> {
+				ItemStack stack = createSingleUseItem();
+				if (!player.addItem(stack)) player.drop(stack, false, Prediction.SERVER_ONLY);
+			})) manager.setDirty();
+		}
 	}
 
 	// ------------------------------------------------------------------ 지급
@@ -127,7 +173,8 @@ public final class PerkRallyShard {
 			return InteractionResult.PASS;
 		}
 		ItemStack held = player.getItemInHand(hand);
-		if (!RallyShardEffect.isRallyShard(held)) {
+		boolean singleUse = isSingleUseItem(held);
+		if (!singleUse && !RallyShardEffect.isRallyShard(held)) {
 			return InteractionResult.PASS;
 		}
 
@@ -138,18 +185,18 @@ public final class PerkRallyShard {
 		TeamManager manager = TeamManager.get(server);
 		ShareTeam team = manager.teamOf(user.getUUID());
 		TeamState state = team == null ? null : manager.stateByTeamId(team.teamId());
-		if (team == null || state == null || !state.perksEnabled || state.ownedPerks.isEmpty()) {
+		if (team == null || state == null) {
 			return InteractionResult.PASS;
 		}
-		RallyShardEffect effect = effectOf(state);
+		RallyShardEffect effect = singleUse ? SINGLE_USE_EFFECT : effectOf(state);
 		if (effect == null) {
 			// 증강을 잃었으면 조각이 남아 있어도 아무 일도 하지 않는다.
 			return InteractionResult.PASS;
 		}
 		// 쿨타임은 사람이 아니라 팀이 쓴다. 조각이 공유 인벤토리에 있어 누구나 집어 쓸 수
 		// 있으므로, 사람마다 따로 돌면 번갈아 눌러 쿨타임을 인원수만큼 나눠 버린다.
-		if (RallyShardCooldown.onCooldown(team.teamId())
-				|| user.getCooldowns().isOnCooldown(held)) {
+		if (!singleUse && (RallyShardCooldown.onCooldown(team.teamId())
+				|| user.getCooldowns().isOnCooldown(held))) {
 			return InteractionResult.FAIL;
 		}
 		// 회차가 시작되기 전에는 위치를 건드리지 않는다. 「게임 시작」이 사람을 스폰으로 모으는
@@ -183,7 +230,12 @@ public final class PerkRallyShard {
 			return InteractionResult.FAIL;
 		}
 		// 팀 전원에게 함께 건다. 누른 사람의 바닐라 쿨타임도 그 안에서 걸린다.
-		RallyShardCooldown.begin(server, team, effect);
+		if (singleUse) {
+			held.shrink(1);
+			manager.setDirty();
+		} else {
+			RallyShardCooldown.begin(server, team, effect);
+		}
 		return InteractionResult.SUCCESS;
 	}
 

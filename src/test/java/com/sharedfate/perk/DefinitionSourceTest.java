@@ -34,7 +34,7 @@ class DefinitionSourceTest {
 	void 증강은_모드_안의_정의에서_읽힌다() {
 		PerkRegistry.loadBundled();
 		// 0.44.0-dev 에서 「드래곤전 대비」 열두 장이 들어와 98 → 110.
-		assertEquals(110, PerkRegistry.all().size(),
+		assertEquals(119, PerkRegistry.all().size(),
 				"모드 안의 기본 풀을 못 읽었다. config/ 없이도 증강이 있어야 한다");
 	}
 
@@ -52,8 +52,8 @@ class DefinitionSourceTest {
 		}
 		// 「개척」이 들어와 유형 14 · 단계 28 이 됐다. 개척은 2단계 하나뿐이라 단계가 하나만
 		// 는다 — 3·4단계를 안 만든 것은 의도한 것이다(PerkSetType.PIONEER 주석).
-		assertEquals(14, types, "세트 유형");
-		assertEquals(28, tiers, "세트 단계");
+		assertEquals(15, types, "세트 유형");
+		assertEquals(32, tiers, "세트 단계");
 	}
 
 	/**

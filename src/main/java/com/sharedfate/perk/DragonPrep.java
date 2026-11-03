@@ -73,6 +73,77 @@ public final class DragonPrep {
 	private DragonPrep() {
 	}
 
+	/** 엔드 첫 입장과 엔드에서의 재접속을 즉시 관측한다. */
+	public static void register() {
+		net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL
+				.register((player, origin, destination) -> tryBattleSupply(player));
+		net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN
+				.register((handler, sender, server) -> tryBattleSupply(handler.player));
+	}
+
+	/** 실제 지급 전에 회차 표시를 세우므로 팀원 여러 명의 같은 틱 입장도 한 번뿐이다. */
+	static List<ItemStack> prepareBattleSupply(TeamState state, boolean includeExtra) {
+		if (state == null || !state.endEntered || state.battleSupplyGranted || !held(state, Kind.BATTLE_SUPPLY))
+			return List.of();
+		state.battleSupplyGranted = true;
+		List<ItemStack> granted = List.of(new ItemStack(Items.GOLDEN_APPLE, 10),
+				new ItemStack(Items.ARROW, 64), new ItemStack(Items.ARROW, 56));
+		state.overflowItems.addAll(granted);
+		state.restoreOverflow(includeExtra);
+		List<ItemStack> leftovers = new ArrayList<>();
+		for (ItemStack stack : granted) {
+			if (!stack.isEmpty()) {
+				state.overflowItems.removeIf(pending -> pending == stack);
+				leftovers.add(stack);
+			}
+		}
+		return leftovers;
+	}
+
+	/** 공유 인벤토리에 먼저 넣고 이번 보급 중 남은 것만 받는 사람 발밑에 떨군다. */
+	public static void tryBattleSupply(ServerPlayer player) {
+		if (player == null || player.isSpectator()) return;
+		MinecraftServer server = player.level().getServer();
+		TeamManager manager = TeamManager.get(server);
+		ShareTeam team = manager.teamOf(player.getUUID());
+		TeamState state = manager.stateOf(player.getUUID());
+		if (team == null || state == null) return;
+		boolean wasEntered = state.endEntered;
+		DragonTrialSession session = DragonTrialManager.sessionOf(team.teamId());
+		// 현재 엔드와 저장된 시련 입장 기록은 새 필드가 없는 진행 중 월드도 복원해 준다.
+		state.endEntered |= player.level().dimension() == Level.END
+				|| session != null && session.fired().contains(com.sharedfate.sync.TrialCatalog.Trigger.ENTRY);
+		boolean wasGranted = state.battleSupplyGranted;
+		for (ItemStack leftover : prepareBattleSupply(state, com.sharedfate.inventory.ExpandedInventoryManager.enabled()))
+			player.drop(leftover, false, net.minecraft.util.Prediction.SERVER_ONLY);
+		if (wasEntered != state.endEntered || wasGranted != state.battleSupplyGranted) manager.setDirty();
+		if (!wasGranted && state.battleSupplyGranted) {
+			for (UUID member : team.members()) {
+				ServerPlayer online = server.getPlayerList().getPlayer(member);
+				if (online != null && online.containerMenu != null) online.containerMenu.broadcastChanges();
+			}
+		}
+	}
+
+	/** 기본 회복 크리스탈 체력만 바꾼다. 피해 허용 여부는 기존 오브젝트 판정을 따른다. */
+	public static float recoveryCrystalHealth(@Nullable TeamState state, float normal) {
+		return held(state, Kind.CRACKED_CRYSTAL) ? 1.0F : normal;
+	}
+
+	/** 중복 제거가 끝난 시련 후보에서 이지모드의 세 카드만 뺀다. */
+	public static List<com.sharedfate.sync.TrialCatalog.Trial> filterTrials(@Nullable TeamState state,
+			com.sharedfate.sync.TrialCatalog.Trigger trigger,
+			List<com.sharedfate.sync.TrialCatalog.Trial> candidates) {
+		if (!held(state, Kind.EASY_MODE) || trigger == null) return candidates;
+		String excluded = switch (trigger) {
+			case ENTRY -> "sharedfate:hotbar_lock";
+			case FIRST_CRYSTAL -> "sharedfate:iron_cage";
+			case HEALTH_50 -> "sharedfate:crystal_revival";
+			default -> "";
+		};
+		return candidates.stream().filter(card -> !card.id().equals(excluded)).toList();
+	}
+
 	// ------------------------------------------------------------------ 찾기
 
 	/** 이 팀이 가진 그 종류의 효과. 증강을 껐거나 없으면 {@code null}. 여러 장이면 먼저 얻은 것. */
@@ -425,6 +496,14 @@ public final class DragonPrep {
 		}
 		boolean changed = state.presentInEnd != inEnd;
 		state.presentInEnd = inEnd;
+		// 엔드 입장 이벤트보다 늦게 팀에 들어온 사람도 현재 차원으로 한 번 보완한다.
+		for (UUID member : team.members()) {
+			ServerPlayer online = server.getPlayerList().getPlayer(member);
+			if (online != null && !online.isSpectator() && online.level().dimension() == Level.END) {
+				tryBattleSupply(online);
+				break;
+			}
+		}
 		return changed;
 	}
 

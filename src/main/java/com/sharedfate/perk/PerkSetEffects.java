@@ -121,6 +121,7 @@ public final class PerkSetEffects {
 			return;
 		}
 		apply(player, activeTiersOf(TeamLookup.stateOf(player.getUUID())));
+		ShieldSetRewards.refresh(player);
 	}
 
 	/**

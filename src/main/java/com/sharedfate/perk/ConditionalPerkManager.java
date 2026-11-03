@@ -178,7 +178,12 @@ public final class ConditionalPerkManager {
 						continue;
 					}
 					if (effect instanceof ConditionalEffect conditional) {
-						conditional.refresh(player);
+						Boolean before = conditional.appliedCondition(player.getUUID());
+						if (conditional.refresh(player) && PerkProcFeedback.announcesConditional(
+								conditional, before, conditional.appliedCondition(player.getUUID()))) {
+							// 조건이 막 맞은 순간 한 번만 알린다(「포식자」·「무결점」·「아가미」 등).
+							PerkProcFeedback.fire(player, perk.id());
+						}
 					} else if (effect instanceof ToolMismatchSlowEffect toolMismatch) {
 						toolMismatch.refresh(player);
 					}

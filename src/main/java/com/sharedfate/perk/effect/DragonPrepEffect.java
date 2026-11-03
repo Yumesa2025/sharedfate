@@ -56,7 +56,13 @@ public final class DragonPrepEffect implements PerkEffect {
 		/** 엔드 적응 — 엔드에 있는 동안 더하는 최대 체력. */
 		END_ADAPTATION("end_adaptation", "amount", 0.0, 100.0, false),
 		/** 결전의 함성 — 최후의 저항이 열릴 때 받는 흡수 체력. 4 의 배수(흡수 상태이상 한 단계가 4)다. */
-		LAST_RALLY("last_rally", "amount", 0.0, 40.0, true);
+		LAST_RALLY("last_rally", "amount", 0.0, 40.0, true),
+		/** 금 간 수정 — 최후의 저항 회복 크리스탈 체력 1. */
+		CRACKED_CRYSTAL("cracked_crystal", null, 0.0, 0.0, false),
+		/** 결전 보급 — 엔드 첫 입장 뒤 팀당 회차에 한 번 지급. */
+		BATTLE_SUPPLY("battle_supply", null, 0.0, 0.0, false),
+		/** 이지모드 — 지정된 세 시련 카드를 후보에서 뺀다. */
+		EASY_MODE("easy_mode", null, 0.0, 0.0, false);
 
 		private final String id;
 		private final @Nullable String key;
@@ -135,6 +141,11 @@ public final class DragonPrepEffect implements PerkEffect {
 			return null;
 		}
 		return new DragonPrepEffect(kind, raw);
+	}
+
+	@Override
+	public void apply(net.minecraft.server.level.ServerPlayer player) {
+		if (kind == Kind.BATTLE_SUPPLY) com.sharedfate.perk.DragonPrep.tryBattleSupply(player);
 	}
 
 	public Kind kind() {

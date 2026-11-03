@@ -38,8 +38,17 @@ const setPage = read('sets/index.html');
 const sections = countOf(setPage, '<section id=');
 check(sections === sets.length, `세트 절이 ${sections}개다. 정의는 ${sets.length}개다.`);
 
+for (const set of sets) {
+  check(setPage.includes(`id="${set.type}"`), `세트 ${set.type} 절이 없다.`);
+  for (const tier of set.tiers) {
+    check(setPage.includes(tier.description), `세트 ${set.type} ${tier.count}단계 설명이 최신 정의와 다르다.`);
+  }
+}
+check(perkPage.includes('value="shield"'), '방패 필터가 없다.');
+check(setPage.includes('data-item="minecraft:shield"'), '방패 아이콘이 없다.');
+
 // 3. 이름이 실제로 찍혀 있다 — 빈 카드가 아니다.
-for (const perk of [perks[0], perks[perks.length - 1]]) {
+for (const perk of perks) {
   check(perkPage.includes(perk.name), `증강 「${perk.name}」 이 목록에 없다.`);
 }
 
@@ -57,6 +66,9 @@ for (const tab of ['install', 'start', 'perks', 'sets', 'economy', 'commands']) 
 let trialCount = 0;
 try {
   const trialPage = read('trials/index.html');
+  for (const perk of perks.filter((perk) => perk.rarity === 'trial')) {
+    check(trialPage.includes(perk.name), `드래곤전 대비 「${perk.name}」 안내가 없다.`);
+  }
   check(trialNames.length > 0, '시련 카드 이름을 코드에서 하나도 못 읽었다.');
   for (const name of trialNames) {
     if (trialPage.includes(name)) trialCount += 1;

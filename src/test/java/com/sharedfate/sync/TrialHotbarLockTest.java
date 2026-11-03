@@ -43,12 +43,60 @@ class TrialHotbarLockTest {
 	// ------------------------------------------------------------------ 카드 값
 
 	@Test
-	void 카드는_30초마다_두_칸을_굳힌다() {
+	void 카드는_1분마다_두_칸을_굳힌다() {
 		TrialCatalog.Risk.HotbarLock lock = card();
-		assertEquals(600, lock.interval(), "설명에 적힌 30초와 값이 어긋나면 카드가 거짓말을 한다");
+		assertEquals(1200, lock.interval(), "설명에 적힌 1분과 값이 어긋나면 카드가 거짓말을 한다");
+		assertTrue(TrialCatalog.byId("sharedfate:hotbar_lock").description().contains("1분마다"),
+				"카드 설명이 주기를 말해야 한다");
+		assertTrue(TrialCatalog.byId("sharedfate:hotbar_lock").description().contains("같은 두 칸"),
+				"카드 설명이 「팀 전원이 같은 칸」을 말해야 한다");
 		assertEquals(2, lock.slots(), "설명에 적힌 두 칸과 값이 어긋나면 카드가 거짓말을 한다");
 		assertTrue(lock.slots() < Inventory.SELECTION_SIZE,
 				"한 번에 핫바 전체를 굳히면 옮겨 담을 칸이 남지 않는다");
+	}
+
+	// ------------------------------------------------------------------ 팀 전원이 같은 칸
+
+	/**
+	 * 2026-11-04 사람 지시 — <b>팀원 전부 같은 칸이 잠긴다.</b> 같은 주기 안에서 몇 번을 물어도(곧
+	 * 팀원 몇 명이 받아 가도) 같은 칸이고, 주기가 바뀌면 지난 칸을 피해 한 번만 다시 뽑는다.
+	 */
+	@Test
+	void 같은_주기의_팀원은_모두_같은_칸을_받는다() {
+		TrialHotbarLock.clearState();
+		try {
+			RandomSource random = RandomSource.create(20261104L);
+			int previous = 0;
+			for (long cycle = 0; cycle < 200; cycle++) {
+				long now = 1000L + cycle;
+				int first = TrialHotbarLock.sharedMask(random, "sharedfate:hotbar_lock#0", 1000L,
+						cycle, 2, now);
+				for (int member = 1; member < 4; member++) {
+					assertEquals(first, TrialHotbarLock.sharedMask(random, "sharedfate:hotbar_lock#0",
+							1000L, cycle, 2, now), cycle + " 주기에 " + member + " 번째 팀원이 다른 칸을 받았다");
+				}
+				assertEquals(2, TrialHotbarLock.count(first));
+				assertEquals(0, first & previous, "주기가 바뀌었는데 지난 칸이 다시 굳었다");
+				previous = first;
+			}
+		} finally {
+			TrialHotbarLock.clearState();
+		}
+	}
+
+	@Test
+	void 다른_판의_굴림은_이어_쓰지_않는다() {
+		TrialHotbarLock.clearState();
+		try {
+			RandomSource random = RandomSource.create(5L);
+			TrialHotbarLock.sharedMask(random, "k", 0L, 0L, 2, 0L);
+			// 같은 열쇠·같은 주기 번호라도 받은 틱이 다르면 새 판이다 — 새로 뽑아야 한다(피할 것도 없다).
+			int fresh = TrialHotbarLock.sharedMask(random, "k", 500L, 0L, 2, 500L);
+			assertEquals(2, TrialHotbarLock.count(fresh));
+			assertEquals(fresh, TrialHotbarLock.sharedMask(random, "k", 500L, 0L, 2, 501L));
+		} finally {
+			TrialHotbarLock.clearState();
+		}
 	}
 
 	// ------------------------------------------------------------------ ① 쌓이지 않는다

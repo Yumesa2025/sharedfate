@@ -13,6 +13,18 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigTest {
+	@Test
+	void 회차_보너스는_각각_영으로_끌_수_있다(@TempDir Path dir) throws Exception {
+		Path file = dir.resolve("sharedfate.json");
+		Files.writeString(file, "{\"runXpBonusPercent\":0,\"rallyShardFromRun\":0}");
+		SharedFateConfig config = SharedFateConfig.loadOrCreate(file);
+		assertEquals(0.0, config.runXpBonusPercent);
+		assertEquals(0, config.rallyShardFromRun);
+		Files.writeString(file, "{\"runXpBonusPercent\":-1,\"rallyShardFromRun\":-1}");
+		config = SharedFateConfig.loadOrCreate(file);
+		assertEquals(3.0, config.runXpBonusPercent);
+		assertEquals(5, config.rallyShardFromRun);
+	}
 
 	@Test
 	void 파일이_없으면_기본값을_쓰고_파일을_만든다(@TempDir Path dir) {
@@ -26,6 +38,8 @@ class ConfigTest {
 		assertEquals(6, config.mainInventoryRows);
 		assertTrue(config.shareEnderChest);
 		assertTrue(config.shareExperience);
+		assertEquals(3.0, config.runXpBonusPercent);
+		assertEquals(5, config.rallyShardFromRun);
 		assertTrue(config.shareStatusEffects);
 		assertEquals(30, config.damageAlertDurationTicks);
 		assertTrue(config.requireClientMod);

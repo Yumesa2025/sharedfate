@@ -72,6 +72,12 @@ public final class PerkItemCooldownDisplay {
 			return;
 		}
 		ItemStack held = player.getMainHandItem();
+		int rush = PerkShieldCombat.rushRemaining(player);
+		if (held.is(net.minecraft.world.item.Items.SHIELD) && rush > 0) {
+			TitleMessenger.showActionBar(player, Component.literal(PerkFlightCharm.PREFIX
+					+ "방패 돌진 " + format(rush) + "초").withStyle(ChatFormatting.GRAY));
+			return;
+		}
 		String name = displayNameOf(held);
 		if (name == null || !player.getCooldowns().isOnCooldown(held)) {
 			return;

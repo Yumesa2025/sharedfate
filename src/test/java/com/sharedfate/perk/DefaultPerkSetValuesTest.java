@@ -210,14 +210,11 @@ class DefaultPerkSetValuesTest {
 				"최대 체력을 attribute 로 적으면 안 된다");
 	}
 
-	/** 기동 3단계는 낙하 피해 −90% 다. {@code add_multiplied_total} 이라 배율은 {@code 1 + amount}. */
+	/** 기동 3단계는 피해 배율 대신 사건을 버린다. */
 	@Test
-	void 기동_3단계는_낙하_피해_90퍼센트_감소다(@TempDir Path dir) throws IOException {
-		AttributeEffect fall =
-				attribute(tier(PerkSetType.MOBILITY, 3), "minecraft:fall_damage_multiplier");
-
-		assertEquals(-0.9, fall.amount(), 1.0e-9);
-		assertEquals(AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, fall.operation());
+	void 기동_3단계는_낙하_면역이다() {
+		assertInstanceOf(com.sharedfate.perk.effect.FallImmunityEffect.class,
+				tier(PerkSetType.MOBILITY, 3).effects().get(0));
 	}
 
 	@Test

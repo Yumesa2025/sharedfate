@@ -28,13 +28,13 @@ import static org.junit.jupiter.api.Assertions.fail;
  * <p>여기서 붙들어 두는 것 아홉.
  *
  * <ol>
- *   <li>⚠⚠ <b>사람이 정한 값</b> — 25%·10% 두 번 · 2/4/5/6 · 체력 30 · <b>연결 2초</b> ·
+ *   <li>⚠⚠ <b>사람이 정한 값</b> — 25%·10% 두 번 · 2/4/5/6 · 체력 30 · <b>연결 5초</b>(2026-11-04 에 2초에서) ·
  *       <b>초당 0.5% 누수</b> · <b>타이머 없음</b> · 크기 한 칸</li>
  *   <li>⚠⚠ <b>초당 0.5% 가 실제로 몇인가</b>를 수로 못박는다 — 하나가 12 · 여섯이 72 ·
  *       깎아야 하는 1200 이 전부 되돌아오는 데 16.6초. ⚠ <b>시험이 0.5 를 손으로 적지 않는다</b> —
  *       {@code LEAK_FRACTION_PER_SECOND} 와 설정의 인원당 체력에서 뽑는다. 사람이 이 값을 또
  *       움직일 것이므로 두 군데에 적히면 안 된다</li>
- *   <li>⚠⚠ <b>박힌 뒤 2초 전에는 선도 회복도 없다</b></li>
+ *   <li>⚠⚠ <b>박힌 뒤 5초 전에는 선도 회복도 없다</b></li>
  *   <li>⚠⚠ <b>부서지면 그 크리스탈 몫이 멈춘다</b> — 몫을 굳혀 들고 있지 않다</li>
  *   <li><b>자리가 마지막 지대 안이고 서로 겹치지 않는다</b></li>
  *   <li>⚠⚠ <b>보이는 크기와 맞는 상자가 같다</b> — 값 하나에서 둘이 나온다</li>
@@ -82,13 +82,13 @@ class DragonLastStandObjectsTest {
 		assertEquals(6, DragonLastStandObjects.objectCount(7), "다섯 이상은 4인 값으로 자른다");
 	}
 
-	/** 체력과 <b>연결 지연 2초</b>가 사람이 정한 값이다. */
+	/** 체력과 <b>연결 지연 5초</b>가 사람이 정한 값이다(2026-11-04 에 2초에서). */
 	@Test
 	void 체력과_연결_지연이_사람이_정한_값이다() {
 		assertEquals(30.0F, DragonLastStandObjects.OBJECT_HEALTH, 1.0E-6F);
-		assertEquals(2 * DragonLastStandObjects.SECOND_TICKS,
+		assertEquals(5 * DragonLastStandObjects.SECOND_TICKS,
 				DragonLastStandObjects.LINK_DELAY_TICKS,
-				"사람이 「소환되고 2초뒤부터 엔더드래곤에 연결되고」라고 했다");
+				"사람이 「땅에 박힌 뒤 회복이 시작되기까지 2초 → 5초」라고 했다");
 		assertTrue(DragonLastStandObjects.LEAK_FRACTION_PER_SECOND > 0.0F,
 				"연결된 뒤에 아무것도 안 새면 이 파도가 하는 일이 없다");
 	}
@@ -153,29 +153,29 @@ class DragonLastStandObjectsTest {
 
 		// ⚠⚠ 사람이 1% 에서 내린 까닭이 이 수다. 1% 면 8.3초였다.
 		assertEquals(8.3F, toKill / (six * 2.0F), 0.1F,
-				"1% 면 8.3초였다 — 체력 30짜리 여섯을 2초에 다 부수는 것이 불가능하므로 과했다");
+				"1% 면 8.3초였다 — 연결이 2초이던 그때 체력 30짜리 여섯을 2초에 다 부수는 것이 불가능하므로 과했다");
 		assertTrue(secondsToUndoAll * 20.0F > DragonLastStandObjects.allLinkedTicks(most),
 				"전부 되돌아오는 시간이 전부 연결되는 시간보다 짧으면 팀이 손쓸 틈이 없다");
 	}
 
 	/**
-	 * ⚠⚠ <b>체력 30짜리 여섯을 2초 안에 다 부수는 것은 불가능하다.</b>
+	 * ⚠⚠ <b>연결이 5초가 되면서 「연결 전에 다 부수는 것은 불가능하다」가 풀렸다</b>(2026-11-04).
 	 *
-	 * <p>그러므로 <b>연결은 반드시 일어난다</b> — 이 파도는 누수를 <b>피하는</b> 싸움이 아니라
-	 * <b>줄이는</b> 싸움이고, 그것이 사람이 1% 를 0.5% 로 내린 근거다. 여기를 「2초면 부술 수 있다」로
-	 * 읽고 비율을 되올리면 그 판단이 사라진다.
+	 * <p>2초이던 때는 4인 최선이 112 라 180 에 못 미쳤고, 그것이 사람이 1% 를 0.5% 로 내린 근거였다.
+	 * 5초면 사람마다 일곱 번(49)이라 넷이 196 을 넣는다 — 사람이 정한 값이라 부등호를 뒤집어 붙든다.
+	 * 누가 연결 지연을 다시 줄여 이 부등호가 또 뒤집히면, 0.5% 의 근거를 다시 읽을 것.
 	 */
 	@Test
-	void 연결_전에_다_부수는_것은_불가능하다() {
+	void 연결_5초면_넷이_손을_나눠_연결_전에_다_부술_수_있다() {
 		int most = DragonLastStandObjects.objectCount(DragonLastStandObjects.COUNT_BY_MEMBERS.length);
 		float need = DragonLastStandObjects.OBJECT_HEALTH * most;
 		assertEquals(180.0F, need, 0.5F, "여섯이면 180 이다");
-		// 다이아 검 7 · 쿨타임 0.625초(12.5틱)라 2초에 네 번이 한계다. 넷이 함께 쳐도 네 자리뿐이다.
+		// 다이아 검 7 · 쿨타임 0.625초(12.5틱)라 5초에 일곱 번이다.
 		int swings = DragonLastStandObjects.LINK_DELAY_TICKS / 13;
 		float best = 7.0F * swings * DragonLastStandObjects.COUNT_BY_MEMBERS.length;
-		assertTrue(best < need,
-				"2초에 넣을 수 있는 최선이 " + best + " 인데 " + need + " 가 필요하다 — "
-						+ "연결을 피할 길이 없으므로 비율이 「피하면 0」을 전제로 정해질 수 없다");
+		assertTrue(best >= need,
+				"5초에 넣을 수 있는 최선이 " + best + " 이고 " + need + " 가 필요하다 — "
+						+ "연결 지연이 다시 짧아졌다면 0.5% 의 근거를 다시 볼 것");
 	}
 
 	// ------------------------------------------------------------------ 시간표
@@ -188,13 +188,14 @@ class DragonLastStandObjectsTest {
 		assertEquals(20 + 5 * 10 + 20, DragonLastStandObjects.plantTicks(6), "여섯이면 90틱이다");
 		assertEquals(DragonLastStandObjects.plantTicks(6)
 						+ DragonLastStandObjects.LINK_DELAY_TICKS,
-				DragonLastStandObjects.allLinkedTicks(6), "마지막이 박힌 뒤 2초에 전부가 붙는다");
-		assertEquals(130, DragonLastStandObjects.allLinkedTicks(6),
-				"여섯이면 130틱이고 그 틱이 점 예산에서 가장 바쁜 틱이다");
-		// ⚠ 세우는 구간과 새는 구간이 겹친다 — 이 겹침이 옛 규칙에는 없었고 점 예산을 올렸다.
+				DragonLastStandObjects.allLinkedTicks(6), "마지막이 박힌 뒤 5초에 전부가 붙는다");
+		assertEquals(190, DragonLastStandObjects.allLinkedTicks(6),
+				"여섯이면 190틱이고 그 틱이 점 예산에서 가장 바쁜 틱이다");
+		// ⚠ 연결이 5초가 되면서 세우는 구간과 새는 구간이 더는 겹치지 않는다(첫 연결 140 > 마지막 박힘 90).
+		// 예산 셈(worstCasePointsPerTick)은 둘 가운데 큰 쪽이라 그대로 참이다.
 		assertTrue(DragonLastStandObjects.LINK_DELAY_TICKS
-						< DragonLastStandObjects.plantTicks(6) - DragonLastStandObjects.RISE_TICKS,
-				"연결 지연이 세우는 시간보다 길면 겹침이 없다 — 지금은 겹치므로 예산이 37이다");
+						>= DragonLastStandObjects.plantTicks(6) - DragonLastStandObjects.RISE_TICKS,
+				"연결 지연이 세우는 시간보다 짧아져 다시 겹친다 — 예산 셈을 다시 볼 것");
 	}
 
 	/** 떨어지는 높이가 위에서 아래로만 간다. 뒤집히면 오브젝트가 땅에서 솟는다. */
@@ -213,17 +214,17 @@ class DragonLastStandObjectsTest {
 	}
 
 	/**
-	 * ⚠⚠ <b>박힌 뒤 2초 전에는 연결도 선도 회복도 없다.</b>
+	 * ⚠⚠ <b>박힌 뒤 5초 전에는 연결도 선도 회복도 없다.</b>
 	 *
-	 * <p>사람 말이 「소환되고 2초뒤부터 엔더드래곤에 연결되고 선이 회복되는거야」다. 그 2초를
-	 * <b>틱 단위로 훑는다</b> — 한 틱이라도 일찍 붙으면 사람이 정한 2초가 거짓이고, 늦게 붙으면
+	 * <p>처음 사람 말이 「소환되고 2초뒤부터 엔더드래곤에 연결되고 선이 회복되는거야」였고 2026-11-04 에
+	 * 5초가 됐다. 그 5초를 <b>틱 단위로 훑는다</b> — 한 틱이라도 일찍 붙으면 사람이 정한 5초가 거짓이고, 늦게 붙으면
 	 * 선이 뜨는 때와 회복이 시작하는 때가 갈린다.
 	 *
 	 * <p>⚠ <b>크리스탈마다 따로</b>다. 원점이 「파도가 열린 틱」이 아니라 <b>그것이 박힌 틱</b>이라는
 	 * 것을 여러 원점으로 확인한다 — 먼저 떨어진 것이 먼저 새는 것이 이 바뀜의 핵이다.
 	 */
 	@Test
-	void 박힌_뒤_2초_전에는_선도_회복도_없다() {
+	void 박힌_뒤_5초_전에는_선도_회복도_없다() {
 		for (int plantedAt : new int[] {40, 50, 60, 70, 80, 90}) {
 			for (int step = plantedAt; step < plantedAt + DragonLastStandObjects.LINK_DELAY_TICKS;
 					step++) {
@@ -233,7 +234,7 @@ class DragonLastStandObjectsTest {
 			}
 			int links = plantedAt + DragonLastStandObjects.LINK_DELAY_TICKS;
 			assertTrue(DragonLastStandObjects.linkedBy(links, plantedAt),
-					"「2초뒤부터」이므로 " + links + "틱이 연결의 첫 틱이어야 한다");
+					"「5초뒤부터」이므로 " + links + "틱이 연결의 첫 틱이어야 한다");
 			assertTrue(DragonLastStandObjects.linkedBy(links + 1000, plantedAt),
 					"한 번 붙으면 부술 때까지 떨어지지 않는다");
 		}
@@ -242,8 +243,9 @@ class DragonLastStandObjectsTest {
 				"하늘에 있는 것이 회복시키면 사람이 때릴 수 없는 것이 샌다");
 
 		// ⚠ 먼저 떨어진 것이 먼저 샌다. 여섯이면 선이 0.5초마다 한 줄씩 늘어난다.
-		assertTrue(DragonLastStandObjects.linkedBy(80, 40), "처음 것은 80틱에 붙는다");
-		assertFalse(DragonLastStandObjects.linkedBy(80, 90), "마지막 것은 아직 하늘에 있다");
+		assertTrue(DragonLastStandObjects.linkedBy(140, 40), "처음 것은 140틱에 붙는다");
+		assertFalse(DragonLastStandObjects.linkedBy(139, 40), "5초가 안 됐다");
+		assertFalse(DragonLastStandObjects.linkedBy(140, 90), "마지막 것은 박힌 지 2.5초뿐이다");
 	}
 
 	// ------------------------------------------------------------------ 자리
@@ -548,9 +550,15 @@ class DragonLastStandObjectsTest {
 		assertTrue(DragonLastStandObjects.LEAK_SOUND_TICKS
 						< 4 * DragonLastStandObjects.SECOND_TICKS,
 				"바닐라 신호기 주변음이 4초 주기다 — 그보다 느리면 「주변음」으로 들려 사건이 안 된다");
-		assertEquals(0, DragonLastStandObjects.LINK_DELAY_TICKS
-						% DragonLastStandObjects.LEAK_SOUND_TICKS,
+		// 첫 연결 틱에 첫 소리가 맞아야 한다 — 연결 지연(100)이 주기(40)의 배수가 아니어도.
+		int firstLink = DragonLastStandObjects.RISE_TICKS + DragonLastStandObjects.FALL_TICKS
+				+ DragonLastStandObjects.LINK_DELAY_TICKS;
+		assertTrue(DragonLastStandObjects.leakSoundDue(firstLink, firstLink),
 				"첫 연결이 일어나는 틱에 첫 소리가 맞아야 한다");
+		assertFalse(DragonLastStandObjects.leakSoundDue(firstLink + 1, firstLink));
+		assertTrue(DragonLastStandObjects.leakSoundDue(
+				firstLink + DragonLastStandObjects.LEAK_SOUND_TICKS, firstLink));
+		assertFalse(DragonLastStandObjects.leakSoundDue(firstLink, -1), "아직 안 붙었으면 소리도 없다");
 		assertTrue(DragonLastStandObjects.LEAK_VOLUME < 1.0F,
 				"끝이 없는 소리가 예고음과 같은 음량이면 드래곤의 울음·날개·번개를 덮는다");
 		assertTrue(DragonLastStandObjects.LEAK_VOLUME > 0.0F, "안 들리면 「샌다」를 알 길이 없다");
@@ -689,7 +697,7 @@ class DragonLastStandObjectsTest {
 				"④ 운영자 /kill 자리가 사라졌다");
 		Class<?> slot = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Slot");
 		assertTrue(DragonLastStandObjects.class.getDeclaredMethod("advance",
-						net.minecraft.server.level.ServerLevel.class, slot, int.class) != null,
+						net.minecraft.server.level.ServerLevel.class, slot, int.class, float.class) != null,
 				"⑤ 상자만 사라진 자리를 쓸어내는 길이 사라졌다");
 		// ⑥⑦ 파도가 끝나는 틱과 상태 비우기.
 		Class<?> wave = Class.forName("com.sharedfate.sync.DragonLastStandObjects$Wave");
@@ -800,7 +808,9 @@ class DragonLastStandObjectsTest {
 				"짧은 형식 sendParticles 가 섞여 있다");
 		assertTrue(bytes.contains("playEach"), "팀 전체에 알리는 소리가 playEach 를 안 쓴다");
 		assertFalse(bytes.contains("showActionBar"), "자막을 쓰지 않는다");
-		assertFalse(bytes.contains("showTitle"), "화면 글자는 진입 연출 하나뿐이다");
+		// 2026-11-04 — 사람 지시로 「회복 크리스탈 소환」을 화면 가운데 글자로 띄운다(announceSummon).
+		// 액션바는 여전히 쓰지 않는다.
+		assertTrue(bytes.contains("showTitle"), "회복 크리스탈 소환을 화면 글자로 알려야 한다");
 		assertFalse(bytes.contains("getGameTime"), "받은 now 를 쓸 것");
 		assertFalse(bytes.contains("removeBlock") || bytes.contains("setBlockAndUpdate"),
 				"블록을 만지는 것은 반구 하나뿐이다");
@@ -891,5 +901,15 @@ class DragonLastStandObjectsTest {
 				"문턱 수보다 많이 셌다");
 		DragonLastStandObjects.resumeFrom(5_000L, -4);
 		assertEquals(0, DragonLastStandObjects.clearedWaves());
+	}
+
+	// ------------------------------------------------------------------ 소환 알림 (2026-11-04)
+
+	/** 「회복 크리스탈 소환」을 화면 가운데 글자로 띄운다 — 패턴 타이머 HUD 의 줄 이름과 같은 말이다. */
+	@Test
+	void 소환_알림은_HUD_줄_이름과_같은_말이다() {
+		assertEquals(TrialTimers.OBJECTS_LABEL, DragonLastStandObjects.SUMMON_TITLE.getString());
+		assertFalse(DragonLastStandObjects.SUMMON_SUBTITLE.getString().isBlank());
+		assertTrue(DragonLastStandObjects.SUMMON_STAY_TICKS > 0);
 	}
 }

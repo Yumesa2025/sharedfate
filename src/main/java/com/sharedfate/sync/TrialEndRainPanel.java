@@ -323,6 +323,18 @@ public final class TrialEndRainPanel {
 	 */
 	static void raise(@Nullable ServerLevel end, @Nullable String key, @Nullable List<Vec3> spots,
 			double radius, int warnTicks) {
+		raise(end, key, spots, radius, warnTicks, glass());
+	}
+
+	/**
+	 * 블록을 골라 까는 형태. 「최후의 저항」 상시 번개가 <b>노란</b> 면으로 쓴다(2026-11-04,
+	 * {@code DragonLastStandPatterns.LIGHTNING_PANEL_BLOCK}) — 원을 판으로 채우는 셈과 지우는 길·심지가
+	 * 이 카드와 같아서 따로 만들지 않았다. 열쇠가 다르면 서로의 판을 지우지 않는다.
+	 *
+	 * @param block 판이 그릴 블록. {@code null} 이면 이 카드의 보라 유리
+	 */
+	static void raise(@Nullable ServerLevel end, @Nullable String key, @Nullable List<Vec3> spots,
+			double radius, int warnTicks, @Nullable BlockState block) {
 		if (key == null) {
 			return;
 		}
@@ -340,6 +352,7 @@ public final class TrialEndRainPanel {
 			}
 		}
 		int fuse = fuseTicks(warnTicks);
+		BlockState painted = block == null ? glass() : block;
 		List<Panel> raised = new ArrayList<>(spots.size() * shapes.size());
 		for (int spotIndex = 0; spotIndex < spots.size(); spotIndex++) {
 			Vec3 spot = spots.get(spotIndex);
@@ -348,7 +361,7 @@ public final class TrialEndRainPanel {
 			for (Transformation shape : shapes) {
 				Panel panel = new Panel(end, fuse);
 				panel.snapTo(at);
-				panel.dress(end, shape);
+				panel.dress(end, shape, painted);
 				end.addFreshEntity(panel);
 				raised.add(panel);
 			}
@@ -579,7 +592,12 @@ public final class TrialEndRainPanel {
 	 * 깨진다({@code DragonLastStandConePanel.glass()} 에 같은 설명이 있다).
 	 */
 	static BlockState glass() {
-		return Blocks.STAINED_GLASS.pick(GLASS_COLOR).defaultBlockState();
+		return glass(GLASS_COLOR);
+	}
+
+	/** 고른 색의 색유리. */
+	static BlockState glass(DyeColor color) {
+		return Blocks.STAINED_GLASS.pick(color).defaultBlockState();
 	}
 
 	/**
@@ -593,9 +611,14 @@ public final class TrialEndRainPanel {
 	 * 쓰고, 그러면 면이 <b>아예 안 보이는데 로그에는 한 줄도 안 남는다.</b>
 	 */
 	static CompoundTag shapeTag(Transformation transformation) {
+		return shapeTag(transformation, glass());
+	}
+
+	/** 블록을 골라 세우는 형태. 나머지 칸은 위와 같다. */
+	static CompoundTag shapeTag(Transformation transformation, BlockState block) {
 		CompoundTag tag = new CompoundTag();
 		tag.store("transformation", Transformation.EXTENDED_CODEC, transformation);
-		tag.store("block_state", BlockState.CODEC, glass());
+		tag.store("block_state", BlockState.CODEC, block);
 		// 판이 스스로 밝다. 엔드는 어두운 데가 있고 「가시성」이 이 면을 만든 이유다.
 		tag.store("brightness", Brightness.CODEC, Brightness.FULL_BRIGHT);
 		// FIXED 는 기본값이지만 적어 둔다 — 빌보드가 바뀌면 판이 사람을 따라 돌아 버린다.
@@ -648,9 +671,9 @@ public final class TrialEndRainPanel {
 		 * <p>{@code ProblemReporter.DISCARDING} 인 것은 우리가 만든 태그라 <b>잘못된 칸이 있을 수
 		 * 없고</b>, 있다면 그것은 시험이 잡을 일이지 사람의 로그를 어지럽힐 일이 아니다.
 		 */
-		private void dress(ServerLevel end, Transformation transformation) {
+		private void dress(ServerLevel end, Transformation transformation, BlockState block) {
 			ValueInput input = TagValueInput.create(ProblemReporter.DISCARDING,
-					end.registryAccess(), shapeTag(transformation));
+					end.registryAccess(), shapeTag(transformation, block));
 			readAdditionalSaveData(input);
 		}
 

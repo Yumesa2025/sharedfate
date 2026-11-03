@@ -5,6 +5,7 @@ import com.sharedfate.client.hud.CoordinateHud;
 import com.sharedfate.client.hud.DamageAlertHud;
 import com.sharedfate.client.hud.GameOverHud;
 import com.sharedfate.client.hud.HotbarHighlight;
+import com.sharedfate.client.hud.PerkProcHud;
 import com.sharedfate.client.hud.PerkProgressHud;
 import com.sharedfate.client.hud.TeamLevelHud;
 import com.sharedfate.client.hud.TrialTimersHud;
@@ -12,6 +13,7 @@ import com.sharedfate.client.team.TeamScreen;
 import com.sharedfate.client.perk.ClientPerkFeatures;
 import com.sharedfate.client.perk.ClientPerkSets;
 import com.sharedfate.client.perk.DoubleJumpHandler;
+import com.sharedfate.client.perk.DragonPrepVoteScreen;
 import com.sharedfate.client.perk.PerkClientState;
 import com.sharedfate.client.perk.PerkDrawScreen;
 import com.sharedfate.client.perk.PerkOfferScreen;
@@ -22,10 +24,12 @@ import com.sharedfate.net.StatSnapshotPayload;
 import com.sharedfate.net.DamageAlertPayload;
 import com.sharedfate.net.HandshakePayload;
 import com.sharedfate.net.OpenTeamScreenPayload;
+import com.sharedfate.net.DragonPrepVotePayload;
 import com.sharedfate.net.PerkClientFeaturesPayload;
 import com.sharedfate.net.PerkCloseOfferPayload;
 import com.sharedfate.net.PerkDrawPayload;
 import com.sharedfate.net.PerkOfferPayload;
+import com.sharedfate.net.PerkProcPayload;
 import com.sharedfate.net.PerkResultPayload;
 import com.sharedfate.net.PerkSetSyncPayload;
 import com.sharedfate.net.PerkSyncPayload;
@@ -61,6 +65,8 @@ import java.util.UUID;
 public class SharedFateClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		// 이 컴퓨터에만 저장하는 설정(증강 발동 알림 글자·소리). 서버와 무관하다.
+		ClientPreferences.load();
 		// 「먹방」 — 클라이언트의 Player.canEat 이 서버가 내려 준 허기 상한을 보게 한다. 먹는 동작은
 		// 클라이언트가 먼저 시작하므로 이것 없이는 배가 부를 때 우클릭해도 손이 움직이지 않는다.
 		com.sharedfate.perk.PerkFoodCapacity.setClientCapacity(ClientPerkFeatures::foodCapacity);
@@ -141,6 +147,10 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkVoteSyncPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> showPerkVotes(context.client(), payload)));
+		// 「드래곤전 대비」 팀 투표 창. 단계·표·결과가 한 묶음으로 오고, 닫기는 PerkCloseOfferPayload 다.
+		ClientPlayNetworking.registerGlobalReceiver(DragonPrepVotePayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> showDragonPrepVote(context.client(), payload)));
 		// 클라이언트가 스스로 해야 하는 증강 기능. HUD 가 읽는 값이므로 렌더와 같은
 		// 스레드(클라이언트 본 스레드)에서 갱신한다.
 		ClientPlayNetworking.registerGlobalReceiver(PerkClientFeaturesPayload.TYPE,
@@ -157,6 +167,11 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkSetSyncPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> ClientPerkSets.update(payload)));
+		// 조건부 증강 발동 알림. 경험치 바 위에 이름을 잠깐 띄우고 작은 소리를 낸다. 소리도 HUD 도
+		// 본 스레드 것이라 넘긴다.
+		ClientPlayNetworking.registerGlobalReceiver(PerkProcPayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> PerkProcHud.show(context.client(), payload)));
 		// 엔드 시련 룰렛 — 네트워크 스레드에서 화면을 열 수 없으므로 클라이언트 스레드로
 		// 넘긴다. 이 화면에는 뒤따르는 패킷이 없다. 연출도 닫는 것도 화면이 혼자 한다.
 		ClientPlayNetworking.registerGlobalReceiver(TrialRoulettePayload.TYPE,
@@ -216,6 +231,7 @@ public class SharedFateClient implements ClientModInitializer {
 			// 월드에서 나가며 값을 버렸으므로 그 회차 내내 세트 줄이 영영 안 뜬다.
 			ClientPerkSets.clear();
 			ClientStatSnapshot.clear();
+			PerkProcHud.clear();
 			DoubleJumpHandler.reset();
 		});
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -250,6 +266,11 @@ public class SharedFateClient implements ClientModInitializer {
 				VanillaHudElements.EXPERIENCE_LEVEL,
 				SharedFateMod.id("perk_progress"),
 				new PerkProgressHud());
+		// 증강 발동 알림 줄. 액션바보다 위에 서므로 그 뒤에 그려 바닐라 글자에 덮이지 않게 한다.
+		HudElementRegistry.attachElementAfter(
+				VanillaHudElements.OVERLAY_MESSAGE,
+				SharedFateMod.id("perk_proc"),
+				new PerkProcHud());
 		// 화면 왼쪽 위의 좌표·바이옴. 이 모드도 바닐라도 쓰지 않는 자리라 기준으로 삼을
 		// 바닐라 요소가 없다. 그래서 순서를 따지지 않고 맨 뒤에 붙인다 — 겹치는 것이
 		// 없으므로 언제 그려지든 결과가 같다.
@@ -375,7 +396,8 @@ public class SharedFateClient implements ClientModInitializer {
 				return;
 			}
 		} else if (client.gui.screen() instanceof DeathScreen
-				|| client.gui.screen() instanceof PerkOfferScreen) {
+				|| client.gui.screen() instanceof PerkOfferScreen
+				|| client.gui.screen() instanceof DragonPrepVoteScreen) {
 			return;
 		}
 		ForcedScreens.show(client, new TrialEntranceScreen(payload));
@@ -422,12 +444,38 @@ public class SharedFateClient implements ClientModInitializer {
 	}
 
 	/**
+	 * 「드래곤전 대비」 팀 투표 창을 띄우거나, 이미 떠 있으면 새 상태를 얹는다.
+	 *
+	 * <p>같은 구간의 창이 떠 있으면 <b>새로 만들지 않는다</b> — 표가 바뀔 때마다 창을 다시 세우면 등장 연출과
+	 * 결과 연출이 처음부터 다시 돈다. 사망 화면만은 밀어내지 않는다(일반 증강과 같은 까닭). 그 사이 표가
+	 * 하나라도 바뀌면 상태가 다시 오고, {@code /shareteam perk} 로도 되찾을 수 있다.
+	 */
+	private static void showDragonPrepVote(Minecraft client, DragonPrepVotePayload payload) {
+		if (client.gui.screen() instanceof DragonPrepVoteScreen open
+				&& open.milestone() == payload.milestone()) {
+			open.absorb(payload);
+			return;
+		}
+		if (client.gui.screen() instanceof DeathScreen) {
+			return;
+		}
+		ForcedScreens.show(client, new DragonPrepVoteScreen(payload));
+	}
+
+	/**
 	 * 서버의 지시로 증강 선택창을 닫는다.
 	 *
 	 * <p>다른 화면이 떠 있으면 아무것도 하지 않는다. 늦게 도착한 지시가 그 사이에 열린 다음
 	 * 구간의 창을 닫아버리지 않도록 구간까지 맞춰 본다.
 	 */
 	private static void closeOfferScreen(Minecraft client, PerkCloseOfferPayload payload) {
+		// 「드래곤전 대비」 투표 창도 같은 지시로 닫는다. 구간을 맞춰 보는 것도 같다.
+		if (client.gui.screen() instanceof DragonPrepVoteScreen vote) {
+			if (payload.matches(vote.milestone())) {
+				vote.closeFromServer();
+			}
+			return;
+		}
 		if (!(client.gui.screen() instanceof PerkOfferScreen offer)) {
 			return;
 		}

@@ -452,13 +452,13 @@ class DefaultPerkPoolValuesTest {
 	}
 
 	@Test
-	void 삽질의_대가는_다른_무기_공격력을_고정하지_않고_증가_차단을_쓴다(@TempDir Path dir) throws IOException {
+	void 삽질의_대가는_공격력_증가를_차단하지_않는다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:shovel_master");
 		WeaponDamageEffect weapon = assertInstanceOf(WeaponDamageEffect.class, perk.effects().get(0));
 		boolean hasBan = perk.effects().stream().anyMatch(e -> e instanceof NoDamageBoostEffect);
 
 		assertNull(weapon.othersDamage(), "이제 다른 무기를 1로 고정하지 않는다");
-		assertTrue(hasBan);
+		assertFalse(hasBan);
 	}
 
 	@Test
@@ -590,23 +590,12 @@ class DefaultPerkPoolValuesTest {
 		assertEquals(0.15, water.amount(), 1.0e-9);
 	}
 
-	/**
-	 * 「소집의 조각」의 교환 막힘은 <b>조용한 쪽</b>이어야 한다.
-	 *
-	 * <p>{@code silent} 을 빠뜨려도 증강은 그대로 읽히고 개수 시험도 통과한다. 그런데 그러면
-	 * 자리만 안 바뀌고 부수효과는 주기마다 계속 돌아, 「본진이 바뀐다」를 함께 가진 팀은 무적만
-	 * 공짜로 받는다. 코드가 아니라 <b>정의 한 글자</b>로 갈리는 자리라 여기서 못박는다.
-	 */
+	/** 소집 아이템과 자동 교환을 함께 쓸 수 있다. */
 	@Test
-	void 소집의_조각은_조용한_막힘을_쓴다(@TempDir Path dir) throws IOException {
+	void 소집의_조각은_자동_교환을_막지_않는다(@TempDir Path dir) throws IOException {
 		Perk perk = perk(dir, "sharedfate:rally_shard");
 
-		SwapBlockEffect block = perk.effects().stream()
-				.filter(SwapBlockEffect.class::isInstance)
-				.map(SwapBlockEffect.class::cast)
-				.findFirst()
-				.orElseThrow(() -> new AssertionError("swap_block 이 없다"));
-		assertSame(SwapBlockEffect.SILENT, block, "silent 를 빠뜨리면 부수효과만 주기마다 돈다");
+		assertTrue(perk.effects().stream().noneMatch(SwapBlockEffect.class::isInstance));
 
 		RallyShardEffect shard = perk.effects().stream()
 				.filter(RallyShardEffect.class::isInstance)
@@ -721,7 +710,7 @@ class DefaultPerkPoolValuesTest {
 		loadDefaultPool(dir);
 
 		// 0.44.0-dev 에서 「드래곤전 대비」 열두 장이 들어와 98 → 110.
-		assertEquals(110, PerkRegistry.all().size(),
+		assertEquals(119, PerkRegistry.all().size(),
 				"파일에 적힌 수와 읽힌 수가 다르면 효과 타입이 등록되지 않은 것이다");
 
 		long silver = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.SILVER).count();
@@ -730,11 +719,11 @@ class DefaultPerkPoolValuesTest {
 		// 세트 「개척」이 들어오며 실버 +1(유적 감별사) · 골드 +1(흥정의 달인) 이 됐다.
 		// 그 뒤 「아가미」가 실버 → 골드, 「뿌리내린 발」이 골드 → 프리즘으로 올라갔다.
 		// 「굳은살」이 들어오며 실버 +1. 「먹방」이 들어오며 실버 +1.
-		assertEquals(36, silver, "실버");
-		assertEquals(36, gold, "골드");
-		assertEquals(26, prism, "프리즘");
+		assertEquals(38, silver, "실버");
+		assertEquals(38, gold, "골드");
+		assertEquals(28, prism, "프리즘");
 		long trial = PerkRegistry.all().stream().filter(p -> p.rarity() == PerkRarity.TRIAL).count();
-		assertEquals(12, trial, "드래곤전 대비");
+		assertEquals(15, trial, "드래곤전 대비");
 
 		// 등록을 빠뜨리면 여기서 먼저 걸린다.
 		for (String id : new String[] {"sharedfate:grounded_guard", "sharedfate:arcane_workshop",

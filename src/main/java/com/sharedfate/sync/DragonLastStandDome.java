@@ -18,6 +18,7 @@ import net.minecraft.world.level.levelgen.feature.EndPodiumFeature;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 
 /**
  * 「최후의 저항」의 <b>반구 블록 파괴</b>. 드래곤 주변 반경 25칸 반구 안에서 <b>포디움보다 높은
@@ -29,6 +30,32 @@ import net.minecraft.world.phys.Vec3;
  * 벽이 남았다. 사람이 「부술 수 있는 블록 전부」를 골랐으므로 지금 남기는 것은 <b>포디움 좌표</b>
  * ({@link #podiumPart})와 <b>원래 못 부수는 블록</b>({@link #unbreakable}) 둘뿐이다. 아래 「두 겹」과
  * 표는 그에 맞춰 고쳤다.
+ *
+ * <h2>⚠⚠ 2026-11-04 — 깎기에 더해 <b>메우기</b></h2>
+ *
+ * <p>사람 지시 — 지금은 드래곤 주변 높은 블록만 깎는데, <b>땅이 비어 있으면(움푹 파였거나 구멍) 평평하게
+ * 메우는 작업도</b> 하게. 메우는 높이·블록은 섬 표면 기준(엔드석)이고 <b>훑기 바닥 셈을 그대로 쓴다</b> —
+ * 메우는 맨 위 칸은 훑기 바닥 바로 아래({@link #fillTopY} = {@code sweepFloorY − 1} = 포디움 원점 {@code p.y},
+ * 섬 맨 윗블록의 층)다. 깎기가 그 위를 비우고 메우기가 그 층까지 채우므로 반경 25 안이 한 평면이 된다.
+ *
+ * <ul>
+ *   <li><b>메우는 칸</b> — 그 층에서 아래로 <b>공기·물·용암</b>이 이어지는 칸({@link #fillable}). 처음 만나는
+ *       다른 블록에서 멈춘다. 깊이는 {@link #MAX_FILL_DEPTH} 칸까지다({@link #fillBottomY})</li>
+ *   <li><b>공허는 건드리지 않는다</b> — 블록이 한 칸도 없는 열(하이트맵이 월드 바닥 아래)은 섬 바깥으로 보고
+ *       건너뛴다. 반경 25 는 본섬 안쪽이라 실제로는 섬을 끝까지 뚫은 구멍만 여기에 걸린다(그 구멍도 메우지
+ *       않는다 — 바닥이 없는 열과 섬 바깥을 블록으로는 가를 수 없다)</li>
+ *   <li><b>포디움(출구 포탈)은 건드리지 않는다</b> — 포디움 한가운데에서 {@link #PODIUM_KEEP_RADIUS} 안의
+ *       열은 통째로 뺀다. 싸움 중에는 포털 자리가 공기라 빼지 않으면 엔드석으로 막힌다. 흑요석 기둥은 반경
+ *       밖이다(거리 37 &gt; 25)</li>
+ *   <li><b>사람이 선 칸은 메우지 않는다</b> — {@code isUnobstructed} 가 거짓이면 그 열을 그 칸에서 멈춘다.
+ *       구덩이에 선 사람 발밑을 채우면 블록 안에 갇혀 질식한다(공유 체력이라 팀 피해다)</li>
+ *   <li>한 훑기에 {@link #MAX_FILLS_PER_SWEEP} 칸까지. 깎기 천장과 따로 센다. 먼지는 피우지 않는다</li>
+ *   <li>⚠ <b>청크 거름망({@link #holdsBlocksAbove})은 이제 깎기에만 쓴다.</b> 메울 구멍은 바닥 아래에 있으니
+ *       「바닥 위에 블록이 있는 구획」이 없는 청크에도 있다 — 그래서 올라온 청크는 열마다 하이트맵을 한 번
+ *       읽는다(맨손 아레나 1,961열 · 초에 한 번 · 배열 읽기). 블록 읽기는 하이트맵이 그 층보다 낮은 열에서만
+ *       돈다</li>
+ *   <li>{@code mobGriefing} 을 끄면 메우기도 꺼진다(깎기와 같은 문)</li>
+ * </ul>
  *
  * <h2>⚠⚠ 2026-10-18 밤 — 훑기 바닥이 <b>한 칸 낮았다</b>. 섬 맨 윗겹을 깎고 있었다</h2>
  *
@@ -498,6 +525,37 @@ public final class DragonLastStandDome {
 	 */
 	private static long lastSweep = Long.MIN_VALUE;
 
+	/**
+	 * 한 훑기에 메우는 칸의 천장. 깎기 천장({@link #MAX_BREAKS_PER_SWEEP})과 같은 값·같은 근거다 —
+	 * 1초에 한 번이라 넓은 구덩이도 몇 초에 나눠 메워진다.
+	 */
+	static final int MAX_FILLS_PER_SWEEP = 256;
+
+	/**
+	 * 한 열에서 아래로 메우는 깊이의 천장(칸). 섬 표면에서 이보다 깊게 판 구멍은 위 이 칸만 막는다 —
+	 * 안이 비어도 걸어 다니는 바닥은 평평하다. 끝없이 내려가면 깊은 구멍 한 열이 한 훑기 천장을 다 먹는다.
+	 */
+	static final int MAX_FILL_DEPTH = 8;
+
+	/**
+	 * 포디움 한가운데에서 이만큼(칸, 칸 가운데로 잰 수평 거리) 안의 열은 메우지 않는다.
+	 *
+	 * <p>{@link #podiumPart} 의 원점 층 반경 3.5 를 한 칸 넘게 덮는다 — 싸움 중 출구 포털 자리는 공기라
+	 * 이 반경 안에서 「빈 칸」으로 읽힌다.
+	 */
+	static final double PODIUM_KEEP_RADIUS = 4.5;
+
+	/** {@link #fillBottomY} 가 「메울 것이 없다」를 돌려주는 값. */
+	static final int NO_FILL = Integer.MIN_VALUE;
+
+	/** 이번 훑기에서 메운 칸 수. {@link #sweep} 첫머리에서 0 으로 돌린다({@link #MAX_FILLS_PER_SWEEP}). */
+	private static int fills;
+
+	/** 메우는 블록. 사람 지시 「섬 표면 기준(엔드 스톤)」 그대로다. */
+	static BlockState fillBlock() {
+		return Blocks.END_STONE.defaultBlockState();
+	}
+
 	/** 이번 훑기에서 피운 먼지 수. {@link #sweep} 첫머리에서 0 으로 돌린다({@link #MAX_PUFFS_PER_SWEEP}). */
 	private static int puffs;
 
@@ -551,17 +609,24 @@ public final class DragonLastStandDome {
 		int maxZ = Mth.floor(center.z + RADIUS);
 		BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
 		int broken = 0;
+		fills = 0;
 
 		for (int chunkX = minX >> 4; chunkX <= maxX >> 4; chunkX++) {
 			for (int chunkZ = minZ >> 4; chunkZ <= maxZ >> 4; chunkZ++) {
 				LevelChunk chunk = end.getChunkSource().getChunkNow(chunkX, chunkZ);
 				// 올라오지 않은 청크는 건너뛴다. 억지로 불러오면 지형을 새로 만든다.
-				if (chunk == null || !holdsBlocksAbove(chunk, sweepFloor, ceiling)) {
+				if (chunk == null) {
+					continue;
+				}
+				// ⚠ 2026-11-04 부터 이 거름망은 깎기만 거른다 — 메울 구멍은 바닥 아래라 이 물음과 상관없다.
+				boolean cut = broken < MAX_BREAKS_PER_SWEEP
+						&& holdsBlocksAbove(chunk, sweepFloor, ceiling);
+				if (!cut && fills >= MAX_FILLS_PER_SWEEP) {
 					continue;
 				}
 				broken += sweepChunk(end, chunk, chunkX, chunkZ, center, origin, sweepFloor, podiumY,
-						ceiling, minX, maxX, minZ, maxZ, at, MAX_BREAKS_PER_SWEEP - broken);
-				if (broken >= MAX_BREAKS_PER_SWEEP) {
+						ceiling, minX, maxX, minZ, maxZ, at, cut ? MAX_BREAKS_PER_SWEEP - broken : 0);
+				if (broken >= MAX_BREAKS_PER_SWEEP && fills >= MAX_FILLS_PER_SWEEP) {
 					return broken;
 				}
 			}
@@ -629,12 +694,13 @@ public final class DragonLastStandDome {
 			int minX, int maxX, int minZ, int maxZ,
 			BlockPos.MutableBlockPos at, int budget) {
 		int broken = 0;
-		for (int localX = 0; localX < 16 && broken < budget; localX++) {
+		for (int localX = 0; localX < 16 && (broken < budget || fills < MAX_FILLS_PER_SWEEP); localX++) {
 			int x = (chunkX << 4) + localX;
 			if (x < minX || x > maxX) {
 				continue;
 			}
-			for (int localZ = 0; localZ < 16 && broken < budget; localZ++) {
+			for (int localZ = 0; localZ < 16 && (broken < budget || fills < MAX_FILLS_PER_SWEEP);
+					localZ++) {
 				int z = (chunkZ << 4) + localZ;
 				if (z < minZ || z > maxZ) {
 					continue;
@@ -649,6 +715,15 @@ public final class DragonLastStandDome {
 				// sweepFloor − 1 이라 모든 열이 여기서 걸러진다(클래스 설명의 「성능」).
 				int top = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
 				if (top < sweepFloor) {
+					// 깎을 것은 없다. 맨 위 블록이 섬 표면 층보다 낮으면 메울 구멍이다(2026-11-04).
+					if (top < fillTopY(podiumY) && fills < MAX_FILLS_PER_SWEEP) {
+						fills += fillColumn(end, chunk, podiumY, top, x, z,
+								x - Mth.floor(center.x), z - Mth.floor(center.z), at,
+								MAX_FILLS_PER_SWEEP - fills);
+					}
+					continue;
+				}
+				if (broken >= budget) {
 					continue;
 				}
 				// 천장은 origin 으로 잰다(반구 모양) · 아래끝은 sweepFloor 다(훑는 범위).
@@ -757,6 +832,41 @@ public final class DragonLastStandDome {
 	 * <p>⚠ {@code setBlock} 도 드롭을 만들지 않는다 — 드롭은 {@code dropResources} 를 부르는
 	 * {@code destroyBlock} 의 몫이고 우리는 그 길을 지나지 않는다(시험이 이름으로 못박는다).
 	 */
+	/**
+	 * 한 열을 섬 표면 층({@link #fillTopY})까지 엔드석으로 메운다. 맨 위에서 아래로 채운다.
+	 *
+	 * <p>⚠ 맨 위에서부터인 것이 요점이다 — 천장에 걸려 아래를 다 못 채워도 <b>걷는 면은 먼저 막힌다.</b>
+	 * 사람이 선 칸을 만나면 그 열은 거기서 멈춘다(클래스 설명의 「사람이 선 칸」).
+	 *
+	 * @param top 그 열의 맨 위 블록 높이(하이트맵). 월드 바닥보다 낮으면 블록이 하나도 없는 열이다
+	 * @return 실제로 놓은 칸 수
+	 */
+	private static int fillColumn(ServerLevel end, LevelChunk chunk, int podiumY, int top, int x,
+			int z, int podiumDx, int podiumDz, BlockPos.MutableBlockPos at, int budget) {
+		if (podiumDx * podiumDx + podiumDz * podiumDz < PODIUM_KEEP_RADIUS * PODIUM_KEEP_RADIUS) {
+			return 0;
+		}
+		int fillTop = fillTopY(podiumY);
+		int bottom = fillBottomY(fillTop, top, end.getMinY(),
+				y -> fillable(chunk.getBlockState(at.set(x, y, z))));
+		if (bottom == NO_FILL) {
+			return 0;
+		}
+		BlockState stone = fillBlock();
+		int placed = 0;
+		for (int y = fillTop; y >= bottom && placed < budget; y--) {
+			at.set(x, y, z);
+			// 사람·몹이 그 칸에 있으면 놓지 않는다. 블록 놓기가 묻는 것과 같은 물음이다.
+			if (!end.isUnobstructed(stone, at, CollisionContext.empty())) {
+				break;
+			}
+			if (end.setBlock(at, stone, Block.UPDATE_ALL)) {
+				placed++;
+			}
+		}
+		return placed;
+	}
+
 	private static boolean clear(ServerLevel end, BlockPos at, BlockState state) {
 		if (holdsFluid(state)) {
 			return end.setBlock(at, Blocks.AIR.defaultBlockState(), FLUID_CLEAR_FLAGS);
@@ -954,6 +1064,42 @@ public final class DragonLastStandDome {
 	 */
 	static int sweepFloorY(int podiumY) {
 		return podiumY + 1;
+	}
+
+	/**
+	 * 메우는 맨 위 칸(2026-11-04). <b>훑기 바닥 바로 아래</b> — 섬 맨 윗블록의 층(포디움 원점)이다.
+	 * 훑기 바닥 셈을 그대로 따라가므로 바닥을 고치면 메우는 높이도 함께 움직인다.
+	 */
+	static int fillTopY(int podiumY) {
+		return sweepFloorY(podiumY) - 1;
+	}
+
+	/** 메워도 되는 칸인가 — 공기와 물·용암. 다른 블록(풀 한 포기도)은 「땅」으로 보고 거기서 멈춘다. */
+	static boolean fillable(BlockState state) {
+		return state.isAir() || holdsFluid(state);
+	}
+
+	/**
+	 * 한 열에서 메울 <b>가장 아래 칸</b>. 메울 것이 없으면 {@link #NO_FILL}.
+	 *
+	 * <p>월드 없이 도는 계산으로 떼어 둔 것은 「공허는 안 메운다」·「깊이 천장」·「땅에서 멈춘다」 셋을
+	 * 시험이 직접 굴려 보게 하려는 것이다.
+	 *
+	 * @param fillTop   메우는 맨 위 칸({@link #fillTopY})
+	 * @param columnTop 그 열의 맨 위 블록(하이트맵). {@code minY} 보다 낮으면 블록이 없는 열 — 공허다
+	 * @param fillable  그 높이의 칸을 메워도 되는가
+	 */
+	static int fillBottomY(int fillTop, int columnTop, int minY,
+			java.util.function.IntPredicate fillable) {
+		if (columnTop < minY || columnTop >= fillTop || !fillable.test(fillTop)) {
+			return NO_FILL;
+		}
+		int deepest = Math.max(minY, fillTop - MAX_FILL_DEPTH + 1);
+		int bottom = fillTop;
+		while (bottom - 1 >= deepest && fillable.test(bottom - 1)) {
+			bottom--;
+		}
+		return bottom;
 	}
 
 	/**

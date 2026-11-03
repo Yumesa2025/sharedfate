@@ -41,3 +41,10 @@ describe('세트 읽기', () => {
     expect(mobility?.opensAt).toBe(3);
   });
 });
+
+it('방패는 한 개부터 열리고 네 단계가 모두 나온다', () => {
+  const shield = sets.find((set) => set.type === 'shield');
+  expect(shield?.name).toBe('방패');
+  expect(shield?.opensAt).toBe(1);
+  expect(shield?.tiers.map((tier) => tier.count)).toEqual([1, 2, 3, 4]);
+});

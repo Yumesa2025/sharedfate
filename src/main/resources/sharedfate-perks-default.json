@@ -32,10 +32,11 @@
       "id": "sharedfate:deflated_shield",
       "icon": "minecraft:shield",
       "name": "바람 빠진 방패",
-      "description": "폭발에 받는 피해가 ×0.5 가 됩니다. 대신 넉백을 1.5배로 받습니다.",
+      "description": "폭발에 받는 피해가 ×0.5 가 됩니다. 대신 넉백을 1.2배로 받습니다.",
       "rarity": "silver",
       "set_types": [
-        "defense"
+        "defense",
+        "shield"
       ],
       "effects": [
         {
@@ -49,7 +50,7 @@
           "type": "attribute",
           "attribute": "minecraft:knockback_resistance",
           "operation": "add_value",
-          "amount": -0.5,
+          "amount": -0.2,
           "drawback": true
         }
       ]
@@ -380,7 +381,7 @@
       "id": "sharedfate:blind_giant",
       "icon": "minecraft:heart_of_the_sea",
       "name": "장님 거인",
-      "description": "최대 체력이 20 증가합니다. 대신 체력과 허기 표시가 가려집니다.",
+      "description": "최대 체력이 20 증가합니다. 대신 체력 표시가 가려집니다.",
       "rarity": "prism",
       "set_types": [
         "survival"
@@ -393,8 +394,7 @@
         {
           "type": "hide_hud",
           "elements": [
-            "health",
-            "food"
+            "health"
           ]
         }
       ]
@@ -438,7 +438,7 @@
       "id": "sharedfate:berserker",
       "icon": "minecraft:netherite_sword",
       "name": "광전사",
-      "description": "공격력이 3배가 되고 최대 체력이 10 증가합니다. 대신 방어구를 착용할 수 없습니다.",
+      "description": "공격력이 3배가 되고 최대 체력이 10 증가합니다. 대신 머리와 가슴 칸에 장비를 착용할 수 없습니다. 레깅스와 부츠는 착용할 수 있습니다.",
       "rarity": "prism",
       "set_types": [
         "weapon"
@@ -457,7 +457,8 @@
         {
           "type": "equip_ban",
           "slots": [
-            "armor"
+            "head",
+            "chest"
           ]
         }
       ]
@@ -491,7 +492,7 @@
       "id": "sharedfate:shovel_master",
       "icon": "minecraft:diamond_shovel",
       "name": "삽질의 대가",
-      "description": "삽의 공격력이 4배가 됩니다. 대신 공격력을 늘리는 효과를 전혀 받지 못합니다(원래 공격력과 공격력이 줄어드는 효과만 적용됩니다).",
+      "description": "삽의 공격력이 4배가 됩니다.",
       "rarity": "prism",
       "set_types": [
         "weapon"
@@ -503,9 +504,6 @@
             "minecraft:shovels"
           ],
           "multiplier": 4.0
-        },
-        {
-          "type": "no_damage_boost"
         }
       ]
     },
@@ -777,7 +775,7 @@
       "id": "sharedfate:shared_fate_bond",
       "icon": "minecraft:lead",
       "name": "운명 공동체",
-      "description": "최대 체력 +4. 팀원이 20칸 안에 뭉치면 공격력 +50% · 받는 피해 −15% · 주변 몹 감속. 대신 흩어지면 강제로 모이고 5초간 구속 III.",
+      "description": "최대 체력이 4 증가합니다. 20칸 안에 뭉치면 공격력 +50%·받는 피해 −15%·주변 몹 감속을 얻습니다. 대신 흩어지면 강제로 모입니다.",
       "rarity": "prism",
       "effects": [
         {
@@ -812,14 +810,7 @@
           "type": "gather",
           "distance": 20,
           "cooldown_ticks": 20,
-          "effects": [
-            {
-              "type": "status_effect",
-              "effect": "minecraft:slowness",
-              "amplifier": 2,
-              "duration": 5
-            }
-          ]
+          "effects": []
         }
       ],
       "set_types": [
@@ -1889,10 +1880,7 @@
         {
           "type": "item_grant",
           "items": [
-            {
-              "id": "minecraft:compass",
-              "count": 1
-            }
+            { "id": "minecraft:compass", "count": 1 }
           ]
         },
         {
@@ -2089,22 +2077,14 @@
       "id": "sharedfate:grounded_guard",
       "icon": "minecraft:shield",
       "name": "버티는 방패",
-      "description": "방패를 들어 막는 동안 낙하 피해를 받지 않습니다. 대신 막아 낸 만큼의 10배로 방패가 닳고, 몹 체력이 ×1.15 가 됩니다(엔더 드래곤 제외).",
+      "description": "방패로 막는 동안 낙하 피해를 받지 않습니다. 대신 막아 낸 피해의 5배만큼 방패가 닳습니다.",
       "rarity": "gold",
       "set_types": [
-        "defense"
+        "shield"
       ],
       "effects": [
         {
           "type": "shield_fall_immunity"
-        },
-        {
-          "type": "mob_health",
-          "multiplier": 1.15,
-          "excludes": [
-            "minecraft:ender_dragon"
-          ],
-          "drawback": true
         }
       ]
     },
@@ -2207,16 +2187,12 @@
       "id": "sharedfate:rally_shard",
       "icon": "minecraft:echo_shard",
       "name": "소집의 조각",
-      "description": "「소집의 조각」을 얻습니다. 우클릭하면 팀원 전원이 3초 뒤 내 자리로 끌려오고 교환 효과가 납니다(4분, 팀 공유). 대신 자동 교환이 없어집니다.",
+      "description": "「소집의 조각」을 얻습니다. 우클릭하면 팀원 전원이 3초 뒤 내 자리로 끌려오고 교환 효과가 납니다(4분, 팀 공유).",
       "rarity": "prism",
       "set_types": [
         "swap"
       ],
       "effects": [
-        {
-          "type": "swap_block",
-          "silent": true
-        },
         {
           "type": "rally_shard",
           "freeze_seconds": 3,
@@ -2628,6 +2604,150 @@
           "type": "dragon_prep",
           "kind": "last_rally",
           "amount": 12.0
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:shield_counter",
+      "icon": "minecraft:shield",
+      "name": "반격 자세",
+      "description": "방패로 막으면 3초 안에 막은 사람의 다음 근접 공격이 2배가 됩니다. 대신 방패 최대 내구도가 10% 감소합니다.",
+      "rarity": "silver",
+      "set_types": [
+        "shield"
+      ],
+      "effects": [
+        {
+          "type": "shield_counter"
+        },
+        {
+          "type": "shield_durability",
+          "multiplier": 0.9
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:shield_ricochet",
+      "icon": "minecraft:shield",
+      "name": "튕겨내기",
+      "description": "방패로 막은 스켈레톤 계열의 화살을 쏜 몹에게 되돌립니다. 대신 화살을 막을 때 방패 내구도가 3배로 닳습니다.",
+      "rarity": "gold",
+      "set_types": [
+        "shield"
+      ],
+      "effects": [
+        {
+          "type": "shield_ricochet"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:shield_maintenance",
+      "icon": "minecraft:shield",
+      "name": "방패 손질",
+      "description": "방패 최대 내구도가 1.5배가 됩니다. 방패와 나무 판자를 조합하면 판자 하나당 내구도를 15% 회복합니다.",
+      "rarity": "silver",
+      "set_types": [
+        "shield"
+      ],
+      "effects": [
+        {
+          "type": "shield_durability",
+          "multiplier": 1.5
+        },
+        {
+          "type": "shield_plank_repair"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:steel_shield_workshop",
+      "icon": "minecraft:shield",
+      "name": "강철 방패 공방",
+      "description": "방패와 철 블록 1개를 조합해 내구도가 3배인 강철 방패를 제작합니다.",
+      "rarity": "gold",
+      "set_types": [
+        "shield"
+      ],
+      "effects": [
+        {
+          "type": "steel_shield_recipe"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:turtle_shell",
+      "icon": "minecraft:shield",
+      "name": "거북 등껍질",
+      "description": "방패로 모든 방향의 공격을 막습니다. 일반 적대 몹에게 막은 피해의 50%를 돌려줍니다(보스 제외).",
+      "rarity": "prism",
+      "set_types": [
+        "shield"
+      ],
+      "effects": [
+        {
+          "type": "turtle_shell"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:shield_rush",
+      "icon": "minecraft:shield",
+      "name": "방패 돌진",
+      "description": "오른손 방패로 5칸 돌진해 방어력의 절반만큼 피해를 주고 일반 몹을 경직시킵니다. 내구도를 소모합니다(10초).",
+      "rarity": "prism",
+      "set_types": [
+        "shield",
+        "defense"
+      ],
+      "effects": [
+        {
+          "type": "shield_rush"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:cracked_crystal",
+      "icon": "minecraft:amethyst_shard",
+      "name": "금 간 수정",
+      "description": "최후의 저항에서 회복 크리스탈의 체력이 1이 됩니다.",
+      "rarity": "trial",
+      "weight": 1.0,
+      "set_types": [],
+      "effects": [
+        {
+          "type": "dragon_prep",
+          "kind": "cracked_crystal"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:battle_supply",
+      "icon": "minecraft:golden_apple",
+      "name": "결전 보급",
+      "description": "엔드에 처음 입장하면 황금 사과 10개와 화살 120개를 얻습니다. 이미 입장했다면 즉시 받습니다(팀당 회차에 한 번).",
+      "rarity": "trial",
+      "weight": 1.0,
+      "set_types": [],
+      "effects": [
+        {
+          "type": "dragon_prep",
+          "kind": "battle_supply"
+        }
+      ]
+    },
+    {
+      "id": "sharedfate:easy_mode",
+      "icon": "minecraft:feather",
+      "name": "이지모드",
+      "description": "입장 시련의 굳는 손, 첫 크리스탈 시련의 다시 선 쇠창살, 체력 절반 시련의 부활이 나오지 않습니다.",
+      "rarity": "trial",
+      "weight": 1.0,
+      "set_types": [],
+      "effects": [
+        {
+          "type": "dragon_prep",
+          "kind": "easy_mode"
         }
       ]
     }

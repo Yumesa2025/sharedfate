@@ -6,6 +6,7 @@ import com.sharedfate.perk.effect.DamageTakenBlockingEffect;
 import com.sharedfate.perk.effect.DamageTakenFromEffect;
 import com.sharedfate.perk.effect.DamageWardEffect;
 import com.sharedfate.perk.effect.ShieldFallImmunityEffect;
+import com.sharedfate.perk.effect.FallImmunityEffect;
 import com.sharedfate.perk.effect.WeaponKnockbackEffect;
 import com.sharedfate.team.TeamLookup;
 import com.sharedfate.team.TeamState;
@@ -38,7 +39,7 @@ public final class PerkDamage {
 	 *
 	 * <p>바닐라가 막은 피해량만큼 깎는 것에 견주어 이만큼 더 깎는다.
 	 */
-	static final int FALL_BLOCK_DURABILITY_FACTOR = 10;
+	static final int FALL_BLOCK_DURABILITY_FACTOR = 5;
 
 	/**
 	 * 세트 「방어 3단계」가 켜져 위 대가가 사라졌을 때의 배수. 바닐라가 막은 피해량만큼 깎는 것과
@@ -82,7 +83,8 @@ public final class PerkDamage {
 			factor = dealtFactor(attacker) * takenFactor(victim) * mobDealtFactor(attacker)
 					* takenSourceFactor(victim, source) * takenBlockingFactor(victim)
 					// 「착지 노리기」·「하늘 사수」(0.44.0-dev). 드래곤이 맞을 때, 시련 전투 중에만 1 이 아니다.
-					* DragonPrep.dragonHitFactor(victim, source);
+					* DragonPrep.dragonHitFactor(victim, source)
+					* PerkShieldCombat.counterMultiplier(source);
 		} catch (RuntimeException error) {
 			warnOnce(error);
 			return amount;
@@ -224,7 +226,7 @@ public final class PerkDamage {
 	// ------------------------------------------------------------------ 낙하 피해 면역
 
 	/**
-	 * 이 피해를 통째로 버려야 하는가. {@code shield_fall_immunity} 만 본다.
+	 * 이 낙하 피해를 통째로 버려야 하는가. 방패 면역과 무조건 면역을 함께 본다.
 	 *
 	 * <p>{@code LivingEntityPerkDamageMixin} 이 {@code hurtServer} 진입점에서 부른다. 참이면
 	 * 그 자리에서 {@code false} 를 돌려주므로 체력·무적시간·피격 애니메이션 어느 것도 움직이지
@@ -242,7 +244,8 @@ public final class PerkDamage {
 			if (!source.is(DamageTypes.FALL)) {
 				return false;
 			}
-			return ShieldFallImmunityEffect.blocks(
+			return FallImmunityEffect.heldBy(TeamLookup.stateOf(player.getUUID()))
+					|| ShieldFallImmunityEffect.blocks(
 					TeamLookup.stateOf(player.getUUID()), true, player.isBlocking());
 		} catch (RuntimeException error) {
 			warnOnce(error);
@@ -267,7 +270,7 @@ public final class PerkDamage {
 	 * {@code durability_multiplier} 증강을 지나며 다시 줄어든다
 	 * ({@link com.sharedfate.mixin.ItemStackDurabilityMixin}).
 	 *
-	 * <p>세트 「방어 3단계」를 켠 팀이면 열 배가 아니라 바닐라처럼 막은 양만큼만 닳는다
+	 * <p>세트 「방어 3단계」를 켠 팀이면 다섯 배가 아니라 바닐라처럼 막은 양만큼만 닳는다
 	 * ({@link PerkDrawbacks#builtInWaived}). 대가가 효과 안에 묶여 있어 {@code drawback} 표시로는
 	 * 끌 수 없기 때문이다.
 	 *
@@ -278,6 +281,8 @@ public final class PerkDamage {
 			return;
 		}
 		try {
+			// 기동 세트의 면역이면 방패로 막은 것이 아니므로 내구도를 쓰지 않는다.
+			if (FallImmunityEffect.heldBy(TeamLookup.stateOf(player.getUUID()))) return;
 			ItemStack shield = player.getUseItem();
 			if (shield.isEmpty() || !shield.isDamageableItem()) {
 				return;
@@ -405,8 +410,13 @@ public final class PerkDamage {
 			if (player.isInvulnerableTo(level, source) || player.isDeadOrDying()) {
 				return false;
 			}
-			return DamageWardTracker.tryConsume(
-					player.getUUID(), level.getGameTime(), ward.cooldownTicks());
+			if (!DamageWardTracker.tryConsume(
+					player.getUUID(), level.getGameTime(), ward.cooldownTicks())) {
+				return false;
+			}
+			// 막아 낸 순간 「⟡ 호위」.
+			PerkProcFeedback.fireOwnerOf(player, DamageWardEffect.class);
+			return true;
 		} catch (RuntimeException error) {
 			warnOnce(error);
 			return false;

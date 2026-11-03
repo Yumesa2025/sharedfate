@@ -192,3 +192,12 @@ chmod +x start-sharedfate-server.sh sharedfate-server-loop.sh
 | 회차 번호 | `sharedfate-run-state.json` |
 | 피해 기록 | `sharedfate-damage-history.json` |
 | 팀 명단 | `sharedfate-team-roster.json` |
+
+## 회차 보너스와 개인 알림 설정
+
+`config/sharedfate.json`의 `runXpBonusPercent`는 회차마다 더하는 경험치 비율(기본 3),
+`rallyShardFromRun`은 1회용 소집의 조각을 주기 시작하는 회차(기본 5)입니다.
+각 값을 0으로 두면 해당 보너스만 끕니다.
+
+발동 알림은 서버 설정이 아니라 `config/sharedfate-client.json`에 저장합니다.
+`procAlerts`(글자)와 `procSound`(소리)는 기본 `true`이며, 팀 화면에서도 각각 바꿀 수 있습니다.

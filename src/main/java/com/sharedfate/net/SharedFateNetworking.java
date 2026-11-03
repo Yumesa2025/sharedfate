@@ -307,7 +307,23 @@ public final class SharedFateNetworking {
 	//     (PerkOption.rarity 문자열 · TeamSyncPayload.nextPerkLevel)만으로 되지만, 옛 클라이언트는 "trial"
 	//     을 실버로 그리고 45·50 을 노랑으로 그린다 — 위 칸 때문에 어차피 접속이 막힌다.
 	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다. 공개판 v0.42.0-dev 이하(규약 39)와는 접속 불가.
-	public static final int PROTOCOL_VERSION = 40;
+	// 41: 인벤토리 옆 능력치 패널이 보정치를 적는다 — StatSnapshotPayload 에 StatBonuses 묶음 하나
+	//     (최대 체력·추가 공격력·고정 공격력·공격 속도·방어력·이동 속도·회차 경험치, float 일곱).
+	//
+	//     사람이 정한 것(2026-11-04) — 「무기를 들 때마다 바뀌는 최종 피해 숫자가 아니라 「추가 공격력
+	//     +35%」처럼 증강·세트로 붙은 보정치를 % 로」. 조건부 효과(뭉침 등)가 지금 켜져 있는지는 서버만
+	//     알아 클라이언트가 증강 목록으로 다시 세면 틀린다. 그래서 서버가 붙어 있는 수정자를 읽어 센다
+	//     (PerkStatBonuses). 새 묶음을 만들지 않고 38 처럼 「서버만 알고 바뀔 때만 보내는」 기존 묶음에
+	//     얹었다. 칸이 늘어 형식 자체가 바뀌었으므로 옛 클라이언트는 이 묶음을 읽지 못한다.
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다.
+	//
+	//     같은 판(아직 공개 전)에 PerkProcPayload 도 더했다 — 조건부 증강이 발동한 순간 경험치 바 위에
+	//     이름을 잠깐 띄우는 알림(PerkProcFeedback). 새 묶음이라 번호는 41 그대로다.
+	//
+	//     같은 판에 DragonPrepVotePayload 도 더했다 — 「드래곤전 대비」(45·50) 증강을 선택자 대신 팀 투표로
+	//     정하는 창의 상태 묶음(PerkChoiceSession.tickPrep). 표는 기존 PerkVoteC2SPayload 로 받는다. 새
+	//     묶음이라 번호는 41 그대로다.
+	public static final int PROTOCOL_VERSION = 41;
 
 	private SharedFateNetworking() {
 	}
@@ -349,6 +365,11 @@ public final class SharedFateNetworking {
 				PerkSetSyncPayload.TYPE, PerkSetSyncPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(
 				PerkVoteSyncPayload.TYPE, PerkVoteSyncPayload.CODEC);
+		// 「드래곤전 대비」 팀 투표 창. 무엇을 담는지는 DragonPrepVotePayload 에 있다.
+		PayloadTypeRegistry.clientboundPlay().register(
+				DragonPrepVotePayload.TYPE, DragonPrepVotePayload.CODEC);
+		// 조건부 증강 발동 알림. 언제 보내는지는 perk.PerkProcFeedback 에 있다.
+		PayloadTypeRegistry.clientboundPlay().register(PerkProcPayload.TYPE, PerkProcPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SelectedSlotC2SPayload.TYPE, SelectedSlotC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(PerkChoiceC2SPayload.TYPE, PerkChoiceC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(

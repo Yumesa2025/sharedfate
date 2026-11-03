@@ -836,7 +836,8 @@ public final class DragonLastStandEntry {
 	 *
 	 * <p>타이틀은 바닐라 패킷이라 <b>통신 규약이 올라가지 않는다</b>({@code TitleMessenger}).
 	 * 이 자리가 {@code Reveal.SILENT} 라 룰렛 화면이 안 뜨므로, 화면 가운데 글자가 이 페이즈에서
-	 * 「판이 바뀌었다」를 말하는 <b>유일한 글자</b>다.
+	 * 「판이 바뀌었다」를 말하는 <b>유일한 글자</b>다. (2026-11-04 부터 「회복 크리스탈 소환」도 같은 길로
+	 * 글자를 띄운다 — {@code DragonLastStandObjects.announceSummon}. 판이 바뀌는 글자는 여전히 이것 하나다.)
 	 */
 	private static void boom(ServerLevel end, List<ServerPlayer> members, EnderDragon dragon,
 			Vec3 anchor) {

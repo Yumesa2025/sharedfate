@@ -1,5 +1,6 @@
 package com.sharedfate.client;
 
+import com.sharedfate.net.StatBonuses;
 import com.sharedfate.net.StatSnapshotPayload;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,6 +28,8 @@ public final class ClientStatSnapshot {
 	private static double mobDamage = 1.0;
 	/** 「완충」이 앞으로 깎을 체력. 체력바가 곧 깎일 만큼을 겹쳐 그린다. 없으면 0. */
 	private static float spreadPending;
+	/** 인벤토리 옆 패널이 적는 팀 보정치. 받기 전에는 {@link StatBonuses#NONE}. */
+	private static StatBonuses bonuses = StatBonuses.NONE;
 
 	private ClientStatSnapshot() {
 	}
@@ -44,6 +47,7 @@ public final class ClientStatSnapshot {
 		mobHealth = payload.mobHealth();
 		mobDamage = payload.mobDamage();
 		spreadPending = payload.spreadPending();
+		bonuses = payload.bonuses();
 	}
 
 	/** 월드에서 나갈 때 부른다. */
@@ -55,6 +59,7 @@ public final class ClientStatSnapshot {
 		mobHealth = 1.0;
 		mobDamage = 1.0;
 		spreadPending = 0.0F;
+		bonuses = StatBonuses.NONE;
 	}
 
 	/** 서버가 값을 알려 준 적이 있는가. 거짓이면 화면은 이 값들의 줄을 그리지 않는다. */
@@ -93,5 +98,10 @@ public final class ClientStatSnapshot {
 	 */
 	public static float spreadPending() {
 		return spreadPending;
+	}
+
+	/** 증강·세트가 얹은 보정치와 회차 경험치 보너스. {@link #known()} 이 거짓이면 모두 0 이다. */
+	public static StatBonuses bonuses() {
+		return bonuses;
 	}
 }

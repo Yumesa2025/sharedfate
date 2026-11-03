@@ -41,6 +41,23 @@ import java.util.List;
  */
 @Mixin(EnchantmentScreen.class)
 public abstract class EnchantmentScreenMixin {
+	/** 비용은 다이아몬드로 남기고, 후보 강도와 책장 포화 여부는 별도 줄에 적는다. */
+	@Inject(method = "extractBackground", at = @At("TAIL"))
+	private void sharedfate$showGrades(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick,
+			CallbackInfo ci) {
+		var screen = (EnchantmentScreen) (Object) this;
+		var layout = (AbstractContainerScreenAccessor) this;
+		var font = net.minecraft.client.Minecraft.getInstance().font;
+		int left = layout.sharedfate$getLeftPos();
+		int top = layout.sharedfate$getTopPos();
+		for (int slot = 0; slot < 3; slot++) {
+			int grade = screen.getMenu().costs[slot];
+			if (grade > 0) graphics.text(font, Component.literal(grade + "레벨"),
+					left + layout.sharedfate$getImageWidth() + 5, top + 20 + slot * 19, 0xFFFFFFFF, true);
+		}
+		int shelves = ((com.sharedfate.enchant.EnchantmentTableAccess) screen.getMenu()).sharedfate$bookshelves();
+		graphics.text(font, Component.literal("책장 " + shelves + "/15"), left + 80, top + 4, 0xFF404040, false);
+	}
 	/** 「인벤토리」 글자를 옮길 자리. 조합법 단추 세 개(y 14~71) 바로 아래다. */
 	@Unique
 	private static final int INVENTORY_LABEL_X = 60;

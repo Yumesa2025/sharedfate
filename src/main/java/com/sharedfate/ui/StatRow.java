@@ -19,7 +19,8 @@ package com.sharedfate.ui;
  *                   없어도 뜻이 통하는 것만 넣는다. {@link #fullLine()} 에만 붙는다
  */
 public record StatRow(String label, String shortLabel, double base, double current,
-		StatSummary.Unit unit, StatRow.Sense sense, boolean masked, String suffix) {
+		StatSummary.Unit unit, StatRow.Sense sense, boolean masked, String suffix)
+		implements PanelRow {
 
 	/**
 	 * 값이 오르는 것이 이 팀에게 좋은 일인가.

@@ -86,6 +86,8 @@ import com.sharedfate.perk.effect.PrismRerollEffect;
 import com.sharedfate.perk.effect.LuckyOreEffect;
 import com.sharedfate.perk.effect.ToolMismatchSlowEffect;
 import com.sharedfate.perk.effect.ShieldFallImmunityEffect;
+import com.sharedfate.perk.effect.FallImmunityEffect;
+import com.sharedfate.perk.effect.HostileDiamondDropEffect;
 import com.sharedfate.perk.effect.SneakSpeedEffect;
 import com.sharedfate.perk.effect.DiamondSundialEffect;
 import com.sharedfate.perk.effect.AuraDamageEffect;
@@ -120,6 +122,11 @@ import java.util.Locale;
  * 오류 처리가 한 곳에 남기 때문이다.
  */
 public enum PerkEffectType {
+ SHIELD_DURABILITY("shield_durability", com.sharedfate.perk.effect.ShieldDurabilityEffect::fromJson),
+ SHIELD_COUNTER("shield_counter", com.sharedfate.perk.effect.ShieldCounterEffect::fromJson),
+ SHIELD_RICOCHET("shield_ricochet", com.sharedfate.perk.effect.ShieldRicochetEffect::fromJson),
+ TURTLE_SHELL("turtle_shell", com.sharedfate.perk.effect.TurtleShellEffect::fromJson),
+ SHIELD_RUSH("shield_rush", com.sharedfate.perk.effect.ShieldRushEffect::fromJson),
 	ATTRIBUTE("attribute", AttributeEffect::fromJson),
 	DAMAGE_DEALT("damage_dealt", DamageDealtEffect::fromJson),
 	DAMAGE_TAKEN("damage_taken", DamageTakenEffect::fromJson),
@@ -196,6 +203,13 @@ public enum PerkEffectType {
 	TOOL_MISMATCH_SLOW("tool_mismatch_slow", ToolMismatchSlowEffect::fromJson),
 	SNEAK_SPEED("sneak_speed", SneakSpeedEffect::fromJson),
 	SHIELD_FALL_IMMUNITY("shield_fall_immunity", ShieldFallImmunityEffect::fromJson),
+	STEEL_SHIELD_RECIPE("steel_shield_recipe", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.STEEL_RECIPE),
+	SHIELD_PLANK_REPAIR("shield_plank_repair", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.PLANK_REPAIR),
+	SHIELD_ENCHANTING("shield_enchanting", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.ENCHANTING),
+	DIAMOND_SHIELD_RECIPE("diamond_shield_recipe", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.DIAMOND_RECIPE),
+	FIRST_SHIELD("first_shield", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.FIRST_SHIELD),
+	FALL_IMMUNITY("fall_immunity", FallImmunityEffect::fromJson),
+	HOSTILE_DIAMOND_DROP("hostile_diamond_drop", HostileDiamondDropEffect::fromJson),
 	DIAMOND_SUNDIAL("diamond_sundial", DiamondSundialEffect::fromJson),
 	ENCHANT_COST("enchant_cost", EnchantCostEffect::fromJson),
 	EXPERIENCE_BONUS("experience_bonus", ExperienceBonusEffect::fromJson),

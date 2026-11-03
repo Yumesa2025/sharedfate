@@ -2621,4 +2621,25 @@ class DragonLastStandPatternsTest {
 			return fail(failed);
 		}
 	}
+
+	// ------------------------------------------------------------------ 번개 노란 면 (2026-11-04)
+
+	/**
+	 * 번개 예고 자리를 노란 면으로 채운다 — 디스플레이 개체라 점 예산에 안 든다.
+	 *
+	 * <p>사람 말 「바닥이 잘 안 보이니 번개 경고 바닥 표시를 노란색으로 아예 채워서」.
+	 */
+	@Test
+	void 번개_예고는_노란_면으로_채운다() {
+		assertEquals(TrialEndRainPanel.glass(net.minecraft.world.item.DyeColor.YELLOW),
+				DragonLastStandPatterns.LIGHTNING_PANEL_BLOCK, "노랑은 규약의 「번개가 내리친다」다");
+		assertNotEquals(TrialEndRainPanel.glass(), DragonLastStandPatterns.LIGHTNING_PANEL_BLOCK,
+				"「종말의 비」의 보라 면과 갈려야 한다");
+		assertFalse(DragonLastStandPatterns.LIGHTNING_PANEL_KEY.contains("#"),
+				"위험 열쇠(카드 id#순번) 꼴이면 종말의 비 판과 열쇠가 겹칠 수 있다");
+		assertEquals(DragonLastStandPatterns.LIGHTNING_COUNT
+						* TrialWarning.strokePoints(DragonLastStandPatterns.LIGHTNING_RADIUS,
+								DragonLastStandPatterns.LIGHTNING_MARK_STRIDE),
+				DragonLastStandPatterns.lightningWarnPoints(), "면은 점을 쓰지 않는다 — 예고 몫은 고리 그대로다");
+	}
 }

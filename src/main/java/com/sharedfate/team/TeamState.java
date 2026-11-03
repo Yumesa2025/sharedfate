@@ -61,6 +61,10 @@ public class TeamState {
 	public int xpLevel;
 	public float xpProgress;
 	public int totalExperience;
+	/** 회차 경험치 보너스의 소수점은 다음 획득으로 넘긴다. */
+	public double runXpRemainder;
+	/** 이 회차에는 시작 보상 조각을 이미 지급했다. 재접속에도 유지한다. */
+	public int rallyShardGrantedRun;
 	public final List<MobEffectInstance> effects;
 	public int positionSwapIntervalTicks;
 	public int positionSwapRemainingTicks;
@@ -108,6 +112,10 @@ public class TeamState {
 	 * 붙을 뿐 체력을 잃지는 않는다.
 	 */
 	public boolean presentInEnd;
+	/** 이번 회차에 팀원이 엔드에 들어간 적이 있는가. 결전 보급의 늦은 획득에도 쓴다. */
+	public boolean endEntered;
+	/** 이번 회차의 결전 보급을 이미 지급했는가. 재시작·재입장에도 유지한다. */
+	public boolean battleSupplyGranted;
 	/**
 	 * 이 회차에서 <b>팀원이 한 명이라도 접속해 있던</b> 시간(틱). 난이도 상승 단계를 이걸로 센다.
 	 *
@@ -328,6 +336,8 @@ public class TeamState {
 		// 「불사의 맹세」는 회차에 한 번이다. 월드를 지우지 않는 서버에서 같은 팀 상태로 다음 회차를
 		// 이어 가면 여기서 다시 쓸 수 있게 된다.
 		undyingOathSpent = false;
+		endEntered = false;
+		battleSupplyGranted = false;
 		this.maxHealth = sanitizeMaximum(maxHealth, 20.0F);
 		health = this.maxHealth;
 		absorption = 0.0F;
@@ -337,6 +347,7 @@ public class TeamState {
 			xpLevel = 0;
 			xpProgress = 0.0F;
 			totalExperience = 0;
+			runXpRemainder = 0.0;
 		}
 	}
 
@@ -810,7 +821,7 @@ public class TeamState {
 	 * {@link PerkSection} 과 같다. {@code RecordCodecBuilder.group} 의 인자 상한(P16)이 이미
 	 * 다 찼다. {@code "alerts"} 도 마찬가지다.
 	 */
-	public static final Codec<TeamState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+	private static final MapCodec<TeamState> STORED_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
 			BASE_CODEC.<TeamState>forGetter(state -> state),
 			PerkSection.CODEC.optionalFieldOf("perks", PerkSection.EMPTY)
 					.<TeamState>forGetter(TeamState::perkSection),
@@ -850,8 +861,23 @@ public class TeamState {
 			// 시련 팀이 어느 경험치 곡선으로 점수를 적었는가. 0 = 옛 곡선(바닐라), 1 = 41~50 이 바닐라
 			// 10~20 값인 곡선. 시련 팀만 1 로 적힌다 — 끈 팀은 곡선이 하나뿐이라 적을 것이 없다.
 			Codec.INT.optionalFieldOf("xpCurve", 0)
-					.<TeamState>forGetter(state -> state.dragonTrialsEnabled ? TRIAL_XP_CURVE : 0)
+					.<TeamState>forGetter(state -> state.dragonTrialsEnabled ? TRIAL_XP_CURVE : 0),
+			Codec.DOUBLE.optionalFieldOf("runXpRemainder", 0.0)
+					.<TeamState>forGetter(state -> state.runXpRemainder),
+			Codec.INT.optionalFieldOf("rallyShardGrantedRun", 0)
+					.<TeamState>forGetter(state -> state.rallyShardGrantedRun)
 	).apply(instance, TeamState::withStoredSections));
+
+	/** 기존 열여섯 저장 항목을 감싸 필드 이름과 옛 저장 호환성을 유지한다. */
+	public static final Codec<TeamState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+			STORED_CODEC.<TeamState>forGetter(state -> state),
+			Codec.BOOL.optionalFieldOf("endEntered", false).<TeamState>forGetter(state -> state.endEntered),
+			Codec.BOOL.optionalFieldOf("battleSupplyGranted", false).<TeamState>forGetter(state -> state.battleSupplyGranted)
+	).apply(instance, (state, entered, granted) -> {
+		state.endEntered = entered;
+		state.battleSupplyGranted = granted;
+		return state;
+	}));
 
 	/**
 	 * 저장에 남길 기본 최대 체력. 지금 상한과 같으면 아예 적지 않는다.
@@ -874,7 +900,11 @@ public class TeamState {
 			Optional<Float> baseMaxHealth, AlertSection alerts, List<ItemStack> legacyGear,
 			DifficultySection difficulty, boolean perkTestUsed, RerollSection reroll,
 			boolean runStarted, int extraPrismRounds, long supplyAnchorTick,
-			boolean dragonTrials, boolean undyingOath, int xpCurve) {
+			boolean dragonTrials, boolean undyingOath, int xpCurve,
+			double runXpRemainder, int rallyShardGrantedRun) {
+		state.runXpRemainder = Double.isFinite(runXpRemainder)
+				? Math.max(0.0, Math.min(Math.nextDown(1.0), runXpRemainder)) : 0.0;
+		state.rallyShardGrantedRun = Math.max(0, rallyShardGrantedRun);
 		state.dragonTrialsEnabled = dragonTrials;
 		state.undyingOathSpent = undyingOath;
 		migrateExperienceCurve(state, xpCurve);

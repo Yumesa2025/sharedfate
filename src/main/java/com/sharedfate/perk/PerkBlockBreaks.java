@@ -186,14 +186,15 @@ public final class PerkBlockBreaks {
 				continue;
 			}
 			for (PerkEffect effect : perk.effects()) {
-				handleEffect(serverLevel, breaker, pos, state, blockEntity, effect, perk.name());
+				handleEffect(serverLevel, breaker, pos, state, blockEntity, effect, perk.name(),
+						perk.rarity());
 			}
 		}
 		// 켜진 세트도 같은 규칙으로 지난다. 채굴 3단계의 bonus_drop 이 이 길을 탄다.
 		// 세트가 없으면 빈 목록이라 블록을 캘 때마다 얹히는 부담이 없다.
 		for (PerkSets.Tier tier : PerkSetEffects.activeTiersOf(teamState)) {
 			for (PerkEffect effect : tier.effects()) {
-				handleEffect(serverLevel, breaker, pos, state, blockEntity, effect, tier.name());
+				handleEffect(serverLevel, breaker, pos, state, blockEntity, effect, tier.name(), null);
 			}
 		}
 	}
@@ -202,14 +203,18 @@ public final class PerkBlockBreaks {
 	 * 효과 하나를 이 블록 파괴에 적용한다.
 	 *
 	 * @param sourceName 알림에 쓸 이름. 증강이면 증강 이름, 세트면 그 단계의 이름이다
+	 * @param rarity     발동 알림 테두리 색. 세트면 null(실버)
 	 */
 	private static void handleEffect(ServerLevel serverLevel, ServerPlayer breaker, BlockPos pos,
 			BlockState state, @Nullable BlockEntity blockEntity, PerkEffect effect,
-			String sourceName) {
+			String sourceName, @Nullable PerkRarity rarity) {
 		if (effect instanceof OnBreakEffect onBreak && onBreak.appliesTo(state)) {
 			onBreak.grantTemporaryEffects(breaker);
 		} else if (effect instanceof BonusDropEffect bonus && bonus.appliesTo(state)) {
-			tryBonusDrop(serverLevel, breaker, pos, state, blockEntity, bonus);
+			if (tryBonusDrop(serverLevel, breaker, pos, state, blockEntity, bonus)) {
+				// 하나 더 떨어진 순간 「⟡ 욕심 많은 곡괭이」. 이름이 곧 쿨다운 열쇠라 세트 단계도 따로 묶인다.
+				PerkProcFeedback.fire(breaker, sourceName, sourceName, rarity);
+			}
 		} else if (effect instanceof PairedMiningEffect) {
 			PerkResonantMining.onBreak(serverLevel.getServer(), breaker, state, serverLevel.getGameTime());
 		} else if (effect instanceof EchoMiningEffect) {
@@ -547,18 +552,18 @@ public final class PerkBlockBreaks {
 	 *       도구다. 이때 바닐라는 {@code playerDestroy} 를 부르지 않아 전리품이 없다.</li>
 	 * </ul>
 	 */
-	private static void tryBonusDrop(ServerLevel level, ServerPlayer breaker, BlockPos pos,
+	private static boolean tryBonusDrop(ServerLevel level, ServerPlayer breaker, BlockPos pos,
 			BlockState state, @Nullable BlockEntity blockEntity, BonusDropEffect effect) {
 		if (breaker.preventsBlockDrops() || !breaker.hasCorrectToolForDrops(state)) {
-			return;
+			return false;
 		}
 		double chance = effect.chanceFor();
 		if (chance <= 0.0) {
-			return;
+			return false;
 		}
 		RandomSource random = level.getRandom();
 		if (chance < 1.0 && random.nextDouble() >= chance) {
-			return;
+			return false;
 		}
 
 		// extra 가 1이면(기본값) 한 번만 굴려 하나 준다. 그보다 크면
@@ -576,6 +581,7 @@ public final class PerkBlockBreaks {
 		if (granted > 0) {
 			spendExtraDurability(breaker, effect.extraDurability());
 		}
+		return granted > 0;
 	}
 
 	/**

@@ -61,7 +61,9 @@ public abstract class ItemStackDurabilityMixin {
 		if (com.sharedfate.perk.DragonPrep.keepsDurability(PerkGearRules.activeState(player), self)) {
 			return 0;
 		}
-		return PerkGearRules.reduceDurabilityLoss(
+		int reduced = PerkGearRules.reduceDurabilityLoss(
 				PerkGearRules.activeState(player), self, amount, level.getRandom());
+		return com.sharedfate.perk.PerkShieldCombat.durability(
+				PerkGearRules.activeState(player), self, reduced, level.getRandom());
 	}
 }

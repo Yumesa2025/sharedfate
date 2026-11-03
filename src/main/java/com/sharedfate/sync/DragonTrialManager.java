@@ -1865,7 +1865,9 @@ public final class DragonTrialManager {
 			return;
 		}
 		TrialCatalog.Trigger trigger = session.peekTrigger();
-		List<TrialCatalog.Trial> pool = TrialCatalog.offerable(trigger, session.chosen());
+		List<TrialCatalog.Trial> pool = com.sharedfate.perk.DragonPrep.filterTrials(
+				TeamManager.get(server).stateByTeamId(session.teamId()), trigger,
+				TrialCatalog.offerable(trigger, session.chosen()));
 		if (pool.isEmpty()) {
 			session.beginChoice();
 			session.skipChoice();

@@ -174,7 +174,8 @@ public final class PerkManager {
 			if (rarity == PerkRarity.PRISM && !PerkDraft.PRISM_MILESTONES.contains(milestone)) {
 				state.extraPrismRounds++;
 			}
-			UUID chooser = pickChooser(server, team, random);
+			// 「드래곤전 대비」(45·50)는 팀 투표로 정한다 — 고를 사람을 뽑지 않는다(PerkChoiceSession.tickPrep).
+			UUID chooser = PerkMilestones.isTrialMilestone(milestone) ? null : pickChooser(server, team, random);
 			PendingOffer offer = new PendingOffer(milestone, Optional.ofNullable(chooser), options);
 			state.pending.add(offer);
 			// 알림은 여기서 하지 않는다. 곧바로 강제 선택 세션이 열리면서
@@ -237,7 +238,8 @@ public final class PerkManager {
 		RandomSource random = server.overworld().getRandom();
 		for (int i = 0; i < state.pending.size(); i++) {
 			PendingOffer offer = state.pending.get(i);
-			if (offer.chooser().isPresent()) {
+			// 「드래곤전 대비」는 선택자가 없는 채로 둔다. 팀 투표라 맡길 사람이 없다.
+			if (offer.chooser().isPresent() || PerkMilestones.isTrialMilestone(offer.milestone())) {
 				continue;
 			}
 			UUID chooser = pickChooser(server, team, random);
@@ -356,7 +358,9 @@ public final class PerkManager {
 		boolean changed = false;
 		for (int i = 0; i < state.pending.size(); i++) {
 			PendingOffer offer = state.pending.get(i);
-			if (!offer.isChooser(leaving)) {
+			// 0.44 저장에는 「드래곤전 대비」에도 선택자가 붙어 있다. 넘겨 봐야 쓰이지 않고 「선택권이 넘어갔습니다」
+			// 알림만 잘못 나간다.
+			if (!offer.isChooser(leaving) || PerkMilestones.isTrialMilestone(offer.milestone())) {
 				continue;
 			}
 			// 넘겨받을 사람도 관전자면 안 된다. 여기서 관전자에게 넘기면 시간이 멈춘 채
@@ -400,6 +404,16 @@ public final class PerkManager {
 		}
 
 		PendingOffer offer = state.pending.getFirst();
+		if (PerkMilestones.isTrialMilestone(offer.milestone())) {
+			// 「드래곤전 대비」는 팀 투표다. 투표가 돌고 있으면 그 창을 되돌려 주고, 아니면(전원 관전 등으로
+			// 아직 못 열렸다) 고를 수 없는 확인용 창만 연다 — 혼자 열어 혼자 고르면 투표가 뜻이 없다.
+			if (PerkChoiceSession.resendPrep(player, team.teamId(), offer.milestone())) {
+				return OpenResult.OPENED;
+			}
+			ServerPlayNetworking.send(player,
+					PerkOfferPayload.manual(offer.milestone(), false, describeOptions(offer)));
+			return OpenResult.SPECTATING;
+		}
 		boolean canChoose = offer.isChooser(player.getUUID());
 		// 관전 화면이 "○○님이 고르는 중입니다"를 띄우려면 선택자 이름이 먼저 가 있어야 한다.
 		broadcastSync(server, team, state);
@@ -471,6 +485,11 @@ public final class PerkManager {
 		if (offer.milestone() != milestone || !offer.isChooser(player.getUUID())) {
 			return;
 		}
+		// 「드래곤전 대비」는 팀 투표로만 정한다(PerkChoiceSession.tickPrep). 0.44 저장에 남은 선택자가 고르기
+		// 묶음을 보내도 받지 않는다.
+		if (PerkMilestones.isTrialMilestone(milestone)) {
+			return;
+		}
 		if (!offer.optionIds().contains(perkId)) {
 			return;
 		}
@@ -535,6 +554,10 @@ public final class PerkManager {
 		ShareTeam team = manager.teamOf(player.getUUID());
 		TeamState state = manager.stateOf(player.getUUID());
 		if (team == null || state == null || !state.perksEnabled || state.pending.isEmpty()) {
+			return;
+		}
+		// 「드래곤전 대비」에는 다시 뽑기가 없다(사람 말 「리롤 선택권은 없애고」, 2026-11-04). 횟수도 안 깎는다.
+		if (PerkMilestones.isTrialMilestone(milestone)) {
 			return;
 		}
 		if (!PerkChoiceSession.acceptsReroll(team.teamId(), milestone)) {
@@ -639,6 +662,54 @@ public final class PerkManager {
 		broadcastSync(server, team, state);
 		broadcast(server, team, Component.literal(
 				"[증강] 후보가 잘못되어 다시 뽑았습니다. 다시 뽑기 횟수는 그대로입니다."));
+	}
+
+	/**
+	 * 「드래곤전 대비」 팀 투표로 뽑힌 증강을 팀에 준다({@code PerkChoiceSession.tickPrep}).
+	 *
+	 * <p>뽑힌 카드를 그 사이에 이미 얻었으면(또는 풀에서 사라졌으면) 남은 후보에서 대신 준다 — 투표가 끝났는데
+	 * 아무것도 못 받으면 창만 닫히고 구간이 사라진다. 줄 것이 하나도 없으면 {@link #applyRandomChoice} 와 같이
+	 * 선택권을 버린다. <b>그래도 대기열에서는 반드시 빠진다.</b>
+	 *
+	 * <p>「고른 사람」은 없다 — 팀 투표다. 「드래곤전 대비」 열두 장에는 {@code fixed_to_owner} 가 없어
+	 * 보유자 칸이 비어도 달라지는 것이 없다.
+	 *
+	 * @param byRoulette 동점이라 룰렛으로 정했는가. 채팅 한 줄만 달라진다
+	 * @return 실제로 준 증강 id. 아무것도 못 줬으면 null
+	 */
+	static @Nullable String applyVotedChoice(MinecraftServer server, UUID teamId, int milestone,
+			@Nullable String perkId, boolean byRoulette) {
+		if (server == null) {
+			return null;
+		}
+		TeamManager manager = TeamManager.get(server);
+		ShareTeam team = manager.teamById(teamId);
+		TeamState state = manager.stateByTeamId(teamId);
+		if (team == null || state == null || state.pending.isEmpty()) {
+			return null;
+		}
+		PendingOffer offer = state.pending.getFirst();
+		if (offer.milestone() != milestone) {
+			return null;
+		}
+		Perk perk = perkId == null ? null : PerkRegistry.byId(perkId).orElse(null);
+		if (perk == null || !offer.optionIds().contains(perk.id()) || state.ownedPerks.contains(perk.id())) {
+			perk = pickRandomTakeable(server, state, offer);
+		}
+		if (perk == null) {
+			state.pending.removeFirst();
+			manager.setDirty();
+			broadcastSync(server, team, state);
+			SharedFateMod.LOGGER.warn(
+					"{}렙 구간 투표가 끝났지만 줄 수 있는 후보가 없어 그대로 버립니다.", milestone);
+			broadcast(server, team, Component.literal(
+					"[증강] 투표가 끝났지만 고를 수 있는 후보가 없어 이번 선택권은 사라집니다."));
+			return null;
+		}
+		commit(server, manager, team, state, perk,
+				(byRoulette ? "표가 같아 룰렛으로 " : "팀 투표로 ") + gradeAndName(perk) + " 이(가) 정해졌습니다.",
+				null, server.overworld().getRandom());
+		return perk.id();
 	}
 
 	/**
@@ -1194,7 +1265,8 @@ public final class PerkManager {
 
 	private static void broadcastSync(MinecraftServer server, ShareTeam team, TeamState state) {
 		String chooserName = "";
-		if (!state.pending.isEmpty()) {
+		// 「드래곤전 대비」는 팀 투표라 「○○님이 고를 차례」가 없다. 0.44 저장에 남은 선택자도 적지 않는다.
+		if (!state.pending.isEmpty() && !PerkMilestones.isTrialMilestone(state.pending.getFirst().milestone())) {
 			Optional<UUID> chooser = state.pending.getFirst().chooser();
 			if (chooser.isPresent()) {
 				ServerPlayer picked = server.getPlayerList().getPlayer(chooser.get());

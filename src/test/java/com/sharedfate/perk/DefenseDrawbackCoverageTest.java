@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>사람이 게임에서 느낀 것은 「세트가 켜진 <b>뒤에</b> 고른 방어 증강은 대가가 안 사라지는 것
  * 같다」였다(2026-10-16). 따져 보니 고른 순서 탓이 아니라, 대가 중 셋이 아예 면제 경로가
- * 없었다 — 「철벽」·「버티는 방패」의 몹 체력, 「버티는 방패」의 방패 열 배 마모, 「완충」의 회복
+ * 없었다 — 「철벽」·「버티는 방패」의 몹 체력, 「버티는 방패」의 방패 다섯 배 마모, 「완충」의 회복
  * 금지. 그래서 이 시험은 두 가지를 못박는다.
  *
  * <ul>
@@ -54,7 +54,7 @@ class DefenseDrawbackCoverageTest {
 	/** 세트가 켜진 <b>뒤에</b> 고르는 방어 증강들. 대가가 효과 안에 묶인 것이 모두 여기 있다. */
 	private static final List<String> LATE_PICKS = List.of(
 			"sharedfate:shared_suffering", "sharedfate:iron_wall", "sharedfate:unbroken",
-			"sharedfate:grounded_guard", "sharedfate:cushion");
+			"sharedfate:cushion");
 
 	/** 막아 낸 낙하 피해. 방패 마모를 잴 때 쓴다. */
 	private static final float BLOCKED_FALL = 5.0F;
@@ -94,11 +94,13 @@ class DefenseDrawbackCoverageTest {
 		}
 		List<String> expected = new ArrayList<>(SET_STARTERS);
 		expected.addAll(LATE_PICKS);
+		expected.add("sharedfate:shield_rush");
 		assertEquals(expected.stream().sorted().toList(), defense.stream().sorted().toList(),
 				"방어 증강 목록이 바뀌었다 — 새 증강의 대가가 꺼지는 경로를 먼저 정할 것");
 
 		TeamState off = teamWith();
 		for (String id : defense) {
+			if (id.equals("sharedfate:shield_rush")) continue; // 돌진의 사용 비용은 세트가 없앨 대가가 아니다.
 			off.ownedPerks.clear();
 			off.ownedPerks.add(id);
 			assertFalse(liveDrawbacks(off).isEmpty(), id + " 에 끌 대가가 하나도 잡히지 않는다");
@@ -186,24 +188,24 @@ class DefenseDrawbackCoverageTest {
 		assertFalse(SpreadDamageManager.blocksNaturalRegen(true, alone), "세트면 나뉘는 동안에도 회복된다");
 	}
 
-	/** 「버티는 방패」 — 방패 마모가 열 배에서 바닐라와 같은 한 배로 내려간다. */
+	/** 「버티는 방패」 — 방패 유형으로 옮겨 방어 세트가 마모 대가를 없애지 않는다. */
 	@Test
-	void 버티는_방패의_마모가_바닐라로_돌아간다() {
-		assertEquals(50, PerkDamage.fallBlockDurabilityCost(BLOCKED_FALL, false));
+	void 버티는_방패의_마모는_방어_세트로_면제되지_않는다() {
+		assertEquals(25, PerkDamage.fallBlockDurabilityCost(BLOCKED_FALL, false));
 		assertEquals(5, PerkDamage.fallBlockDurabilityCost(BLOCKED_FALL, true));
 		assertEquals(1, PerkDamage.fallBlockDurabilityCost(0.2F, true), "막았으면 적어도 하나는 닳는다");
 
 		TeamState state = teamWith("sharedfate:grounded_guard");
 		assertFalse(PerkDrawbacks.builtInWaived(state, ShieldFallImmunityEffect.class));
 		state.ownedPerks.addAll(SET_STARTERS);
-		assertTrue(PerkDrawbacks.builtInWaived(state, ShieldFallImmunityEffect.class));
+		assertFalse(PerkDrawbacks.builtInWaived(state, ShieldFallImmunityEffect.class), "이제 방패 유형이므로 방어 세트가 면제하지 않는다");
 	}
 
 	/** 「철벽」·「버티는 방패」 — 세트를 켠 팀 몫의 몹 체력 배율이 1 로 돌아간다. */
 	@Test
 	void 몹_체력_배율이_세트를_켠_팀_몫에서_빠진다() {
 		TeamState state = teamWith("sharedfate:iron_wall", "sharedfate:grounded_guard");
-		assertEquals(1.5 * 1.15, MobPerkModifiers.teamHealthMultiplier(state, EntityTypes.ZOMBIE, true),
+		assertEquals(1.5, MobPerkModifiers.teamHealthMultiplier(state, EntityTypes.ZOMBIE, true),
 				1.0e-9);
 		// 엔더 드래곤은 원래 빠져 있다.
 		assertEquals(1.0, MobPerkModifiers.teamHealthMultiplier(state, EntityTypes.ENDER_DRAGON, true),
@@ -267,7 +269,7 @@ class DefenseDrawbackCoverageTest {
 				}
 				if (effect instanceof ShieldFallImmunityEffect) {
 					boolean waived = PerkDrawbacks.builtInWaived(state, ShieldFallImmunityEffect.class);
-					live.put(id + " · 방패 열 배 마모",
+					live.put(id + " · 방패 다섯 배 마모",
 							PerkDamage.fallBlockDurabilityCost(BLOCKED_FALL, waived) > Math.round(BLOCKED_FALL));
 				}
 			}

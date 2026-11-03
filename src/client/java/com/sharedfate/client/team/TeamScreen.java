@@ -1,5 +1,6 @@
 package com.sharedfate.client.team;
 
+import com.sharedfate.client.ClientPreferences;
 import com.sharedfate.client.ClientStatRows;
 import com.sharedfate.client.ClientTeamState;
 import com.sharedfate.client.perk.ClientPerkSets;
@@ -115,6 +116,12 @@ public class TeamScreen extends Screen {
 	 * <p>켜진 단계는 능력치가 오른 줄과 같은 초록(밝게), 안 켜진 단계는 설명 줄과 같은
 	 * 회색(흐리게)이다.
 	 */
+	/** 「설정」 탭의 이 컴퓨터 설정 단추 풀이. */
+	private static final String PROC_ALERTS_TOOLTIP =
+			"「급소만 노려」 같은 증강이 발동한 순간 경험치 바 위에 이름을 잠깐 띄웁니다.";
+	private static final String PROC_SOUND_TOOLTIP =
+			"증강이 발동한 순간 작은 종소리를 냅니다. 같은 증강은 5초에 한 번입니다.";
+
 	private static final PerkSetTooltipLines.Palette TOOLTIP_PALETTE =
 			new PerkSetTooltipLines.Palette(TEXT_MAIN, TEXT_GOOD, TEXT_DIM, TEXT_MAIN,
 					rarityColor("silver"), rarityColor("gold"), rarityColor("prism"), TEXT_DIM);
@@ -698,7 +705,15 @@ public class TeamScreen extends Screen {
 	 * {@link #renderSettings} 가 글자로만 보여 준다.
 	 */
 	private void initSettings(int left) {
-		// 그릴 위젯이 없다. 값 표시는 renderSettings 가 맡는다.
+		// 팀 설정 값 표시는 renderSettings 가 맡는다. 단추는 이 컴퓨터의 설정 둘뿐이다 — 팀이 없어도,
+		// 리더가 아니어도 바꿀 수 있다. 「증강 선택 창 열기」가 다른 탭에서 쓰는 맨 아래 줄을 쓴다.
+		int half = PANEL_WIDTH / 2 - 2;
+		int y = this.height - 54;
+		addRenderableWidget(toggle(left, y, half, "발동 알림 글자", ClientPreferences.procAlerts(),
+				"켬", "끔", PROC_ALERTS_TOOLTIP, ClientPreferences::toggleProcAlerts));
+		addRenderableWidget(toggle(left + PANEL_WIDTH / 2 + 2, y, half, "발동 알림 소리",
+				ClientPreferences.procSound(), "켬", "끔", PROC_SOUND_TOOLTIP,
+				ClientPreferences::toggleProcSound));
 	}
 
 	// ------------------------------------------------------------------ 증강
@@ -855,7 +870,10 @@ public class TeamScreen extends Screen {
 		switch (tab) {
 			case STATUS -> renderStatus(graphics, left);
 			case TEAM -> renderTeam(graphics, left);
-			case SETTINGS -> renderSettings(graphics, left);
+			case SETTINGS -> {
+				renderSettings(graphics, left);
+				renderLocalSettingsTitle(graphics, left);
+			}
 			// 세트 줄에 마우스를 올리면 툴팁이 뜬다. 그 판정에 마우스 자리가 필요해서 여기만
 			// 좌표를 함께 넘긴다.
 			case PERKS -> renderPerks(graphics, left, mouseX, mouseY);
@@ -1074,6 +1092,11 @@ public class TeamScreen extends Screen {
 				left, y, TEXT_DIM);
 	}
 
+	/** 「설정」 탭 아래 단추 줄 위의 제목. 팀 설정과 달리 이 컴퓨터에만 저장된다는 것을 밝힌다. */
+	private void renderLocalSettingsTitle(GuiGraphicsExtractor graphics, int left) {
+		graphics.text(this.font, "증강 발동 알림 (이 컴퓨터에만 저장)", left, this.height - 66, TEXT_DIM);
+	}
+
 	private static String onOffText(boolean value) {
 		return value ? "켜짐" : "꺼짐";
 	}
@@ -1083,13 +1106,12 @@ public class TeamScreen extends Screen {
 	/**
 	 * 능력치 탭. <b>증강이 무엇을 얼마나 바꿨는지</b>를 바닐라 기본값과 나란히 보여 준다.
 	 *
-	 * <p>같은 줄이 인벤토리 화면(E) 왼쪽에도 뜨지만, 그쪽은 <b>창 왼쪽에 남는 자리만큼만</b>
-	 * 그린다. GUI 배율이 크거나 조합법 책을 펼치면 이름이 줄고, 더 좁으면 아예 감춘다
-	 * ({@link com.sharedfate.ui.InventoryStatPanel}). 이 탭은 어떤 배율에서도 <b>온전한 이름과
-	 * 증감, 그리고 아래의 설명 줄까지</b> 보여 준다.
+	 * <p>인벤토리 화면(E) 왼쪽에도 능력치가 뜨지만 그쪽은 「추가 공격력 +35%」처럼 증강·세트가
+	 * 얹은 <b>보정치</b>만 적는다({@link ClientStatRows#bonusGroups}). 이 탭은 무기까지 얹힌
+	 * <b>최종값</b>을 기본값과 나란히, 어떤 배율에서도 <b>온전한 이름과 증감, 그리고 아래의 설명
+	 * 줄까지</b> 보여 준다.
 	 *
-	 * <p>대신 <b>두 곳이 같은 코드로 줄을 만든다</b> — {@link ClientStatRows} 가 유일한
-	 * 출처이고, 글자 모양은 {@link StatRow} 가 정한다. 형식이 두 곳에서 갈라질 자리가 없다.
+	 * <p>줄은 {@link ClientStatRows} 가 만들고 글자 모양은 {@link StatRow} 가 정한다.
 	 *
 	 * <h2>값을 어디서 읽는지</h2>
 	 * <p>{@link ClientStatRows} 에 적었다. 요약하면 최대 체력·공격 속도·방어력·이동 속도는

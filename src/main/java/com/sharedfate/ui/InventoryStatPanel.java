@@ -29,6 +29,10 @@ public final class InventoryStatPanel {
 	 *
 	 * <p><b>순서가 곧 규칙이다.</b> 위에서부터 들어가는 것을 고른다.
 	 *
+	 * <p>아래 보기는 최종값 줄({@link StatRow})의 모양이다. 인벤토리 화면이 지금 그리는 보정치 줄
+	 * ({@link BonusRow})은 같은 차례로 「최대 체력  +6  (하트 3개)」 → 「체력  +6」 → 「체력 +6」 →
+	 * 「체력」/「+6」 으로 물러난다.
+	 *
 	 * <ul>
 	 *   <li>{@link #FULL} — 「최대 체력  20 → 26  (+6)」. 온전한 이름과 증감까지.</li>
 	 *   <li>{@link #SHORT} — 「체력  20 → 26  (+6)」. 이름만 줄인다.</li>
@@ -55,7 +59,7 @@ public final class InventoryStatPanel {
 	 * 실제로 그릴 글자 한 줄.
 	 *
 	 * @param text 그대로 그릴 글자
-	 * @param color 글자색. {@link StatRow#color()} 가 정한 값이다
+	 * @param color 글자색. {@link PanelRow#color()} 가 정한 값이다
 	 * @param y 덩어리 맨 위에서부터의 세로 거리
 	 */
 	public record Line(String text, int color, int y) {
@@ -88,7 +92,8 @@ public final class InventoryStatPanel {
 	 * @param maxHeight  쓸 수 있는 세로(px)
 	 * @param measure    글자의 폭을 재는 것. 화면은 {@code font::width} 를 넘긴다
 	 */
-	public static Layout layout(List<List<StatRow>> groups, int maxWidth, int maxHeight,
+	public static Layout layout(List<? extends List<? extends PanelRow>> groups, int maxWidth,
+			int maxHeight,
 			ToIntFunction<String> measure) {
 		if (groups == null || groups.isEmpty() || maxWidth <= 0 || maxHeight <= 0) {
 			return NOTHING;
@@ -114,11 +119,11 @@ public final class InventoryStatPanel {
 	}
 
 	/** 한 모양으로 줄을 만든다. 어느 모양이든 줄의 차례와 묶음 사이의 틈은 같다. */
-	private static List<Line> build(List<List<StatRow>> groups, Style style) {
+	private static List<Line> build(List<? extends List<? extends PanelRow>> groups, Style style) {
 		List<Line> lines = new ArrayList<>();
 		int y = 0;
 		boolean firstGroup = true;
-		for (List<StatRow> group : groups) {
+		for (List<? extends PanelRow> group : groups) {
 			if (group == null || group.isEmpty()) {
 				continue;
 			}
@@ -126,9 +131,9 @@ public final class InventoryStatPanel {
 				y += GROUP_GAP;
 			}
 			firstGroup = false;
-			for (StatRow row : group) {
+			for (PanelRow row : group) {
 				int color = row.color();
-				if (style == Style.WRAPPED) {
+				if (style == Style.WRAPPED && row.wraps()) {
 					lines.add(new Line(row.shortLabel(), color, y));
 					y += LINE_HEIGHT;
 					lines.add(new Line(row.values(), color, y));
@@ -142,7 +147,7 @@ public final class InventoryStatPanel {
 		return lines;
 	}
 
-	private static String text(StatRow row, Style style) {
+	private static String text(PanelRow row, Style style) {
 		return switch (style) {
 			case FULL -> row.fullLine();
 			case SHORT -> row.shortLine();

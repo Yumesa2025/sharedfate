@@ -9,6 +9,16 @@
   ],
   "sets": [
     {
+      "type": "shield",
+      "icon": "minecraft:shield",
+      "tiers": [
+        { "count": 1, "description": "처음 열릴 때 팀에 방패 1개를 지급합니다.", "effects": [{ "type": "first_shield" }] },
+        { "count": 2, "description": "방패 내구도가 닳을 때 60% 확률로 닳지 않습니다.", "effects": [{ "type": "shield_durability", "ignore_chance": 0.6 }] },
+        { "count": 3, "description": "방패에 마법부여할 수 있습니다. 15레벨부터 내구성·가시, 22레벨부터 체력·방어력·보호 계열이 나옵니다.", "effects": [{ "type": "shield_enchanting" }] },
+        { "count": 4, "description": "방패 9개로 다이아몬드 방패를 제작합니다. 내구도는 3000이며 닳지 않고 막는 동안 이동 속도가 줄지 않습니다.", "effects": [{ "type": "diamond_shield_recipe" }] }
+      ]
+    },
+    {
       "type": "mining",
       "tiers": [
         {
@@ -163,13 +173,13 @@
         },
         {
           "count": 3,
-          "description": "보급으로 오는 것이 더 좋아집니다.",
+          "description": "보급으로 오는 것이 더 좋아지고, 반드시 보상을 받습니다.",
           "effects": [
             {
               "type": "supply_drop",
               "interval_minutes": 10,
               "priority": 3,
-              "nothing_chance": 0.12,
+              "nothing_chance": 0,
               "rolls": 2,
               "entries": [
                 {
@@ -273,14 +283,14 @@
         },
         {
           "count": 4,
-          "description": "보급 주기가 5분으로 줄어듭니다.",
+          "description": "보급 주기가 5분으로 줄어들고, 한 번에 보상 5개를 반드시 받습니다.",
           "effects": [
             {
               "type": "supply_drop",
               "interval_minutes": 5,
               "priority": 4,
-              "nothing_chance": 0.12,
-              "rolls": 2,
+              "nothing_chance": 0,
+              "rolls": 5,
               "entries": [
                 {
                   "id": "minecraft:coal",
@@ -427,13 +437,10 @@
       "tiers": [
         {
           "count": 3,
-          "description": "낙하 피해를 90% 덜 받습니다.",
+          "description": "낙하 피해를 받지 않습니다.",
           "effects": [
             {
-              "type": "attribute",
-              "attribute": "minecraft:fall_damage_multiplier",
-              "operation": "add_multiplied_total",
-              "amount": -0.9
+              "type": "fall_immunity"
             }
           ]
         }
@@ -511,11 +518,15 @@
         },
         {
           "count": 3,
-          "description": "약탈이 III 으로 오릅니다.",
+          "description": "약탈이 IV로 오릅니다. 팀원이 적대적인 몹을 처치하면 10% 확률로 다이아몬드 1개가 나옵니다.",
           "effects": [
             {
               "type": "always_looting",
-              "levels": 3
+              "levels": 4
+            },
+            {
+              "type": "hostile_diamond_drop",
+              "chance": 0.1
             }
           ]
         }
@@ -536,11 +547,15 @@
         },
         {
           "count": 3,
-          "description": "피해를 받으면 그만큼 허기가 찹니다.",
+          "description": "피해를 받으면 그만큼 허기가 찹니다. 팀 최대 체력이 추가로 2 늘어납니다.",
           "effects": [
             {
               "type": "hunger_on_damage",
               "per_damage": 0.4
+            },
+            {
+              "type": "max_health_bonus",
+              "amount": 2.0
             }
           ]
         }
@@ -643,10 +658,16 @@
         },
         {
           "count": 3,
-          "description": "공격력이 깎이지 않습니다. 지금 가진 증강은 물론 앞으로 얻는 증강의 공격력 감소도 전부 사라집니다.",
+          "description": "공격력이 깎이지 않습니다. 지금 가진 증강은 물론 앞으로 얻는 증강의 공격력 감소도 전부 사라집니다. 공격 속도가 추가로 30% 빨라집니다.",
           "effects": [
             {
               "type": "no_attack_damage_loss"
+            },
+            {
+              "type": "attribute",
+              "attribute": "minecraft:attack_speed",
+              "operation": "add_multiplied_total",
+              "amount": 0.3
             }
           ]
         }
@@ -700,11 +721,11 @@
       "tiers": [
         {
           "count": 3,
-          "description": "결속 증강의 거리가 1.5배로 늘어납니다.",
+          "description": "결속 증강의 거리가 3배로 늘어납니다.",
           "effects": [
             {
               "type": "proximity_range",
-              "multiplier": 1.5
+              "multiplier": 3.0
             }
           ]
         }
