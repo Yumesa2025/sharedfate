@@ -8,6 +8,9 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.util.Unit;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
@@ -28,6 +31,22 @@ public final class ShieldRecipes {
 
 	/** null은 다른 제작법, 빈 묶음은 이 제작법이지만 조건을 충족하지 못한 경우다. */
 	public static ItemStack result(List<ItemStack> grid, TeamState state) {
+		return result(grid, state, true);
+	}
+
+	/** 인벤토리의 2×2 칸. 판자 수리(방패 손질)만 되고 강철·다이아몬드 방패는 제작대에서만 만든다. */
+	public static ItemStack inventoryResult(List<ItemStack> grid, TeamState state) {
+		return result(grid, state, false);
+	}
+
+	/** 제작대 결과인지 2×2 결과인지 메뉴를 보고 고른다. 둘 다 아니면 null. */
+	public static ItemStack resultFor(AbstractContainerMenu menu, List<ItemStack> grid, TeamState state) {
+		if (menu instanceof CraftingMenu) return result(grid, state);
+		if (menu instanceof InventoryMenu) return inventoryResult(grid, state);
+		return null;
+	}
+
+	private static ItemStack result(List<ItemStack> grid, TeamState state, boolean workbench) {
 		int shields = 0, iron = 0, planks = 0, other = 0;
 		ItemStack shield = ItemStack.EMPTY;
 		for (ItemStack stack : grid) {
@@ -38,6 +57,7 @@ public final class ShieldRecipes {
 			else other++;
 		}
 		if (other > 0) return null;
+		if (!workbench && !(shields == 1 && planks > 0 && iron == 0)) return null;
 		if (shields == 9 && iron == 0 && planks == 0) {
 			return unlocked(state, ShieldCraftEffect.DIAMOND_RECIPE) ? diamond() : ItemStack.EMPTY;
 		}

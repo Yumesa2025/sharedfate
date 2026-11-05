@@ -57,6 +57,14 @@ class ShieldRecipesTest {
 		assertNull(ShieldRecipes.result(grid.subList(0, 8), state));
 	}
 
+	// 판자 쪽은 시험 환경에서 판자 태그가 묶이지 않아 수리 계산(repair) 시험으로 갈음한다.
+	@Test void 인벤토리_2x2_칸에서는_판자_수리만_된다() {
+		// 강철 방패는 2×2 에 들어가도 제작대에서만 만든다 — 바닐라 처리로 넘긴다.
+		var steelGrid = List.of(new ItemStack(Items.SHIELD), new ItemStack(Items.IRON_BLOCK), ItemStack.EMPTY, ItemStack.EMPTY);
+		assertNull(ShieldRecipes.inventoryResult(steelGrid, holding(ShieldCraftEffect.STEEL_RECIPE)));
+		assertFalse(ShieldRecipes.result(steelGrid, holding(ShieldCraftEffect.STEEL_RECIPE)).isEmpty());
+	}
+
 	@Test void 판자는_최대_내구도의_십오퍼센트를_수리하며_이름은_보존한다() {
 		ItemStack steel = ShieldRecipes.steel(new ItemStack(Items.SHIELD));
 		steel.setDamageValue(500);

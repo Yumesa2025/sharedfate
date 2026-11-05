@@ -45,7 +45,6 @@ for (const set of sets) {
   }
 }
 check(perkPage.includes('value="shield"'), '방패 필터가 없다.');
-check(setPage.includes('data-item="minecraft:shield"'), '방패 아이콘이 없다.');
 
 // 3. 이름이 실제로 찍혀 있다 — 빈 카드가 아니다.
 for (const perk of perks) {

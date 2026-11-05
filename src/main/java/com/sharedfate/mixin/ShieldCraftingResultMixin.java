@@ -20,8 +20,8 @@ public abstract class ShieldCraftingResultMixin {
 	@Inject(method = "getRemainingItems", at = @At("HEAD"), cancellable = true)
 	private void sharedfate$consumeInputs(CraftingInput input, Level level,
 			CallbackInfoReturnable<NonNullList<ItemStack>> cir) {
-		if (!(player.containerMenu instanceof net.minecraft.world.inventory.CraftingMenu)) return;
-		ItemStack result = ShieldRecipes.result(input.items(), TeamLookup.stateOf(player.getUUID()));
+		ItemStack result = ShieldRecipes.resultFor(player.containerMenu, input.items(),
+				TeamLookup.stateOf(player.getUUID()));
 		if (result != null && !result.isEmpty()) cir.setReturnValue(NonNullList.withSize(input.size(), ItemStack.EMPTY));
 	}
 }

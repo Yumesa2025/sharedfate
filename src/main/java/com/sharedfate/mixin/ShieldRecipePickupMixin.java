@@ -3,7 +3,7 @@ package com.sharedfate.mixin;
 import com.sharedfate.recipe.ShieldRecipes;
 import com.sharedfate.team.TeamLookup;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.AbstractCraftingMenu;
 import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -18,11 +18,11 @@ import java.util.ArrayList;
 public abstract class ShieldRecipePickupMixin {
 	@Inject(method = "mayPickup", at = @At("HEAD"), cancellable = true)
 	private void sharedfate$requireUnlock(Player player, CallbackInfoReturnable<Boolean> cir) {
-		if (!((Object) this instanceof ResultSlot) || !(player.containerMenu instanceof CraftingMenu menu)
+		if (!((Object) this instanceof ResultSlot) || !(player.containerMenu instanceof AbstractCraftingMenu menu)
 				|| player.level().isClientSide()) return;
 		var grid = new ArrayList<ItemStack>();
-		for (int i = 1; i <= 9; i++) grid.add(menu.getSlot(i).getItem());
-		ItemStack result = ShieldRecipes.result(grid, TeamLookup.stateOf(player.getUUID()));
+		for (Slot slot : menu.getInputGridSlots()) grid.add(slot.getItem());
+		ItemStack result = ShieldRecipes.resultFor(menu, grid, TeamLookup.stateOf(player.getUUID()));
 		if (result != null && result.isEmpty()) cir.setReturnValue(false);
 	}
 }
