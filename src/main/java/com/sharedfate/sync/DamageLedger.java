@@ -435,7 +435,7 @@ public final class DamageLedger {
 			if (pages.size() >= MAX_BOOK_PAGES) {
 				break;
 			}
-			addChunked(pages, runLines(team, storedTeam, run), run + "회차");
+			addChunked(pages, runLines(team, storedTeam, run), run + "회차 (받은 피해량)");
 		}
 		if (pages.size() < MAX_BOOK_PAGES) {
 			pages.add("플레이해 주셔서\n감사합니다.\n\n\n제작자 카이렌");

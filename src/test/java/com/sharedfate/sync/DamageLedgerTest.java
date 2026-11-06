@@ -41,7 +41,7 @@ class DamageLedgerTest {
 
 		String book = String.join("\n---\n", DamageLedger.buildPageTexts(team, 3));
 
-		assertTrue(book.contains("1회차"), "회차 제목이 있어야 한다");
+		assertTrue(book.contains("1회차 (받은 피해량)"), "회차 제목에 숫자가 받은 피해량이라고 적혀야 한다");
 		assertTrue(book.contains("첫째 4.0"), "같은 회차의 두 번은 합쳐진다");
 		assertTrue(book.contains("첫째 0.0"), "안 맞은 회차도 0 으로 남는다");
 		assertTrue(book.contains("첫째 6.0"));

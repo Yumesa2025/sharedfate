@@ -89,15 +89,15 @@ class DamageWardBroadcasterTest {
 				DamageWardBroadcaster.statusOf(state, OWNER, 100L, true));
 	}
 
-	/** 쿨타임은 정의 파일(10초)에서 온다. 막은 뒤 10초 동안 감추고, 차면 다시 띄운다. */
+	/** 쿨타임은 정의 파일(6초)에서 온다. 막은 뒤 6초 동안 감추고, 차면 다시 띄운다. */
 	@Test
 	void 막은_뒤_쿨타임_동안_감추고_차면_다시_뜬다() {
 		TeamState state = withBodyguard();
-		assertTrue(DamageWardTracker.tryConsume(OWNER, 1_000L, 200));
+		assertTrue(DamageWardTracker.tryConsume(OWNER, 1_000L, 120));
 
 		assertFalse(DamageWardBroadcaster.statusOf(state, OWNER, 1_000L, true).ready());
-		assertFalse(DamageWardBroadcaster.statusOf(state, OWNER, 1_199L, true).ready());
-		assertTrue(DamageWardBroadcaster.statusOf(state, OWNER, 1_200L, true).ready());
+		assertFalse(DamageWardBroadcaster.statusOf(state, OWNER, 1_119L, true).ready());
+		assertTrue(DamageWardBroadcaster.statusOf(state, OWNER, 1_120L, true).ready());
 	}
 
 	@Test

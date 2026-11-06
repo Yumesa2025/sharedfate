@@ -14,13 +14,17 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.BlocksAttacks;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -433,6 +437,10 @@ public final class PerkDamage {
 			if (ward == null) {
 				return false;
 			}
+			// 방패로 막을 공격이면 방패에 맡긴다. 쿨타임을 쓰지 않고 남겨 둔다.
+			if (shieldWouldBlock(player, source, amount)) {
+				return false;
+			}
 			if (player.isInvulnerableTo(level, source) || player.isDeadOrDying()) {
 				return false;
 			}
@@ -449,6 +457,51 @@ public final class PerkDamage {
 			warnOnce(error);
 			return false;
 		}
+	}
+
+	/**
+	 * 바닐라 방패가 이 피해를 <b>조금이라도</b> 막을 것인가.
+	 *
+	 * <p>사람이 정한 것(2026-11-06) — 「방패로 막을 때는 호위가 안 터지게」. 「호위」는
+	 * {@code hurtServer} 맨 앞에서 판정하므로 바닐라 방패 판정({@code LivingEntity.applyItemBlocking})
+	 * 보다 먼저 돈다. 그대로 두면 방패로 어차피 막을 공격에 쿨타임을 써 버린다. 그래서 바닐라와
+	 * 같은 순서로 미리 계산만 해 본다 — 26.3 바이트코드 기준으로 막는 중인 물건 → 막기 부품
+	 * ({@code BLOCKS_ATTACKS}) → 그 부품을 꿰뚫는 피해 종류 → 관통 화살 → 각도 →
+	 * {@code resolveBlockedDamage}. 마지막 것은 값만 계산하므로 방패를 깎거나 소리를 내지 않는다.
+	 *
+	 * <p>「거북 등껍질」은 각도를 0 으로 바꿔 모든 방향을 막는다({@code LivingEntityShieldCombatMixin}).
+	 * 여기서도 같게 본다.
+	 */
+	static boolean shieldWouldBlock(LivingEntity victim, DamageSource source, float amount) {
+		ItemStack blocking = victim.getItemBlockingWith();
+		if (blocking == null) {
+			return false;
+		}
+		BlocksAttacks blocks = blocking.get(DataComponents.BLOCKS_ATTACKS);
+		if (blocks == null || blocks.bypassedBy().map(set -> set.contains(source.typeHolder())).orElse(false)) {
+			return false;
+		}
+		if (source.getDirectEntity() instanceof AbstractArrow arrow && arrow.getPierceLevel() > 0) {
+			return false;
+		}
+		double angle = PerkShieldCombat.turtle(victim)
+				? 0.0D
+				: blockAngle(source.getSourcePosition(), victim.position(), victim.getYHeadRot());
+		return blocks.resolveBlockedDamage(source, amount, angle) > 0.0F;
+	}
+
+	/**
+	 * 피해가 온 쪽과 바라보는 쪽 사이의 수평 각도(라디안). 바닐라 {@code applyItemBlocking} 과 같은 식이다.
+	 * 출처 위치가 없는 피해는 바닐라처럼 π(정반대)로 본다.
+	 */
+	static double blockAngle(@Nullable Vec3 sourcePosition, Vec3 position, float yHeadRot) {
+		if (sourcePosition == null) {
+			return Mth.PI;
+		}
+		Vec3 view = Entity.calculateViewVector(0.0F, yHeadRot);
+		Vec3 toward = sourcePosition.subtract(position);
+		toward = new Vec3(toward.x, 0.0D, toward.z).normalize();
+		return Math.acos(toward.dot(view));
 	}
 
 	/**

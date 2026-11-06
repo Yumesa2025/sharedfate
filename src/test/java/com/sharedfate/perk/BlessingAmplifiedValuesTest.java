@@ -106,14 +106,14 @@ class BlessingAmplifiedValuesTest {
 		assertEquals(10.0F, effect.attackKnockback(true), 1.0e-6);
 	}
 
-	/** 호위 — 쿨타임 10초가 5초가 된다. 이쪽은 값이 <b>작아지는</b> 강화다. */
+	/** 호위 — 쿨타임 6초가 3초가 된다. 이쪽은 값이 <b>작아지는</b> 강화다. */
 	@Test
 	void 호위의_쿨타임이_절반이_된다(@TempDir Path dir) throws IOException {
 		DamageWardEffect effect = (DamageWardEffect) 효과(dir, "sharedfate:bodyguard",
 				DamageWardEffect.class);
-		assertEquals(200, effect.cooldownTicks(), "10초");
-		assertEquals(100, effect.amplifiedCooldownTicks(), "5초");
-		assertEquals(100, effect.amplified().cooldownTicks(),
+		assertEquals(120, effect.cooldownTicks(), "6초");
+		assertEquals(60, effect.amplifiedCooldownTicks(), "3초");
+		assertEquals(60, effect.amplified().cooldownTicks(),
 				"강화본은 강화 쿨타임을 평소 값으로 삼는다");
 	}
 

@@ -18,7 +18,8 @@
     "KeyMappingUnknownKeyMixin",
     "MultiPlayerGameModeMixin",
     "RecipeBookButtonPositionMixin",
-    "ScreenAccessor"
+    "ScreenAccessor",
+    "ToastManagerAdvancementMixin"
   ],
   "injectors": {
     "defaultRequire": 1

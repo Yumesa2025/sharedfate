@@ -2302,7 +2302,7 @@
       "id": "sharedfate:bodyguard",
       "icon": "minecraft:iron_chestplate",
       "name": "호위",
-      "description": "이 증강을 고른 사람은 10초에 한 번 몹에게 받는 피해를 통째로 막고, 나머지 팀원은 받는 피해가 10% 감소합니다.",
+      "description": "이 증강을 고른 사람은 6초에 한 번 몹에게 받는 피해를 통째로 막고(방패로 막는 공격 제외), 나머지 팀원은 받는 피해가 10% 감소합니다.",
       "rarity": "gold",
       "set_types": [
         "blessing"
@@ -2310,8 +2310,8 @@
       "effects": [
         {
           "type": "damage_ward",
-          "cooldown_seconds": 10,
-          "amplified_cooldown_seconds": 5
+          "cooldown_seconds": 6,
+          "amplified_cooldown_seconds": 3
         },
         {
           "type": "holder",
