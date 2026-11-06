@@ -5,6 +5,10 @@ import com.google.gson.JsonParser;
 import com.sharedfate.perk.effect.FollowUpStrikeEffect;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -59,5 +63,25 @@ class FollowUpStrikeEffectTest {
 		assertEquals(0.0F, strike.followUpDamage(0.0F));
 		assertEquals(0.0F, strike.followUpDamage(Float.NaN));
 		assertEquals(0.0F, strike.followUpDamage(Float.POSITIVE_INFINITY));
+	}
+
+	/**
+	 * 두 번째 타격은 26.3 의 피격 쿨타임 칸({@code damageCooldownTime})을 내려야 들어간다.
+	 *
+	 * <p>0.45.4-dev 는 {@code Entity.invulnerableTime} 을 내렸고, {@code hurtServer} 가 그 칸을 보지 않아
+	 * 절반 피해가 「직전보다 약한 한 대」로 전부 버려졌다. 컴파일은 통과하므로 클래스 파일째로 붙든다
+	 * ({@code SpreadDamageTargetTest} 와 같은 방식).
+	 */
+	@Test
+	void 두_번째_타격은_피격_쿨타임_칸을_내린다() throws IOException {
+		String path = "/" + PerkFollowUpStrike.class.getName().replace('.', '/') + ".class";
+		String bytes;
+		try (InputStream in = PerkFollowUpStrike.class.getResourceAsStream(path)) {
+			assertTrue(in != null, "클래스 파일을 찾지 못했습니다: " + path);
+			bytes = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
+		}
+		assertTrue(bytes.contains("damageCooldownTime"), "피격 쿨타임 칸을 건드리지 않는다");
+		assertFalse(bytes.contains("InvulnerableTime"),
+				"다시 무적시간 접근자를 부른다. 26.3 hurtServer 는 그 칸을 보지 않아 두 번째 타격이 버려진다");
 	}
 }

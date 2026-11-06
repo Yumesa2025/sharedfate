@@ -32,7 +32,6 @@
     "AbstractDragonPhaseInstanceAccessor",
     "EnderDragonFightAccessor",
     "DragonHoldingPatternLandingMixin",
-    "LivingEntityLastHurtAccessor",
     "LivingEntityPerkDamageMixin",
     "LivingEntitySharedHealMixin",
     "MobEffectInstanceSharedTickMixin",

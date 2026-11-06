@@ -1,8 +1,8 @@
 package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
-import com.sharedfate.mixin.LivingEntityLastHurtAccessor;
 import com.sharedfate.perk.effect.FollowUpStrikeEffect;
+import com.sharedfate.sync.SpreadSliceAccess;
 import com.sharedfate.team.TeamLookup;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -40,10 +40,22 @@ import org.jetbrains.annotations.Nullable;
  *   <li><b>플레이어에게는 걸지 않는다.</b></li>
  * </ul>
  *
- * <h2>무적시간</h2>
- * <p>맞은 몹은 0.5초 동안 무적이라 그대로 넣으면 바닐라가 버린다. 그래서 잠깐 무적시간을 0 으로 내려
- * 넣고, 끝나면 무적시간과 {@code lastHurt} 를 <b>넣기 전 값으로 되돌린다.</b> 되돌리지 않으면 두 번째
- * 타격이 무적시간을 새로 열어, 빠른 무기로 이어 친 다음 공격이 깎인다.
+ * <h2>피격 쿨타임 — 26.3 에서는 {@code damageCooldownTime} 이다</h2>
+ * <p>맞은 몹은 20틱 동안 피격 쿨타임을 들고, 10 보다 크면 직전 피해보다 약한 공격을 통째로 버린다.
+ * 절반 피해는 늘 직전보다 약하므로 그대로 넣으면 <b>한 번도 들어가지 않는다.</b> 그래서 잠깐 쿨타임을
+ * 0 으로 내려 「새로 맞음」 갈래로 넣고, 끝나면 쿨타임과 {@code lastHurt} 를 <b>넣기 전 값으로
+ * 되돌린다.</b> 되돌리지 않으면 두 번째 타격이 쿨타임을 새로 열어, 빠른 무기로 이어 친 다음 공격이 깎인다.
+ *
+ * <p>⚠ 0.45.4-dev 에서는 {@code Entity.invulnerableTime} 을 내렸다. 26.3 의 {@code hurtServer} 는
+ * 그 칸을 보지 않으므로(까닭은 {@code LivingEntityPerkDamageMixin.damageCooldownTime} 머리말) 두 번째
+ * 타격이 전부 버려졌고, 피해가 안 들어가니 소리 · 입자도 나지 않았다. 사람 말(2026-11-06) 「무기3 효과
+ * 왜 터지는지 안터지는지 시각적으로 안보여」. {@code FollowUpStrikeEffectTest} 가 다시 그 칸으로 돌아가지
+ * 못하게 붙든다.
+ *
+ * <h2>보이게 한다</h2>
+ * <p>「새로 맞음」 갈래라 바닐라 피격 연출(붉은 번쩍임 · 피격음)이 한 번 더 난다. 거기에 더해 첫 타격의
+ * 치명타 입자와 섞이지 않게 푸른 마법 공격 입자와 높은 타격음을 낸다. 바닐라가 주는 작은 넉백만은
+ * 속도를 되돌려 지운다.
  */
 public final class PerkFollowUpStrike {
 	private static final List<Pending> PENDING = new ArrayList<>();
@@ -118,25 +130,29 @@ public final class PerkFollowUpStrike {
 		if (living == null || living.isDeadOrDying()) {
 			return;
 		}
-		int invulnerable = living.getInvulnerableTime();
-		float lastHurt = ((LivingEntityLastHurtAccessor) living).sharedfate$getLastHurt();
+		SpreadSliceAccess access = (SpreadSliceAccess) (Object) living;
+		int cooldown = living.damageCooldownTime;
+		float lastHurt = access.sharedfate$lastHurt();
 		Vec3 motion = living.getDeltaMovement();
-		living.setInvulnerableTime(0);
+		living.damageCooldownTime = 0;
 		boolean hurt;
 		try {
 			hurt = target.hurtServer(level, pending.source(), pending.amount());
 		} finally {
 			if (living.isAlive()) {
-				living.setInvulnerableTime(invulnerable);
-				((LivingEntityLastHurtAccessor) living).sharedfate$setLastHurt(lastHurt);
+				living.damageCooldownTime = cooldown;
+				access.sharedfate$setLastHurt(lastHurt);
 				living.setDeltaMovement(motion);
 			}
 		}
 		if (hurt) {
-			level.playSound(null, target.getX(), target.getY(), target.getZ(),
-					SoundEvents.PLAYER_ATTACK_STRONG, SoundSource.PLAYERS, 1.0F, 1.3F);
-			level.sendParticles(ParticleTypes.CRIT, target.getX(), target.getY(0.5D), target.getZ(),
-					8, 0.3D, 0.3D, 0.3D, 0.2D);
+			double y = living.getY(0.5D);
+			level.playSound(null, living.getX(), y, living.getZ(),
+					SoundEvents.PLAYER_ATTACK_CRIT, SoundSource.PLAYERS, 1.0F, 1.4F);
+			level.sendParticles(ParticleTypes.ENCHANTED_HIT, living.getX(), y, living.getZ(),
+					20, 0.4D, 0.5D, 0.4D, 0.3D);
+			level.sendParticles(ParticleTypes.CRIT, living.getX(), y, living.getZ(),
+					10, 0.3D, 0.4D, 0.3D, 0.3D);
 		}
 	}
 
