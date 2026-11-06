@@ -25,6 +25,7 @@ TYPES = OrderedDict([
     ("mining", ("채굴", 3)),
     ("supply", ("보급", 2)),
     ("defense", ("방어", 2)),
+    ("shield", ("방패", 1)),
     ("survival", ("생존", 2)),
     ("recovery", ("회복", 2)),
     ("swap", ("교환", 2)),

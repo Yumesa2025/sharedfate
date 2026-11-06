@@ -121,7 +121,10 @@ public class SharedFateMod implements ModInitializer {
 				com.sharedfate.sync.TrialNightHost::onServerStopping);
 		ServerEntityEvents.ENTITY_LOAD.register(com.sharedfate.sync.TrialNightHost::onEntityLoad);
 		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.sync.TrialNightHost::sweepStrays);
+		// 무기 세트 3단계 「한 번 더」 — 0.2초 뒤의 두 번째 타격.
+		ServerTickEvents.END_SERVER_TICK.register(com.sharedfate.perk.PerkFollowUpStrike::tick);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			com.sharedfate.perk.PerkFollowUpStrike.clear();
 			TeamLookup.setServer(null);
 			ExpandedInventoryManager.clearRuntimeState();
 			WorldResetCoordinator.reset();

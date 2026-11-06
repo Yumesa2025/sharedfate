@@ -451,11 +451,15 @@
       "tiers": [
         {
           "count": 2,
-          "description": "방패로 막는 동안 받는 피해가 절반이 됩니다.",
+          "description": "받는 피해가 15% 감소하고, 방어구 내구도가 50% 확률로 닳지 않습니다.",
           "effects": [
             {
-              "type": "damage_taken_blocking",
-              "multiplier": 0.5
+              "type": "damage_taken",
+              "multiplier": 0.85
+            },
+            {
+              "type": "armor_durability",
+              "ignore_chance": 0.5
             }
           ]
         },
@@ -658,16 +662,12 @@
         },
         {
           "count": 3,
-          "description": "공격 속도가 30% 더 빨라지고, 지금과 앞으로 얻는 증강의 공격력 감소가 모두 사라집니다.",
+          "description": "공격하면 60% 확률로 절반의 피해를 한 번 더 줍니다.",
           "effects": [
             {
-              "type": "no_attack_damage_loss"
-            },
-            {
-              "type": "attribute",
-              "attribute": "minecraft:attack_speed",
-              "operation": "add_multiplied_total",
-              "amount": 0.3
+              "type": "follow_up_strike",
+              "chance": 0.6,
+              "damage_fraction": 0.5
             }
           ]
         }

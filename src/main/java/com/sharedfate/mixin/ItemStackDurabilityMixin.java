@@ -63,7 +63,10 @@ public abstract class ItemStackDurabilityMixin {
 		}
 		int reduced = PerkGearRules.reduceDurabilityLoss(
 				PerkGearRules.activeState(player), self, amount, level.getRandom());
-		return com.sharedfate.perk.PerkShieldCombat.durability(
+		int shield = com.sharedfate.perk.PerkShieldCombat.durability(
 				PerkGearRules.activeState(player), self, reduced, level.getRandom());
+		// 방어 세트 2단계 — 방어구가 확률로 닳지 않는다. 방패는 위에서 방패 세트가 맡는다.
+		return com.sharedfate.perk.effect.ArmorDurabilityEffect.durability(
+				PerkGearRules.activeState(player), self, shield, level.getRandom());
 	}
 }

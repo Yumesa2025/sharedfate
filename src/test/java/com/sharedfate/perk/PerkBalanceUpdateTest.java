@@ -46,10 +46,12 @@ class PerkBalanceUpdateTest {
 	}
 
 	@Test void 세트_보상_값이_맞다() {
-		AttributeEffect speed = effect(tier(PerkSetType.WEAPON, 3), AttributeEffect.class);
-		assertEquals("minecraft:attack_speed", speed.attributeId().toString());
-		assertEquals(0.30, speed.amount(), 1e-9);
-		assertEquals(AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, speed.operation());
+		// 무기 3 — 2026-11-06 에 「공속 +30% · 공격력 감소 무효」를 「60% 확률로 절반 피해 한 번 더」로 바꿨다.
+		PerkSets.Tier weapon3 = tier(PerkSetType.WEAPON, 3);
+		FollowUpStrikeEffect strike = effect(weapon3, FollowUpStrikeEffect.class);
+		assertEquals(0.6, strike.chance(), 1e-9);
+		assertEquals(0.5, strike.damageFraction(), 1e-9);
+		assertEquals(1, weapon3.effects().size(), "예전 공속 · 감소 무효는 남지 않는다");
 		assertEquals(4, effect(tier(PerkSetType.HUNT, 3), AlwaysLootingEffect.class).levels());
 		assertEquals(2, effect(tier(PerkSetType.SURVIVAL, 3), MaxHealthBonusEffect.class).amount());
 		assertEquals(3.0, effect(tier(PerkSetType.BOND, 3), ProximityRangeEffect.class).multiplier());
