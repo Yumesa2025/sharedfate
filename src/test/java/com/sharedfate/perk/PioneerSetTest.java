@@ -315,9 +315,10 @@ class PioneerSetTest {
 			}
 		}
 		assertNotNull(effect);
-		assertEquals(0.15, effect.priceDiscount(), 1.0e-9, "가격 15% 감소");
-		assertEquals(2.0, effect.restockSpeed(), 1.0e-9, "재입고 대기 50% 단축 = 2배");
-		assertEquals(0.5, effect.experienceMultiplier(), 1.0e-9, "거래 경험치 50% 감소");
+		// 사람이 정한 것(2026-11-07) — 15% · 2배 · 절반 → 30% · 3배 · 30% 감소.
+		assertEquals(0.3, effect.priceDiscount(), 1.0e-9, "가격 30% 감소");
+		assertEquals(3.0, effect.restockSpeed(), 1.0e-9, "재입고 3배 빨라짐 = 대기 1/3");
+		assertEquals(0.7, effect.experienceMultiplier(), 1.0e-9, "거래 경험치 30% 감소");
 	}
 
 	// ------------------------------------------------------------------ 도우미

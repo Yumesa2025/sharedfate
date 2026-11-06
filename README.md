@@ -84,7 +84,7 @@ Minecraft Java Edition 26.3 / Fabric 용입니다.
 > 서로 맞추더라도 **마인크래프트 판이 다르면** 함께 쓸 수 없습니다.
 > 26.2 에 머무를 분은 0.26.7-dev 를 그대로 쓰십시오.
 
-> 현재 버전은 **`0.45.7-dev` 사전 배포판**입니다. 서버와 모든 클라이언트는 반드시 같은
+> 현재 버전은 **`0.45.8-dev` 사전 배포판**입니다. 서버와 모든 클라이언트는 반드시 같은
 > SharedFate 버전을 사용해야 합니다.
 >
 > **0.45.1-dev 이하에서 올라오는 경우 서버와 모든 클라이언트를 함께 갱신하세요.** 통신 규약이
@@ -99,7 +99,7 @@ Minecraft Java Edition 26.3 / Fabric 용입니다.
 > 0.26.2-dev~0.26.4-dev 는 26, 0.26.5-dev~0.27.1-dev 는 27,
 > 0.28.0-dev~0.28.1-dev 는 28,
 > 0.29.0-dev~0.30.0-dev 는 29, 0.40.0-dev~0.40.3-dev 는 37, 0.40.4-dev~0.40.5-dev 는 38, 0.40.6-dev~0.43.0-dev 는 39,
-> 0.44.0-dev 는 40, 0.45.0-dev~0.45.1-dev 는 41, 0.45.2-dev 부터 42입니다(0.45.2-dev~0.45.7-dev 는 서로 접속됩니다).
+> 0.44.0-dev 는 40, 0.45.0-dev~0.45.1-dev 는 41, 0.45.2-dev 부터 42입니다(0.45.2-dev~0.45.8-dev 는 서로 접속됩니다).
 > **0.44.0-dev · 0.45.0-dev · 0.45.2-dev 는 서버와 모든 클라이언트를 함께 바꿔야 합니다.**)
 >
 > **누가 어떤 판을 쓰는지는 게임 안에서 `/shareteam version` 으로 확인할 수 있습니다.**
@@ -111,12 +111,12 @@ Minecraft Java Edition 26.3 / Fabric 용입니다.
 
 | 파일 | 용도 |
 |---|---|
-| [SharedFate-0.45.7-dev-client.zip](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.7-dev/SharedFate-0.45.7-dev-client.zip) | 일반 플레이어 권장. SharedFate와 호환 Fabric API, 설치 안내 포함 |
-| [SharedFate-0.45.7-dev-server.zip](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.7-dev/SharedFate-0.45.7-dev-server.zip) | 서버를 여는 사람용. 모드 두 개와 **재시작 루프 스크립트**, 설치 안내 포함 |
-| [sharedfate-0.45.7-dev.jar](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.7-dev/sharedfate-0.45.7-dev.jar) | 수동 설치용 모드 JAR 하나 |
-| [SHA256SUMS.txt](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.7-dev/SHA256SUMS.txt) | 다운로드 무결성 확인 |
+| [SharedFate-0.45.8-dev-client.zip](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.8-dev/SharedFate-0.45.8-dev-client.zip) | 일반 플레이어 권장. SharedFate와 호환 Fabric API, 설치 안내 포함 |
+| [SharedFate-0.45.8-dev-server.zip](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.8-dev/SharedFate-0.45.8-dev-server.zip) | 서버를 여는 사람용. 모드 두 개와 **재시작 루프 스크립트**, 설치 안내 포함 |
+| [sharedfate-0.45.8-dev.jar](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.8-dev/sharedfate-0.45.8-dev.jar) | 수동 설치용 모드 JAR 하나 |
+| [SHA256SUMS.txt](https://github.com/Yumesa2025/sharedfate/releases/download/v0.45.8-dev/SHA256SUMS.txt) | 다운로드 무결성 확인 |
 
-[사전 배포판 설명과 모든 자산 보기](https://github.com/Yumesa2025/sharedfate/releases/tag/v0.45.7-dev)
+[사전 배포판 설명과 모든 자산 보기](https://github.com/Yumesa2025/sharedfate/releases/tag/v0.45.8-dev)
 
 > ⚠ **`v0.29.0-dev` 이하는 받지 마십시오.** 「도박」 세트가 굴림을 높게 잡은 팀에서 아무것도
 > 주지 않는 결함이 있습니다. `0.29.1-dev` 에서 고쳤습니다.

@@ -1878,7 +1878,7 @@
       "id": "sharedfate:haggling_master",
       "icon": "minecraft:emerald",
       "name": "흥정의 달인",
-      "description": "주민 거래 값이 15% 싸지고 재입고가 2배 빨라집니다. 대신 거래 경험치가 절반이 됩니다.",
+      "description": "주민 거래 값이 30% 싸지고 재입고가 3배 빨라집니다. 대신 거래 경험치가 30% 줄어듭니다.",
       "rarity": "gold",
       "set_types": [
         "pioneer"
@@ -1886,9 +1886,9 @@
       "effects": [
         {
           "type": "villager_trade",
-          "price_discount": 0.15,
-          "restock_speed": 2.0,
-          "experience_multiplier": 0.5
+          "price_discount": 0.3,
+          "restock_speed": 3.0,
+          "experience_multiplier": 0.7
         }
       ]
     },
