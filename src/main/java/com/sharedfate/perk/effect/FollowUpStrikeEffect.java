@@ -20,6 +20,11 @@ import org.jetbrains.annotations.Nullable;
  * <p>사람이 정한 것(2026-11-06) — 「공격하면 60% 확률로 절반 피해를 한 번 더」. 기존 3단계(공격 속도
  * +30% · 공격력 감소 무효)를 갈아 치웠다. 평균으로는 피해 +30% 로 예전과 비슷하다.
  *
+ * <p>공격 게이지는 보지 않는다. 사람이 정한 것(2026-11-06) — 처음엔 게이지 90% 이상만 굴렸는데,
+ * 칼(0.63초에 다 참)보다 느린 도끼 · 삽 · 곡괭이는 칼 박자로 치면 거의 안 터져 「칼만 적용된다」로
+ * 보였다. 두 번째 타격은 첫 타격 피해의 절반이고 첫 타격이 이미 게이지만큼 줄어 있으므로, 연타해도
+ * 약한 공격의 절반이 붙을 뿐이다.
+ *
  * <p>이 클래스는 수치만 든다. 언제 · 누구에게 · 어떻게 한 번 더 넣는지는
  * {@link com.sharedfate.perk.PerkFollowUpStrike} 가 정한다. 팀원에게 붙일 것이 없어
  * {@link PerkEffect#apply} 는 기본(아무것도 안 함) 그대로다.
@@ -27,8 +32,6 @@ import org.jetbrains.annotations.Nullable;
 public final class FollowUpStrikeEffect implements PerkEffect {
 	/** 두 번째 타격까지의 틱. 같은 틱에 넣으면 한 대로 보인다. */
 	public static final int DEFAULT_DELAY_TICKS = 4;
-	/** 공격 게이지가 이만큼은 차야 발동한다. 마구 클릭하는 약한 공격에서는 터지지 않는다. */
-	public static final float DEFAULT_MIN_CHARGE = 0.9F;
 
 	private final double chance;
 	private final double damageFraction;
@@ -60,9 +63,9 @@ public final class FollowUpStrikeEffect implements PerkEffect {
 		return damageFraction;
 	}
 
-	/** {@code roll} 은 0 이상 1 미만의 난수, {@code charge} 는 공격 게이지(0~1). */
-	public boolean triggers(double roll, float charge) {
-		return charge >= DEFAULT_MIN_CHARGE && roll < chance;
+	/** {@code roll} 은 0 이상 1 미만의 난수. */
+	public boolean triggers(double roll) {
+		return roll < chance;
 	}
 
 	/** 첫 타격에 넣은 피해로 두 번째 타격의 피해를 낸다. */

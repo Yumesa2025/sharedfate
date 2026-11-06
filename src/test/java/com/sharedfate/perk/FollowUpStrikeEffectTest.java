@@ -42,18 +42,10 @@ class FollowUpStrikeEffectTest {
 	@Test
 	void 확률_60퍼센트로_터진다() {
 		FollowUpStrikeEffect strike = new FollowUpStrikeEffect(0.6, 0.5);
-		assertTrue(strike.triggers(0.0, 1.0F));
-		assertTrue(strike.triggers(0.599, 1.0F));
-		assertFalse(strike.triggers(0.6, 1.0F));
-		assertFalse(strike.triggers(0.99, 1.0F));
-	}
-
-	@Test
-	void 게이지가_덜_찬_공격에서는_터지지_않는다() {
-		FollowUpStrikeEffect strike = new FollowUpStrikeEffect(0.6, 0.5);
-		assertTrue(strike.triggers(0.0, 0.9F));
-		assertFalse(strike.triggers(0.0, 0.89F));
-		assertFalse(strike.triggers(0.0, 0.2F));
+		assertTrue(strike.triggers(0.0));
+		assertTrue(strike.triggers(0.599));
+		assertFalse(strike.triggers(0.6));
+		assertFalse(strike.triggers(0.99));
 	}
 
 	@Test

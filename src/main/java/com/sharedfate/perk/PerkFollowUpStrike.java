@@ -30,7 +30,8 @@ import org.jetbrains.annotations.Nullable;
  * <ul>
  *   <li><b>근접 공격의 주 대상에게만.</b> 휩쓸기로 맞은 주변 몹 · 화살은 빠진다
  *       ({@code PlayerFollowUpStrikeMixin} 이 {@code Player.attack} 의 주 대상 피해만 감싼다).</li>
- *   <li><b>공격 게이지가 거의 찬 공격만</b>({@link FollowUpStrikeEffect#DEFAULT_MIN_CHARGE}).</li>
+ *   <li><b>공격 게이지는 보지 않는다.</b> 칼 · 도끼 · 삽 · 곡괭이 · 맨손 모두 같은 확률이다. 까닭은
+ *       {@link FollowUpStrikeEffect} 머리말.</li>
  *   <li><b>0.2초 뒤에 따로 들어간다.</b> 같은 틱이면 한 대로 보인다. 소리와 치명타 입자로 보이게 한다.</li>
  *   <li><b>이어지지 않는다.</b> 두 번째 타격은 {@code Player.attack} 을 거치지 않으므로 다시 굴리지 않는다.</li>
  *   <li><b>피해만 다시 넣는다.</b> 같은 피해원으로 {@code hurtServer} 를 다시 부르므로 방어구 · 증강 배율 ·
@@ -69,13 +70,13 @@ public final class PerkFollowUpStrike {
 
 	/** 주 대상에게 근접 피해가 실제로 들어간 직후. */
 	public static void onMeleeHit(ServerPlayer player, Entity target, DamageSource source,
-			float amount, float charge) {
+			float amount) {
 		try {
 			if (!(amount > 0.0F) || !eligibleTarget(target)) {
 				return;
 			}
 			FollowUpStrikeEffect strike = FollowUpStrikeEffect.heldBy(TeamLookup.stateOf(player.getUUID()));
-			if (strike == null || !strike.triggers(player.getRandom().nextDouble(), charge)) {
+			if (strike == null || !strike.triggers(player.getRandom().nextDouble())) {
 				return;
 			}
 			float damage = strike.followUpDamage(amount);
