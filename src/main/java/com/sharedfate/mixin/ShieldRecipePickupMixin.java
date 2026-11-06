@@ -1,6 +1,6 @@
 package com.sharedfate.mixin;
 
-import com.sharedfate.recipe.ShieldRecipes;
+import com.sharedfate.recipe.PerkCraftingRecipes;
 import com.sharedfate.team.TeamLookup;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractCraftingMenu;
@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.ArrayList;
 
-/** 결과를 본 뒤 팀이나 증강이 바뀌었어도 서버가 꺼내기를 다시 검사한다. */
+/** 결과를 본 뒤 팀이나 증강이 바뀌었어도 서버가 꺼내기를 다시 검사한다. 방패 제작법과 다이아몬드 → 네더라이트가 함께 지난다. */
 @Mixin(Slot.class)
 public abstract class ShieldRecipePickupMixin {
 	@Inject(method = "mayPickup", at = @At("HEAD"), cancellable = true)
@@ -22,7 +22,7 @@ public abstract class ShieldRecipePickupMixin {
 				|| player.level().isClientSide()) return;
 		var grid = new ArrayList<ItemStack>();
 		for (Slot slot : menu.getInputGridSlots()) grid.add(slot.getItem());
-		ItemStack result = ShieldRecipes.resultFor(menu, grid, TeamLookup.stateOf(player.getUUID()));
-		if (result != null && result.isEmpty()) cir.setReturnValue(false);
+		if (PerkCraftingRecipes.blocksPickup(menu, grid, ((Slot) (Object) this).getItem(),
+				TeamLookup.stateOf(player.getUUID()))) cir.setReturnValue(false);
 	}
 }

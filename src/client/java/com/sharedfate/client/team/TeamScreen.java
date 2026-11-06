@@ -10,6 +10,7 @@ import com.sharedfate.team.TeamCreationSettings;
 import com.sharedfate.ui.DragonTrialGlow;
 import com.sharedfate.ui.GameStartButton;
 import com.sharedfate.ui.PanelScroll;
+import com.sharedfate.ui.PerkRarityStyle;
 import com.sharedfate.ui.PerkSetLines;
 import com.sharedfate.ui.PerkSetTooltip;
 import com.sharedfate.ui.PerkSetTooltipLines;
@@ -30,6 +31,7 @@ import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
@@ -87,12 +89,29 @@ public class TeamScreen extends Screen {
 	 * 붙이면 어디까지가 이름인지 눈이 못 가른다.
 	 */
 	private static final int PERK_SET_TYPE = 0xFF7F8A99;
-	private static final int PANEL_BG = 0xC0101018;
+	/**
+	 * 바탕판(그림 {@link PerkRarityStyle#PANEL})이 글자 줄 밖으로 더 나가는 폭.
+	 *
+	 * <p>판 그림의 틀은 바깥 6픽셀이다(검은 선 · 금속 3 · 그림자 · 검은 선). 예전 반투명 바탕처럼 6만
+	 * 띄우면 오른쪽 스크롤 막대({@code +1}~{@code +4})가 틀에 먹히므로 좌우를 10 으로 넓혔다 — 틀 안쪽이
+	 * {@code left - 4} ~ {@code left + PANEL_WIDTH + 4} 로, 목록의 잘라내기 범위와 같다.
+	 */
+	private static final int PANEL_SIDE = 10;
+	/**
+	 * 바탕판의 윗변. 제목(y 12)이 틀 안쪽(4 + 6 = 10)에 들어가게 한다 — 예전 자리(14)면 금속 틀이
+	 * 제목 글자를 가로지른다.
+	 */
+	private static final int PANEL_FRAME_TOP = 4;
+	/**
+	 * 바탕판 아랫변이 화면 아래끝에서 떨어진 거리. 판 안 맨 아래 단추(아랫변 {@code height - 34})와
+	 * 「닫기」 단추(윗변 {@code height - 28}) 사이의 6픽셀이 꼭 틀 두께라 둘 다 안 덮는다.
+	 */
+	private static final int PANEL_FRAME_BOTTOM = 28;
 
 	/**
 	 * 「유적 감별사」 좌표를 세우는 자리의 왼쪽 여백.
 	 *
-	 * <p>{@link #PANEL_BG} 의 오른쪽 변이 {@code left + PANEL_WIDTH + 6} 이고 스크롤 막대가
+	 * <p>바탕판의 오른쪽 변이 {@code left + PANEL_WIDTH + 10}({@link #PANEL_SIDE})이고 스크롤 막대가
 	 * {@code +1}~{@code +4} 를 쓴다. 둘을 지난 자리라야 바탕판 밖의 빈 곳에 선다.
 	 */
 	private static final int RUIN_COORD_GAP = 12;
@@ -863,8 +882,10 @@ public class TeamScreen extends Screen {
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
 			float partialTick) {
 		int left = (this.width - PANEL_WIDTH) / 2;
-		graphics.fill(left - 6, PANEL_TOP - TAB_HEIGHT - 8, left + PANEL_WIDTH + 6,
-				this.height - 32, PANEL_BG);
+		// 바탕판. 증강 카드와 같은 금속 틀 그림을 나인 슬라이스로 늘린다.
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, PerkRarityStyle.PANEL, left - PANEL_SIDE,
+				PANEL_FRAME_TOP, PANEL_WIDTH + PANEL_SIDE * 2,
+				this.height - PANEL_FRAME_BOTTOM - PANEL_FRAME_TOP);
 		graphics.centeredText(this.font, this.title, this.width / 2, 12, TEXT_MAIN);
 
 		switch (tab) {
@@ -1318,7 +1339,8 @@ public class TeamScreen extends Screen {
 	private List<Component> typeTooltip(String typeId) {
 		List<PerkSetTooltipLines.Row> rows = PerkSetTooltipLines.build(
 				ClientPerkSets.tooltip(typeId), ClientPerkSets.displayName(typeId),
-				PerkSetTooltip.MAX_ROWS, TOOLTIP_PALETTE);
+				PerkSetTooltip.MAX_ROWS, TOOLTIP_PALETTE, this.font::width,
+				PerkSetTooltipLines.wrapWidth(this.width));
 		List<Component> tooltip = new ArrayList<>(rows.size());
 		for (PerkSetTooltipLines.Row row : rows) {
 			// 빈 줄에 색을 입히면 알파가 섞여 아무것도 아닌 자리에 얇은 띠가 뜬다.
@@ -1367,15 +1389,9 @@ public class TeamScreen extends Screen {
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
 	}
 
-	/** 등급별 글자색. 서버가 보낸 등급 이름을 그대로 받는다. */
+	/** 등급별 글자색. 서버가 보낸 등급 이름을 그대로 받는다({@link PerkRarityStyle}). */
 	private static int rarityColor(String rarity) {
-		return switch (rarity) {
-			case "gold" -> 0xFFFFC63A;
-			case "prism" -> 0xFF5FE0D8;
-			// 「드래곤전 대비」 — 등급이 아닌 분류. 엔더 연보라.
-			case "trial" -> com.sharedfate.ui.DragonPrepStyle.COLOR;
-			default -> 0xFFC0C6CC;
-		};
+		return PerkRarityStyle.colorOf(rarity);
 	}
 
 	// ------------------------------------------------------------------ 거들기

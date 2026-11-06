@@ -1,6 +1,6 @@
 package com.sharedfate.mixin;
 
-import com.sharedfate.recipe.ShieldRecipes;
+import com.sharedfate.recipe.PerkCraftingRecipes;
 import com.sharedfate.team.TeamLookup;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.entity.player.Player;
@@ -20,7 +20,7 @@ public abstract class ShieldCraftingResultMixin {
 	@Inject(method = "getRemainingItems", at = @At("HEAD"), cancellable = true)
 	private void sharedfate$consumeInputs(CraftingInput input, Level level,
 			CallbackInfoReturnable<NonNullList<ItemStack>> cir) {
-		ItemStack result = ShieldRecipes.resultFor(player.containerMenu, input.items(),
+		ItemStack result = PerkCraftingRecipes.resultFor(player.containerMenu, input.items(),
 				TeamLookup.stateOf(player.getUUID()));
 		if (result != null && !result.isEmpty()) cir.setReturnValue(NonNullList.withSize(input.size(), ItemStack.EMPTY));
 	}

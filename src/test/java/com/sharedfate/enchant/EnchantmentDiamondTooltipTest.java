@@ -48,12 +48,23 @@ class EnchantmentDiamondTooltipTest {
 	}
 
 	@Test
-	void 청금석_줄과_인챈트_힌트는_건드리지_않는다() {
-		Component lapis = Component.translatable("container.enchant.lapis.many", 2);
+	void 인챈트_힌트는_건드리지_않는다() {
 		Component clue = Component.translatable("container.enchant.clue", "날카로움 III");
 
-		assertSame(lapis, EnchantmentDiamondTooltip.rewriteLine(lapis));
 		assertSame(clue, EnchantmentDiamondTooltip.rewriteLine(clue));
+	}
+
+	@Test
+	void 청금석_줄은_칸과_상관없이_3개라고_말하고_색은_남긴다() {
+		for (Component lapis : List.of(
+				Component.translatable("container.enchant.lapis.one").withStyle(ChatFormatting.GRAY),
+				Component.translatable("container.enchant.lapis.many", 2).withStyle(ChatFormatting.RED))) {
+			Component rewritten = EnchantmentDiamondTooltip.rewriteLine(lapis);
+			var contents = (net.minecraft.network.chat.contents.TranslatableContents) rewritten.getContents();
+			assertEquals("container.enchant.lapis.many", contents.getKey());
+			assertEquals(List.of(3), List.of(contents.getArgs()));
+			assertEquals(lapis.getStyle(), rewritten.getStyle());
+		}
 	}
 
 	@Test
@@ -68,7 +79,8 @@ class EnchantmentDiamondTooltipTest {
 
 		assertEquals(4, rewritten.size());
 		assertSame(lines.get(0), rewritten.get(0));
-		assertSame(lines.get(2), rewritten.get(2));
+		assertEquals("container.enchant.lapis.many",
+				((net.minecraft.network.chat.contents.TranslatableContents) rewritten.get(2).getContents()).getKey());
 		assertEquals("다이아몬드 10개", rewritten.get(3).getString());
 	}
 }

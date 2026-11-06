@@ -208,6 +208,10 @@ public enum PerkEffectType {
 	SHIELD_ENCHANTING("shield_enchanting", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.ENCHANTING),
 	DIAMOND_SHIELD_RECIPE("diamond_shield_recipe", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.DIAMOND_RECIPE),
 	FIRST_SHIELD("first_shield", (id, index, json) -> com.sharedfate.perk.effect.ShieldCraftEffect.FIRST_SHIELD),
+	/** 프리즘 「삽질의 대가」 — 삽을 검처럼 마법부여한다. 필드가 없다. */
+	SHOVEL_SWORD_ENCHANTING("shovel_sword_enchanting", (id, index, json) -> com.sharedfate.perk.effect.ToolCraftEffect.SHOVEL_SWORD_ENCHANTING),
+	/** 프리즘 「금기의 광석」 — 제작대의 다이아몬드 9개가 네더라이트 주괴가 된다. 필드가 없다. */
+	DIAMOND_TO_NETHERITE_RECIPE("diamond_to_netherite_recipe", (id, index, json) -> com.sharedfate.perk.effect.ToolCraftEffect.DIAMOND_TO_NETHERITE),
 	FALL_IMMUNITY("fall_immunity", FallImmunityEffect::fromJson),
 	HOSTILE_DIAMOND_DROP("hostile_diamond_drop", HostileDiamondDropEffect::fromJson),
 	DIAMOND_SUNDIAL("diamond_sundial", DiamondSundialEffect::fromJson),

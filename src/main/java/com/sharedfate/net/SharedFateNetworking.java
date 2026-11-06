@@ -323,7 +323,17 @@ public final class SharedFateNetworking {
 	//     같은 판에 DragonPrepVotePayload 도 더했다 — 「드래곤전 대비」(45·50) 증강을 선택자 대신 팀 투표로
 	//     정하는 창의 상태 묶음(PerkChoiceSession.tickPrep). 표는 기존 PerkVoteC2SPayload 로 받는다. 새
 	//     묶음이라 번호는 41 그대로다.
-	public static final int PROTOCOL_VERSION = 41;
+	//
+	//     같은 판에 DamageWardPayload 도 더했다 — 「호위」가 지금 한 번 막아 줄 수 있는지(하트 왼쪽 표).
+	//     클라이언트는 증강 풀도 「누가 골랐는가」도 몰라 스스로 셀 수 없다. 새 묶음이라 번호는 41 그대로다.
+	// 42: 마법부여 개편(0.45.2-dev) — 묶음 형식은 그대로고 번호만 올렸다.
+	//
+	//     사람이 정한 것(2026-11-06) — 마법부여는 언제나 30 등급 · 책장 6개 이상 · 청금석 3개. 서버가
+	//     정한 비용과 등급을 옛 클라이언트(0.45.1-dev 이하)는 「책장 N/15」 · 15 등급 기준으로 그려서
+	//     화면과 실제가 어긋난다. 그림 · 호위 표시도 새 클라이언트에만 있다. 「또 안 되는 것을 보고
+	//     싶지 않다」고 해서 옛 클라이언트는 접속 단계에서 막는다.
+	//     ⚠ 서버와 클라이언트 jar 을 **둘 다** 바꿔야 한다.
+	public static final int PROTOCOL_VERSION = 42;
 
 	private SharedFateNetworking() {
 	}
@@ -370,6 +380,8 @@ public final class SharedFateNetworking {
 				DragonPrepVotePayload.TYPE, DragonPrepVotePayload.CODEC);
 		// 조건부 증강 발동 알림. 언제 보내는지는 perk.PerkProcFeedback 에 있다.
 		PayloadTypeRegistry.clientboundPlay().register(PerkProcPayload.TYPE, PerkProcPayload.CODEC);
+		// 「호위」가 지금 막아 줄 수 있는가. 언제 보내는지는 DamageWardBroadcaster 에 있다.
+		PayloadTypeRegistry.clientboundPlay().register(DamageWardPayload.TYPE, DamageWardPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SelectedSlotC2SPayload.TYPE, SelectedSlotC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(PerkChoiceC2SPayload.TYPE, PerkChoiceC2SPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(
@@ -431,6 +443,9 @@ public final class SharedFateNetworking {
 		// 세트 효과의 지금 상태. 세트는 저장하지 않는 파생 상태이고 보유 목록이 바뀌는
 		// 자리가 넷이라, 사건마다 거는 대신 결과를 견주어 달라졌을 때만 보낸다.
 		ServerTickEvents.END_SERVER_TICK.register(PerkSetBroadcaster::flush);
+		// 「호위」 준비 표. 막는 순간은 PerkDamage 가 곧바로 알리고, 여기서는 얻고 잃는 것과
+		// 쿨타임이 차는 순간을 잡는다.
+		ServerTickEvents.END_SERVER_TICK.register(DamageWardBroadcaster::flush);
 		// 클라이언트가 있어야 하는 증강(double_jump / hide_hud)의 동기화·접지 판정 지점.
 		// SharedFateMod 가 아니라 여기서 거는 이유는 이 기능이 네트워크 경로 하나로만
 		// 성립하기 때문이다. 패킷 등록과 같은 자리에 두면 한쪽만 빠뜨릴 수 없다.
@@ -442,6 +457,7 @@ public final class SharedFateNetworking {
 			PerkClientRules.forget(handler.player.getUUID());
 			StatSnapshotBroadcaster.forget(handler.player.getUUID());
 			PerkSetBroadcaster.forget(handler.player.getUUID());
+			DamageWardBroadcaster.forget(handler.player.getUUID());
 			// 나간 사람의 판을 남겨 두면 목록에 다시 들어오지 않은 사람의 옛 값이 계속 뜬다.
 			ClientVersionRegistry.forget(handler.player.getUUID());
 		});

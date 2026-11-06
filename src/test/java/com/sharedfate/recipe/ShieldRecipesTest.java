@@ -9,6 +9,7 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.UseEffects;
 import org.junit.jupiter.api.*;
 import java.util.List;
 import java.util.UUID;
@@ -54,7 +55,29 @@ class ShieldRecipesTest {
 		assertEquals(3000, result.getMaxDamage());
 		assertTrue(result.has(DataComponents.UNBREAKABLE));
 		assertEquals(1.0F, result.get(DataComponents.USE_EFFECTS).speedMultiplier());
+		// 막는 동안 달리기를 시작할 수 있어야 한다 — 거짓이면 LocalPlayer 가 방패를 든 채 달리기를 막는다.
+		assertTrue(result.get(DataComponents.USE_EFFECTS).canSprint());
 		assertNull(ShieldRecipes.result(grid.subList(0, 8), state));
+	}
+
+	@Test void 옛_다이아몬드_방패만_달릴_수_있게_고친다() {
+		// 0.45.0-dev 가 만든 모양 그대로 — 이름을 바꿔도 같은 방패로 본다.
+		ItemStack legacy = ShieldRecipes.diamond();
+		legacy.set(DataComponents.USE_EFFECTS, new UseEffects(false, true, 1.0F));
+		legacy.set(DataComponents.CUSTOM_NAME, Component.literal("내 방패"));
+		assertTrue(ShieldRecipes.fixLegacyDiamond(legacy));
+		assertTrue(legacy.get(DataComponents.USE_EFFECTS).canSprint());
+		assertEquals(1.0F, legacy.get(DataComponents.USE_EFFECTS).speedMultiplier());
+		// 이미 고친 것 · 새로 만든 것은 다시 건드리지 않는다.
+		assertFalse(ShieldRecipes.fixLegacyDiamond(legacy));
+		assertFalse(ShieldRecipes.fixLegacyDiamond(ShieldRecipes.diamond()));
+		// 다이아몬드 방패가 아닌 것은 같은 쓰기 효과를 달고 있어도 그대로 둔다.
+		ItemStack plain = new ItemStack(Items.SHIELD);
+		plain.set(DataComponents.USE_EFFECTS, new UseEffects(false, true, 1.0F));
+		assertFalse(ShieldRecipes.fixLegacyDiamond(plain));
+		assertFalse(plain.get(DataComponents.USE_EFFECTS).canSprint());
+		assertFalse(ShieldRecipes.fixLegacyDiamond(ItemStack.EMPTY));
+		assertFalse(ShieldRecipes.fixLegacyDiamond(null));
 	}
 
 	// 판자 쪽은 시험 환경에서 판자 태그가 묶이지 않아 수리 계산(repair) 시험으로 갈음한다.

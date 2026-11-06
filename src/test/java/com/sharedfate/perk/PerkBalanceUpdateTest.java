@@ -40,9 +40,8 @@ class PerkBalanceUpdateTest {
 				.map(EquipBanEffect.class::cast).findFirst().orElseThrow();
 		assertTrue(ban.bans(EquipmentSlot.HEAD)); assertTrue(ban.bans(EquipmentSlot.CHEST));
 		assertFalse(ban.bans(EquipmentSlot.LEGS)); assertFalse(ban.bans(EquipmentSlot.FEET));
-		GatherEffect gather = perk("shared_fate_bond").effects().stream().filter(GatherEffect.class::isInstance)
-				.map(GatherEffect.class::cast).findFirst().orElseThrow();
-		assertTrue(gather.grants().isEmpty());
+		// 「운명 공동체」의 강제 집합(gather)은 2026-11-06 에 걷어냈다.
+		assertTrue(perk("shared_fate_bond").effects().stream().noneMatch(GatherEffect.class::isInstance));
 		assertEquals(119, PerkRegistry.all().size());
 	}
 

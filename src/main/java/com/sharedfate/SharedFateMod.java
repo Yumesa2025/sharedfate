@@ -171,6 +171,7 @@ public class SharedFateMod implements ModInitializer {
 			PerkClientRules.reset();
 			com.sharedfate.net.StatSnapshotBroadcaster.reset();
 			com.sharedfate.net.PerkSetBroadcaster.reset();
+			com.sharedfate.net.DamageWardBroadcaster.reset();
 			EffectSync.reset();
 			com.sharedfate.storage.TeamStorage.reset();
 		});

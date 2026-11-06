@@ -3,6 +3,7 @@ package com.sharedfate.client;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.client.hud.CoordinateHud;
 import com.sharedfate.client.hud.DamageAlertHud;
+import com.sharedfate.client.hud.DamageWardHud;
 import com.sharedfate.client.hud.GameOverHud;
 import com.sharedfate.client.hud.HotbarHighlight;
 import com.sharedfate.client.hud.PerkProcHud;
@@ -30,6 +31,7 @@ import com.sharedfate.net.PerkCloseOfferPayload;
 import com.sharedfate.net.PerkDrawPayload;
 import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkProcPayload;
+import com.sharedfate.net.DamageWardPayload;
 import com.sharedfate.net.PerkResultPayload;
 import com.sharedfate.net.PerkSetSyncPayload;
 import com.sharedfate.net.PerkSyncPayload;
@@ -172,6 +174,10 @@ public class SharedFateClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PerkProcPayload.TYPE,
 				(payload, context) -> context.client().execute(
 						() -> PerkProcHud.show(context.client(), payload)));
+		// 「호위」가 지금 막아 줄 수 있는가. 하트 왼쪽 표가 그리기 스레드에서 읽으므로 본 스레드로 넘긴다.
+		ClientPlayNetworking.registerGlobalReceiver(DamageWardPayload.TYPE,
+				(payload, context) -> context.client().execute(
+						() -> DamageWardHud.update(payload)));
 		// 엔드 시련 룰렛 — 네트워크 스레드에서 화면을 열 수 없으므로 클라이언트 스레드로
 		// 넘긴다. 이 화면에는 뒤따르는 패킷이 없다. 연출도 닫는 것도 화면이 혼자 한다.
 		ClientPlayNetworking.registerGlobalReceiver(TrialRoulettePayload.TYPE,
@@ -232,6 +238,7 @@ public class SharedFateClient implements ClientModInitializer {
 			ClientPerkSets.clear();
 			ClientStatSnapshot.clear();
 			PerkProcHud.clear();
+			DamageWardHud.clear();
 			DoubleJumpHandler.reset();
 		});
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -271,6 +278,11 @@ public class SharedFateClient implements ClientModInitializer {
 				VanillaHudElements.OVERLAY_MESSAGE,
 				SharedFateMod.id("perk_proc"),
 				new PerkProcHud());
+		// 「호위」 준비 표. 하트 맨 아랫줄 왼쪽에 붙으므로 하트 바로 뒤에 그린다.
+		HudElementRegistry.attachElementAfter(
+				VanillaHudElements.HEALTH_BAR,
+				SharedFateMod.id("damage_ward"),
+				new DamageWardHud());
 		// 화면 왼쪽 위의 좌표·바이옴. 이 모드도 바닐라도 쓰지 않는 자리라 기준으로 삼을
 		// 바닐라 요소가 없다. 그래서 순서를 따지지 않고 맨 뒤에 붙인다 — 겹치는 것이
 		// 없으므로 언제 그려지든 결과가 같다.

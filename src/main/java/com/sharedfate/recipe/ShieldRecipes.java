@@ -20,6 +20,21 @@ import java.util.List;
 /** 제작대 한 칸에서는 한 개씩 소비한다. 판자는 놓인 칸 수만큼 수리한다. */
 public final class ShieldRecipes {
 	private ShieldRecipes() { }
+
+	/**
+	 * 다이아몬드 방패를 든 동안의 쓰기 효과 — 달릴 수 있고(canSprint), 걸음이 줄지 않는다(1.0).
+	 *
+	 * <p>26.3 에서 「막는 동안 느려지는가」는 클라이언트 {@code LocalPlayer} 가 이 칸 하나로 정한다.
+	 * {@code itemUseSpeedMultiplier} 가 걸음에 곱하는 배율이고, {@code isSlowDueToUsingItem} 이
+	 * {@code canSprint} 를 보고 <b>방패를 든 채로는 달리기를 시작하지 못하게</b> 한다. 0.45.0-dev 는
+	 * 배율만 1.0 으로 두고 canSprint 를 거짓으로 두어, 방패를 먼저 든 채 달리려 하면 걷기 속도에
+	 * 묶였다(실서버 제보).
+	 */
+	static final UseEffects DIAMOND_USE_EFFECTS = new UseEffects(true, true, 1.0F);
+	/** 0.45.0-dev 가 만든 다이아몬드 방패의 쓰기 효과. 이 값을 단 방패만 {@link #fixLegacyDiamond} 가 고친다. */
+	static final UseEffects LEGACY_DIAMOND_USE_EFFECTS = new UseEffects(false, true, 1.0F);
+	/** 다이아몬드 방패의 최대 내구도. 강철(1008)·일반(336)과 겹치지 않는 표시이기도 하다. */
+	static final int DIAMOND_MAX_DAMAGE = 3000;
 	public static boolean unlocked(TeamState state, ShieldCraftEffect wanted) {
 		if (state == null || !state.perksEnabled) return false;
 		for (String id : state.ownedPerks) {
@@ -85,13 +100,32 @@ public final class ShieldRecipes {
 
 	public static ItemStack diamond() {
 		ItemStack result = new ItemStack(Items.SHIELD);
-		result.set(DataComponents.MAX_DAMAGE, 3000);
+		result.set(DataComponents.MAX_DAMAGE, DIAMOND_MAX_DAMAGE);
 		result.set(DataComponents.UNBREAKABLE, Unit.INSTANCE);
-		result.set(DataComponents.USE_EFFECTS, new UseEffects(false, true, 1.0F));
+		result.set(DataComponents.USE_EFFECTS, DIAMOND_USE_EFFECTS);
 		result.set(DataComponents.CUSTOM_NAME, Component.literal("다이아몬드 방패").withStyle(ChatFormatting.AQUA));
 		result.set(DataComponents.LORE, new ItemLore(List.of(Component.literal("내구도 3000 · 닳지 않습니다"),
 				Component.literal("막는 동안 이동 속도가 줄지 않습니다"))));
 		return result;
+	}
+
+	/**
+	 * 이미 만들어 둔 다이아몬드 방패의 쓰기 효과를 고친다. 고쳤으면 참.
+	 *
+	 * <p>제작법을 고쳐도 0.45.0-dev 로 만든 방패는 옛 값을 그대로 들고 있다. 그래서 그 방패를 알아보는
+	 * 표시 셋 — 방패 · 최대 내구도 3000 · 닳지 않음 — 과 <b>옛 쓰기 효과 그대로</b>인지를 모두 보고
+	 * 그 칸 하나만 바꾼다. 이름은 보지 않는다(모루로 이름을 바꿨어도 같은 방패다). 다른 쓰기 효과를
+	 * 단 방패는 누가 일부러 정한 것이므로 건드리지 않는다.
+	 */
+	public static boolean fixLegacyDiamond(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !stack.is(Items.SHIELD)
+				|| !stack.has(DataComponents.UNBREAKABLE)
+				|| stack.getMaxDamage() != DIAMOND_MAX_DAMAGE
+				|| !LEGACY_DIAMOND_USE_EFFECTS.equals(stack.get(DataComponents.USE_EFFECTS))) {
+			return false;
+		}
+		stack.set(DataComponents.USE_EFFECTS, DIAMOND_USE_EFFECTS);
+		return true;
 	}
 
 	public static ItemStack repair(ItemStack original, int planks) {

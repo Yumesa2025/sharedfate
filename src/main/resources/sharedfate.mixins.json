@@ -15,6 +15,7 @@
     "DisguisePlayerChatMixin",
     "SecureChatClaimMixin",
     "EnchantmentMenuDiamondMixin",
+    "EnchantmentMenuTableRulesMixin",
     "InventoryAccessor",
     "InventoryMixin",
     "InventoryChangeTriggerMixin",
@@ -89,7 +90,11 @@
     "ShieldEnchantmentMenuMixin",
     "ShieldEnchantmentSlotsMixin",
     "ShieldCraftingResultMixin",
-    "ShieldRecipePickupMixin"
+    "ShieldRecipePickupMixin",
+    "ItemCombinerMenuAccessor",
+    "ShovelSwordEnchantMenuMixin",
+    "ShovelSwordAnvilMixin",
+    "ShovelSwordSweepMixin"
   ],
   "injectors": {
     "defaultRequire": 1

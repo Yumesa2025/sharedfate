@@ -11,6 +11,7 @@ import com.sharedfate.ui.PerkCardDismiss;
 import com.sharedfate.ui.PerkCardFocus;
 import com.sharedfate.ui.PerkCardMetrics;
 import com.sharedfate.ui.PerkCardSetTypes;
+import com.sharedfate.ui.PerkRarityStyle;
 import com.sharedfate.ui.PerkRerollButton;
 import com.sharedfate.ui.PerkSetLines;
 import com.sharedfate.ui.PerkSetPanelLayout;
@@ -26,6 +27,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -60,8 +62,8 @@ import java.util.Optional;
  * </ul>
  *
  * <p>카드 한 장은 위에서부터 <b>등급 띠 → 아이템 아이콘 → 이름 → 세트 유형 → 구분선 →
- * 설명</b> 순서로 쌓인다. 등급색은 띠·테두리·배경 그라데이션에 함께 쓰여서 무엇을 고르는
- * 라운드인지 글자를 읽지 않아도 알 수 있게 한다.
+ * 설명</b> 순서로 쌓인다. 틀 · 띠 · 띠 왼쪽 문양이 등급마다 다른 그림이라
+ * ({@link PerkRarityStyle}) 무엇을 고르는 라운드인지 글자를 읽지 않아도 알 수 있다.
  *
  * <p>세트 유형 줄은 어느 유형에도 안 들어가는 증강에는 아예 없다. 그 줄이 늘어나면
  * {@link PerkCardMetrics} 가 재는 카드 높이도 함께 늘어야 한다 — 카드 안쪽은 잘려 그려지므로
@@ -111,22 +113,10 @@ import java.util.Optional;
  * 그리면 그것만 흐려진다. <b>세트 판을 그 쪽으로 옮기지 말 것.</b>
  */
 public class PerkOfferScreen extends Screen {
-	private static final int COLOR_SILVER = 0xFFC0C6CC;
-	private static final int COLOR_GOLD = 0xFFFFC63A;
-	private static final int COLOR_PRISM = 0xFF5FE0D8;
-	/** 「드래곤전 대비」(45·50 구간 전용 분류)의 엔더 연보라. HUD 와 같은 값이다. */
-	private static final int COLOR_TRIAL = com.sharedfate.ui.DragonPrepStyle.COLOR;
-
-	/** 카드 배경 그라데이션의 위/아래 색. 여기에 등급색을 조금 섞어서 쓴다. */
-	private static final int CARD_TOP = 0xE81A1A24;
-	private static final int CARD_BOTTOM = 0xE80B0B10;
-	private static final int CARD_TOP_HOVER = 0xF4272734;
-	private static final int CARD_BOTTOM_HOVER = 0xF4131319;
-	/** 배경에 등급색을 섞는 비율. 평상시엔 은은하게, 호버 때는 조금 더 짙게. */
-	private static final float CARD_TINT = 0.14F;
-	private static final float CARD_TINT_HOVER = 0.26F;
-	/** 호버한 카드의 테두리를 흰색 쪽으로 얼마나 끌어올릴지. */
+	/** 호버 · 강조 카드 바깥 1픽셀 테두리의 색을 흰색 쪽으로 얼마나 끌어올릴지. */
 	private static final float BORDER_BRIGHTEN_HOVER = 0.40F;
+	/** 그 테두리의 불투명도. 그림 틀 바깥에 한 겹 더 두르는 것이라 옅게 둔다. */
+	private static final int HOVER_OUTLINE_ALPHA = 0xB0;
 
 	private static final int SEPARATOR = 0x60FFFFFF;
 	private static final int TEXT_MAIN = 0xFFFFFFFF;
@@ -180,8 +170,6 @@ public class PerkOfferScreen extends Screen {
 	private static final int DISMISS_SHADE = 0x05050A;
 	/** 내려간 카드가 화면 아래끝을 확실히 지나도록 더 얹는 거리. */
 	private static final int DISMISS_OVERSHOOT = 4;
-	/** 고른 카드 둘레에 두르는 빛의 겹 수. 바깥으로 갈수록 옅어진다. */
-	private static final int HIGHLIGHT_GLOW_LAYERS = 4;
 	/** 빛이 한 번 밝아졌다 어두워지는 데 걸리는 시간(ms). */
 	private static final long HIGHLIGHT_PULSE_MILLIS = 900L;
 	/** 빛이 가장 어두울 때와 가장 밝을 때의 세기. */
@@ -244,16 +232,8 @@ public class PerkOfferScreen extends Screen {
 				SEPARATOR_BLOCK_HEIGHT, CARD_PADDING, lineHeight);
 	}
 
-	/** 카드 맨 위 등급 띠의 높이. */
-	private static final int BAND_HEIGHT = 11;
-
-	/** 프리즘 띠에 흘릴 색. 빨강에서 보라까지 이어진다. */
-	private static final int[] PRISM_COLORS = {
-			0xFFFF5C5C, 0xFFFFA24A, 0xFFFFE24A, 0xFF6BE06B, 0xFF5FE0D8, 0xFF6B9CFF, 0xFFC06BFF
-	};
-
-	/** 무지개 띠를 몇 조각으로 나눠 칠할지. 폭보다 크면 폭에 맞춘다. */
-	private static final int PRISM_BAND_STEPS = 48;
+	/** 카드 맨 위 등급 띠의 높이. 띠 그림의 원래 높이와 같다. */
+	private static final int BAND_HEIGHT = PerkRarityStyle.BAND_HEIGHT;
 	/** 아이템 아이콘 한 변의 원래 크기. */
 	private static final int ICON_UNIT = 16;
 	/** 자리가 넉넉할 때 쓰는 아이콘 크기 후보. 앞에서부터 들어가는 것을 고른다. */
@@ -290,8 +270,14 @@ public class PerkOfferScreen extends Screen {
 	private static final int PANEL_PADDING = 5;
 	/** 머리글과 첫 세트 줄 사이의 틈. */
 	private static final int PANEL_HEADER_GAP = 3;
-	private static final int PANEL_BACKGROUND = 0xC00C0C13;
-	private static final int PANEL_BORDER = 0x40FFFFFF;
+	/**
+	 * 판 바탕 그림({@link PerkRarityStyle#PANEL})을 판 자리보다 사방으로 더 넓혀 그리는 폭.
+	 *
+	 * <p>그림의 금속 틀이 바깥 6픽셀이라 글자 여백({@link #PANEL_PADDING}, 5)만큼만 두면 글자가 틀에
+	 * 먹힌다. 자리 계산({@link PerkSetPanelLayout})은 그대로 두고 그림만 3 넓힌다 — 왼쪽은 화면 여백
+	 * 8 안, 오른쪽은 카드와의 틈 {@link #PANEL_CARD_GAP}(10) 안이다.
+	 */
+	private static final int PANEL_FRAME_OUTSET = 3;
 	/** 켜진 세트 줄. 아직인 줄과 <b>색으로 갈린다</b>. */
 	private static final int PANEL_ACTIVE = 0xFF7FE07F;
 	/** 아직 안 켜진 세트 줄. */
@@ -305,7 +291,8 @@ public class PerkOfferScreen extends Screen {
 	 */
 	private static final PerkSetTooltipLines.Palette TOOLTIP_PALETTE =
 			new PerkSetTooltipLines.Palette(0xFFFFFFFF, PANEL_ACTIVE, 0xFF7A828E, TEXT_SUB,
-					COLOR_SILVER, COLOR_GOLD, COLOR_PRISM, TEXT_HINT);
+					PerkRarityStyle.SILVER.color(), PerkRarityStyle.GOLD.color(),
+					PerkRarityStyle.PRISM.color(), TEXT_HINT);
 	/**
 	 * 유형이 둘인 증강의 툴팁에서 「아직 없는 것」을 몇 줄까지 적을지.
 	 *
@@ -1018,9 +1005,10 @@ public class PerkOfferScreen extends Screen {
 		if (!panel.visible()) {
 			return;
 		}
-		graphics.fill(panel.left(), panel.top(), panel.right(), panel.bottom(), PANEL_BACKGROUND);
-		graphics.outline(panel.left(), panel.top(), panel.right() - panel.left(),
-				panel.bottom() - panel.top(), PANEL_BORDER);
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, PerkRarityStyle.PANEL,
+				panel.left() - PANEL_FRAME_OUTSET, panel.top() - PANEL_FRAME_OUTSET,
+				panel.right() - panel.left() + PANEL_FRAME_OUTSET * 2,
+				panel.bottom() - panel.top() + PANEL_FRAME_OUTSET * 2);
 		if (panel.header()) {
 			graphics.text(this.font, PANEL_TITLE, panel.contentLeft(), panel.headerY(), TEXT_HINT);
 		}
@@ -1093,7 +1081,7 @@ public class PerkOfferScreen extends Screen {
 		for (String typeId : typeIds) {
 			List<PerkSetTooltipLines.Row> rows = PerkSetTooltipLines.build(
 					ClientPerkSets.tooltip(typeId), ClientPerkSets.displayName(typeId), limit,
-					TOOLTIP_PALETTE);
+					TOOLTIP_PALETTE, this.font::width, PerkSetTooltipLines.wrapWidth(this.width));
 			if (rows.isEmpty()) {
 				continue;
 			}
@@ -1243,38 +1231,24 @@ public class PerkOfferScreen extends Screen {
 		// 고르는 대신 제안이 될 뿐이다.
 		boolean hovered = (clickable() || votable()) && !ownedOpen
 				&& isInside(mouseX, mouseY, left, right, cardTop + cardHeight);
-		// 강조한 카드는 호버와 같은 밝기를 쓰되, 아래의 빛과 두 겹 테두리로 한 단계 더 올린다.
+		// 강조한 카드는 호버와 같은 밝기를 쓰되, 아래의 빛으로 한 단계 더 올린다.
 		boolean bright = hovered || highlighted;
 
 		int top = cardTop + entryOffset(index) - (hovered ? HOVER_LIFT : 0) + slide;
 		int bottom = top + cardHeight;
-		int rarity = card.rarityColor();
+		PerkRarityStyle style = card.style();
+		int rarity = style.color();
 
 		if (highlighted) {
 			renderHighlightGlow(graphics, left, top, rarity);
 		}
 
-		// 등급색을 살짝 섞은 세로 그라데이션. 위가 밝고 아래로 가라앉는다.
-		graphics.fillGradient(left, top, right, bottom,
-				mix(bright ? CARD_TOP_HOVER : CARD_TOP, rarity,
-						bright ? CARD_TINT_HOVER : CARD_TINT),
-				mix(bright ? CARD_BOTTOM_HOVER : CARD_BOTTOM, rarity,
-						bright ? CARD_TINT_HOVER / 2.0F : CARD_TINT / 2.0F));
-
-		// 등급 띠. 카드 맨 위를 등급색으로 가득 채운다.
-		// 프리즘만은 이름값을 하도록 무지개로 흘린다.
-		if (card.rarity() == PerkRarity.PRISM) {
-			renderPrismBand(graphics, left, top, right, bright ? 0xFF : 0xDC);
-		} else {
-			graphics.fill(left, top, right, top + BAND_HEIGHT,
-					bright ? rarity : withAlpha(rarity, 0xDC));
-		}
-
-		int border = bright ? brighten(rarity, BORDER_BRIGHTEN_HOVER) : rarity;
-		graphics.outline(left, top, cardWidth, cardHeight, border);
+		// 틀 · 등급 띠 · 문양은 등급마다 다른 그림이다. 평상시는 조금 눌러 그리고, 마우스를 올린
+		// 카드와 정해진 카드는 원래 밝기로 그린 뒤 바깥에 밝은 테두리를 한 겹 두른다.
+		PerkCardSprites.frame(graphics, style, left, top, cardWidth, cardHeight, bright);
 		if (bright) {
-			// 마우스를 올린 카드와 정해진 카드는 테두리를 두 겹으로 그려 강조한다.
-			graphics.outline(left + 1, top + 1, cardWidth - 2, cardHeight - 2, border);
+			PerkCardSprites.outline(graphics, left, top, cardWidth, cardHeight,
+					withAlpha(brighten(rarity, BORDER_BRIGHTEN_HOVER), HOVER_OUTLINE_ALPHA));
 		}
 
 		// 카드가 세로로 잘린 경우 내용이 카드 밖으로 삐져나오지 않게 자른다.
@@ -1287,7 +1261,11 @@ public class PerkOfferScreen extends Screen {
 		graphics.enableScissor(left + 1, top + 1, right - 1, clipBottom);
 		int textCenterX = left + cardWidth / 2;
 		int bandTextY = top + (BAND_HEIGHT - this.font.lineHeight + 1) / 2;
-		graphics.centeredText(this.font, card.rarityLabel(), textCenterX, bandTextY, BAND_TEXT);
+		// 등급 글자는 띠 가운데에 두되 왼쪽 문양에 닿으면 그만큼 오른쪽으로 비킨다.
+		graphics.centeredText(this.font, card.rarityLabel(),
+				PerkCardSprites.bandTextCenter(left, cardWidth,
+						this.font.width(card.rarityLabel())),
+				bandTextY, BAND_TEXT);
 		// 표는 등급 글자를 그린 뒤 그 오른쪽에 얹는다. 등급 글자가 가운데 정렬이라 카드가
 		// 가장 좁을 때(56픽셀)도 오른쪽 끝은 비어 있다.
 		renderVoteMark(graphics, index, right, top, bandTextY);
@@ -1319,10 +1297,10 @@ public class PerkOfferScreen extends Screen {
 		}
 		graphics.disableScissor();
 
-		// 내려가는 카드는 마지막에 어둠 한 겹을 덮는다. 잘라내기 밖에서 테두리까지 함께
-		// 덮어야 배경만 어두워지고 테두리만 남는 그림이 되지 않는다.
+		// 내려가는 카드는 마지막에 어둠 한 겹을 덮는다. 잘라내기 밖에서 틀까지 함께
+		// 덮어야 바탕만 어두워지고 틀만 남는 그림이 되지 않는다.
 		if (shade > 0.0F) {
-			graphics.fill(left, top, right, bottom,
+			PerkCardSprites.shade(graphics, left, top, cardWidth, cardHeight,
 					withAlpha(DISMISS_SHADE, Math.round(0xFF * Math.clamp(shade, 0.0F, 1.0F))));
 		}
 	}
@@ -1331,7 +1309,7 @@ public class PerkOfferScreen extends Screen {
 	 * 카드에 모인 표를 등급 띠 오른쪽 끝에 그린다.
 	 *
 	 * <p>{@code renderCard} 가 걸어 둔 잘라내기 안이라 카드 밖으로 새지 않는다. 바탕을 한 겹
-	 * 깔고 그 위에 체크를 얹는 것은 등급 띠가 저마다 밝은 색이고 프리즘은 아예 무지개여서다.
+	 * 깔고 그 위에 체크를 얹는 것은 등급 띠 그림이 저마다 밝은 색이고 프리즘은 아예 무지개여서다.
 	 *
 	 * <p>내가 던진 표가 섞여 있으면 초록으로 그린다. 「내 표가 어디 있는지」가 안 보이면
 	 * 취소하려고 누른 것이 오히려 옮기는 일이 된다.
@@ -1359,8 +1337,8 @@ public class PerkOfferScreen extends Screen {
 	/**
 	 * 정해진 카드 둘레에 등급색 빛을 두른다.
 	 *
-	 * <p>테두리를 한 겹씩 바깥으로 넓혀 가며 투명도를 낮춰 그린다. 진짜 번짐 효과는 셰이더가
-	 * 있어야 하지만, 겹을 넷만 쌓아도 카드가 화면에서 떠오르는 것처럼 보인다.
+	 * <p>바깥으로 갈수록 옅어지는 흰 빛 그림({@link PerkRarityStyle#CARD_GLOW})을 등급색으로 물들여
+	 * 카드보다 사방 8픽셀 크게 깐다({@link PerkCardSprites#glow}).
 	 *
 	 * <p>세기는 천천히 오르내린다.
 	 *
@@ -1373,12 +1351,7 @@ public class PerkOfferScreen extends Screen {
 		float pulse = 0.5F - 0.5F * (float) Math.cos(phase * 2.0 * Math.PI);
 		float strength = (HIGHLIGHT_GLOW_MIN + (HIGHLIGHT_GLOW_MAX - HIGHLIGHT_GLOW_MIN) * pulse)
 				* PerkCardFocus.progress(resultElapsedMillis());
-		for (int layer = 1; layer <= HIGHLIGHT_GLOW_LAYERS; layer++) {
-			float fade = (float) (HIGHLIGHT_GLOW_LAYERS + 1 - layer) / (HIGHLIGHT_GLOW_LAYERS + 1);
-			int alpha = Math.round(0xFF * fade * strength);
-			graphics.outline(left - layer, top - layer,
-					cardWidth + layer * 2, cardHeight + layer * 2, withAlpha(rarity, alpha));
-		}
+		PerkCardSprites.glow(graphics, left, top, cardWidth, cardHeight, rarity, strength);
 	}
 
 	/**
@@ -1675,18 +1648,6 @@ public class PerkOfferScreen extends Screen {
 		return rarity == null ? PerkRarity.SILVER.displayName() : rarity.displayName();
 	}
 
-	private static int rarityColor(PerkRarity rarity) {
-		if (rarity == null) {
-			return COLOR_SILVER;
-		}
-		return switch (rarity) {
-			case SILVER -> COLOR_SILVER;
-			case GOLD -> COLOR_GOLD;
-			case PRISM -> COLOR_PRISM;
-			case TRIAL -> COLOR_TRIAL;
-		};
-	}
-
 	/**
 	 * 증강이 지정한 아이콘 아이템을 찾는다.
 	 *
@@ -1747,38 +1708,6 @@ public class PerkOfferScreen extends Screen {
 		return mix(color, 0xFFFFFFFF, amount);
 	}
 
-	/**
-	 * 프리즘 등급의 등급 띠를 무지개로 그린다.
-	 *
-	 * <p>{@code fillGradient} 는 위아래 두 색만 받으므로 가로 무지개를 한 번에 그릴 수 없다.
-	 * 띠를 세로로 잘게 나누고 조각마다 이웃한 두 색을 섞어 칠하면 가로로 흐르는 것처럼 보인다.
-	 * 등급 띠 하나에만 쓰므로 조각이 늘어도 비용은 무시할 만하다.
-	 *
-	 * <p>테두리까지 무지개로 하면 카드 경계가 흐려지므로 띠에만 쓴다.
-	 */
-	private void renderPrismBand(GuiGraphicsExtractor graphics, int left, int top, int right,
-			int alpha) {
-		int width = right - left;
-		if (width <= 0) {
-			return;
-		}
-		int bottom = top + BAND_HEIGHT;
-		int steps = Math.min(width, PRISM_BAND_STEPS);
-		for (int step = 0; step < steps; step++) {
-			int sliceLeft = left + (int) ((long) width * step / steps);
-			int sliceRight = left + (int) ((long) width * (step + 1) / steps);
-			if (sliceRight <= sliceLeft) {
-				continue;
-			}
-			// 조각 가운데 위치를 무지개 위의 한 점으로 본다.
-			float position = (step + 0.5F) / steps * (PRISM_COLORS.length - 1);
-			int index = Math.min((int) position, PRISM_COLORS.length - 2);
-			int color = withAlpha(
-					mix(PRISM_COLORS[index], PRISM_COLORS[index + 1], position - index), alpha);
-			graphics.fill(sliceLeft, top, sliceRight, bottom, color);
-		}
-	}
-
 	private static int withAlpha(int color, int alpha) {
 		return (alpha & 0xFF) << 24 | color & 0x00FFFFFF;
 	}
@@ -1796,7 +1725,7 @@ public class PerkOfferScreen extends Screen {
 			int setTypeWidth,
 			Component rarityLabel,
 			PerkRarity rarity,
-			int rarityColor,
+			PerkRarityStyle style,
 			ItemStack icon,
 			List<FormattedCharSequence> descriptionLines) {
 
@@ -1829,7 +1758,7 @@ public class PerkOfferScreen extends Screen {
 					setTypeWidth,
 					Component.literal(PerkOfferScreen.rarityLabel(rarity)),
 					rarity,
-					PerkOfferScreen.rarityColor(rarity),
+					PerkRarityStyle.of(rarity),
 					PerkOfferScreen.iconStack(option.icon(), rarity),
 					font.split(Component.literal(text(option.description())), innerWidth));
 		}

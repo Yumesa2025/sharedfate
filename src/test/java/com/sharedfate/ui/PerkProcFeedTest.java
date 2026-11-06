@@ -222,12 +222,12 @@ class PerkProcFeedTest {
 
 	@Test
 	void 등급마다_테두리_색이_다르다() {
-		assertEquals(PerkProcFeed.SILVER, PerkProcFeed.accentFor("silver"));
-		assertEquals(PerkProcFeed.GOLD, PerkProcFeed.accentFor("gold"));
-		assertEquals(PerkProcFeed.PRISM, PerkProcFeed.accentFor("prism"));
+		assertEquals(PerkRarityStyle.SILVER.color(), PerkProcFeed.accentFor("silver"));
+		assertEquals(PerkRarityStyle.GOLD.color(), PerkProcFeed.accentFor("gold"));
+		assertEquals(PerkRarityStyle.PRISM.color(), PerkProcFeed.accentFor("prism"));
 		assertEquals(DragonPrepStyle.COLOR, PerkProcFeed.accentFor("trial"));
-		assertEquals(PerkProcFeed.SILVER, PerkProcFeed.accentFor("???"));
-		assertEquals(PerkProcFeed.SILVER, PerkProcFeed.accentFor(null));
+		assertEquals(PerkRarityStyle.SILVER.color(), PerkProcFeed.accentFor("???"));
+		assertEquals(PerkRarityStyle.SILVER.color(), PerkProcFeed.accentFor(null));
 	}
 
 	@Test

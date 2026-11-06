@@ -1,6 +1,7 @@
 package com.sharedfate.perk;
 
 import com.sharedfate.perk.effect.*;
+import com.sharedfate.recipe.ShieldRecipes;
 import com.sharedfate.team.TeamLookup;
 import com.sharedfate.team.TeamState;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -53,8 +54,30 @@ public final class PerkShieldCombat {
 				entry.getKey().setDeltaMovement(Vec3.ZERO);
 				return false;
 			});
+			// 0.45.0-dev 로 만든 다이아몬드 방패는 막는 동안 달리지 못하는 옛 값을 들고 있다.
+			// 1초에 한 번 접속한 사람의 가방을 훑어 고친다. 고친 칸은 바닐라 슬롯 동기화가 다음
+			// 틱에 클라이언트로 보내고, 들고 막는 중이어도 LocalPlayer 가 새 물건으로 갈아 쥔다.
+			if (now % LEGACY_SHIELD_SCAN_TICKS == 0) {
+				for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+					fixLegacyDiamondShields(player);
+				}
+			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> clear());
+	}
+
+	/** 옛 다이아몬드 방패를 찾아 고치는 주기(틱). 가방 한 번 훑기는 가벼워 1초면 넉넉하다. */
+	private static final int LEGACY_SHIELD_SCAN_TICKS = 20;
+
+	/** 이 사람 가방(손·갑옷·왼손 칸 포함)의 옛 다이아몬드 방패를 고친다. */
+	static void fixLegacyDiamondShields(ServerPlayer player) {
+		var inventory = player.getInventory();
+		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+			ItemStack stack = inventory.getItem(slot);
+			if (!stack.isEmpty() && ShieldRecipes.fixLegacyDiamond(stack)) {
+				inventory.setChanged();
+			}
+		}
 	}
 
 	public static List<PerkEffect> effects(TeamState state) {

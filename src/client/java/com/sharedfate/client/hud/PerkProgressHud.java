@@ -6,10 +6,13 @@ import com.sharedfate.ui.BottomCenterLayout;
 import com.sharedfate.ui.DragonPrepStyle;
 import com.sharedfate.ui.PerkGauge;
 import com.sharedfate.ui.PerkGaugeMotion;
+import com.sharedfate.ui.PerkRarityStyle;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 import net.minecraft.world.entity.player.Player;
 
@@ -20,11 +23,15 @@ import net.minecraft.world.entity.player.Player;
  * <p>증강은 정해진 레벨 구간에 <b>처음</b> 닿을 때 나온다. 폭과 두께는 바닐라의
  * {@code ContextualBar}(폭 182, 높이 5)에서 그대로 따왔다.
  *
- * <h2>모양 (0.44 다시 그림)</h2>
- * <p>텍스처 없이 사각형만으로 그린다. 바깥부터 <b>테두리 빛</b>(1픽셀, 진행 끝과 번쩍일 때만) →
- * <b>검은 테두리</b> → <b>어두운 바탕 그라데이션</b> → <b>찬 부분 그라데이션과 윗면 광택</b> →
- * <b>레벨 눈금</b> → <b>빛나는 진행 끝</b> 순이다. 색은 두 벌 — 평소의 금색, 41~50 구간(다음이
- * 45·50)의 엔더 연보라({@link DragonPrepStyle#COLOR}).
+ * <h2>모양</h2>
+ * <p>바탕과 찬 부분은 그림이다({@link PerkRarityStyle#GAUGE_GOLD_BG} 등, 182×5 — 검은 테두리 ·
+ * 윗면 광택이 그림 안에 있다). 찬 부분 그림은 <b>왼쪽에서부터 찬 폭만큼만 잘라</b> 그린다. 그 위에
+ * 사각형으로 <b>테두리 빛</b>(1픽셀, 진행 끝과 번쩍일 때만) · <b>레벨 눈금</b> · <b>빛나는 진행 끝</b> ·
+ * <b>번쩍임</b>을 얹는다. 색은 두 벌 — 평소의 금색, 41~50 구간(다음이 45·50)의 엔더 연보라
+ * ({@link DragonPrepStyle#COLOR}).
+ *
+ * <p>⚠ 바탕 그림에도 옅은 눈금이 20픽셀마다(열 칸) 그려져 있다. 한 칸은 {@link PerkMilestones#STEP}
+ * 레벨이라 그 눈금은 레벨과 안 맞는다 — 레벨 눈금은 여전히 코드가 따로 긋는다.
  *
  * <p>움직임(부드럽게 차오르기·짧은 반짝임·구간에 닿은 번쩍임)은 {@link PerkGaugeMotion} 이 정한다.
  * 레벨 안의 경험치까지 세어({@link PerkGauge#fraction(int, int, float)}) 구슬 하나에도 조금씩 찬다.
@@ -47,26 +54,20 @@ public class PerkProgressHud implements HudElement {
 	private static final int WIDTH = BottomCenterLayout.GAUGE_WIDTH;
 	private static final int HEIGHT = BottomCenterLayout.GAUGE_HEIGHT;
 
-	/** 검은 테두리. 밝은 배경 위에서도 막대가 뭉개지지 않게 한다. */
-	private static final int BORDER_COLOR = 0xC0000000;
-	/** 안 찬 부분의 위·아래. 바닐라 바의 어두운 바탕과 비슷한 무게다. */
-	private static final int TRACK_TOP = 0xB0343440;
-	private static final int TRACK_BOTTOM = 0xB0141418;
 	/** 눈금 — 안 찬 쪽은 옅은 빛, 찬 쪽은 옅은 그림자. */
 	private static final int TICK_ON_TRACK = 0x38FFFFFF;
 	private static final int TICK_ON_FILL = 0x48000000;
-	/** 찬 부분 윗면의 광택. */
-	private static final int GLOSS = 0x66FFFFFF;
 
-	/** 색 한 벌. */
-	private record Theme(int fillTop, int fillBottom, int edge, int glow) {
+	/** 그림과 색 한 벌. */
+	private record Theme(Identifier background, Identifier fill, int edge, int glow) {
 	}
 
 	/** 평소 — 금색. {@link TeamLevelHud} 의 「다음 증강까지」(0xFFD24A)와 한 쌍으로 읽힌다. */
-	private static final Theme GOLD = new Theme(0xFFFFE27A, 0xFFDB9419, 0xFFFFF7D6, 0xFFD24A);
+	private static final Theme GOLD = new Theme(PerkRarityStyle.GAUGE_GOLD_BG,
+			PerkRarityStyle.GAUGE_GOLD_FILL, 0xFFFFF7D6, 0xFFD24A);
 	/** 드래곤전 대비 — 엔더 연보라. */
-	private static final Theme PREP = new Theme(0xFFE9D9FF, 0xFF9562E6, 0xFFF7F0FF,
-			DragonPrepStyle.COLOR & 0xFFFFFF);
+	private static final Theme PREP = new Theme(PerkRarityStyle.GAUGE_TRIAL_BG,
+			PerkRarityStyle.GAUGE_TRIAL_FILL, 0xFFF7F0FF, DragonPrepStyle.COLOR & 0xFFFFFF);
 
 	private static final PerkGaugeMotion MOTION = new PerkGaugeMotion();
 
@@ -127,32 +128,31 @@ public class PerkProgressHud implements HudElement {
 		float flash = MOTION.flash(now);
 		int glow = BottomCenterLayout.GAUGE_GLOW;
 
-		// 1. 테두리 밖의 빛. 이 뒤에 그리는 검은 테두리가 안쪽을 덮어 바깥 1픽셀만 남는다.
+		// 1. 막대 밖의 빛. 이 뒤에 그리는 바탕 그림이 안쪽을 덮어 바깥 1픽셀만 남는다.
 		if (flash > 0.0F) {
-			graphics.fill(left - 1 - glow, top - 1 - glow, right + 1 + glow, bottom + 1 + glow,
+			graphics.fill(left - glow, top - glow, right + glow, bottom + glow,
 					alpha(theme.glow(), 0.55F * flash));
 		}
 		boolean edgeVisible = filled > 0 && filled < WIDTH;
 		if (edgeVisible) {
 			int edgeX = left + filled;
-			graphics.fill(edgeX - 3, top - 1 - glow, edgeX + 2, bottom + 1 + glow,
+			graphics.fill(edgeX - 3, top - glow, edgeX + 2, bottom + glow,
 					alpha(theme.glow(), 0.22F + 0.5F * sparkle));
 		}
 
-		// 2. 테두리와 바탕.
-		graphics.fill(left - 1, top - 1, right + 1, bottom + 1, BORDER_COLOR);
-		graphics.fillGradient(left, top, right, bottom, TRACK_TOP, TRACK_BOTTOM);
+		// 2. 바탕 그림. 검은 테두리가 그림 안에 있다.
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, theme.background(), left, top, WIDTH, HEIGHT);
 
-		// 3. 찬 부분과 윗면 광택.
+		// 3. 찬 부분 그림을 왼쪽에서부터 찬 폭만큼만 잘라 얹는다. 늘이면 왼쪽 끝 테두리가 뭉개진다.
 		if (filled > 0) {
-			graphics.fillGradient(left, top, left + filled, bottom, theme.fillTop(), theme.fillBottom());
-			graphics.fill(left, top, left + filled, top + 1, GLOSS);
+			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, theme.fill(), WIDTH, HEIGHT, 0, 0,
+					left, top, filled, HEIGHT);
 		}
 
 		// 4. 레벨 눈금. 한 칸(STEP 레벨)을 레벨마다 나눈다. 양 끝은 테두리가 맡는다.
 		for (int i = 1; i < PerkMilestones.STEP; i++) {
 			int x = left + Math.round(WIDTH * i / (float) PerkMilestones.STEP);
-			graphics.fill(x, top + 1, x + 1, bottom, x < left + filled ? TICK_ON_FILL : TICK_ON_TRACK);
+			graphics.fill(x, top + 1, x + 1, bottom - 1, x < left + filled ? TICK_ON_FILL : TICK_ON_TRACK);
 		}
 
 		// 5. 빛나는 진행 끝. 오를 때 잠깐 더 밝고 넓어진다.

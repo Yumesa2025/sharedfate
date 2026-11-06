@@ -197,15 +197,20 @@ class EnchantmentDiamondCostTest {
 	}
 
 	@Test
-	void 청금석이_모자라면_그_칸만_막힌다() throws Exception {
+	void 청금석은_세_칸_모두_3개가_필요하다() throws Exception {
 		Player player = hollowPlayer(false);
 		player.experienceLevel = 0;
-		EnchantmentMenu menu = readyMenu(player, 1);
+		EnchantmentMenu menu = readyMenu(player, 2);
 		giveToSlot(menu, 64);
 
-		assertTrue(menu.clickMenuButton(player, 0), "청금석 1개면 첫 칸은 눌린다");
-		assertFalse(menu.clickMenuButton(player, 1), "둘째 칸은 청금석 2개가 필요하다");
-		assertFalse(menu.clickMenuButton(player, 2), "셋째 칸은 청금석 3개가 필요하다");
+		for (int slot = 0; slot < 3; slot++) {
+			assertFalse(menu.clickMenuButton(player, slot), "청금석 2개로는 " + slot + "번 칸도 눌리지 않는다");
+		}
+
+		menu.getSlot(1).set(new ItemStack(Items.LAPIS_LAZULI, 3));
+		for (int slot = 0; slot < 3; slot++) {
+			assertTrue(menu.clickMenuButton(player, slot), "청금석 3개면 " + slot + "번 칸이 눌린다");
+		}
 	}
 
 	@Test

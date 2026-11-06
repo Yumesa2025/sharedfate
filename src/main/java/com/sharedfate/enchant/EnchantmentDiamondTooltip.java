@@ -12,7 +12,11 @@ import java.util.List;
  *
  * <p>레벨을 더 이상 쓰지 않으므로 바닐라 툴팁의 두 줄이 거짓말이 된다.
  * 바닐라가 만들어 둔 줄 목록을 받아 <b>번역 열쇠를 보고</b>
- * 해당하는 줄만 갈아 끼운다. 나머지 줄(인챈트 힌트, 청금석 요구량)은 그대로 둔다.
+ * 해당하는 줄만 갈아 끼운다. 인챈트 힌트는 그대로 둔다.
+ *
+ * <p>청금석 줄도 고친다. 바닐라는 「칸 번호 + 1」개라고 적지만 이 모드는 칸과 상관없이
+ * {@value EnchantmentTableRules#LAPIS_COST}개를 걷는다. 색(모자라면 빨강)은 바닐라가 정한 그대로
+ * 남긴다 — 화면 Mixin 이 바닐라가 비교하는 청금석 개수를 이미 3개 기준으로 바꿔 두었다.
  *
  * <p>적는 개수는 {@link EnchantmentDiamondCost#forSlot(int)} 에서 가져온다. 그 값은 서버가
  * 메뉴의 데이터 칸으로 내려보낸 것이므로, {@code enchant_cost} 증강으로 개수가 달라진 팀은
@@ -25,6 +29,10 @@ public final class EnchantmentDiamondTooltip {
 	private static final String LEVEL_ONE = "container.enchant.level.one";
 	/** 「인챈트 레벨 %s」 — 위와 같되 둘 이상일 때. 인자가 칸 번호 + 1 이다. */
 	private static final String LEVEL_MANY = "container.enchant.level.many";
+	/** 「청금석 1개」. */
+	private static final String LAPIS_ONE = "container.enchant.lapis.one";
+	/** 「청금석 %s개」. 인자가 칸 번호 + 1 이다. */
+	private static final String LAPIS_MANY = "container.enchant.lapis.many";
 
 	private EnchantmentDiamondTooltip() {
 	}
@@ -51,6 +59,9 @@ public final class EnchantmentDiamondTooltip {
 			case LEVEL_ONE -> costLine(0);
 			// 바닐라 인자는 「칸 번호 + 1」 이다. 칸마다 값이 다를 때를 위해 되돌린다.
 			case LEVEL_MANY -> costLine(firstNumber(contents, 1) - 1);
+			case LAPIS_ONE, LAPIS_MANY -> Component
+					.translatable(LAPIS_MANY, EnchantmentTableRules.LAPIS_COST)
+					.withStyle(line.getStyle());
 			default -> line;
 		};
 	}

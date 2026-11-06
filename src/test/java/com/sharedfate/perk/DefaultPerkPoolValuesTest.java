@@ -23,6 +23,11 @@ import com.sharedfate.perk.effect.PeriodicEffect;
 import com.sharedfate.perk.effect.RarityGrantEffect;
 import com.sharedfate.perk.effect.StatusEffectPerk;
 import com.sharedfate.perk.effect.WeaponDamageEffect;
+import com.sharedfate.perk.effect.DurabilityMultiplierEffect;
+import com.sharedfate.perk.effect.GatherEffect;
+import com.sharedfate.perk.effect.ItemBanEffect;
+import com.sharedfate.perk.effect.MaxHealthLockEffect;
+import com.sharedfate.perk.effect.ToolCraftEffect;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -243,7 +248,7 @@ class DefaultPerkPoolValuesTest {
 		assertEquals(0.8, brink.damageTakenMultiplier(true), 1.0e-9);
 		assertEquals(1.0, brink.damageTakenMultiplier(false), 1.0e-9);
 
-		// 과부하 — 상시 +6·+40%, 30초마다 3초간 둘 다 꺼지고 −12·−15%.
+		// 과부하 — 상시 +6·+40%, 30초마다 3초간 둘 다 꺼지고 −6·−10%(2026-11-06 에 −12·−15% → −6·−10%).
 		PeriodicEffect overload = assertInstanceOf(PeriodicEffect.class,
 				PerkRegistry.byId("sharedfate:overload").orElseThrow().effects().get(0));
 		assertEquals(600, overload.periodTicks());
@@ -253,9 +258,9 @@ class DefaultPerkPoolValuesTest {
 				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 0.4);
 		assertEquals(60, overload.phases().get(0).ticks(), "대가는 8초가 아니라 3초다");
 		assertAttribute(overload.phases().get(0).effects().get(0), "minecraft:attack_damage",
-				AttributeModifier.Operation.ADD_VALUE, -12.0);
+				AttributeModifier.Operation.ADD_VALUE, -6.0);
 		assertAttribute(overload.phases().get(0).effects().get(1), "minecraft:movement_speed",
-				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, -0.15);
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, -0.1);
 		// 대가 구간에는 같은 속성의 상시분이 꺼져야 「둘 다 사라지고」가 된다.
 		assertEquals(overload.phases().get(0).effects(), overload.activeFor(0));
 		assertEquals(overload.base(), overload.activeFor(PeriodicEffect.NO_PHASE));
@@ -504,6 +509,64 @@ class DefaultPerkPoolValuesTest {
 				"받는 피해를 늘리지 않는다");
 		assertTrue(blessing.effects().stream().noneMatch(e -> e instanceof MaxHealthBonusEffect),
 				"최대 체력을 깎지 않는다");
+	}
+
+	// ------------------------------------------------------------------ 2026-11-06 조정
+
+	/** 광전사 — 화력 세트로 옮기고 공격력 ×3 → ×2(add_multiplied_total 2.0 → 1.0). */
+	@Test
+	void 광전사는_화력_세트이고_공격력은_2배다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:berserker");
+
+		assertEquals(List.of(PerkSetType.POWER), perk.setTypes());
+		assertAttribute(attributeEffect(perk, "minecraft:attack_damage"), "minecraft:attack_damage",
+				AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL, 1.0);
+		assertTrue(perk.description().startsWith("공격력이 2배가 되고 최대 체력이 10 증가합니다."));
+		assertTrue(perk.effects().stream().anyMatch(e -> e instanceof com.sharedfate.perk.effect.EquipBanEffect),
+				"머리·가슴 금지는 그대로다");
+	}
+
+	@Test
+	void 삽질의_대가는_삽_3배와_검_마법부여다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:shovel_master");
+		WeaponDamageEffect weapon = assertInstanceOf(WeaponDamageEffect.class, perk.effects().get(0));
+
+		assertEquals(3.0, weapon.multiplier(), 1.0e-9);
+		assertTrue(perk.effects().contains(ToolCraftEffect.SHOVEL_SWORD_ENCHANTING));
+		assertEquals("삽의 공격력이 3배가 되고, 삽에 검 마법부여가 붙습니다.", perk.description());
+	}
+
+	@Test
+	void 금기의_광석은_주괴_하나와_내구도_3배와_다이아몬드_제작법이다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:forbidden_ore");
+		ItemGrantEffect grant = assertInstanceOf(ItemGrantEffect.class, perk.effects().get(0));
+
+		assertEquals(1, grant.entries().size());
+		assertEquals("minecraft:netherite_ingot", grant.entries().get(0).itemId().toString());
+		assertEquals(1, grant.entries().get(0).count());
+		var durability = perk.effects().stream().filter(DurabilityMultiplierEffect.class::isInstance)
+				.map(DurabilityMultiplierEffect.class::cast).findFirst().orElseThrow();
+		assertEquals(3.0, durability.multiplier(), 1.0e-9);
+		assertTrue(perk.effects().contains(ToolCraftEffect.DIAMOND_TO_NETHERITE));
+		assertTrue(perk.effects().stream().noneMatch(ItemBanEffect.class::isInstance), "다이아몬드 장비 금지는 걷어냈다");
+		assertFalse(perk.description().contains("대신"));
+	}
+
+	@Test
+	void 고행자는_최대_체력을_고정하지_않는다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:ascetic");
+
+		assertTrue(perk.effects().stream().noneMatch(MaxHealthLockEffect.class::isInstance));
+		assertEquals("허기가 어떤 상황에서도 줄지 않습니다.", perk.description());
+	}
+
+	@Test
+	void 운명_공동체는_강제로_모으지_않는다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:shared_fate_bond");
+
+		assertTrue(perk.effects().stream().noneMatch(GatherEffect.class::isInstance));
+		assertTrue(perk.effects().stream().anyMatch(e -> e instanceof MaxHealthBonusEffect bonus && bonus.amount() == 4.0F));
+		assertFalse(perk.description().contains("강제로"));
 	}
 
 	// ------------------------------------------------------------------ 도우미

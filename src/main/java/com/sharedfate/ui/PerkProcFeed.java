@@ -45,11 +45,6 @@ public final class PerkProcFeed {
 	/** 줄 앞의 표식. */
 	public static final String MARK = "⟡";
 
-	/** 등급색. 팀 화면·보유 목록의 글자색과 같다. */
-	public static final int SILVER = 0xFFC0C6CC;
-	public static final int GOLD = 0xFFFFC63A;
-	public static final int PRISM = 0xFF5FE0D8;
-
 	/** 떠 있는 줄 하나. */
 	public record Line(String key, String name, int accent, long startedAt) {
 		/** 화면에 적는 글. 「⟡ 급소만 노려」. */
@@ -83,17 +78,9 @@ public final class PerkProcFeed {
 	private final Map<String, Long> lastSound = new HashMap<>();
 	private long lastAnySound = Long.MIN_VALUE;
 
-	/** 등급 id 를 테두리 색으로. 모르는 값은 실버. */
+	/** 등급 id 를 테두리 색으로. 모르는 값은 실버. 값은 {@link PerkRarityStyle} 이 쥔다. */
 	public static int accentFor(String rarity) {
-		if (rarity == null) {
-			return SILVER;
-		}
-		return switch (rarity) {
-			case "gold" -> GOLD;
-			case "prism" -> PRISM;
-			case "trial" -> DragonPrepStyle.COLOR;
-			default -> SILVER;
-		};
+		return PerkRarityStyle.colorOf(rarity);
 	}
 
 	/**

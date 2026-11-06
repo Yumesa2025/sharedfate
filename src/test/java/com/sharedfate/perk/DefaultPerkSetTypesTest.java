@@ -41,15 +41,15 @@ class DefaultPerkSetTypesTest {
 
 		Map<PerkSetType, Integer> expected = new EnumMap<>(PerkSetType.class);
 		expected.put(PerkSetType.MINING, 10);
-		// 「작아진 몸」이 무유형에서 화력으로 들어와 8 → 9.
-		expected.put(PerkSetType.POWER, 9);
+		// 「작아진 몸」이 무유형에서 화력으로 들어와 8 → 9. 「광전사」가 무기에서 옮겨 와 9 → 10.
+		expected.put(PerkSetType.POWER, 10);
 		// 「숨죽인 걸음」이 무유형에서 기동으로 들어와 7 → 8.
 		// 「엇박자」(골드)가 무유형에서 들어와 8 → 9.
 		expected.put(PerkSetType.MOBILITY, 9);
 		expected.put(PerkSetType.DEFENSE, 8);
 		expected.put(PerkSetType.SUPPLY, 7);
-		// 「밀어내기」(골드)가 무유형에서 들어와 7 → 8.
-		expected.put(PerkSetType.WEAPON, 8);
+		// 「밀어내기」(골드)가 무유형에서 들어와 7 → 8. 「광전사」가 화력으로 가며 8 → 7.
+		expected.put(PerkSetType.WEAPON, 7);
 		// 0.29.1-dev 에서 「환골탈태」가 빠져 5 → 4 가 됐다. 세트 3단계(셋)는 그대로 닿는다.
 		expected.put(PerkSetType.GAMBLE, 4);
 		// 「타지 않는 살갗」(골드)·「고행자」(프리즘)가 무유형에서 들어와 5 → 7.

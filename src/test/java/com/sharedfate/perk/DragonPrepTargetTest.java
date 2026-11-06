@@ -92,9 +92,10 @@ class DragonPrepTargetTest {
 	}
 
 	@Test
-	void 통신_규약은_41_이다() {
+	void 통신_규약은_42_이다() {
 		// 0.44.0-dev — PerkClientFeaturesPayload 에 화살통 칸이 늘었다(40).
 		// 41 — StatSnapshotPayload 에 인벤토리 옆 패널의 보정치 묶음이 늘었다.
-		assertEquals(41, SharedFateNetworking.PROTOCOL_VERSION);
+		// 42 — 마법부여 개편(30 등급 · 책장 6개). 옛 클라이언트가 화면을 다르게 그려 접속을 막는다.
+		assertEquals(42, SharedFateNetworking.PROTOCOL_VERSION);
 	}
 }

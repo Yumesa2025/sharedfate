@@ -5,7 +5,6 @@ import com.mojang.serialization.JsonOps;
 import com.sharedfate.TestBootstrap;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -26,18 +25,37 @@ class ShieldEnchantmentsTest {
 		assertNotNull(Class.forName("net.minecraft.client.gui.screens.inventory.EnchantmentScreen"));
 	}
 
-	@Test void 후보는_등급_십오와_이십이에서_열린다() {
-		assertTrue(ShieldEnchantments.candidates(14).isEmpty());
-		assertEquals(List.of("minecraft:unbreaking", "minecraft:thorns"),
-				ShieldEnchantments.candidates(15).stream().map(ShieldEnchantments.Candidate::id).toList());
-		assertEquals(2, ShieldEnchantments.candidates(21).size());
-		assertEquals(8, ShieldEnchantments.candidates(22).size());
+	@Test void 등급이_언제나_30이라_후보_전체가_열린다() {
+		assertEquals(List.of("minecraft:unbreaking", "minecraft:thorns",
+				"sharedfate:shield_health", "sharedfate:shield_armor",
+				"minecraft:protection", "minecraft:fire_protection",
+				"minecraft:projectile_protection", "minecraft:blast_protection"),
+				ShieldEnchantments.candidates().stream().map(ShieldEnchantments.Candidate::id).toList());
+	}
+
+	@Test void 후보_여덟_가지가_모두_실제로_뽑힌다() {
+		var seen = new java.util.HashSet<String>();
+		for (int seed = 0; seed < 2000; seed++) {
+			ShieldEnchantments.choose(ShieldEnchantments.randomFor(seed)).forEach(candidate -> seen.add(candidate.id()));
+		}
+		assertEquals(8, seen.size(), "15·22 등급 구분이 없어졌으니 어느 칸에서도 전부 나올 수 있어야 한다");
+	}
+
+	/** 세 칸의 씨앗은 붙어 있다(seed, seed+1, seed+2). 첫 뽑기가 이웃 칸과 늘 같으면 세 칸이 똑같아 보인다. */
+	@Test void 이웃한_칸의_첫_마법부여는_대체로_다르다() {
+		int same = 0;
+		for (int seed = 0; seed < 1000; seed++) {
+			var first = ShieldEnchantments.choose(ShieldEnchantments.randomFor(seed)).getFirst();
+			var next = ShieldEnchantments.choose(ShieldEnchantments.randomFor(seed + 1)).getFirst();
+			if (first.equals(next)) same++;
+		}
+		assertTrue(same < 250, "여덟 중 하나를 고르니 같을 확률은 1/8 근처여야 한다: " + same);
 	}
 
 	@Test void 보호는_배타적이고_다른_종류는_함께_붙을_수_있다() {
 		int most = 0;
 		for (int seed = 0; seed < 1000; seed++) {
-			var selected = ShieldEnchantments.choose(30, RandomSource.create(seed));
+			var selected = ShieldEnchantments.choose(ShieldEnchantments.randomFor(seed));
 			assertTrue(selected.stream().filter(ShieldEnchantments.Candidate::protection).count() <= 1);
 			assertEquals(selected.size(), selected.stream().map(ShieldEnchantments.Candidate::id).distinct().count());
 			most = Math.max(most, selected.size());

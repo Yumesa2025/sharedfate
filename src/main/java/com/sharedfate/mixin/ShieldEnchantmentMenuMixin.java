@@ -8,8 +8,7 @@ import com.sharedfate.perk.effect.ShieldCraftEffect;
 import com.sharedfate.recipe.ShieldRecipes;
 import com.sharedfate.team.TeamLookup;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.util.RandomSource;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.*;
@@ -23,6 +22,15 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.*;
 import java.util.List;
 
+/**
+ * 방패 세트 3단계 팀이 마법부여대에서 방패에 마법부여하게 한다.
+ *
+ * <p>등급은 다른 장비와 같이 {@link EnchantmentMenuTableRulesMixin} 이 정한다 — 책장 6개 이상이면
+ * 언제나 30 이라, 방패의 후보 전체가 언제나 열린다.
+ *
+ * <p>책장 수 데이터 칸이 여기 달려 있는 것은 순서 때문이다. 데이터 칸은 붙은 순서대로 번호를
+ * 받으므로 옮기면 다른 칸과 번호가 뒤바뀐다.
+ */
 @Mixin(EnchantmentMenu.class)
 public abstract class ShieldEnchantmentMenuMixin implements EnchantmentTableAccess {
 	@Shadow @Final private DataSlot enchantmentSeed;
@@ -33,6 +41,8 @@ public abstract class ShieldEnchantmentMenuMixin implements EnchantmentTableAcce
 	@Inject(method = "<init>(ILnet/minecraft/world/entity/player/Inventory;Lnet/minecraft/world/inventory/ContainerLevelAccess;)V", at = @At("TAIL"))
 	private void sharedfate$initialize(int id, Inventory inventory, ContainerLevelAccess levelAccess, CallbackInfo ci) {
 		sharedfate$shieldOwner = inventory.player;
+		// 바닐라와 같은 방법으로 센 책장 수다. 15 를 넘기지 않는 것은 바닐라가 보는 최대치이기 때문이다.
+		// 화면은 6 에서 자른다(EnchantmentTableRules.shownShelves).
 		sharedfate$shelves = new DataSlot() {
 			private int shown;
 			@Override public int get() {
@@ -52,23 +62,18 @@ public abstract class ShieldEnchantmentMenuMixin implements EnchantmentTableAcce
 				TeamLookup.stateOf(sharedfate$shieldOwner.getUUID()), ShieldCraftEffect.ENCHANTING);
 	}
 
+	/** 해금 판정은 서버에서만 한다. 클라이언트가 「잠김」으로 비용을 지우면 서버는 다시 보내 주지 않는다. */
 	@WrapOperation(method = "slotsChanged", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/ItemStack;isEnchantable()Z"))
 	private boolean sharedfate$allowShield(ItemStack stack, Operation<Boolean> original) {
-		return stack.is(Items.SHIELD) ? sharedfate$unlocked() && !stack.isEnchanted() : original.call(stack);
-	}
-
-	@WrapOperation(method = "lambda$slotsChanged$0", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/enchantment/EnchantmentHelper;getEnchantmentCost(Lnet/minecraft/util/RandomSource;IILnet/minecraft/world/item/ItemStack;)I"))
-	private int sharedfate$shieldGrade(RandomSource random, int slot, int shelves, ItemStack stack, Operation<Integer> original) {
-		if (!stack.is(Items.SHIELD)) return original.call(random, slot, shelves, stack);
-		ItemStack copy = stack.copy();
-		copy.set(DataComponents.ENCHANTABLE, new Enchantable(15));
-		return original.call(random, slot, shelves, copy);
+		if (!stack.is(Items.SHIELD)) return original.call(stack);
+		boolean serverSide = sharedfate$shieldOwner instanceof ServerPlayer;
+		return ShieldEnchantments.tableAccepts(stack, serverSide, serverSide && sharedfate$unlocked());
 	}
 
 	@Inject(method = "getEnchantmentList", at = @At("HEAD"), cancellable = true)
 	private void sharedfate$shieldCandidates(RegistryAccess registries, ItemStack stack, int slot, int grade,
 			CallbackInfoReturnable<List<EnchantmentInstance>> cir) {
 		if (stack.is(Items.SHIELD)) cir.setReturnValue(sharedfate$unlocked()
-				? ShieldEnchantments.select(registries, grade, (long) enchantmentSeed.get() + slot) : List.of());
+				? ShieldEnchantments.select(registries, (long) enchantmentSeed.get() + slot) : List.of());
 	}
 }

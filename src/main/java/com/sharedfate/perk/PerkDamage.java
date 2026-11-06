@@ -10,14 +10,17 @@ import com.sharedfate.perk.effect.FallImmunityEffect;
 import com.sharedfate.perk.effect.WeaponKnockbackEffect;
 import com.sharedfate.team.TeamLookup;
 import com.sharedfate.team.TeamState;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.BlocksAttacks;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -284,6 +287,9 @@ public final class PerkDamage {
 			// 기동 세트의 면역이면 방패로 막은 것이 아니므로 내구도를 쓰지 않는다.
 			if (FallImmunityEffect.heldBy(TeamLookup.stateOf(player.getUUID()))) return;
 			ItemStack shield = player.getUseItem();
+			// 막아 낸 순간을 귀로도 알린다. 닳지 않는 방패(다이아몬드)도 소리는 나야 하므로 내구도
+			// 검사보다 앞이다. 방패가 이번에 부서지면 바닐라가 부서지는 소리를 따로 낸다.
+			playShieldBlockSound(player, shield);
 			if (shield.isEmpty() || !shield.isDamageableItem()) {
 				return;
 			}
@@ -294,6 +300,26 @@ public final class PerkDamage {
 		} catch (RuntimeException error) {
 			warnOnce(error);
 		}
+	}
+
+	/**
+	 * 「버티는 방패」가 낙하를 막아 낸 순간 방패 막기 소리를 낸다.
+	 *
+	 * <p>낙하 피해는 진입점에서 통째로 버려지므로 바닐라 막기 경로({@code BlocksAttacks.onBlocked})를
+	 * 지나지 않아 아무 소리도 나지 않았다. 그래서 같은 소리를 여기서 직접 낸다. 소리를 고르는 법도
+	 * 바닐라와 같다 — 든 물건의 {@code blocks_attacks} 에 적힌 막기 소리를 쓰고, 적혀 있지 않으면
+	 * {@link SoundEvents#SHIELD_BLOCK} 이다. 첫 인자를 {@code null} 로 주므로 막은 본인을 포함해
+	 * 근처 사람 모두에게 들린다.
+	 */
+	static void playShieldBlockSound(ServerPlayer player, ItemStack shield) {
+		ServerLevel level = player.level();
+		BlocksAttacks blocks = shield.get(DataComponents.BLOCKS_ATTACKS);
+		if (blocks != null && blocks.blockSound().isPresent()) {
+			blocks.onBlocked(level, player);
+			return;
+		}
+		level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.SHIELD_BLOCK,
+				player.getSoundSource(), 1.0F, 0.8F + level.getRandom().nextFloat() * 0.4F);
 	}
 
 	/**
@@ -416,6 +442,8 @@ public final class PerkDamage {
 			}
 			// 막아 낸 순간 「⟡ 호위」.
 			PerkProcFeedback.fireOwnerOf(player, DamageWardEffect.class);
+			// 하트 옆 준비 표는 다음 훑기를 기다리지 않고 곧바로 감춘다.
+			com.sharedfate.net.DamageWardBroadcaster.consumed(player);
 			return true;
 		} catch (RuntimeException error) {
 			warnOnce(error);

@@ -3,8 +3,10 @@ package com.sharedfate.client.perk;
 import com.sharedfate.net.PerkSyncPayload;
 import com.sharedfate.ui.OwnedPerkPanelLayout;
 import com.sharedfate.ui.PanelScroll;
+import com.sharedfate.ui.PerkRarityStyle;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
@@ -25,10 +27,14 @@ import java.util.List;
  */
 public final class OwnedPerkPanel {
 
-	/** 판 바탕. 뒤의 카드가 비치지 않을 만큼 진하게 덮는다. */
-	private static final int BACKGROUND = 0xF0101418;
-
-	private static final int BORDER = 0xFF3C4450;
+	/**
+	 * 판 바탕 그림({@link PerkRarityStyle#PANEL})을 자리보다 사방으로 더 넓혀 그리는 폭.
+	 *
+	 * <p>그림의 금속 틀은 바깥 6픽셀이고 글자는 {@link #PADDING}(6) 안쪽에서 시작한다. 같은 자리에 그리면
+	 * 글자가 틀에 딱 붙으므로 2만큼 바깥으로 민다. 화면 가장자리 여백({@link #SCREEN_MARGIN})이 10이라
+	 * 밀어도 화면 밖으로 안 나간다. 바탕 가운데는 불투명도 240 이라 뒤의 카드가 비치지 않는다.
+	 */
+	private static final int FRAME_OUTSET = 2;
 
 	private static final int HEADER = 0xFFE8EDF2;
 
@@ -223,8 +229,9 @@ public final class OwnedPerkPanel {
 		if (!layout.visible()) {
 			return;
 		}
-		graphics.fill(layout.left(), layout.top(), layout.right(), layout.bottom(), BACKGROUND);
-		graphics.outline(layout.left(), layout.top(), layout.width(), layout.height(), BORDER);
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, PerkRarityStyle.PANEL,
+				layout.left() - FRAME_OUTSET, layout.top() - FRAME_OUTSET,
+				layout.width() + FRAME_OUTSET * 2, layout.height() + FRAME_OUTSET * 2);
 
 		graphics.text(font, "보유 증강 " + count + "개", layout.contentLeft(), layout.headerY(),
 				HEADER);
@@ -270,14 +277,8 @@ public final class OwnedPerkPanel {
 		graphics.fill(left, thumbTop, left + SCROLLBAR_WIDTH, thumbTop + thumb, SCROLLBAR_THUMB);
 	}
 
-	/** 등급별 글자색. 팀 화면의 「증강」 탭과 같은 값이다. */
+	/** 등급별 글자색. 팀 화면의 「증강」 탭과 같은 값이다 — 둘 다 {@link PerkRarityStyle} 을 읽는다. */
 	private static int rarityColor(String rarity) {
-		return switch (rarity) {
-			case "gold" -> 0xFFFFC63A;
-			case "prism" -> 0xFF5FE0D8;
-			// 「드래곤전 대비」 — 등급이 아닌 분류. 엔더 연보라.
-			case "trial" -> com.sharedfate.ui.DragonPrepStyle.COLOR;
-			default -> 0xFFC0C6CC;
-		};
+		return PerkRarityStyle.colorOf(rarity);
 	}
 }

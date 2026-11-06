@@ -10,11 +10,13 @@ import com.sharedfate.ui.DragonPrepVoteMotion;
 import com.sharedfate.ui.PerkCardDismiss;
 import com.sharedfate.ui.PerkCardFocus;
 import com.sharedfate.ui.PerkDrawRoll;
+import com.sharedfate.ui.PerkRarityStyle;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -40,7 +42,7 @@ import java.util.Optional;
  * 대신한다. 고를 사람을 뽑지 않고, 다시 뽑기 단추도 없다. 단계는 서버가 정한다({@link DragonPrepVote}).
  *
  * <ol>
- *   <li><b>등장</b> — 화면이 어두워지고 뒷면(엔더의 눈) 카드 두 장이 왼쪽부터 떠올라 뒤집힌다
+ *   <li><b>등장</b> — 화면이 어두워지고 뒷면(엔더 문양) 카드 두 장이 왼쪽부터 떠올라 뒤집힌다
  *       ({@link DragonPrepVoteMotion})</li>
  *   <li><b>투표</b> — 60초. 카드를 누르면 표가 그쪽으로 간다. 다시 누르면 옮겨진다. 카드 아래에 몇 표인지와
  *       던진 사람 이름이 보이고, 내 표가 놓인 카드는 초록 테두리다. 전원이 던지면 시계가 5초로 준다</li>
@@ -58,10 +60,8 @@ import java.util.Optional;
 public class DragonPrepVoteScreen extends Screen {
 	private static final int ACCENT = DragonPrepStyle.COLOR;
 	private static final int BACKDROP = 0xD8070310;
-	private static final int CARD_TOP = 0xFF2A1C3E;
-	private static final int CARD_BOTTOM = 0xFF120A1E;
-	private static final int CARD_BACK_TOP = 0xFF1C0F30;
-	private static final int CARD_BACK_BOTTOM = 0xFF07030E;
+	/** 앞면 틀 · 띠 · 문양 그림. 선택창의 「드래곤전 대비」 카드와 같은 그림이다. */
+	private static final PerkRarityStyle STYLE = PerkRarityStyle.TRIAL;
 	private static final int TEXT_MAIN = 0xFFF2EAFF;
 	private static final int TEXT_SUB = 0xFFCFC4E2;
 	private static final int TEXT_DIM = 0xFF9A90AE;
@@ -75,7 +75,8 @@ public class DragonPrepVoteScreen extends Screen {
 	private static final int CARD_GAP = 28;
 	private static final int MIN_CARD_WIDTH = 96;
 	private static final int MAX_CARD_WIDTH = 150;
-	private static final int BAND_HEIGHT = 12;
+	/** 맨 위 띠의 높이. 띠 그림의 원래 높이(11)라 세로로 늘이지 않는다. */
+	private static final int BAND_HEIGHT = PerkRarityStyle.BAND_HEIGHT;
 	private static final int PADDING = 6;
 	private static final int ICON_SCALE = 2;
 	private static final int ICON_SIZE = 16 * ICON_SCALE;
@@ -84,7 +85,6 @@ public class DragonPrepVoteScreen extends Screen {
 	private static final int RISE_DISTANCE = 48;
 	/** 결과에서 안 뽑힌 카드가 화면 아래끝을 넘겨 더 내려가는 거리. */
 	private static final int DISMISS_OVERSHOOT = 8;
-	private static final int GLOW_LAYERS = 4;
 	private static final long GLOW_PULSE_MILLIS = 1400L;
 	private static final long TICK_MILLIS = 50L;
 	/** 서버가 닫아 주지 않을 때 ESC 로 빠져나갈 수 있게 되기까지 단계 끝에서 더 기다리는 시간. */
@@ -404,7 +404,7 @@ public class DragonPrepVoteScreen extends Screen {
 			renderBack(graphics, left, top);
 		}
 		if (shade > 0.0F) {
-			graphics.fill(left, top, left + cardWidth, top + cardHeight,
+			PerkCardSprites.shade(graphics, left, top, cardWidth, cardHeight,
 					withAlpha(SHADE, Math.round(0xFF * Math.clamp(shade, 0.0F, 1.0F))));
 		}
 		pose.popMatrix();
@@ -417,17 +417,20 @@ public class DragonPrepVoteScreen extends Screen {
 	private void renderFront(GuiGraphicsExtractor graphics, Card card, int left, int top,
 			boolean bright, boolean own) {
 		int right = left + cardWidth;
-		int bottom = top + cardHeight;
-		graphics.fillGradient(left, top, right, bottom,
-				bright ? mix(CARD_TOP, ACCENT, 0.18F) : CARD_TOP, CARD_BOTTOM);
-		graphics.fill(left, top, right, top + BAND_HEIGHT, ACCENT);
-		int border = own ? OWN_VOTE : bright ? mix(ACCENT, 0xFFFFFFFF, 0.45F) : ACCENT;
-		graphics.outline(left, top, cardWidth, cardHeight, border);
-		if (own || bright) {
-			graphics.outline(left + 1, top + 1, cardWidth - 2, cardHeight - 2, border);
+		// 틀 · 띠 · 문양 그림. 호버 · 룰렛 · 결과 · 내 표 카드는 원래 밝기로, 나머지는 조금 눌러 그린다.
+		PerkCardSprites.frame(graphics, STYLE, left, top, cardWidth, cardHeight, bright || own);
+		if (own) {
+			// 내 표는 초록 두 겹 — 틀 그림 바깥 검은 선 위에 한 겹, 그 바깥에 한 겹.
+			graphics.outline(left, top, cardWidth, cardHeight, OWN_VOTE);
+			PerkCardSprites.outline(graphics, left, top, cardWidth, cardHeight, OWN_VOTE);
+		} else if (bright) {
+			PerkCardSprites.outline(graphics, left, top, cardWidth, cardHeight,
+					mix(ACCENT, 0xFFFFFFFF, 0.45F));
 		}
 		int centerX = left + cardWidth / 2;
-		graphics.centeredText(this.font, Component.literal(DragonPrepStyle.LABEL), centerX,
+		Component label = Component.literal(DragonPrepStyle.LABEL);
+		graphics.centeredText(this.font, label,
+				PerkCardSprites.bandTextCenter(left, cardWidth, this.font.width(label)),
 				top + (BAND_HEIGHT - this.font.lineHeight + 1) / 2, BAND_TEXT);
 		int y = top + BAND_HEIGHT + 6;
 		renderIcon(graphics, card.icon(), centerX - ICON_SIZE / 2, y);
@@ -445,25 +448,20 @@ public class DragonPrepVoteScreen extends Screen {
 		}
 	}
 
-	/** 뒷면. 엔더의 눈 하나만 있다 — 무엇이 나올지 모르는 카드다. */
+	/** 뒷면. 틀 그림 한가운데에 엔더 문양 하나만 있다 — 무엇이 나올지 모르는 카드다. */
 	private void renderBack(GuiGraphicsExtractor graphics, int left, int top) {
-		graphics.fillGradient(left, top, left + cardWidth, top + cardHeight, CARD_BACK_TOP,
-				CARD_BACK_BOTTOM);
-		graphics.outline(left, top, cardWidth, cardHeight, ACCENT);
-		graphics.outline(left + 3, top + 3, cardWidth - 6, cardHeight - 6, withAlpha(ACCENT, 0x70));
-		renderIcon(graphics, new ItemStack(Items.ENDER_EYE), left + (cardWidth - ICON_SIZE) / 2,
-				top + (cardHeight - ICON_SIZE) / 2);
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, PerkRarityStyle.CARD_BACK, left, top,
+				cardWidth, cardHeight);
+		int emblem = PerkRarityStyle.BACK_EMBLEM_SIZE;
+		graphics.blitSprite(RenderPipelines.GUI_TEXTURED, PerkRarityStyle.CARD_BACK_EMBLEM,
+				left + (cardWidth - emblem) / 2, top + (cardHeight - emblem) / 2, emblem, emblem);
 	}
 
-	/** 룰렛이 가리킨 카드와 뽑힌 카드 둘레의 빛. 겹을 바깥으로 넓히며 옅게 그리고 천천히 숨 쉰다. */
+	/** 룰렛이 가리킨 카드와 뽑힌 카드 둘레의 빛. 빛 그림을 연보라로 물들여 깔고 천천히 숨 쉰다. */
 	private void renderGlow(GuiGraphicsExtractor graphics, int left, int top) {
 		float phase = (System.currentTimeMillis() % GLOW_PULSE_MILLIS) / (float) GLOW_PULSE_MILLIS;
 		float strength = 0.55F + 0.35F * (0.5F - 0.5F * (float) Math.cos(phase * 2.0 * Math.PI));
-		for (int layer = 1; layer <= GLOW_LAYERS; layer++) {
-			float fade = (float) (GLOW_LAYERS + 1 - layer) / (GLOW_LAYERS + 1);
-			graphics.outline(left - layer, top - layer, cardWidth + layer * 2, cardHeight + layer * 2,
-					withAlpha(ACCENT, Math.round(0xFF * fade * strength)));
-		}
+		PerkCardSprites.glow(graphics, left, top, cardWidth, cardHeight, ACCENT, strength);
 	}
 
 	/** 카드 아래 표 줄 — 「N표」와 던진 사람 이름. 내 표가 있으면 초록이다. */
