@@ -1627,7 +1627,7 @@
       "id": "sharedfate:pickaxe_fighter",
       "icon": "minecraft:iron_pickaxe",
       "name": "곡괭이 전사",
-      "description": "곡괭이의 공격력이 ×2.5 가 됩니다. 대신 곡괭이가 아닌 도구를 들고 있으면 이동 속도가 30% 감소합니다(도구가 아닌 아이템은 상관없습니다).",
+      "description": "곡괭이의 공격력이 ×2.5 가 됩니다. 대신 곡괭이가 아닌 도구를 들고 있으면 이동 속도가 10% 감소합니다(도구가 아닌 아이템은 상관없습니다).",
       "rarity": "gold",
       "set_types": [
         "weapon"
@@ -1642,7 +1642,7 @@
         },
         {
           "type": "tool_mismatch_slow",
-          "multiplier": -0.3
+          "multiplier": -0.1
         }
       ]
     },
@@ -1774,7 +1774,7 @@
       "id": "sharedfate:hoe_harvester",
       "icon": "minecraft:diamond_hoe",
       "name": "수확자",
-      "description": "다이아몬드 호미로 몹을 잡으면 약탈 V 를 얻은 것처럼 전리품이 늘어납니다. 대신 공격 속도가 20% 감소합니다.",
+      "description": "다이아몬드 호미로 몹을 잡으면 약탈 V 를 얻은 것처럼 전리품이 늘어납니다.",
       "rarity": "gold",
       "set_types": [
         "weapon"
@@ -1786,12 +1786,6 @@
           "items": [
             "minecraft:diamond_hoe"
           ]
-        },
-        {
-          "type": "attribute",
-          "attribute": "minecraft:attack_speed",
-          "operation": "add_multiplied_total",
-          "amount": -0.2
         }
       ]
     },
