@@ -682,7 +682,7 @@ class DragonLastStandPatternsTest {
 	// ------------------------------------------------------------------ ② 부채꼴 브레스
 
 	/**
-	 * 사람이 정한 값 넷 — <b>4초 예고</b> · 90도 · 20칸 · 피해 65.
+	 * 사람이 정한 값 넷 — <b>4초 예고</b> · 117도(2026-11-07 에 90 → 117) · 20칸 · 피해 65.
 	 *
 	 * <p>예고는 5초였고 사람이 2026-10-04 에 <b>「브레스 터지는 시간을 1초 감소시켜」</b>라고 해서
 	 * 4초다.
@@ -691,7 +691,8 @@ class DragonLastStandPatternsTest {
 	void 브레스가_사람이_정한_값을_지킨다() {
 		assertEquals(80, DragonLastStandPatterns.CONE_WARN_TICKS,
 				"4초 예고다 — 사람이 5초에서 1초 줄였다");
-		assertEquals(90.0, DragonLastStandPatterns.CONE_DEGREES, 0.0001, "90도다");
+		assertEquals(117.0, DragonLastStandPatterns.CONE_DEGREES, 0.0001,
+				"117도다 — 사람이 넓이 30% 를 늘리려고 90 에서 넓혔다");
 		assertEquals(20.0, DragonLastStandPatterns.CONE_RANGE, 0.0001, "사거리 20칸이다");
 		assertEquals(65.0F, DragonLastStand.CONE_BREATH_DAMAGE, 0.0001F, "피해 65 다");
 		assertEquals(DragonLastStandPatterns.CONE_WARN_TICKS
@@ -879,14 +880,14 @@ class DragonLastStandPatternsTest {
 		assertTrue(DragonLastStandPatterns.insideCone(0.0, -20.0, yaw, range, half), "사거리 경계");
 		assertTrue(DragonLastStandPatterns.insideCone(0.0, 0.0, yaw, range, half),
 				"드래곤 몸 안에 서 있으면 안이다 — 빼 주면 「머리에 붙으면 안 맞는다」가 된다");
-		// 반각 경계. 44.9도는 안, 45.1도는 밖이다.
-		for (double degrees : new double[] {0.0, 20.0, 44.9}) {
+		// 반각 경계. 반각 −0.1도는 안, +0.1도는 밖이다.
+		for (double degrees : new double[] {0.0, 20.0, half - 0.1}) {
 			double radians = Math.toRadians(degrees);
 			assertTrue(DragonLastStandPatterns.insideCone(Math.sin(radians) * 10.0,
 							-Math.cos(radians) * 10.0, yaw, range, half),
 					degrees + "도가 안이어야 한다");
 		}
-		for (double degrees : new double[] {45.1, 60.0, 90.0, 179.0}) {
+		for (double degrees : new double[] {half + 0.1, 70.0, 90.0, 179.0}) {
 			double radians = Math.toRadians(degrees);
 			assertFalse(DragonLastStandPatterns.insideCone(Math.sin(radians) * 10.0,
 							-Math.cos(radians) * 10.0, yaw, range, half),
@@ -1502,33 +1503,33 @@ class DragonLastStandPatternsTest {
 	 * 알기 쉽게 드래곤 주위에 불 결계가 생기게」</b>.
 	 */
 	@Test
-	void 불_결계는_반경_4에_초당_4다() {
+	void 불_결계는_반경_4에_초당_고정_0점5다() {
 		assertEquals(DragonLastStandPatterns.SUCK_RADIUS, DragonLastStandPatterns.SUCK_FIRE_RADIUS,
 				1.0E-12, "검은 원과 같은 자리여야 한다 — 경계가 둘이면 사람이 따로 배워야 한다");
 		assertEquals(4.0, DragonLastStandPatterns.SUCK_FIRE_RADIUS, 1.0E-12, "사람이 정한 값이다");
-		assertEquals(4.0F, DragonLastStandPatterns.SUCK_FIRE_DAMAGE, 0.0F, "사람이 정한 값이다");
+		assertEquals(0.5F, DragonLastStandPatterns.SUCK_FIRE_DAMAGE, 0.0F,
+				"사람이 정한 값이다 — 2026-11-07 에 4(무장 기준 0.35) → 고정 0.5");
 		assertEquals(20, DragonLastStandPatterns.SUCK_FIRE_PERIOD_TICKS, "「초당」이다");
-		assertEquals(35.0F, DragonLastStand.VOID_SUCTION_DAMAGE, 0.0F,
-				"끝날 때 터지는 피해는 그대로 두라고 했다");
+		assertEquals(7.0F, DragonLastStand.VOID_SUCTION_DAMAGE, 0.0F,
+				"끝날 때 터지는 피해 — 2026-11-07 에 35(무장 기준 6.93) → 고정 7");
 	}
 
 	/**
-	 * ⚠ 결계 4 는 <b>적히는 값</b>이고 피해원이 {@code lightningBolt()} 다 — 안전지대 「초당 8」과 같은
-	 * 표기법이다. 무장 기준 한 대 <b>0.35</b>.
+	 * 결계는 <b>고정 피해</b>다(2026-11-07). 적힌 0.5 가 방어구와 상관없이 그대로 들어간다. 그 전에는 4 ·
+	 * {@code lightningBolt()} 로 무장 기준 한 대 0.35 였다.
 	 *
 	 * <p>{@code inFire()} 를 안 쓴 것은 화염 저항 하나로 0 이 되고 그 상태이상이 팀 전원에게 퍼지기
 	 * 때문이다({@code SUCK_FIRE_DAMAGE} 의 표). 여기서는 고른 피해원으로 셈한 값을 못박는다.
 	 */
 	@Test
-	void 불_결계는_무장_기준_한_대_0점35다() {
-		float geared = GearedDamage.afterGear(DragonLastStandPatterns.SUCK_FIRE_DAMAGE,
-				GearedDamage.Source.LIGHTNING_BOLT);
-		assertEquals(0.3456F, geared, 0.0005F, "방어도 19 → ×0.24, 보호 IV ×0.36 이다");
-		// 다섯 번 다 맞아도 한 사람 몫이 1.73 — 결계만으로 죽지는 않는다. 넷이 다 머물면 팀에 6.9 다.
-		assertEquals(1.73F, geared * 5, 0.01F);
-		assertEquals(6.91F, geared * 5 * 4, 0.02F, "넷이 5초 내내 머물면 팀에 들어가는 몫이다");
-		assertTrue(geared * 5 * 4 < GearedDamage.TEAM_HEALTH,
+	void 불_결계는_고정_피해로_한_대_0점5다() {
+		float fixed = DragonLastStandPatterns.SUCK_FIRE_DAMAGE;
+		// 다섯 번 다 맞아도 한 사람 몫이 2.5 — 결계만으로 죽지는 않는다. 넷이 다 머물면 팀에 10 이다.
+		assertEquals(2.5F, fixed * 5, 0.001F);
+		assertEquals(10.0F, fixed * 5 * 4, 0.001F, "넷이 5초 내내 머물면 팀에 들어가는 몫이다");
+		assertTrue(fixed * 5 * 4 < GearedDamage.TEAM_HEALTH,
 				"결계만으로 팀이 죽으면 「계속 딜」이 아니라 「즉사」다");
+		assertTrue(classBytes().contains("DragonTrueDamage"), "결계가 고정 피해원을 쓰지 않는다");
 		String bytes = classBytes();
 		assertFalse(bytes.contains("inFire"), "inFire 는 화염 저항 한 병으로 결계가 통째로 사라진다");
 		assertFalse(bytes.contains("onFire"), "onFire 는 #bypasses_armor 다 — 무장 기준과 성질이 다르다");
@@ -1963,9 +1964,8 @@ class DragonLastStandPatternsTest {
 		assertFalse(bytes.contains("fallDistance"),
 				"낙하 거리를 직접 만지면 면제의 자가 「거리」에서 「시간」으로 바뀐다");
 
-		float perHit = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
-				GearedDamage.Source.EXPLOSION);
-		assertEquals(6.77F, perHit, 0.01F, "균열 한 대가 무장 기준 6.77 이다");
+		float perHit = DragonLastStand.CROSS_FISSURE_DAMAGE;
+		assertEquals(7.0F, perHit, 0.001F, "균열 한 대가 고정 7 이다(2026-11-07, 전에는 무장 기준 6.77)");
 		// 12칸 낙하의 바닐라 피해와, 그것이 무장 기준으로 얼마가 되는가.
 		int rawFall = (int) Math.ceil(DragonLastStandPatterns.CROSS_LIFT_BLOCKS - 3.0);
 		assertEquals(9, rawFall, "안전 낙하 3칸을 빼면 12칸은 피해 9 다 — 맨몸이면 그대로 9");
@@ -1977,14 +1977,14 @@ class DragonLastStandPatternsTest {
 		assertEquals(4, DragonLastStandPatterns.CROSS_ROUNDS);
 		int survivable = 2;
 		float counted = perHit * survivable;
-		assertEquals(13.54F, counted, 0.01F, "적힌 값으로 잡아 둔 두 대가 13.54 다");
+		assertEquals(14.0F, counted, 0.01F, "고정 7 두 대가 14 다");
 		assertTrue(counted < GearedDamage.TEAM_HEALTH, "셈으로는 두 대에 안 죽는다");
 		assertTrue(perHit * DragonLastStandPatterns.CROSS_ROUNDS > GearedDamage.TEAM_HEALTH,
 				"네 대를 다 맞으면 전멸이다 — 사람이 2026-10-18 에 받아들였다. 이 부등호가 뒤집혔으면 "
 						+ "CROSS_ROUNDS 의 경고를 다시 쓸 것");
 		float uncounted = (perHit + gearedFall) * survivable;
-		assertEquals(20.02F, uncounted, 0.02F,
-				"면제가 빠지면 두 번 다 맞은 사람이 20.02 를 받는다 — 셈 밖의 낙하가 팀을 끝낸다");
+		assertEquals(20.48F, uncounted, 0.02F,
+				"면제가 빠지면 두 번 다 맞은 사람이 20.48 을 받는다 — 셈 밖의 낙하가 팀을 끝낸다");
 		assertTrue(uncounted > GearedDamage.TEAM_HEALTH,
 				"이 부등호가 뒤집혔으면 위의 경고를 다시 쓸 것");
 	}
@@ -2129,11 +2129,11 @@ class DragonLastStandPatternsTest {
 		assertEquals(276, DragonLastStandPatterns.wingBeatPoints(),
 				"날개 퍼덕이기 — 파랑 고리 131 + 벽 68 + 바깥 가닥 24 + 돌풍 5 + 종말의 비 착탄 48"
 						+ "(2026-10-18 에 228 → 276)");
-		assertEquals(236, DragonLastStandPatterns.coneWarnPoints(),
-				"부채꼴 예고 — 호가 하나에서 셋이 되어 202 → 236. 예고가 4초로 줄어도 한 틱 몫은 같다");
-		assertEquals(55, DragonLastStandPatterns.coneSprayPoints(), "부채꼴 브레스 파티클");
-		assertEquals(68, DragonLastStandPatterns.coneFlamePoints(), "터지는 틱의 불꽃");
-		assertEquals(123, DragonLastStandPatterns.coneFirePoints(), "터지는 틱 전체");
+		assertEquals(270, DragonLastStandPatterns.coneWarnPoints(),
+				"부채꼴 예고 — 호가 하나에서 셋이 되어 202 → 236, 2026-11-07 에 90도 → 117도로 넓혀 236 → 270");
+		assertEquals(70, DragonLastStandPatterns.coneSprayPoints(), "부채꼴 브레스 파티클 — 117도로 넓혀 55 → 70");
+		assertEquals(88, DragonLastStandPatterns.coneFlamePoints(), "터지는 틱의 불꽃 — 117도로 넓혀 68 → 88");
+		assertEquals(158, DragonLastStandPatterns.coneFirePoints(), "터지는 틱 전체 — 117도로 넓혀 123 → 158");
 		assertEquals(163, DragonLastStandPatterns.suckWarnPoints(),
 				"공허 흡입 예고 — 검은 속 30 + 빨간 고리 51 + 그 고리의 벽 17 + 안쪽 가닥 48 + 불 결계 17");
 		assertEquals(163, DragonLastStandPatterns.suckPoints(), "공허 흡입 전체");

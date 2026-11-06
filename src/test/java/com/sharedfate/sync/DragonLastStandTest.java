@@ -456,55 +456,28 @@ class DragonLastStandTest {
 	}
 
 	/**
-	 * ⚠ <b>공허 흡입 35 는 사람이 적은 「무장 기준 6.9」를 만드는 피해원이라야 한다.</b>
+	 * 공허 흡입 터짐과 십자 균열은 <b>고정 피해 7</b>이다(사람이 정한 것 2026-11-07 — 「받는피해감소에 방어
+	 * 엄청 늘리니가 엄청쉽게 깻어 그래서 고정딜 시스템을 넣는게 나을거같아서」).
 	 *
-	 * <p>사람이 값과 <b>무장 기준 값을 함께</b> 적었으므로 값이 피해원을 정했다. 실행기가
-	 * {@code explosion} 으로 바꾸면 10.40 이라 「큰 카드 한 대분」이 아니라 <b>두 대에 전멸</b>이
-	 * 되고, 그 어긋남은 로그에 한 줄도 안 남는다.
+	 * <p>전에는 흡입 35 · {@code lightningBolt()}(무장 기준 6.93), 균열 23 · {@code explosion}(무장 기준 6.77)
+	 * 이었다. 고정 7 은 그 무장 기준 값과 거의 같고, 「세 대에 전멸」도 그대로다(21).
 	 */
 	@Test
-	void 공허_흡입은_무장_기준_한_대_6점9다() {
-		assertEquals(35.0F, DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F, "사람이 정한 값이다");
-		// 2026-10-18 부터 상시 번개(24.5)와 값이 갈라졌다 — 사람이 상시 번개만 내렸다. 「큰 카드
-		// 한 대분」은 그대로 「낙뢰」 카드의 35 와 같은 값이다.
-		TrialCatalog.Trial lightning = TrialCatalog.byId("sharedfate:lightning_storm");
-		assertNotNull(lightning);
-		assertEquals(((TrialCatalog.Risk.DelayedStrike) lightning.risks().getFirst()).damage(),
-				DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F,
-				"「낙뢰」 카드와 같은 값이다 — 「큰 카드 한 대분」이 그 뜻이다");
-
-		float bolt = GearedDamage.afterGear(DragonLastStand.VOID_SUCTION_DAMAGE,
-				GearedDamage.Source.LIGHTNING_BOLT);
-		assertEquals(6.93F, bolt, 0.02F, "사람이 적은 6.9 는 lightningBolt() 여야 나온다");
-		assertTrue(GearedDamage.wipesInThree(bolt),
-				"세 대에 전멸이어야 한다 — 실제 한 대 " + bolt);
-		assertTrue(GearedDamage.afterGear(DragonLastStand.VOID_SUCTION_DAMAGE,
-						GearedDamage.Source.EXPLOSION) > 7.0F,
-				"explosion 으로 바꾸면 사람이 적은 6.9 가 거짓이 된다");
+	void 공허_흡입과_십자_균열은_고정_7이다() {
+		assertEquals(7.0F, DragonLastStand.VOID_SUCTION_DAMAGE, 0.001F, "사람이 정한 값이다");
+		assertEquals(7.0F, DragonLastStand.CROSS_FISSURE_DAMAGE, 0.001F, "사람이 정한 값이다");
+		assertTrue(GearedDamage.wipesInThree(DragonLastStand.VOID_SUCTION_DAMAGE), "세 대에 전멸이다");
+		assertTrue(GearedDamage.wipesInThree(DragonLastStand.CROSS_FISSURE_DAMAGE), "세 대에 전멸이다");
+		assertFalse(DragonLastStand.CROSS_FISSURE_DAMAGE * 2 > GearedDamage.TEAM_HEALTH, "두 대로는 안 죽는다");
 	}
 
-	/**
-	 * ⚠ <b>십자 균열 23 은 사람이 적은 「무장 기준 6.8」을 만드는 피해원이라야 한다.</b>
-	 *
-	 * <p>여기는 흡입과 <b>반대쪽</b>이다 — {@code explosion} 이라야 6.77 이고
-	 * {@code lightningBolt} 로 쏘면 4.56 이라 두 번을 다 맞아도 9.1 로 <b>안 죽는다</b>(세 번 긋던
-	 * 때도 13.7 로 안 죽었다).
-	 * {@code GearedDamage.TARGET_PER_HIT} 이 「난이도 곱이 있는 쪽은 23」이라고 적어 둔 그것이다.
-	 */
+	/** 상시 번개는 원래 피해 위에 <b>고정 2</b>를 얹는다(2026-11-07). 무장 기준 한 발 약 5.9. */
 	@Test
-	void 십자_균열은_무장_기준_한_대_6점8다() {
-		assertEquals(23.0F, DragonLastStand.CROSS_FISSURE_DAMAGE, 0.001F, "사람이 정한 값이다");
-
-		float explosion = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
-				GearedDamage.Source.EXPLOSION);
-		assertEquals(6.77F, explosion, 0.02F, "사람이 적은 6.8 은 explosion 이어야 나온다");
-		assertTrue(GearedDamage.wipesInThree(explosion),
-				"세 대에 전멸이어야 한다 — 실제 한 대 " + explosion);
-
-		float bolt = GearedDamage.afterGear(DragonLastStand.CROSS_FISSURE_DAMAGE,
-				GearedDamage.Source.LIGHTNING_BOLT);
-		assertTrue(bolt * DragonLastStandPatterns.CROSS_ROUNDS < GearedDamage.TEAM_HEALTH,
-				"lightningBolt() 로 쏘면 회차를 다(2026-10-18 부터 네 번) 맞아도 안 죽는다 — 실제 한 대 " + bolt);
+	void 상시_번개는_고정_2를_얹는다() {
+		assertEquals(2.0F, DragonLastStand.LIGHTNING_TRUE_DAMAGE, 0.001F, "사람이 정한 값이다");
+		float perHit = GearedDamage.afterGear(DragonLastStand.LIGHTNING_DAMAGE, GearedDamage.Source.LIGHTNING_BOLT)
+				+ DragonLastStand.LIGHTNING_TRUE_DAMAGE;
+		assertEquals(5.92F, perHit, 0.02F, "무장 기준 3.92 + 고정 2 다");
 	}
 
 	/**

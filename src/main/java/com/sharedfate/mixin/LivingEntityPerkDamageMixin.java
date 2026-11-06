@@ -286,6 +286,11 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 		if (self instanceof net.minecraft.server.level.ServerPlayer victim) {
 			com.sharedfate.sync.DamageLedger.noteSource(victim, source);
 		}
+		// 최후의 저항의 고정 피해는 증강 배율도 「난이도 상승」도 받지 않는다 — 적힌 값 그대로다
+		// (사람이 정한 것 2026-11-07, DragonTrueDamage).
+		if (com.sharedfate.sync.DragonTrueDamage.is(source)) {
+			return amount;
+		}
 		float scaled = PerkDamage.scale(self, source, amount);
 		return DifficultyEscalation.scaleDamage(source, scaled);
 	}

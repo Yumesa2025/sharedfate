@@ -399,7 +399,13 @@ public final class DragonLastStand {
 	static final float LIGHTNING_DAMAGE = 24.5F;
 
 	/**
-	 * 공허 흡입이 터질 때 원 안에 있으면 들어가는 <b>적히는</b> 피해. <b>사람이 정한 값이다.</b>
+	 * 공허 흡입이 터질 때 원 안에 있으면 들어가는 피해. <b>사람이 정한 값이다.</b>
+	 *
+	 * <h2>⚠⚠ 2026-11-07 — 고정 피해 7 로 바꿨다</h2>
+	 *
+	 * <p>사람 말: 「받는피해감소에 방어 엄청 늘리니가 엄청쉽게 깻어 그래서 고정딜 시스템을 넣는게 나을거같아서」.
+	 * 피해원이 {@link DragonTrueDamage} 라 7 이 그대로 들어간다. 아래는 35 · {@code lightningBolt()} 이던
+	 * 때의 기록이다.
 	 *
 	 * <p>사람이 <b>「피해 35(무장 기준 6.9 — 큰 카드 한 대분)」</b>이라고 적었으므로 <b>값이
 	 * 피해원을 정했다</b> — {@code GearedDamage} 로 풀면 이렇다.
@@ -420,10 +426,15 @@ public final class DragonLastStand {
 	 * 아직 산다 — 흡입은 예고 뒤 <b>한 틱에 한 번</b>뿐이고 번개도 <b>한 사람은 한 발</b>이므로 한 틱에
 	 * 둘이 최대다.
 	 */
-	static final float VOID_SUCTION_DAMAGE = 35.0F;
+	static final float VOID_SUCTION_DAMAGE = 7.0F;
 
 	/**
-	 * 십자 균열이 터질 때 선 안에 있으면 들어가는 <b>적히는</b> 피해. <b>사람이 정한 값이다.</b>
+	 * 십자 균열이 터질 때 선 안에 있으면 들어가는 피해. <b>사람이 정한 값이다.</b>
+	 *
+	 * <h2>⚠⚠ 2026-11-07 — 고정 피해 7 로 바꿨다</h2>
+	 *
+	 * <p>피해원이 {@link DragonTrueDamage} 라 7 이 그대로 들어간다(「바닥 감각」만 듣는다). 세 대 21 로 전멸이라
+	 * 「세 대부터 이 패턴 혼자서 전멸」은 그대로다. 아래는 23 · {@code explosion} 이던 때의 기록이다.
 	 *
 	 * <p>사람이 <b>「피해 23(무장 기준 6.8)」</b>이라고 적었으므로 여기서도 <b>값이 피해원을
 	 * 정했다.</b> {@code explosion(null, null)} 이 <b>6.77</b> 이고
@@ -439,7 +450,13 @@ public final class DragonLastStand {
 	 * 이다. 두 회차이던 동안(2026-10-04 ~)은 13.54 라 혼자서는 전멸하지 않았다. 사람에게 알렸고
 	 * 「그대로」였다({@code DragonLastStandPatterns.CROSS_ROUNDS}). 띄움 뒤 떨어지는 낙하 피해는 이 셈 밖이다.
 	 */
-	static final float CROSS_FISSURE_DAMAGE = 23.0F;
+	static final float CROSS_FISSURE_DAMAGE = 7.0F;
+
+	/**
+	 * 상시 번개가 원래 피해({@link #LIGHTNING_DAMAGE}) <b>위에 얹는</b> 고정 피해. <b>사람이 정한 값이다</b>(2026-11-07,
+	 * 「상시번개도 고정딜로 어느정도 추가」). 무장 기준 한 발 3.92 + 2 = 약 5.9. 「바닥 감각」은 둘 다에 듣는다.
+	 */
+	static final float LIGHTNING_TRUE_DAMAGE = 2.0F;
 
 	// ⚠ 2026-10-18 — 「안전지대 밖 초당 8」(OUTSIDE_ZONE_DAMAGE_PER_SECOND)을 걷었다. 사람 말 「넘어가서
 	// 딜 입히는 건 폐기」 — 안전지대가 넘어갈 수 없는 월드 보더가 되어 밖이 없다(DragonLastStandZone).

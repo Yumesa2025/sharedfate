@@ -547,8 +547,13 @@ public final class DragonLastStandPatterns {
 	 * 남긴 까닭은 「무엇이 방금 지나갔는가」가 안 보이면 다음번에 배울 것이 없어서다.
 	 */
 	static final int CONE_AFTERGLOW_TICKS = 20;
-	/** 부채꼴의 각도. <b>사람이 정한 값이고 「즉사 허용」의 조건 셋 중 하나다</b>(옆으로 빠질 곳이 남는다). */
-	static final double CONE_DEGREES = 90.0;
+	/**
+	 * 부채꼴의 각도. <b>사람이 정한 값이고 「즉사 허용」의 조건 셋 중 하나다</b>(옆으로 빠질 곳이 남는다).
+	 *
+	 * <p>2026-11-07 에 90 → <b>117</b>. 사람 말 「브레스를 117도로 넓히라는 의미였어」 — 넓이 +30%. 사거리
+	 * 20 은 그대로다. 180 보다 작으므로 옆으로 빠질 곳은 남는다.
+	 */
+	static final double CONE_DEGREES = 117.0;
 	/** 사거리(칸). <b>사람이 정한 값이다.</b> */
 	static final double CONE_RANGE = 20.0;
 
@@ -871,6 +876,10 @@ public final class DragonLastStandPatterns {
 	static final double SUCK_FIRE_RADIUS = SUCK_RADIUS;
 
 	/**
+	 * 불 결계 한 대의 피해. <b>2026-11-07 부터 고정 피해 0.5</b>({@link DragonTrueDamage}) — 사람이 「불결계
+	 * 안에 있으면 고정딜로」라고 했다. 5초 내내 머물면 한 사람 2.5, 넷이면 팀에 10 이다. 아래는 4 ·
+	 * {@code lightningBolt()}(무장 기준 0.35)이던 때의 기록이다.
+	 *
 	 * 불 결계가 원 안의 사람에게 넣는 <b>적히는</b> 피해(초당 한 번). <b>사람이 정한 값이다</b> — 4.
 	 *
 	 * <h2>⚠ 「적히는 값」이다 — 피해원은 {@code lightningBolt()}</h2>
@@ -910,7 +919,7 @@ public final class DragonLastStandPatterns {
 	 * {@code StatMirror.fold}). 그 위에 터짐이 사람마다 6.93 이다. 「한 사람에게만」으로 바꾸려면
 	 * {@code DragonLastStandZone.punish} 의 「가장 멀리 나간 사람」 꼴을 가져오면 된다.
 	 */
-	static final float SUCK_FIRE_DAMAGE = 4.0F;
+	static final float SUCK_FIRE_DAMAGE = 0.5F;
 
 	/** 불 결계가 피해를 넣는 주기(틱). 1초. 사람이 「초당」이라고 했다. */
 	static final int SUCK_FIRE_PERIOD_TICKS = 20;
@@ -2724,7 +2733,8 @@ public final class DragonLastStandPatterns {
 			if (!TrialRisks.insideMark(member.position(), center, SUCK_FIRE_RADIUS)) {
 				continue;
 			}
-			member.hurtServer(end, end.damageSources().lightningBolt(), SUCK_FIRE_DAMAGE);
+			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다.
+			member.hurtServer(end, DragonTrueDamage.source(end), SUCK_FIRE_DAMAGE);
 		}
 	}
 
@@ -3014,8 +3024,8 @@ public final class DragonLastStandPatterns {
 			}
 			// 피해원에 실체를 달지 않는다. 실체가 붙으면 바닐라가 스스로 밀어내고, 그 밀기는
 			// 날개 퍼덕이기가 지키는 천장을 통째로 지나쳐 간다.
-			member.hurtServer(end, end.damageSources().lightningBolt(),
-					DragonLastStand.VOID_SUCTION_DAMAGE);
+			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다.
+			member.hurtServer(end, DragonTrueDamage.source(end), DragonLastStand.VOID_SUCTION_DAMAGE);
 		}
 	}
 
@@ -3266,7 +3276,8 @@ public final class DragonLastStandPatterns {
 			// 피해원에 실체를 달지 않는다. 실체가 붙으면 바닐라가 스스로 밀어내고, 사람이 정한
 			// 것은 「낙사·섬 밖으로 미는 것 없음」이다.
 			// 「바닥 감각」 — 십자 균열은 빨간 투명 면이 바닥에 먼저 깔린다.
-			member.hurtServer(end, end.damageSources().explosion(null, null),
+			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다. 「바닥 감각」은 그대로 듣는다.
+			member.hurtServer(end, DragonTrueDamage.source(end),
 					com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.CROSS_FISSURE_DAMAGE));
 			// ⚠ 피해 뒤에 띄운다. 앞에 두면 hurtServer 가 지나가며 속도를 건드릴 수 있고, 그러면
 			// 「12칸」이 맞는 사람마다 달라진다.
@@ -3830,6 +3841,10 @@ public final class DragonLastStandPatterns {
 				// 「바닥 감각」 — 상시 번개도 바닥 표식이 먼저 뜬다.
 				member.hurtServer(end, end.damageSources().lightningBolt(),
 						com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.LIGHTNING_DAMAGE));
+				// 그 위에 고정 피해를 얹는다(2026-11-07). 피격 쿨타임을 지나가는 피해 종류라 바로 앞 한 대에
+				// 「직전보다 약하다」로 버려지지 않는다.
+				member.hurtServer(end, DragonTrueDamage.source(end),
+						com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.LIGHTNING_TRUE_DAMAGE));
 				// 사람이 정한 것 — 「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」.
 				// 맞은 그 사람에게만이고, 상태이상이 아니라 이동 속도를 직접 깎는다.
 				slowStruck(end, member, now);
