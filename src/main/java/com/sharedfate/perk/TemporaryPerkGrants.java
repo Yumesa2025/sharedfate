@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.effect.InvulnerableEffect;
-import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.OnKillEffect;
 import com.sharedfate.perk.effect.StatusEffectPerk;
 import com.sharedfate.team.TeamLookup;
@@ -141,30 +140,17 @@ public final class TemporaryPerkGrants {
 	 * 하나도 없으면 팀 상태를 찾아보지도 않으므로, 그런 정의가 없는 서버에는 아무 부담도 얹히지
 	 * 않는다. 걷어내는 쪽({@link #revoke})은 가리지 않는다 — 걸려 있지도 않은 것을 걷어내는 일은
 	 * 언제나 안전하고, 세트가 켜지기 <b>전에</b> 얹힌 것이 남아 있을 수 있기 때문이다.
-	 *
-	 * <p><b>공격력을 깎는 하위 효과는 세트 「무기 3단계」를 켠 팀에서 얹지 않는다.</b> 판정 근거가
-	 * {@code drawback} 표시가 아니라 효과가 실제로 하는 일이라, 「동병상련」처럼 표시가 붙은 것도
-	 * 앞으로 새로 넣을 정의도 같은 자리에서 함께 걸린다. 창에 감소가 하나도 없으면 팀 상태를
-	 * 찾아보지도 않는다.
 	 */
 	public static void grant(@Nullable ServerPlayer player, @Nullable Window window) {
 		if (player == null || window == null) {
 			return;
 		}
 		boolean anyDrawback = PerkDrawbacks.anyDrawback(window.effects());
-		boolean anyReduction = NoAttackDamageLossEffect.anyReduction(window.effects());
-		// 팀 상태 조회는 한 번이면 된다. 걸러 낼 것이 아무것도 없으면 그 한 번도 하지 않는다.
-		TeamState state = anyDrawback || anyReduction
-				? TeamLookup.stateOf(player.getUUID())
-				: null;
+		// 걸러 낼 대가가 하나도 없으면 팀 상태를 찾아보지도 않는다.
+		TeamState state = anyDrawback ? TeamLookup.stateOf(player.getUUID()) : null;
 		PerkDrawbacks.Waiver waiver = anyDrawback ? PerkDrawbacks.waiverFor(state) : null;
-		NoAttackDamageLossEffect.Gate gate =
-				anyReduction ? NoAttackDamageLossEffect.gateFor(state) : null;
 		for (PerkEffect effect : window.effects()) {
 			if (waiver != null && waiver.waives(null, effect)) {
-				continue;
-			}
-			if (gate != null && gate.suppresses(effect)) {
 				continue;
 			}
 			try {

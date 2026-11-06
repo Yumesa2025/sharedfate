@@ -18,7 +18,8 @@ import org.jetbrains.annotations.Nullable;
  * </pre>
  *
  * <p>사람이 정한 것(2026-11-06) — 「공격하면 60% 확률로 절반 피해를 한 번 더」. 기존 3단계(공격 속도
- * +30% · 공격력 감소 무효)를 갈아 치웠다. 평균으로는 피해 +30% 로 예전과 비슷하다.
+ * +30% · 공격력 감소 무효)를 갈아 치웠다. 평균으로는 피해 +30% 로 예전과 비슷하다. 공격력 감소
+ * 무효를 맡던 효과 {@code no_attack_damage_loss} 는 쓰는 세트가 없어져 0.45.10-dev 에서 걷어냈다.
  *
  * <p>공격 게이지는 보지 않는다. 사람이 정한 것(2026-11-06) — 처음엔 게이지 90% 이상만 굴렸는데,
  * 칼(0.63초에 다 참)보다 느린 도끼 · 삽 · 곡괭이는 칼 박자로 치면 거의 안 터져 「칼만 적용된다」로
@@ -79,7 +80,7 @@ public final class FollowUpStrikeEffect implements PerkEffect {
 	/**
 	 * 이 팀이 가진 「한 번 더」. 여럿이면 처음 것 하나만 쓴다 — 확률을 겹치면 100% 를 넘는다.
 	 *
-	 * <p>보유 증강과 켜진 세트를 <b>둘 다</b> 본다. {@link NoAttackDamageLossEffect#heldBy} 와 같은 모양이다.
+	 * <p>보유 증강과 켜진 세트를 <b>둘 다</b> 본다. {@link NoDefenseDrawbacksEffect#heldBy} 와 같은 모양이다.
 	 */
 	public static @Nullable FollowUpStrikeEffect heldBy(@Nullable TeamState state) {
 		if (state == null || !state.perksEnabled) {

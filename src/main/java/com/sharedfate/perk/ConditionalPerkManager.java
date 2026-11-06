@@ -2,7 +2,6 @@ package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
 import com.sharedfate.perk.effect.ConditionalEffect;
-import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.SneakSpeedEffect;
 import com.sharedfate.perk.effect.ToolMismatchSlowEffect;
 import com.sharedfate.team.TeamLookup;
@@ -153,13 +152,6 @@ public final class ConditionalPerkManager {
 		// PerkManager.refreshPlayer 가 걷어낸 것을 여기가 반 초 뒤에 도로 붙인다 — 조건부는
 		// 자기 하위 효과를 스스로 붙였다 떼기 때문이다.
 		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
-		// 공격력 감소도 같은 이유로 여기서 다시 본다. 세트 「무기 3단계」를 켠 팀에서는
-		// PerkManager.refreshPlayer 가 걷어낸 것을 여기가 반 초 뒤에 도로 붙이면 안 된다.
-		//
-		// 감싼 효과는 자기 일정으로 하위를 붙였다 뗀다 — 조건이 뒤집힐 때, 보유자가 바뀔 때,
-		// 구간이 넘어갈 때다. 그 세 순간은 이 주기와 무관하게 찾아오므로 여기가 뒤따라가
-		// 걷어낸다. 그래서 감소가 다시 붙어 있는 시간은 길어야 반 초다.
-		NoAttackDamageLossEffect.Gate gate = NoAttackDamageLossEffect.gateFor(state);
 		for (String perkId : state.ownedPerks) {
 			Perk perk = PerkRegistry.byId(perkId).orElse(null);
 			if (perk == null) {
@@ -168,13 +160,6 @@ public final class ConditionalPerkManager {
 			for (PerkEffect effect : perk.effects()) {
 				try {
 					if (waiver.waives(perk, effect)) {
-						continue;
-					}
-					if (gate.suppresses(effect)) {
-						// 최상위 감소는 PerkManager 가 이미 걷어냈다. 여기서 한 번 더 걷어내는
-						// 것은 몇 번을 불러도 결과가 같으므로 손해가 없고, 다른 경로가 실수로
-						// 붙여 두었을 때 반 초 안에 되돌려 준다.
-						effect.remove(player);
 						continue;
 					}
 					if (effect instanceof ConditionalEffect conditional) {
@@ -187,7 +172,6 @@ public final class ConditionalPerkManager {
 					} else if (effect instanceof ToolMismatchSlowEffect toolMismatch) {
 						toolMismatch.refresh(player);
 					}
-					gate.stripChildren(player, effect);
 				} catch (RuntimeException error) {
 					warnOnce(perk.id(), error);
 				}

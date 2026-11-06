@@ -80,7 +80,6 @@ import com.sharedfate.perk.effect.StatusEffectPerk;
 import com.sharedfate.perk.effect.WeaponDamageEffect;
 import com.sharedfate.perk.effect.ExtraRerollsEffect;
 import com.sharedfate.perk.effect.NoSilverOffersEffect;
-import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.NoDefenseDrawbacksEffect;
 import com.sharedfate.perk.effect.PrismRerollEffect;
 import com.sharedfate.perk.effect.LuckyOreEffect;
@@ -198,7 +197,6 @@ public enum PerkEffectType {
 	EXTRA_REROLLS("extra_rerolls", ExtraRerollsEffect::fromJson),
 	PRISM_REROLL("prism_reroll", PrismRerollEffect::fromJson),
 	NO_DEFENSE_DRAWBACKS("no_defense_drawbacks", NoDefenseDrawbacksEffect::fromJson),
-	NO_ATTACK_DAMAGE_LOSS("no_attack_damage_loss", NoAttackDamageLossEffect::fromJson),
 	/** 세트 「방어 2단계」 — 방어구 내구도가 확률로 닳지 않는다. */
 	ARMOR_DURABILITY("armor_durability", com.sharedfate.perk.effect.ArmorDurabilityEffect::fromJson),
 	/** 세트 「무기 3단계」 — 근접 공격이 확률로 한 번 더 들어간다. */

@@ -29,8 +29,8 @@ package com.sharedfate.perk.effect;
  * <h2>id 를 하드코딩하지 않는다</h2>
  *
  * <p>새 효과 타입이 「고른 사람만」 규칙을 쓰게 되면 이 인터페이스만 달면 된다. 목록을
- * 어딘가에 적어 두는 방식이면 그때마다 빠뜨린다 — {@code NoAttackDamageLossEffect.reduces} 가
- * 증강 id 를 하나도 적지 않는 것과 같은 이유다.
+ * 어딘가에 적어 두는 방식이면 그때마다 빠뜨린다 — {@link DamageIncreaseReliefEffect} 가 증강
+ * id 를 하나도 적지 않고 효과가 실제로 하는 일만 보는 것과 같은 이유다.
  */
 public interface OwnerBoundEffect {
 }

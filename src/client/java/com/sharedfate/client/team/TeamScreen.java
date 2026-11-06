@@ -112,9 +112,10 @@ public class TeamScreen extends Screen {
 	 * 「유적 감별사」 좌표를 세우는 자리의 왼쪽 여백.
 	 *
 	 * <p>바탕판의 오른쪽 변이 {@code left + PANEL_WIDTH + 10}({@link #PANEL_SIDE})이고 스크롤 막대가
-	 * {@code +1}~{@code +4} 를 쓴다. 둘을 지난 자리라야 바탕판 밖의 빈 곳에 선다.
+	 * {@code +1}~{@code +4} 를 쓴다. 둘을 지난 자리라야 바탕판 밖의 빈 곳에 선다. 틀 그림으로
+	 * 판이 좌우 4px 씩 넓어진 뒤에도 바탕판과 글자 사이를 예전처럼 6px 띄운다.
 	 */
-	private static final int RUIN_COORD_GAP = 12;
+	private static final int RUIN_COORD_GAP = 16;
 
 	/**
 	 * 유적 좌표 글자색.

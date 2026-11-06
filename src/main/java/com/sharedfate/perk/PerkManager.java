@@ -5,7 +5,6 @@ import com.sharedfate.config.SharedFateConfig;
 import com.sharedfate.net.PerkOfferPayload;
 import com.sharedfate.net.PerkSyncPayload;
 import com.sharedfate.perk.effect.DamageIncreaseReliefEffect;
-import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.NoSilverOffersEffect;
 import com.sharedfate.perk.effect.PrismRerollEffect;
 import com.sharedfate.team.ShareTeam;
@@ -921,9 +920,6 @@ public final class PerkManager {
 		// 세트 「방어 3단계」를 켠 팀에서는 방어 유형 증강의 대가를 붙이지 않는다. 대가가 하나도
 		// 없는 팀은 세트를 보지도 않는다.
 		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
-		// 세트 「무기 3단계」를 켠 팀에서는 공격력을 깎는 효과를 붙이지 않는다. 이쪽은 표시가
-		// 아니라 효과가 실제로 하는 일을 보고 가리므로 앞으로 새로 넣는 증강도 함께 걸린다.
-		NoAttackDamageLossEffect.Gate gate = NoAttackDamageLossEffect.gateFor(state);
 		// 「굳은살」을 가진 팀에서는 낙하 피해 +0.2 처럼 늘리는 수정자를 덜어 낸
 		// 값으로 붙인다. 없으면 평소의 apply 와 같다.
 		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
@@ -934,17 +930,13 @@ public final class PerkManager {
 			}
 			for (PerkEffect effect : perk.effects()) {
 				try {
-					if (waiver.waives(perk, effect) || gate.suppresses(effect)) {
+					if (waiver.waives(perk, effect)) {
 						// 건너뛰기만 하면 안 된다. 세트가 켜지기 전에 이미 붙어 있던 수정자는
 						// 아무도 걷어내지 않으므로 여기서 걷어낸다. remove 는 몇 번을 불러도
 						// 결과가 같아서 이 자리는 그대로 멱등하다.
 						effect.remove(player);
 					} else {
 						relief.apply(player, effect);
-						// conditional·holder·periodic 은 자기 하위를 스스로 붙인다. 부모를 통째로
-						// 건너뛰면 같은 묶음의 공격력 증가까지 사라지므로, 붙인 직후에 감소만
-						// 골라 걷어낸다. 세트가 꺼져 있으면 아무 일도 하지 않는다.
-						gate.stripChildren(player, effect);
 					}
 				} catch (RuntimeException error) {
 					SharedFateMod.LOGGER.warn("증강 '{}' 효과 적용에 실패했습니다.", perk.id(), error);
@@ -1126,10 +1118,6 @@ public final class PerkManager {
 		// 「불굴」의 체력이 가득 찼을 때 받는 피해 ×1.1 이 이 길로 들어온다. 같은 증강의 이득
 		// (체력 절반 이하일 때 ×0.7)도 이 길이지만 대가 표시가 없어 건너뛰지 않는다.
 		PerkDrawbacks.Waiver waiver = PerkDrawbacks.waiverFor(state);
-		// 「급소만 노려」의 주는 피해 ×0.95 처럼 배율로 적힌 공격력 감소가 이 길로 들어온다.
-		// 무기 3단계를 켠 팀에서는 그 한 줄만 곱하지 않는다. 받는 피해 쪽은 공격력과 무관하므로
-		// 주는 피해를 모을 때만 본다.
-		NoAttackDamageLossEffect.Gate gate = NoAttackDamageLossEffect.gateFor(state);
 		// 「굳은살」은 받는 피해를 늘리는 배율만 덜어 낸다. 면제된 대가는 위에서 건너뛰므로
 		// 겹치지 않는다. 조건부·보유자는 지금 걸린 배율 전체를 하나로 보고 덜어 낸다.
 		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
@@ -1141,9 +1129,6 @@ public final class PerkManager {
 			}
 			for (PerkEffect effect : perk.effects()) {
 				if (waiver.waives(perk, effect)) {
-					continue;
-				}
-				if (dealt && gate.suppresses(effect)) {
 					continue;
 				}
 				total *= dealt

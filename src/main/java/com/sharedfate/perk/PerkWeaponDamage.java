@@ -1,7 +1,6 @@
 package com.sharedfate.perk;
 
 import com.sharedfate.SharedFateMod;
-import com.sharedfate.perk.effect.NoAttackDamageLossEffect;
 import com.sharedfate.perk.effect.WeaponDamageEffect;
 import com.sharedfate.team.TeamState;
 import net.minecraft.core.Holder;
@@ -142,16 +141,7 @@ public final class PerkWeaponDamage {
 		if (others == null) {
 			return null;
 		}
-		AttributeModifier flattened = flatten(mainHand, baseValue, others);
-		// 세트 「무기 3단계」를 켠 팀에서는 othersDamage 가 공격력을 끌어내리는 경우만 버린다.
-		// 같은 필드로 끌어올리는 경우(무기가 원래 주는 값보다 목표가 높은 경우)는 감소가 아니므로
-		// 그대로 둔다 — 「증가분까지 같이 지워지면 안 된다」를 지키는 자리다. 우대 무기의
-		// 배수(위 multiply)는 애초에 감소가 아니라 여기까지 내려오지 않는다.
-		if (flattened != null && flattened.amount() < 0.0
-				&& NoAttackDamageLossEffect.heldBy(active)) {
-			return null;
-		}
-		return flattened;
+		return flatten(mainHand, baseValue, others);
 	}
 
 	/** 우대 무기에 배수를 건다. 배수가 1이면 붙일 것이 없다. */

@@ -25,7 +25,7 @@ class RuinCoordPlacementTest {
 	private static final int PANEL_WIDTH = 300;
 
 	/** {@code TeamScreen.RUIN_COORD_GAP}. */
-	private static final int GAP = 12;
+	private static final int GAP = 16;
 
 	/** 정의에 실제로 적힌 두 구조물로 서버가 만드는 줄들({@code PerkRuinSurvey.Found#line}). */
 	private static final String CITY = "고대 도시  -1234, 567";
@@ -52,7 +52,7 @@ class RuinCoordPlacementTest {
 	@DisplayName("1920×1080 배율 2 — 오른쪽에 두 줄이 들어간다")
 	void scaleTwoFitsRight() {
 		int screenWidth = 1920 / 2;
-		assertEquals(318, RuinCoordPlacement.rightRoom(screenWidth, panelLeft(screenWidth),
+		assertEquals(314, RuinCoordPlacement.rightRoom(screenWidth, panelLeft(screenWidth),
 				PANEL_WIDTH, GAP), "배율 2(960×540)에서 판 오른쪽에 남는 자리");
 		assertEquals(104, widest(), "가장 긴 좌표 줄의 폭");
 		assertEquals(RuinCoordPlacement.Spot.RIGHT, spotAt(screenWidth));
@@ -62,7 +62,7 @@ class RuinCoordPlacementTest {
 	@DisplayName("1920×1080 배율 3 — 오른쪽에 두 줄이 들어간다")
 	void scaleThreeFitsRight() {
 		int screenWidth = 1920 / 3;
-		assertEquals(158, RuinCoordPlacement.rightRoom(screenWidth, panelLeft(screenWidth),
+		assertEquals(154, RuinCoordPlacement.rightRoom(screenWidth, panelLeft(screenWidth),
 				PANEL_WIDTH, GAP), "배율 3(640×360)에서 판 오른쪽에 남는 자리");
 		assertEquals(RuinCoordPlacement.Spot.RIGHT, spotAt(screenWidth));
 	}
@@ -71,9 +71,9 @@ class RuinCoordPlacementTest {
 	@DisplayName("1920×1080 배율 4 — 오른쪽에 안 들어간다. 이것이 사람이 겪은 화면이다")
 	void scaleFourFallsInside() {
 		int screenWidth = 1920 / 4;
-		assertEquals(78, RuinCoordPlacement.rightRoom(screenWidth, panelLeft(screenWidth),
+		assertEquals(74, RuinCoordPlacement.rightRoom(screenWidth, panelLeft(screenWidth),
 				PANEL_WIDTH, GAP), "배율 4(480×270)에서 판 오른쪽에 남는 자리");
-		assertTrue(widest() > 78, "좌표 줄이 그 자리보다 길다 — 그래서 예전에는 안 그렸다");
+		assertTrue(widest() > 74, "좌표 줄이 그 자리보다 길다 — 그래서 예전에는 안 그렸다");
 		assertEquals(RuinCoordPlacement.Spot.INSIDE, spotAt(screenWidth),
 				"안 그리는 대신 판 안으로 들여야 한다");
 	}

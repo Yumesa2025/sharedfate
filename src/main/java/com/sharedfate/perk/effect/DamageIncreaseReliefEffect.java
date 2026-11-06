@@ -22,7 +22,7 @@ import org.jetbrains.annotations.Nullable;
  * <p>{@code reduction} 은 증가분(배율 − 1)에서 덜어 낼 몫이다. 0.5 면 ×1.2 → ×1.1,
  * ×2 → ×1.5, 낙하 +0.2 → +0.1 이 된다. 빠뜨리면 0.5 다.
  *
- * <p>{@link NoAttackDamageLossEffect} 처럼 팀원에게 붙일 것이 없다. 「이미 있는 효과의 값을
+ * <p>{@link NoDefenseDrawbacksEffect} 처럼 팀원에게 붙일 것이 없다. 「이미 있는 효과의 값을
  * 덜어 낸다」는 보상이라 이 클래스는 「이 팀에서 증가분이 얼마나 남는가」라는 물음에만 답한다.
  *
  * <h2>무엇을 덜어 내는가</h2>
@@ -123,7 +123,7 @@ public final class DamageIncreaseReliefEffect implements PerkEffect {
 	 * 이 팀에서 증가분 중 남는 몫. 이 효과가 없으면 1.0 이다.
 	 *
 	 * <p>여럿이면 남는 몫을 곱한다. 보유 증강과 켜진 세트를 <b>둘 다</b> 본다 —
-	 * {@link NoAttackDamageLossEffect#heldBy} 와 같은 모양이다.
+	 * {@link NoDefenseDrawbacksEffect#heldBy} 와 같은 모양이다.
 	 */
 	public static double keepFor(@Nullable TeamState state) {
 		if (state == null || !state.perksEnabled) {
@@ -165,7 +165,7 @@ public final class DamageIncreaseReliefEffect implements PerkEffect {
 	 *
 	 * <p>피해 계산처럼 초당 여러 번 도는 자리에서 쓰므로, 1 보다 큰 배율을 <b>실제로 만났을
 	 * 때</b> 한 번만 판정한다. 받는 피해를 늘리는 증강이 없는 팀은 보유 목록을 다시 훑지 않는다.
-	 * {@link NoAttackDamageLossEffect.Gate} 와 같은 방식이다.
+	 * {@link com.sharedfate.perk.PerkDrawbacks.Waiver} 와 같은 방식이다.
 	 *
 	 * <p>한 번의 조회 안에서만 쓰고 버린다. 서버 스레드에서만 오간다.
 	 */

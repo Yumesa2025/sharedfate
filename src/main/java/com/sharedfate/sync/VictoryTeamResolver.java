@@ -111,8 +111,7 @@ import java.util.UUID;
  * <h2>순수 판정과 월드를 보는 부분을 갈라 뒀다</h2>
  * <p>{@link #resolve(TeamManager, Candidates)} 는 살아 있는 서버 없이 도는 <b>순수 판정</b>
  * 이고, 위의 결정이 전부 그 안에 있다. 엔티티에서 후보를 뽑는 일만
- * {@link #candidatesOf} 가 한다. {@code GameOverCountdown} 이나
- * {@code NoAttackDamageLossEffect.reduces} 와 같은 모양이다.
+ * {@link #candidatesOf} 가 한다. {@code GameOverCountdown} 과 같은 모양이다.
  */
 public final class VictoryTeamResolver {
 	/** 팀을 못 찾았을 때 로그에 적을 자리 표시. 줄이 {@code null} 로 깨지지 않게 한다. */

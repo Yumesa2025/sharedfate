@@ -162,9 +162,6 @@ class DefaultPerkPoolValuesTest {
 	 * 고정이어야 한다. {@code conditional} 의 거짓 쪽 0번 하위라 순번은
 	 * {@code childIndex(0, 50)} = 150 으로 정해지고, 조건이 뒤집힐 때·증강을 잃을 때·팀을 떠날 때
 	 * ({@code PerkManager.detach}) 모두 {@code ConditionalEffect.remove} 가 이 식별자로 걷어낸다.
-	 *
-	 * <p>공격력 감소라 세트 「무기 3단계 — 깎이지 않는다」에도 걸린다. 나약함일 때는 상태이상이라
-	 * 걸리지 않던 것이 바뀐 자리다.
 	 */
 	@Test
 	void 벼랑_끝의_대가는_공격력_15퍼센트_감소다(@TempDir Path dir) throws IOException {
@@ -183,8 +180,6 @@ class DefaultPerkPoolValuesTest {
 		assertEquals(-0.15, penalty.amount(), 1.0e-9);
 		assertEquals(AttributeEffect.modifierId("sharedfate:brink", ConditionalEffect.childIndex(0, 50)),
 				penalty.modifierId(), "식별자가 고정이어야 두 번 붙지 않고 걷어낼 수 있다");
-		assertTrue(com.sharedfate.perk.effect.NoAttackDamageLossEffect.reduces(penalty),
-				"공격력 감소라 세트 「무기 3단계」가 걷어낸다");
 	}
 
 	/**
