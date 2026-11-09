@@ -185,14 +185,15 @@ public final class PerkDamage {
 	/**
 	 * 이 팀이 가진 {@code damage_taken_blocking} 중 지금 자세에 걸리는 것들의 배율을 모두 곱한 값.
 	 *
-	 * <p><b>보유 증강과 세트를 둘 다 훑는다.</b> {@code ownedPerks} 만 훑고 세트를 빠뜨리면 방어
-	 * 2단계가 통째로 무동작이 되는데, 빌드도 통과하고 로그도 남지 않는다.
+	 * <p><b>보유 증강과 세트를 둘 다 훑는다.</b> {@code ownedPerks} 만 훑고 세트를 빠뜨리면 세트에
+	 * 적힌 막기 배율이 통째로 무동작이 되는데, 빌드도 통과하고 로그도 남지 않는다. 방어 2단계가
+	 * 0.45.4-dev 에 받는 피해 −15% · 방어구 내구도로 바뀌어 지금 기본 세트에는 이 효과가 없다.
 	 */
 	static double blockingMultiplier(@Nullable TeamState state, boolean blocking) {
 		if (state == null || !blocking || state.ownedPerks.isEmpty()) {
 			return 1.0;
 		}
-		// 「굳은살」이 있으면 증강이 늘린 몫만 덜어 낸다. 세트 쪽(방어 2단계 ×0.5)은 줄이는 값이라
+		// 「굳은살」이 있으면 증강이 늘린 몫만 덜어 낸다. 세트 쪽 막기 배율은 줄이는 값이라
 		// 걸리지 않는다.
 		DamageIncreaseReliefEffect.Relief relief = DamageIncreaseReliefEffect.reliefFor(state);
 		double total = 1.0;
@@ -470,9 +471,18 @@ public final class PerkDamage {
 	 * {@code resolveBlockedDamage}. 마지막 것은 값만 계산하므로 방패를 깎거나 소리를 내지 않는다.
 	 *
 	 * <p>「거북 등껍질」은 각도를 0 으로 바꿔 모든 방향을 막는다({@code LivingEntityShieldCombatMixin}).
-	 * 여기서도 같게 본다.
+	 * 여기서도 같게 본다({@link #turtleAngle}).
+	 *
+	 * <p>「완충」 몫은 방패를 건너뛴다({@code SpreadDamageManager.ignoresShield}). 여기서도 「안 막힘」으로
+	 * 봐야 한다 — 안 그러면 「호위」는 방패가 막을 줄 알고 비켜 주고 방패는 몫을 건너뛰어, 방패를 든 채
+	 * 몫이 그대로 박혔다(2026-11-10 검토).
+	 *
+	 * <p>광역 중복 검사({@code LivingEntityPerkDamageMixin})도 이것으로 막는 사람을 가린다.
 	 */
-	static boolean shieldWouldBlock(LivingEntity victim, DamageSource source, float amount) {
+	public static boolean shieldWouldBlock(LivingEntity victim, DamageSource source, float amount) {
+		if (com.sharedfate.sync.SpreadDamageManager.ignoresShield(victim)) {
+			return false;
+		}
 		ItemStack blocking = victim.getItemBlockingWith();
 		if (blocking == null) {
 			return false;
@@ -484,10 +494,25 @@ public final class PerkDamage {
 		if (source.getDirectEntity() instanceof AbstractArrow arrow && arrow.getPierceLevel() > 0) {
 			return false;
 		}
-		double angle = PerkShieldCombat.turtle(victim)
-				? 0.0D
-				: blockAngle(source.getSourcePosition(), victim.position(), victim.getYHeadRot());
+		double angle = turtleAngle(victim, source,
+				blockAngle(source.getSourcePosition(), victim.position(), victim.getYHeadRot()));
 		return blocks.resolveBlockedDamage(source, amount, angle) > 0.0F;
+	}
+
+	/**
+	 * 「거북 등껍질」을 걸친 각도. 등껍질이 없으면 바닐라 각도 그대로다.
+	 *
+	 * <p>등껍질이 바꾸는 것은 <b>방향</b>뿐이다. 출처 위치가 없는 피해는 바닐라가 각도를 π 로 두어
+	 * 방패가 못 막게 하는데, 예전에는 그것까지 0 으로 덮어 막았다. 드래곤 패턴(부채꼴 브레스·불 폭격 등)이
+	 * 바로 그런 피해라 등껍질 + 방패면 전부 막혔다(2026-11-10 검토). 그래서 출처 위치가 있을 때만 바꾼다.
+	 */
+	public static double turtleAngle(LivingEntity victim, DamageSource source, double vanillaAngle) {
+		return turtleAngle(PerkShieldCombat.turtle(victim), source.getSourcePosition() != null, vanillaAngle);
+	}
+
+	/** {@link #turtleAngle(LivingEntity, DamageSource, double)} 의 판정 본체. 시험이 값만 넣어 본다. */
+	static double turtleAngle(boolean turtle, boolean hasSourcePosition, double vanillaAngle) {
+		return turtle && hasSourcePosition ? 0.0D : vanillaAngle;
 	}
 
 	/**

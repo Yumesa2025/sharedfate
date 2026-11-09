@@ -2,6 +2,7 @@ package com.sharedfate.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.sharedfate.perk.PerkDamage;
 import com.sharedfate.perk.PerkShieldCombat;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
@@ -21,8 +22,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class LivingEntityShieldCombatMixin {
 	@ModifyArg(method = "applyItemBlocking", at = @At(value = "INVOKE", target =
 			"Lnet/minecraft/world/item/component/BlocksAttacks;resolveBlockedDamage(Lnet/minecraft/world/damagesource/DamageSource;FD)F"), index = 2)
-	private double sharedfate$allDirections(double angle) {
-		return PerkShieldCombat.turtle((LivingEntity) (Object) this) ? 0 : angle;
+	private double sharedfate$allDirections(DamageSource source, float amount, double angle) {
+		// 출처 위치가 없는 피해(바닐라가 π 로 둬 못 막게 하는 것)는 등껍질도 그대로 둔다.
+		return PerkDamage.turtleAngle((LivingEntity) (Object) this, source, angle);
 	}
 
 	@WrapOperation(method = "applyItemBlocking", at = @At(value = "INVOKE", target =

@@ -214,7 +214,7 @@ public final class PerkDrawbacks {
 	 * <ul>
 	 *   <li>「완충」({@code spread_damage}) — 나뉘어 들어오는 동안 자연 회복이 막힌다.
 	 *       {@code SpreadDamageManager.blocksNaturalRegen} 이 묻는다</li>
-	 *   <li>「버티는 방패」({@code shield_fall_immunity}) — 막아 낸 낙하 피해의 열 배로 방패가 닳는다.
+	 *   <li>「버티는 방패」({@code shield_fall_immunity}) — 막아 낸 낙하 피해의 다섯 배로 방패가 닳는다.
 	 *       {@link PerkDamage#wearShieldForBlockedFall} 이 묻는다</li>
 	 * </ul>
 	 *

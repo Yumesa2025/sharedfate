@@ -45,7 +45,7 @@ import org.jetbrains.annotations.Nullable;
  * <ul>
  *   <li>{@code SpreadDamageManager.blocksNaturalRegen} — 「완충」이 나눠 받는 동안 자연 회복이
  *       막히는 것</li>
- *   <li>{@code PerkDamage.wearShieldForBlockedFall} — 「버티는 방패」가 막아 낸 낙하 피해의 열 배로
+ *   <li>{@code PerkDamage.wearShieldForBlockedFall} — 「버티는 방패」가 막아 낸 낙하 피해의 다섯 배로
  *       방패가 닳는 것. 면제되면 바닐라처럼 막은 양만큼만 닳는다</li>
  * </ul>
  *

@@ -186,7 +186,7 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 	 *       중에 받는 낙하 피해는 통째로 버린다. 배율을 0 으로 깎지 않고 여기서 버리는 이유는
 	 *       {@link com.sharedfate.perk.effect.ShieldFallImmunityEffect} 에 있다. 낙하가 아닌
 	 *       피해는 {@link PerkDamage#blocksFallDamage} 첫 줄에서 곧바로 빠져나간다.
-	 *       <b>버리기 전에</b> 방패를 막은 양의 열 배로 깎는다 — 그것이 이 증강의 대가다.</li>
+	 *       <b>버리기 전에</b> 방패를 막은 양의 다섯 배로 깎는다(0.45.0-dev 에서 열 배 → 다섯 배) — 그것이 이 증강의 대가다.</li>
 	 *   <li><b>공유 상태이상의 중복 피해</b> — 아래 설명 참고.</li>
 	 *   <li><b>몹에게 받은 한 대</b> — {@code damage_ward} 를 고른 사람은 쿨타임마다 한 번, 몹이
 	 *       준 피해를 통째로 버린다. 낙하 면역과 같은 이유로 배율 0 이 아니라 여기서 버린다.
@@ -243,7 +243,12 @@ public abstract class LivingEntityPerkDamageMixin implements SpreadSliceAccess {
 			callback.setReturnValue(false);
 			return;
 		}
-		if (firstHit && SharedAreaDamage.isDuplicateAreaDamage(self, source)) {
+		// 방패로 막을 사람은 광역 중복 검사에서 뺀다. 이 검사는 바닐라 방패 판정보다 먼저라, 넣어 두면
+		// 팀원이 먼저 맞았을 때 막는 사람 몫이 방패에 닿기도 전에 버려지고(방패 소리·내구도 없이 팀
+		// 체력만 깎임), 막는 사람이 먼저면 그 사람이 「이번 공격」 자리를 차지한 채 0 으로 막혀 팀원
+		// 전원이 그 공격을 안 맞았다. 막는 사람의 피해는 방패가 0 으로 만드니 따로 세지 않아도 된다.
+		if (firstHit && !PerkDamage.shieldWouldBlock(self, source, amount)
+				&& SharedAreaDamage.isDuplicateAreaDamage(self, source)) {
 			callback.setReturnValue(false);
 			return;
 		}

@@ -38,4 +38,23 @@ class ShieldWouldBlockAngleTest {
 	void 출처가_없는_피해는_바닐라처럼_정반대로_본다() {
 		assertEquals(Mth.PI, PerkDamage.blockAngle(null, ORIGIN, 0.0F), 1.0e-6);
 	}
+
+	@Test
+	void 거북_등껍질은_출처가_있는_피해를_모든_방향에서_막는다() {
+		assertEquals(0.0D, PerkDamage.turtleAngle(true, true, Math.PI), 1.0e-9, "등 뒤 공격도 정면으로 본다");
+	}
+
+	/**
+	 * 출처 위치가 없는 폭발(드래곤 부채꼴 브레스·불 폭격)은 바닐라가 π 로 둬 방패가 못 막는다. 등껍질이
+	 * 이것까지 0 으로 덮으면 등껍질 + 방패로 드래곤 패턴이 전부 막혔다(2026-11-10 검토).
+	 */
+	@Test
+	void 거북_등껍질도_출처가_없는_피해는_바닐라_각도_그대로다() {
+		assertEquals(Mth.PI, PerkDamage.turtleAngle(true, false, Mth.PI), 1.0e-9);
+	}
+
+	@Test
+	void 등껍질이_없으면_언제나_바닐라_각도다() {
+		assertEquals(Math.PI / 2.0D, PerkDamage.turtleAngle(false, true, Math.PI / 2.0D), 1.0e-9);
+	}
 }
