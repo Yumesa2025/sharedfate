@@ -35,6 +35,8 @@ public final class ShieldRecipes {
 	static final UseEffects LEGACY_DIAMOND_USE_EFFECTS = new UseEffects(false, true, 1.0F);
 	/** 다이아몬드 방패의 최대 내구도. 강철(1008)·일반(336)과 겹치지 않는 표시이기도 하다. */
 	static final int DIAMOND_MAX_DAMAGE = 3000;
+	/** 바닐라 방패의 최대 내구도. 이 값이 아니면 이 모드가 바꾼 방패(강철·다이아몬드)다. */
+	static final int VANILLA_MAX_DAMAGE = 336;
 	public static boolean unlocked(TeamState state, ShieldCraftEffect wanted) {
 		if (state == null || !state.perksEnabled) return false;
 		for (String id : state.ownedPerks) {
@@ -72,13 +74,27 @@ public final class ShieldRecipes {
 			else other++;
 		}
 		if (other > 0) return null;
+		// 방패 둘은 바닐라 「두 개 합치기」 수리(RepairItemRecipe)의 모양이다. 바닐라는 결과를
+		// new ItemStack(SHIELD) 에 큰 최대 내구도만 적어 만들고 저주 아닌 마법부여를 버린다 — 강철·다이아몬드
+		// 방패가 이름·설명·닳지 않음·달리기 허용을 잃는다. 그래서 하나라도 이 모드의 방패면 막는다. 바닐라
+		// 방패 둘은 바닐라에 맡긴다. 2×2 칸에서도 같은 수리가 되므로 아래 2×2 거르기보다 먼저 본다.
+		if (shields == 2 && iron == 0 && planks == 0) {
+			for (ItemStack stack : grid) {
+				if (stack.is(Items.SHIELD) && modShield(stack)) return ItemStack.EMPTY;
+			}
+			return null;
+		}
 		if (!workbench && !(shields == 1 && planks > 0 && iron == 0)) return null;
 		if (shields == 9 && iron == 0 && planks == 0) {
+			// 재료는 바닐라 일반 방패만 받는다. 아홉 칸이 모두 사라지므로 강철·다이아몬드나 마법부여한
+			// 방패가 섞이면 그만큼 손해다 — 결과 칸을 비워 꺼내지 못하게 한다.
+			for (ItemStack stack : grid) {
+				if (!stack.isEmpty() && !plainShield(stack)) return ItemStack.EMPTY;
+			}
 			return unlocked(state, ShieldCraftEffect.DIAMOND_RECIPE) ? diamond() : ItemStack.EMPTY;
 		}
 		if (shields == 1 && iron == 1 && planks == 0) {
-			return unlocked(state, ShieldCraftEffect.STEEL_RECIPE)
-					&& shield.getMaxDamage() == 336 && !shield.has(DataComponents.UNBREAKABLE)
+			return unlocked(state, ShieldCraftEffect.STEEL_RECIPE) && !modShield(shield)
 					? steel(shield) : ItemStack.EMPTY;
 		}
 		if (shields == 1 && planks > 0 && iron == 0) {
@@ -87,6 +103,21 @@ public final class ShieldRecipes {
 					? repair(shield, planks) : ItemStack.EMPTY;
 		}
 		return null;
+	}
+
+	/**
+	 * 이 모드가 바꾼 방패인가 — 강철(최대 내구도 1008)·다이아몬드(3000, 닳지 않음).
+	 *
+	 * <p>이름·설명은 보지 않는다. 모루로 바꾸거나 지울 수 있고, 바닐라 방패에도 이름을 붙일 수 있다.
+	 * 지금 이 모드가 방패에 남기는 표식은 최대 내구도와 「닳지 않음」 둘뿐이다.
+	 */
+	static boolean modShield(ItemStack stack) {
+		return stack.getMaxDamage() != VANILLA_MAX_DAMAGE || stack.has(DataComponents.UNBREAKABLE);
+	}
+
+	/** 다이아몬드 방패 재료로 받는 방패 — 이 모드가 바꾸지 않았고 마법부여도 없는 바닐라 방패. */
+	static boolean plainShield(ItemStack stack) {
+		return stack.is(Items.SHIELD) && !modShield(stack) && !stack.isEnchanted();
 	}
 
 	public static ItemStack steel(ItemStack original) {

@@ -12,6 +12,15 @@ import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.entity.projectile.arrow.SpectralArrow;
+import net.minecraft.world.entity.projectile.arrow.ThrownTrident;
+import net.minecraft.world.item.ItemCooldowns;
+import net.minecraft.world.phys.Vec3;
+import com.sharedfate.recipe.ShieldRecipes;
 import org.junit.jupiter.api.*;
 import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,6 +51,60 @@ class ShieldCombatTest {
 		assertEquals(10, PerkShieldCombat.rushDamage(20));
 		assertEquals(1.5F, PerkShieldCombat.rushDamage(3));
 		assertEquals(0, PerkShieldCombat.rushDamage(0));
+	}
+	@Test void 바로_위아래를_보면_돌진하지_않고_쿨타임도_걸지_않는다() {
+		UUID id = UUID.randomUUID();
+		// 실제 시선 계산 그대로 — 고개는 ±90도까지 젖혀진다.
+		for (float yaw : new float[]{0F, 37F, -135F, 180F}) {
+			assertNull(PerkShieldCombat.rushStep(Entity.calculateViewVector(-90F, yaw)));
+			assertNull(PerkShieldCombat.rushStep(Entity.calculateViewVector(90F, yaw)));
+			assertNull(PerkShieldCombat.beginRush(id, 10, Entity.calculateViewVector(-90F, yaw)));
+		}
+		// 나가지 못한 돌진은 쿨타임을 남기지 않아 곧바로 다시 돌진할 수 있다.
+		Vec3 step = PerkShieldCombat.beginRush(id, 11, Entity.calculateViewVector(-60F, 37F));
+		assertNotNull(step);
+		assertEquals(0.25, step.length(), 1.0e-9);
+		assertEquals(0, step.y);
+		assertNull(PerkShieldCombat.beginRush(id, 12, Entity.calculateViewVector(0F, 0F)));
+	}
+	@Test void 도끼에_무력화된_방패로는_돌진하지_않는다() {
+		ItemCooldowns cooldowns = new ItemCooldowns();
+		ItemStack shield = new ItemStack(Items.SHIELD);
+		assertTrue(PerkShieldCombat.rushShieldReady(shield, cooldowns));
+		assertFalse(PerkShieldCombat.rushShieldReady(new ItemStack(Items.IRON_SWORD), cooldowns));
+		// 바닐라 무력화(BlocksAttacks.disable)는 방패 스택에 아이템 쿨타임을 건다. 같은 방패 묶음 전체가 묶인다.
+		cooldowns.addCooldown(shield, 100);
+		assertFalse(PerkShieldCombat.rushShieldReady(shield, cooldowns));
+		assertFalse(PerkShieldCombat.rushShieldReady(ShieldRecipes.diamond(), cooldowns));
+	}
+	@Test void 화살_내구도_대가는_화살과_분광_화살에만_걸린다() throws Exception {
+		assertTrue(PerkShieldCombat.wornByArrow(empty(Arrow.class)));
+		assertTrue(PerkShieldCombat.wornByArrow(empty(SpectralArrow.class)));
+		assertFalse(PerkShieldCombat.wornByArrow(empty(ThrownTrident.class)));
+		assertFalse(PerkShieldCombat.wornByArrow(empty(Zombie.class)));
+		assertFalse(PerkShieldCombat.wornByArrow(null));
+	}
+	@Test void 한번_더의_두번째_타격은_반격을_쓰지도_지우지도_않는다() throws Exception {
+		ServerPlayer player = empty(ServerPlayer.class);
+		UUID id = UUID.randomUUID();
+		var uuid = Entity.class.getDeclaredField("uuid"); uuid.setAccessible(true); uuid.set(player, id);
+		var attack = TestBootstrap.registries().lookupOrThrow(Registries.DAMAGE_TYPE).getOrThrow(DamageTypes.PLAYER_ATTACK);
+		DamageSource source = new DamageSource(attack, player);
+		PerkShieldCombat.arm(id, 100);
+		assertFalse(PerkShieldCombat.inFollowUp());
+		assertTrue(PerkShieldCombat.followUpHit(() -> {
+			assertTrue(PerkShieldCombat.inFollowUp());
+			assertEquals(1, PerkShieldCombat.counterMultiplier(source));
+			return true;
+		}));
+		assertFalse(PerkShieldCombat.inFollowUp());
+		// 장전한 반격은 그대로 남아 사람이 직접 휘두른 다음 한 번에 걸린다.
+		assertEquals(2, PerkShieldCombat.consume(id, 110, true));
+		// 안에서 예외가 나도 표시는 내려간다.
+		assertThrows(IllegalStateException.class, () -> PerkShieldCombat.followUpHit(() -> {
+			throw new IllegalStateException();
+		}));
+		assertFalse(PerkShieldCombat.inFollowUp());
 	}
 	@Test void 내구도_배율은_실제_최대값을_바꾸지_않고_소모량만_바꾼다() {
 		TeamState state = TeamState.fresh(20); state.perksEnabled = true;

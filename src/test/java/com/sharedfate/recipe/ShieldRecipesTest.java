@@ -27,6 +27,15 @@ class ShieldRecipesTest {
 		return state;
 	}
 
+	/** 다이아몬드 방패 제작법은 방패 세트 4단계라 방패 증강 넷을 쥔다. */
+	private TeamState diamondTeam() {
+		TeamState state = TeamState.fresh(20); state.perksEnabled = true;
+		PerkRegistry.all().stream().filter(perk -> perk.hasSetType(PerkSetType.SHIELD)).limit(4)
+				.forEach(perk -> state.ownedPerks.add(perk.id()));
+		assertTrue(ShieldRecipes.unlocked(state, ShieldCraftEffect.DIAMOND_RECIPE));
+		return state;
+	}
+
 	@Test void 강철은_해금한_팀만_만들고_마법부여를_보존한다() {
 		ItemStack original = new ItemStack(Items.SHIELD);
 		original.setDamageValue(10);
@@ -58,6 +67,63 @@ class ShieldRecipesTest {
 		// 막는 동안 달리기를 시작할 수 있어야 한다 — 거짓이면 LocalPlayer 가 방패를 든 채 달리기를 막는다.
 		assertTrue(result.get(DataComponents.USE_EFFECTS).canSprint());
 		assertNull(ShieldRecipes.result(grid.subList(0, 8), state));
+	}
+
+	@Test void 바닐라_방패_내구도_표식은_바닐라_기본값과_같다() {
+		assertEquals(new ItemStack(Items.SHIELD).getMaxDamage(), ShieldRecipes.VANILLA_MAX_DAMAGE);
+		assertFalse(ShieldRecipes.modShield(new ItemStack(Items.SHIELD)));
+		assertTrue(ShieldRecipes.modShield(ShieldRecipes.steel(new ItemStack(Items.SHIELD))));
+		assertTrue(ShieldRecipes.modShield(ShieldRecipes.diamond()));
+	}
+
+	@Test void 모드_방패는_바닐라_두개_합치기_수리로_넘기지_않는다() {
+		TeamState state = diamondTeam();
+		ItemStack plain = new ItemStack(Items.SHIELD); plain.setDamageValue(100);
+		ItemStack plain2 = new ItemStack(Items.SHIELD); plain2.setDamageValue(200);
+		ItemStack steel = ShieldRecipes.steel(new ItemStack(Items.SHIELD)); steel.setDamageValue(500);
+		ItemStack diamond = ShieldRecipes.diamond();
+		// 이름을 지운 강철 방패도 최대 내구도로 알아본다.
+		ItemStack renamedSteel = steel.copy(); renamedSteel.remove(DataComponents.CUSTOM_NAME);
+		ItemStack unbreakablePlain = new ItemStack(Items.SHIELD);
+		unbreakablePlain.set(DataComponents.UNBREAKABLE, net.minecraft.util.Unit.INSTANCE);
+		for (var pair : List.of(List.of(diamond, diamond.copy()), List.of(steel, plain), List.of(plain, diamond),
+				List.of(renamedSteel, steel.copy()), List.of(unbreakablePlain, plain))) {
+			// 제작대(빈 칸 섞임) · 인벤토리 2×2 모두 결과 칸을 비운다. 팀 조건과 상관없다.
+			var workbench = List.of(pair.get(0), ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, pair.get(1),
+					ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY);
+			var inventory = List.of(ItemStack.EMPTY, pair.get(0), pair.get(1), ItemStack.EMPTY);
+			assertTrue(ShieldRecipes.result(workbench, state).isEmpty());
+			assertNotNull(ShieldRecipes.result(workbench, null));
+			assertTrue(ShieldRecipes.result(workbench, null).isEmpty());
+			assertNotNull(ShieldRecipes.inventoryResult(inventory, state));
+			assertTrue(ShieldRecipes.inventoryResult(inventory, state).isEmpty());
+		}
+		// 바닐라 방패 둘은 그대로 바닐라 수리에 맡긴다.
+		assertNull(ShieldRecipes.result(List.of(plain, plain2), state));
+		assertNull(ShieldRecipes.inventoryResult(List.of(plain, plain2, ItemStack.EMPTY, ItemStack.EMPTY), state));
+	}
+
+	@Test void 다이아몬드_방패는_바닐라_일반_방패_아홉개로만_만든다() {
+		TeamState state = diamondTeam();
+		ItemStack enchanted = new ItemStack(Items.SHIELD);
+		enchanted.enchant(TestBootstrap.registries().lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
+				.getOrThrow(net.minecraft.world.item.enchantment.Enchantments.UNBREAKING), 3);
+		ItemStack damaged = new ItemStack(Items.SHIELD); damaged.setDamageValue(300);
+		ItemStack named = new ItemStack(Items.SHIELD); named.set(DataComponents.CUSTOM_NAME, Component.literal("내 방패"));
+		for (ItemStack odd : List.of(ShieldRecipes.steel(new ItemStack(Items.SHIELD)), ShieldRecipes.diamond(), enchanted)) {
+			var grid = new java.util.ArrayList<ItemStack>();
+			for (int i = 0; i < 8; i++) grid.add(new ItemStack(Items.SHIELD));
+			grid.add(odd);
+			ItemStack result = ShieldRecipes.result(grid, state);
+			assertNotNull(result);
+			assertTrue(result.isEmpty(), "아홉 칸에 일반 방패가 아닌 것이 섞였는데 다이아몬드 방패가 나온다");
+		}
+		// 닳은 방패 · 이름만 붙인 바닐라 방패는 일반 방패다.
+		var grid = new java.util.ArrayList<ItemStack>();
+		for (int i = 0; i < 7; i++) grid.add(new ItemStack(Items.SHIELD));
+		grid.add(damaged); grid.add(named);
+		assertEquals(3000, ShieldRecipes.result(grid, state).getMaxDamage());
+		// 2×2 칸에서는 아홉 개가 들어가지 않으니 여기 시험은 제작대 몫이다.
 	}
 
 	@Test void 옛_다이아몬드_방패만_달릴_수_있게_고친다() {

@@ -18,6 +18,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -39,6 +40,10 @@ import org.jetbrains.annotations.Nullable;
  *       쪽에 있어 다시 일어나지 않는다. {@code hurtServer} 가 스스로 주는 작은 넉백은 속도를 되돌려 지운다.</li>
  *   <li><b>엔더 드래곤에게도 들어간다.</b> 부위를 때렸으면 같은 부위에 다시 넣어 바닐라의 부위 배율을 그대로 탄다.</li>
  *   <li><b>플레이어에게는 걸지 않는다.</b></li>
+ *   <li><b>갑옷 거치대에도 걸지 않는다.</b> 바닐라 거치대는 5틱 안에 두 번 맞으면 부서지는데 두 번째 타격이
+ *       4틱 뒤라, 한 번 치기만 해도 60% 확률로 부서진다.</li>
+ *   <li><b>방패 반격(×2)을 쓰지 않는다.</b> 같은 피해원이라 그대로 두면 그 사이 막아서 장전한 반격을 절반 피해가
+ *       가져간다. 넣는 동안 {@link PerkShieldCombat#followUpHit} 로 표시를 세운다.</li>
  * </ul>
  *
  * <h2>피격 쿨타임 — 26.3 에서는 {@code damageCooldownTime} 이다</h2>
@@ -138,7 +143,7 @@ public final class PerkFollowUpStrike {
 		living.damageCooldownTime = 0;
 		boolean hurt;
 		try {
-			hurt = target.hurtServer(level, pending.source(), pending.amount());
+			hurt = PerkShieldCombat.followUpHit(() -> target.hurtServer(level, pending.source(), pending.amount()));
 		} finally {
 			if (living.isAlive()) {
 				living.damageCooldownTime = cooldown;
@@ -157,10 +162,10 @@ public final class PerkFollowUpStrike {
 		}
 	}
 
-	/** 한 번 더 때릴 수 있는 대상인가. 산 몹이나 드래곤 부위여야 하고, 플레이어는 빠진다. */
+	/** 한 번 더 때릴 수 있는 대상인가. 산 몹이나 드래곤 부위여야 하고, 플레이어 · 갑옷 거치대는 빠진다. */
 	static boolean eligibleTarget(@Nullable Entity target) {
 		LivingEntity living = livingOf(target);
-		return living != null && !(living instanceof Player);
+		return living != null && !(living instanceof Player) && !(living instanceof ArmorStand);
 	}
 
 	private static @Nullable LivingEntity livingOf(@Nullable Entity target) {

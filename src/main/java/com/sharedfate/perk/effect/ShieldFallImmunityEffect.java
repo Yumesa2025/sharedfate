@@ -10,8 +10,8 @@ import org.jetbrains.annotations.Nullable;
 /**
  * 방패를 들어 막고 있는 동안에는 낙하 피해를 받지 않게 하는 표시.
  *
- * <p>정의는 {@code { "type": "shield_fall_immunity" }} 하나뿐이고 필드가 없다. 실버
- * 「방패 낙하 면역」이 쓴다. 방패를 <b>손에 들고만</b> 있어서는 안 되고 실제로 우클릭으로
+ * <p>정의는 {@code { "type": "shield_fall_immunity" }} 하나뿐이고 필드가 없다. 골드
+ * 「버티는 방패」가 쓴다. 방패를 <b>손에 들고만</b> 있어서는 안 되고 실제로 우클릭으로
  * 막는 중이어야 한다.
  *
  * <p>{@link PerkEffect#apply}로 팀원에게 붙일 것이 없다. 피해가 들어오는 한가운데서 "이 팀이
