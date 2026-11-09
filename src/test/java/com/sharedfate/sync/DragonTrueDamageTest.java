@@ -54,7 +54,7 @@ class DragonTrueDamageTest {
 	@Test
 	void 방어구_마법부여_저항_방패를_지나간다() throws IOException {
 		for (String tag : new String[] {"bypasses_armor", "bypasses_enchantments", "bypasses_effects",
-				"bypasses_resistance", "bypasses_shield", "no_knockback"}) {
+				"bypasses_resistance", "bypasses_shield"}) {
 			JsonObject json = json("/data/minecraft/tags/damage_type/" + tag + ".json");
 			assertFalse(json.has("replace") && json.get("replace").getAsBoolean(),
 					tag + " 를 갈아 치우면 바닐라 피해 종류가 태그에서 빠진다");
@@ -66,6 +66,13 @@ class DragonTrueDamageTest {
 	 * <b>{@code bypasses_cooldown} 태그에는 없어야 한다</b>(2026-11-10). 그 태그의 피해는 바닐라가 「새로 맞음」으로
 	 * 받아 {@code lastHurt} 를 작은 고정 피해로 덮어써, 번개 직후 막혀야 할 몸통 · 브레스가 다 들어왔다.
 	 */
+	/** 사람이 정한 것(2026-11-10) — 「맞아도 밀침 있게, 고정 피해에도」. 0.45.9 는 밀침을 없앴다. */
+	@Test
+	void 밀침_없음_태그에는_없다() throws IOException {
+		JsonObject json = json("/data/minecraft/tags/damage_type/no_knockback.json");
+		assertFalse(json.getAsJsonArray("values").toString().contains(ID), "고정 피해도 맞으면 밀려야 한다");
+	}
+
 	@Test
 	void 피격_쿨타임_태그에는_없다() throws IOException {
 		JsonObject json = json("/data/minecraft/tags/damage_type/bypasses_cooldown.json");

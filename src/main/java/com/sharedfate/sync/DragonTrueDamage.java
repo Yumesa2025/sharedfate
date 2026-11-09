@@ -26,8 +26,12 @@ import net.minecraft.world.entity.LivingEntity;
  *   <li>{@code bypasses_enchantments} — 보호 계열 마법부여</li>
  *   <li>{@code bypasses_effects} · {@code bypasses_resistance} — 저항</li>
  *   <li>{@code bypasses_shield} — 방패</li>
- *   <li>{@code no_knockback}</li>
  * </ul>
+ *
+ * <p><b>밀침은 남긴다.</b> 0.45.9-dev 는 {@code no_knockback} 도 달아, 예전 번개 · 폭발 피해가 주던 밀침(출처 쪽,
+ * 출처가 없으면 무작위 방향으로 0.4 · 그 순간 속도 절반)이 사라졌다. 그래서 흡입 원 안의 불 결계가 매초 주던 감속이
+ * 없어져 빠져나오기 쉬워졌다. 사람이 정한 것(2026-11-10) — 「맞아도 밀침 있게, 고정 피해에도」. 태그 파일은 빈 채로
+ * 남겼다. 상시 번개는 번개 한 대 위에 고정 피해를 얹으므로 같은 틱에 두 번 밀린다.
  *
  * <h2>피격 쿨타임은 태그가 아니라 {@link #hurt} 로 지나간다</h2>
  *
