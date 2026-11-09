@@ -82,12 +82,22 @@ public final class PerkShieldCombat {
 	/** 옛 다이아몬드 방패를 찾아 고치는 주기(틱). 가방 한 번 훑기는 가벼워 1초면 넉넉하다. */
 	private static final int LEGACY_SHIELD_SCAN_TICKS = 20;
 
-	/** 이 사람 가방(손·갑옷·왼손 칸 포함)의 옛 다이아몬드 방패를 고친다. */
+	/**
+	 * 이 사람 가방(손·갑옷·왼손 칸 포함)의 방패를 손본다 — 옛 다이아몬드 방패를 고치고, 세트 「방패
+	 * 4단계」({@link ShieldFreeMovementEffect})에 맞춰 막는 동안 달릴 수 있는 쓰기 효과를 붙였다 뗀다.
+	 * 막는 중에 바꿔도 바닐라가 다음 틱에 손에 든 새 물건으로 갈아 쥔다.
+	 */
 	static void fixLegacyDiamondShields(ServerPlayer player) {
+		boolean free = has(player, ShieldFreeMovementEffect.class);
 		var inventory = player.getInventory();
 		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
 			ItemStack stack = inventory.getItem(slot);
-			if (!stack.isEmpty() && ShieldRecipes.fixLegacyDiamond(stack)) {
+			if (stack.isEmpty()) {
+				continue;
+			}
+			boolean changed = ShieldRecipes.fixLegacyDiamond(stack);
+			changed |= ShieldRecipes.applyFreeMovement(stack, free);
+			if (changed) {
 				inventory.setChanged();
 			}
 		}

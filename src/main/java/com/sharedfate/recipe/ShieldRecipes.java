@@ -33,6 +33,11 @@ public final class ShieldRecipes {
 	static final UseEffects DIAMOND_USE_EFFECTS = new UseEffects(true, true, 1.0F);
 	/** 0.45.0-dev 가 만든 다이아몬드 방패의 쓰기 효과. 이 값을 단 방패만 {@link #fixLegacyDiamond} 가 고친다. */
 	static final UseEffects LEGACY_DIAMOND_USE_EFFECTS = new UseEffects(false, true, 1.0F);
+	/**
+	 * 세트 「방패 4단계」가 일반·강철 방패에 붙이는 쓰기 효과. 다이아몬드 방패와 같은 값이다.
+	 * 다이아몬드 방패는 원래 이 값을 들고 있으므로 붙였다 떼는 대상에서 뺀다({@link #applyFreeMovement}).
+	 */
+	static final UseEffects FREE_MOVEMENT_USE_EFFECTS = DIAMOND_USE_EFFECTS;
 	/** 다이아몬드 방패의 최대 내구도. 강철(1008)·일반(336)과 겹치지 않는 표시이기도 하다. */
 	static final int DIAMOND_MAX_DAMAGE = 3000;
 	/** 바닐라 방패의 최대 내구도. 이 값이 아니면 이 모드가 바꾼 방패(강철·다이아몬드)다. */
@@ -168,6 +173,42 @@ public final class ShieldRecipes {
 		}
 		stack.set(DataComponents.USE_EFFECTS, DIAMOND_USE_EFFECTS);
 		return true;
+	}
+
+	/**
+	 * 세트 「방패 4단계」에 맞춰 방패의 쓰기 효과를 붙이거나 뗀다. 바꿨으면 참.
+	 *
+	 * <p>켜진 팀이면 쓰기 효과를 따로 정하지 않은 방패에 막는 동안 달릴 수 있는 값을 붙인다. 꺼진 팀이면
+	 * <b>그 값을 정확히 단 방패만</b> 바닐라로 되돌린다 — 세트가 꺼졌거나 다른 팀 사람이 주웠을 때다.
+	 * 다이아몬드 방패는 제 값이 원래 이것이라 건드리지 않고, 다른 쓰기 효과를 단 방패도 누가 일부러
+	 * 정한 것이므로 건드리지 않는다.
+	 */
+	public static boolean applyFreeMovement(ItemStack stack, boolean free) {
+		if (stack == null || stack.isEmpty() || !stack.is(Items.SHIELD) || diamondShield(stack)) {
+			return false;
+		}
+		UseEffects current = stack.get(DataComponents.USE_EFFECTS);
+		// 바닐라 방패가 원래 가진 값과 같으면 아무도 따로 정하지 않은 것이다.
+		boolean untouched = java.util.Objects.equals(current, stack.getPrototype().get(DataComponents.USE_EFFECTS));
+		if (free) {
+			if (!untouched) {
+				return false;
+			}
+			stack.set(DataComponents.USE_EFFECTS, FREE_MOVEMENT_USE_EFFECTS);
+			return true;
+		}
+		if (untouched || !FREE_MOVEMENT_USE_EFFECTS.equals(current)) {
+			return false;
+		}
+		// remove 는 「없음」으로 덮어 바닐라 값까지 지운다. 원래 값을 다시 적으면 덧붙인 것만 빠진다.
+		stack.set(DataComponents.USE_EFFECTS, stack.getPrototype().get(DataComponents.USE_EFFECTS));
+		return true;
+	}
+
+	/** 다이아몬드 방패인가 — 닳지 않음 · 최대 내구도 3000. 이름은 보지 않는다. */
+	static boolean diamondShield(ItemStack stack) {
+		return stack.is(Items.SHIELD) && stack.has(DataComponents.UNBREAKABLE)
+				&& stack.getMaxDamage() == DIAMOND_MAX_DAMAGE;
 	}
 
 	public static ItemStack repair(ItemStack original, int planks) {

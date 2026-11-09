@@ -15,7 +15,7 @@
         { "count": 1, "description": "방패 1개를 얻습니다.", "effects": [{ "type": "first_shield" }] },
         { "count": 2, "description": "방패 내구도가 60% 확률로 닳지 않습니다.", "effects": [{ "type": "shield_durability", "ignore_chance": 0.6 }] },
         { "count": 3, "description": "방패에 마법부여할 수 있습니다.", "effects": [{ "type": "shield_enchanting" }] },
-        { "count": 4, "description": "방패 9개로 다이아몬드 방패 제작이 해금됩니다. 막는 동안 이동 속도가 감소하지 않습니다.", "effects": [{ "type": "diamond_shield_recipe" }] }
+        { "count": 4, "description": "방패 9개로 다이아몬드 방패 제작이 해금됩니다. 모든 방패로 막으면서 감속 없이 달릴 수 있습니다.", "effects": [{ "type": "diamond_shield_recipe" }, { "type": "shield_free_movement" }] }
       ]
     },
     {

@@ -234,6 +234,48 @@ class ShieldRecipesTest {
 		}
 	}
 
+	/** 2026-11-10 사람 말 「모든 방패에 적용시켜」 — 방패 4단계의 「막는 동안 이동 속도 감소 없음」. */
+	@Test void 방패_사단계는_일반과_강철_방패에_달릴_수_있는_쓰기_효과를_붙인다() {
+		ItemStack plain = new ItemStack(Items.SHIELD);
+		assertTrue(ShieldRecipes.applyFreeMovement(plain, true));
+		assertEquals(ShieldRecipes.FREE_MOVEMENT_USE_EFFECTS, plain.get(DataComponents.USE_EFFECTS));
+		assertTrue(plain.get(DataComponents.USE_EFFECTS).canSprint(), "막으면서 달릴 수 있어야 한다");
+		assertFalse(ShieldRecipes.applyFreeMovement(plain, true), "두 번 붙이지 않는다");
+
+		ItemStack steel = ShieldRecipes.steel(new ItemStack(Items.SHIELD));
+		assertTrue(ShieldRecipes.applyFreeMovement(steel, true));
+		assertEquals(ShieldRecipes.FREE_MOVEMENT_USE_EFFECTS, steel.get(DataComponents.USE_EFFECTS));
+	}
+
+	@Test void 세트가_꺼지면_붙였던_쓰기_효과만_뗀다() {
+		ItemStack plain = new ItemStack(Items.SHIELD);
+		UseEffects vanilla = plain.get(DataComponents.USE_EFFECTS);
+		ShieldRecipes.applyFreeMovement(plain, true);
+		assertTrue(ShieldRecipes.applyFreeMovement(plain, false));
+		assertEquals(vanilla, plain.get(DataComponents.USE_EFFECTS), "바닐라 값으로 돌아가야 한다");
+		assertFalse(ShieldRecipes.applyFreeMovement(new ItemStack(Items.SHIELD), false), "손댈 것이 없다");
+	}
+
+	@Test void 다이아몬드_방패와_따로_정한_쓰기_효과는_건드리지_않는다() {
+		ItemStack diamond = ShieldRecipes.diamond();
+		assertFalse(ShieldRecipes.applyFreeMovement(diamond, false), "다이아몬드 방패는 제 값을 지킨다");
+		assertEquals(ShieldRecipes.DIAMOND_USE_EFFECTS, diamond.get(DataComponents.USE_EFFECTS));
+
+		ItemStack custom = new ItemStack(Items.SHIELD);
+		UseEffects other = new UseEffects(false, false, 0.5F);
+		custom.set(DataComponents.USE_EFFECTS, other);
+		assertFalse(ShieldRecipes.applyFreeMovement(custom, true));
+		assertEquals(other, custom.get(DataComponents.USE_EFFECTS));
+	}
+
+	@Test void 방패_사단계_정의에_달리기_효과가_들어_있다() {
+		assertTrue(PerkSetRegistry.all().values().stream()
+				.flatMap(java.util.List::stream)
+				.anyMatch(tier -> tier.count() == 4 && tier.effects().stream()
+						.anyMatch(effect -> effect instanceof com.sharedfate.perk.effect.ShieldFreeMovementEffect)),
+				"세트 정의가 shield_free_movement 를 읽어야 한다");
+	}
+
 	/**
 	 * 숫돌은 위 칸 방패를 복사하고 큰 최대 내구도만 적는다. 일반 방패 + 다이아몬드 방패면 「닳지 않음」
 	 * 없는 내구도 3000 짜리가 나왔다(2026-11-10 검토). 믹스인이 입혀진 진짜 {@code mergeItems} 를 부른다.

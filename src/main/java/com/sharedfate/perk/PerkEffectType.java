@@ -126,6 +126,8 @@ public enum PerkEffectType {
  SHIELD_RICOCHET("shield_ricochet", com.sharedfate.perk.effect.ShieldRicochetEffect::fromJson),
  TURTLE_SHELL("turtle_shell", com.sharedfate.perk.effect.TurtleShellEffect::fromJson),
  SHIELD_RUSH("shield_rush", com.sharedfate.perk.effect.ShieldRushEffect::fromJson),
+ /** 세트 「방패 4단계」 — 모든 방패로 막는 동안 걸음이 줄지 않고 달릴 수 있다. */
+ SHIELD_FREE_MOVEMENT("shield_free_movement", com.sharedfate.perk.effect.ShieldFreeMovementEffect::fromJson),
 	ATTRIBUTE("attribute", AttributeEffect::fromJson),
 	DAMAGE_DEALT("damage_dealt", DamageDealtEffect::fromJson),
 	DAMAGE_TAKEN("damage_taken", DamageTakenEffect::fromJson),
