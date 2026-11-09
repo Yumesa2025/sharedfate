@@ -120,6 +120,26 @@ class ShieldBlockingPipelineTest {
 				"다이아몬드 방패가 막지 못한다");
 	}
 
+	/**
+	 * 2026-11-10 사람 말 「방패 4셋 달리면서 막을 때 방패가 안 막아짐」. 방패 세트 4단계로 만드는
+	 * 다이아몬드 방패는 막으면서 달릴 수 있다. 서버 판정이 달리기 때문에 갈리지 않는지 붙든다.
+	 */
+	@Test
+	void 다이아몬드_방패는_달리면서_막아도_정면_공격을_전부_막는다() throws Exception {
+		ServerPlayer 막는사람 = 팀원("막는사람");
+		팀(막는사람);
+		막는다(막는사람, ShieldRecipes.diamond());
+		// setSprinting 은 이동 속도 속성을 건드려 껍데기로는 못 지난다. 달리기 깃발(공유 깃발 3번)만 세운다.
+		Field shared = Entity.class.getDeclaredField("DATA_SHARED_FLAGS_ID");
+		shared.setAccessible(true);
+		@SuppressWarnings("unchecked")
+		EntityDataAccessor<Byte> sharedFlags = (EntityDataAccessor<Byte>) shared.get(null);
+		막는사람.getEntityData().set(sharedFlags, (byte) (막는사람.getEntityData().get(sharedFlags) | 1 << 3));
+
+		assertEquals(true, 막는사람.isSprinting(), "달리는 중이어야 한다");
+		assertEquals(6.0F, 막는사람.applyItemBlocking(level, 정면에서(막는사람), 6.0F), EPSILON);
+	}
+
 	@Test
 	void 등_뒤에서_온_공격은_바닐라처럼_막지_않는다() throws Exception {
 		ServerPlayer 막는사람 = 팀원("막는사람");
