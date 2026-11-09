@@ -115,6 +115,17 @@ public final class ShieldRecipes {
 		return stack.getMaxDamage() != VANILLA_MAX_DAMAGE || stack.has(DataComponents.UNBREAKABLE);
 	}
 
+	/**
+	 * 방패 둘을 하나로 합치는 바닐라 수리를 막아야 하는가 — 둘 다 방패이고 하나라도 이 모드의 방패면 참.
+	 *
+	 * <p>숫돌({@code GrindstoneMenuShieldMixin})이 쓴다. 숫돌은 위 칸 방패를 복사하고 둘 중 큰 최대
+	 * 내구도를 적어, 일반 방패 + 다이아몬드 방패면 「닳지 않음」 없는 내구도 3000 짜리 방패가 나왔다
+	 * (2026-11-10 검토). 제작대의 두 개 합치기를 막는 규칙과 같다.
+	 */
+	public static boolean blocksShieldMerge(ItemStack first, ItemStack second) {
+		return first.is(Items.SHIELD) && second.is(Items.SHIELD) && (modShield(first) || modShield(second));
+	}
+
 	/** 다이아몬드 방패 재료로 받는 방패 — 이 모드가 바꾸지 않았고 마법부여도 없는 바닐라 방패. */
 	static boolean plainShield(ItemStack stack) {
 		return stack.is(Items.SHIELD) && !modShield(stack) && !stack.isEnchanted();

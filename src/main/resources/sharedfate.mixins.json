@@ -15,6 +15,7 @@
     "DisguisePlayerChatMixin",
     "SecureChatClaimMixin",
     "EnchantmentMenuDiamondMixin",
+    "GrindstoneMenuShieldMixin",
     "EnchantmentMenuTableRulesMixin",
     "InventoryAccessor",
     "InventoryMixin",

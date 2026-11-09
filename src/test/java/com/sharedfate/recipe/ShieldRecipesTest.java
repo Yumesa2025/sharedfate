@@ -234,6 +234,39 @@ class ShieldRecipesTest {
 		}
 	}
 
+	/**
+	 * 숫돌은 위 칸 방패를 복사하고 큰 최대 내구도만 적는다. 일반 방패 + 다이아몬드 방패면 「닳지 않음」
+	 * 없는 내구도 3000 짜리가 나왔다(2026-11-10 검토). 믹스인이 입혀진 진짜 {@code mergeItems} 를 부른다.
+	 */
+	@Test void 숫돌은_모드_방패를_다른_방패와_합치지_않는다() throws Exception {
+		ItemStack plain = new ItemStack(Items.SHIELD);
+		plain.setDamageValue(100);
+		assertTrue(grindstoneMerge(plain, ShieldRecipes.diamond()).isEmpty(), "일반 + 다이아몬드");
+		assertTrue(grindstoneMerge(ShieldRecipes.steel(new ItemStack(Items.SHIELD)), plain.copy()).isEmpty(),
+				"강철 + 일반");
+	}
+
+	@Test void 숫돌은_바닐라_방패_둘은_그대로_합친다() throws Exception {
+		ItemStack first = new ItemStack(Items.SHIELD);
+		first.setDamageValue(200);
+		ItemStack second = new ItemStack(Items.SHIELD);
+		second.setDamageValue(200);
+		ItemStack merged = grindstoneMerge(first, second);
+		assertTrue(merged.is(Items.SHIELD), "바닐라 수리는 막지 않는다");
+		assertTrue(merged.getDamageValue() < 200, "합치면 덜 닳아야 한다");
+	}
+
+	private static ItemStack grindstoneMerge(ItemStack first, ItemStack second) throws Exception {
+		var unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+		unsafeField.setAccessible(true);
+		var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+		Object menu = unsafe.allocateInstance(net.minecraft.world.inventory.GrindstoneMenu.class);
+		var merge = net.minecraft.world.inventory.GrindstoneMenu.class
+				.getDeclaredMethod("mergeItems", ItemStack.class, ItemStack.class);
+		merge.setAccessible(true);
+		return (ItemStack) merge.invoke(menu, first, second);
+	}
+
 	private static void setField(Class<?> owner, Object target, String name, Object value) throws Exception {
 		var field = owner.getDeclaredField(name); field.setAccessible(true); field.set(target, value);
 	}
