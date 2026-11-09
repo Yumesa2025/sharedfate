@@ -4,8 +4,10 @@ import com.sharedfate.SharedFateMod;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import java.util.function.BooleanSupplier;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageType;
+import net.minecraft.world.entity.LivingEntity;
 
 /**
  * 최후의 저항의 <b>고정 피해</b>. 적힌 값이 그대로 팀 체력에서 빠진다.
@@ -24,10 +26,25 @@ import net.minecraft.world.damagesource.DamageType;
  *   <li>{@code bypasses_enchantments} — 보호 계열 마법부여</li>
  *   <li>{@code bypasses_effects} · {@code bypasses_resistance} — 저항</li>
  *   <li>{@code bypasses_shield} — 방패</li>
- *   <li>{@code bypasses_cooldown} — 피격 쿨타임. 상시 번개 바로 뒤에 얹는 고정 몫이 「직전보다 약한 한 대」로
- *       버려지지 않게 하고, 불 결계 다음 틱의 터짐이 차액만 들어가지 않게 한다.</li>
  *   <li>{@code no_knockback}</li>
  * </ul>
+ *
+ * <h2>피격 쿨타임은 태그가 아니라 {@link #hurt} 로 지나간다</h2>
+ *
+ * <p>⚠ 0.45.9-dev 는 {@code bypasses_cooldown} 태그도 달았다. 26.3 {@code LivingEntity.hurtServer} 는 그 태그의
+ * 피해를 「새로 맞음」 갈래로 받아 {@code lastHurt = amount} · {@code damageCooldownTime = 20} 으로 <b>덮어쓴다.</b>
+ * 그래서 작은 고정 피해(0.5 ~ 2)가 쿨타임의 기준을 끌어내렸다 — 상시 번개(24.5) 바로 뒤의 고정 2 가 기준을 2 로
+ * 낮춰, 0.5초 동안 막혀야 할 드래곤 몸통 · 브레스가 거의 다 들어왔고, 흡입 원 안에서는 불 결계(0.5)가 매초 기준을
+ * 0.5 로 되돌렸다(2026-11-10 검토에서 확정).
+ *
+ * <p>지금은 태그를 뺐고(태그 파일은 빈 채로 남겼다), {@link #hurt} 가 넣기 직전에 쿨타임을 0 으로 내려 「새로
+ * 맞음」 갈래로 넣은 뒤 <b>{@code lastHurt} 와 {@code damageCooldownTime} 을 넣기 전 값으로 되돌린다.</b> 고정
+ * 피해는 쿨타임과 상관없이 매번 온전히 들어가고, 다른 피해의 쿨타임 판정에는 흔적을 남기지 않는다. 무기 3
+ * 「한 번 더」({@code PerkFollowUpStrike.strike})와 같은 모양이다.
+ *
+ * <p>「완충」은 바닐라 쿨타임을 따로 흉내 낸다({@code SpreadDamageManager.capture} 의 {@code Guard}). 그쪽도
+ * {@link #applying} 을 보고 고정 피해를 통째로 받아들이며 흉내 낸 쿨타임은 건드리지 않는다 — 같은 규칙이다.
+ * 미뤄 둔 몫을 넣는 {@code SpreadDamageManager.deliver} 는 원래부터 두 값을 되돌린다.
  *
  * <p>{@code scaling} 은 {@code never} 라 난이도 곱도 없다. 이 저장소의 증강 배율(받는 피해 감소 · 방어 세트 ·
  * 특정 피해 감소)과 「난이도 상승」은 {@code LivingEntityPerkDamageMixin} 이 {@link #is} 를 보고 건너뛴다.
@@ -68,5 +85,54 @@ public final class DragonTrueDamage {
 
 	public static boolean is(DamageSource source) {
 		return source.is(TYPE);
+	}
+
+	/** {@link #hurt} 가 고정 피해를 넣는 중인가. 서버 스레드에서만 만진다. */
+	private static boolean applying;
+
+	/**
+	 * 지금 고정 피해를 넣는 중인가 — 피격 쿨타임을 흉내 내는 쪽(「완충」)이 「쿨타임과 무관」을 맞추려고 묻는다.
+	 * {@link #hurt} 의 {@code hurtServer} 호출 동안만 참이다.
+	 */
+	public static boolean applying() {
+		return applying;
+	}
+
+	/**
+	 * 고정 피해를 넣는다. <b>최후의 저항이 고정 피해를 넣는 자리는 모두 이것을 지난다</b>
+	 * ({@code DragonTrueDamageTest} 가 바이트코드로 붙든다).
+	 *
+	 * <p>피격 쿨타임과 상관없이 매번 온전히 들어가고, 넣은 뒤 대상의 {@code lastHurt} · {@code damageCooldownTime}
+	 * 을 넣기 전 값으로 되돌린다. 까닭은 머리말 「피격 쿨타임은 태그가 아니라」.
+	 *
+	 * @return {@code hurtServer} 가 돌려준 값
+	 */
+	public static boolean hurt(ServerLevel level, LivingEntity target, float amount) {
+		DamageSource source = source(level);
+		return bypassingCooldown(target, () -> target.hurtServer(level, source, amount));
+	}
+
+	/**
+	 * 쿨타임을 0 으로 내리고 {@code hit} 를 부른 뒤 두 값을 되돌린다. {@code hit} 가 터져도 되돌린다.
+	 *
+	 * <p>살아 있는 월드 없이 시험하려고 실제 {@code hurtServer} 호출을 떼어 두었다.
+	 *
+	 * <p>죽었어도 되돌린다 — 「한 번 더」는 산 몹에만 되돌리지만, 여기 대상은 플레이어라 되살아나면 새 개체가
+	 * 되고 죽은 개체의 두 칸은 아무도 읽지 않는다. 불사의 토템으로 버틴 경우에는 되돌려야 하므로 가리지 않는다.
+	 */
+	static boolean bypassingCooldown(LivingEntity target, BooleanSupplier hit) {
+		SpreadSliceAccess access = (SpreadSliceAccess) (Object) target;
+		int cooldown = target.damageCooldownTime;
+		float lastHurt = access.sharedfate$lastHurt();
+		boolean outer = applying;
+		target.damageCooldownTime = 0;
+		applying = true;
+		try {
+			return hit.getAsBoolean();
+		} finally {
+			applying = outer;
+			target.damageCooldownTime = cooldown;
+			access.sharedfate$setLastHurt(lastHurt);
+		}
 	}
 }

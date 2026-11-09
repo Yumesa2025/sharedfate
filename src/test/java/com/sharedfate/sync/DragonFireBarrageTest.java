@@ -1079,12 +1079,14 @@ class DragonFireBarrageTest {
 	 *
 	 * <p>{@code DragonFireBarrage.strike}(포격 무시)와 {@code SpreadDamageManager.deliver}(「완충」의
 	 * 몫 넣기, 넣은 뒤 원래 값으로 되돌린다), {@code PerkFollowUpStrike.strike}(무기 3단계 「한 번 더」,
-	 * 플레이어가 아닌 몹에게만 넣고 넣은 뒤 원래 값으로 되돌린다 — 2026-11-06). 그 밖에서 쿨타임을 쓰기 시작하면 다른 피해원의
+	 * 플레이어가 아닌 몹에게만 넣고 넣은 뒤 원래 값으로 되돌린다 — 2026-11-06),
+	 * {@code DragonTrueDamage.bypassingCooldown}(최후의 저항의 고정 피해, 넣은 뒤 원래 값으로 되돌린다 —
+	 * 2026-11-10). 그 밖에서 쿨타임을 쓰기 시작하면 다른 피해원의
 	 * 쿨타임이 풀리는 길이 생긴다. 그리고 이 패시브가 {@code hurtServer} 를 부르는 곳도
 	 * {@code strike} 하나여야 한다 — 다른 데서 부르면 그 발은 쿨타임을 무시하지 못한다.
 	 */
 	@Test
-	void 피격_쿨타임을_쓰는_곳은_포격과_완충과_한_번_더뿐이다() throws Exception {
+	void 피격_쿨타임을_쓰는_곳은_포격과_완충과_한_번_더와_고정_피해뿐이다() throws Exception {
 		Set<String> writers = new HashSet<>();
 		Set<String> barrageHurts = new HashSet<>();
 		for (java.nio.file.Path file : mainClassFiles()) {
@@ -1117,7 +1119,7 @@ class DragonFireBarrageTest {
 			}, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
 		}
 		assertEquals(Set.of("DragonFireBarrage.strike", "SpreadDamageManager.deliver",
-						"PerkFollowUpStrike.strike"), writers,
+						"PerkFollowUpStrike.strike", "DragonTrueDamage.bypassingCooldown"), writers,
 				"피격 쿨타임을 쓰는 곳이 바뀌었다 — 다른 피해원의 쿨타임이 풀리는 길인지 볼 것");
 		assertEquals(Set.of("strike"), barrageHurts,
 				"연쇄 포격이 strike 밖에서 hurtServer 를 부른다 — 그 발은 「포격 무시」를 타지 않는다");

@@ -306,8 +306,14 @@ public final class SpreadDamageManager {
 		// hurtServer 호출 동안만 켜지므로 다른 피해원의 쿨타임은 그대로 막힌다.
 		boolean bypassesCooldown = (source != null && source.is(DamageTypeTags.BYPASSES_COOLDOWN))
 				|| DragonFireBarrage.ignoresCooldown();
-		Gate gate = gate(amount, guard == null ? 0.0F : guard.lastAmount,
-				guard == null ? 0 : guard.invulnerableTicks, bypassesCooldown);
+		float guardLast = guard == null ? 0.0F : guard.lastAmount;
+		int guardTicks = guard == null ? 0 : guard.invulnerableTicks;
+		// 최후의 저항의 고정 피해는 쿨타임과 무관하게 전부 들어가되 쿨타임 기준을 바꾸지 않는다
+		// (DragonTrueDamage.hurt 가 바닐라 쪽 두 값을 되돌린다). 흉내 쿨타임도 같은 규칙이어야 한다 —
+		// 「새로 맞음」으로 흉내 내면 0.5 짜리 결계가 Guard 의 기준을 0.5 로 낮춰 몸통 · 브레스가 다 미뤄진다.
+		Gate gate = DragonTrueDamage.applying()
+				? trueDamageGate(amount, guardLast, guardTicks)
+				: gate(amount, guardLast, guardTicks, bypassesCooldown);
 		if (!(gate.accepted() > 0.0F)) {
 			// 바닐라였어도 들어가지 않았을 피해다. 흉내 낸 상태도 그대로 둔다.
 			return 0.0F;
@@ -539,6 +545,21 @@ public final class SpreadDamageManager {
 			return new Gate(amount - lastAmount, amount, invulnerableTicks);
 		}
 		return new Gate(amount, amount, INVULNERABLE_TICKS);
+	}
+
+	/**
+	 * 최후의 저항의 고정 피해({@link DragonTrueDamage#hurt})를 맞았을 때의 흉내 판정.
+	 *
+	 * <p>쿨타임이 얼마든 전부 받아들이고, 「직전 피해량」과 남은 무적시간은 <b>그대로 둔다.</b> 바닐라 쪽에서
+	 * {@link DragonTrueDamage#hurt} 가 {@code lastHurt} · {@code damageCooldownTime} 을 되돌리는 것과 같은
+	 * 규칙이다. {@link #gate} 의 {@code bypassesCooldown} 갈래(새로 맞음 — 기준을 덮어쓴다)와 다르다.
+	 *
+	 * @param amount            이번에 들어온 고정 피해량
+	 * @param lastAmount        지금의 「직전 피해량」
+	 * @param invulnerableTicks 지금의 남은 무적시간
+	 */
+	public static Gate trueDamageGate(float amount, float lastAmount, int invulnerableTicks) {
+		return new Gate(amount, lastAmount, invulnerableTicks);
 	}
 
 	/**

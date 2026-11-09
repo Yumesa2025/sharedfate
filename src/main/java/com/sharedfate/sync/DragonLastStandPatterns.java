@@ -949,6 +949,9 @@ public final class DragonLastStandPatterns {
 	 *
 	 * <p>10 은 바닐라의 수({@code 10.0F})이고 우리가 고른 수가 아니다. {@code 20} 으로 세우고 그 반이
 	 * 넘는 동안만 막으므로 「마지막 결계와 터짐 사이가 10틱보다 길다」면 터짐이 언제나 온전하다.
+	 *
+	 * <p>2026-11-07 부터 결계와 터짐이 둘 다 고정 피해이고, 고정 피해는 {@link DragonTrueDamage#hurt} 가 쿨타임을
+	 * 지나가게 넣은 뒤 원래 값으로 되돌리므로 결계가 터짐을 깎는 일은 더 없다. 이 간격은 겹 안전장치로 남겨 둔다.
 	 */
 	static final int HURT_COOLDOWN_GUARD_TICKS = 10;
 
@@ -2733,8 +2736,9 @@ public final class DragonLastStandPatterns {
 			if (!TrialRisks.insideMark(member.position(), center, SUCK_FIRE_RADIUS)) {
 				continue;
 			}
-			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다.
-			member.hurtServer(end, DragonTrueDamage.source(end), SUCK_FIRE_DAMAGE);
+			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다. 피격 쿨타임도 지나가되 기준을
+			// 바꾸지 않는다(DragonTrueDamage.hurt) — 0.5 가 매초 쿨타임 기준을 0.5 로 되돌리면 안 된다.
+			DragonTrueDamage.hurt(end, member, SUCK_FIRE_DAMAGE);
 		}
 	}
 
@@ -3025,7 +3029,7 @@ public final class DragonLastStandPatterns {
 			// 피해원에 실체를 달지 않는다. 실체가 붙으면 바닐라가 스스로 밀어내고, 그 밀기는
 			// 날개 퍼덕이기가 지키는 천장을 통째로 지나쳐 간다.
 			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다.
-			member.hurtServer(end, DragonTrueDamage.source(end), DragonLastStand.VOID_SUCTION_DAMAGE);
+			DragonTrueDamage.hurt(end, member, DragonLastStand.VOID_SUCTION_DAMAGE);
 		}
 	}
 
@@ -3277,7 +3281,7 @@ public final class DragonLastStandPatterns {
 			// 것은 「낙사·섬 밖으로 미는 것 없음」이다.
 			// 「바닥 감각」 — 십자 균열은 빨간 투명 면이 바닥에 먼저 깔린다.
 			// 고정 피해다(2026-11-07) — 방어구 · 받는 피해 감소를 지나간다. 「바닥 감각」은 그대로 듣는다.
-			member.hurtServer(end, DragonTrueDamage.source(end),
+			DragonTrueDamage.hurt(end, member,
 					com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.CROSS_FISSURE_DAMAGE));
 			// ⚠ 피해 뒤에 띄운다. 앞에 두면 hurtServer 가 지나가며 속도를 건드릴 수 있고, 그러면
 			// 「12칸」이 맞는 사람마다 달라진다.
@@ -3841,9 +3845,10 @@ public final class DragonLastStandPatterns {
 				// 「바닥 감각」 — 상시 번개도 바닥 표식이 먼저 뜬다.
 				member.hurtServer(end, end.damageSources().lightningBolt(),
 						com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.LIGHTNING_DAMAGE));
-				// 그 위에 고정 피해를 얹는다(2026-11-07). 피격 쿨타임을 지나가는 피해 종류라 바로 앞 한 대에
-				// 「직전보다 약하다」로 버려지지 않는다.
-				member.hurtServer(end, DragonTrueDamage.source(end),
+				// 그 위에 고정 피해를 얹는다(2026-11-07). DragonTrueDamage.hurt 가 피격 쿨타임을 지나가게 넣어
+				// 바로 앞 한 대에 「직전보다 약하다」로 버려지지 않고, 넣은 뒤 쿨타임과 기준(lastHurt)을 번개가
+				// 남긴 값으로 되돌린다 — 기준이 2 로 내려가면 0.5초 동안 막혀야 할 몸통 · 브레스가 다 들어온다.
+				DragonTrueDamage.hurt(end, member,
 						com.sharedfate.perk.DragonPrep.floorStrike(member, DragonLastStand.LIGHTNING_TRUE_DAMAGE));
 				// 사람이 정한 것 — 「2페이지 번개에 맞으면 그 플레이어만 구속3 1초 걸리게」.
 				// 맞은 그 사람에게만이고, 상태이상이 아니라 이동 속도를 직접 깎는다.
