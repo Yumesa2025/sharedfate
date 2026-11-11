@@ -447,8 +447,22 @@ class DefaultPerkPoolValuesTest {
 
 		assertEquals("minecraft:wheat", replace.fromId().toString());
 		assertEquals("minecraft:golden_carrot", replace.itemId().toString());
-		assertEquals(1, replace.min());
-		assertEquals(3, replace.max());
+		// 사람이 정한 것(2026-11-11) — 3~5개, 허기 회복 −15% 대가는 걷어냈다.
+		assertEquals(3, replace.min());
+		assertEquals(5, replace.max());
+		assertEquals(1, perk.effects().size(), "대가(food_nutrition 0.85)가 남아 있으면 안 된다");
+	}
+
+	/** 사람이 정한 것(2026-11-11) — 「상한 진수성찬」을 「진수성찬」으로, 먹을 때 독 I 2초는 걷어냈다. */
+	@Test
+	void 진수성찬은_허기_회복_3배만_있고_독이_없다(@TempDir Path dir) throws IOException {
+		Perk perk = perk(dir, "sharedfate:spoiled_feast");
+		assertEquals("진수성찬", perk.name());
+		assertEquals(1, perk.effects().size());
+		com.sharedfate.perk.effect.FoodNutritionEffect food = assertInstanceOf(
+				com.sharedfate.perk.effect.FoodNutritionEffect.class, perk.effects().get(0));
+		assertEquals(3.0, food.multiplier(), 1.0e-9);
+		assertTrue(food.grants().isEmpty(), "먹을 때 거는 효과(독)가 남아 있으면 안 된다");
 	}
 
 	@Test

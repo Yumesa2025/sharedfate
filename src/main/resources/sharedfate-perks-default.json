@@ -180,8 +180,8 @@
     {
       "id": "sharedfate:spoiled_feast",
       "icon": "minecraft:rotten_flesh",
-      "name": "상한 진수성찬",
-      "description": "음식의 허기 회복량이 3배가 됩니다. 대신 음식을 먹으면 독 I 을 2초간 얻습니다.",
+      "name": "진수성찬",
+      "description": "음식의 허기 회복량이 3배가 됩니다.",
       "rarity": "gold",
       "set_types": [
         "recovery"
@@ -189,15 +189,7 @@
       "effects": [
         {
           "type": "food_nutrition",
-          "multiplier": 3.0,
-          "effects": [
-            {
-              "type": "status_effect",
-              "effect": "minecraft:poison",
-              "amplifier": 0,
-              "duration": 2
-            }
-          ]
+          "multiplier": 3.0
         }
       ]
     },
@@ -1228,7 +1220,7 @@
       "id": "sharedfate:lucky_day",
       "icon": "minecraft:fishing_rod",
       "name": "운수 좋은 날",
-      "description": "광물을 캘 때 1~3개가 더 나옵니다.",
+      "description": "광물을 캘 때 0~2개가 더 나옵니다.",
       "rarity": "silver",
       "set_types": [
         "mining"
@@ -1546,7 +1538,7 @@
       "id": "sharedfate:fertile_ground",
       "icon": "minecraft:golden_carrot",
       "name": "비옥한 땅",
-      "description": "밀을 수확하면 밀 대신 황금 당근을 1~3개 얻습니다. 대신 음식의 허기 회복량이 15% 감소합니다.",
+      "description": "밀을 수확하면 밀 대신 황금 당근을 3~5개 얻습니다.",
       "rarity": "gold",
       "set_types": [
         "supply"
@@ -1559,12 +1551,8 @@
           ],
           "from": "minecraft:wheat",
           "item": "minecraft:golden_carrot",
-          "min": 1,
-          "max": 3
-        },
-        {
-          "type": "food_nutrition",
-          "multiplier": 0.85
+          "min": 3,
+          "max": 5
         }
       ]
     },
@@ -2677,7 +2665,7 @@
       "id": "sharedfate:shield_rush",
       "icon": "minecraft:shield",
       "name": "방패 돌진",
-      "description": "오른손 방패로 5칸 돌진해 방어력의 절반만큼 피해를 주고 일반 몹을 경직시킵니다. 내구도를 소모합니다(10초).",
+      "description": "오른손 방패로 10칸 돌진해 길 위의 적에게 방어력만큼 피해를 주고 일반 몹을 5초 경직시킵니다. 맞힌 적마다 내구도 10(6초).",
       "rarity": "prism",
       "set_types": [
         "shield",

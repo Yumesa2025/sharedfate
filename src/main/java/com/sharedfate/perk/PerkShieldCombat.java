@@ -60,6 +60,7 @@ public final class PerkShieldCombat {
 			long now = server.getTickCount();
 			COUNTERS.values().removeIf(expiry -> expiry < now);
 			RUSH_READY.values().removeIf(expiry -> expiry <= now);
+			tickDashes(server);
 			STUNS.entrySet().removeIf(entry -> {
 				if (entry.getKey().isRemoved() || entry.getValue().until() <= now) {
 					return true;
@@ -204,27 +205,72 @@ public final class PerkShieldCombat {
 		return loss;
 	}
 
+	// ------------------------------------------------------------------ 방패 돌진
+	//
+	// 사람이 정한 것(2026-11-11, 인터뷰) — 「돌진하는 게 아니라 순간이동이다」. 예전에는 한 틱 안에 몸을 20번
+	// 옮기고 teleportTo 로 클라이언트 위치를 덮어써서 5칸 앞에 뚝 떨어졌다. 이제는 오른손 방패 우클릭으로
+	// <b>한 번 세게 밀어</b> 10칸을 미끄러져 나간다. 서버가 틱마다 수평 속도를 보내 클라이언트가 실제로
+	// 움직이고, 남은 거리에 맞춰 속도를 줄여 출발점에서 10칸이 되면 멈춘다. 공중에서도 쓸 수 있다 — 마찰이
+	// 없어 그냥 밀면 수십 칸을 날아가므로 거리로 끊는다. 길 위의 적은 관통하며 한 번씩 방어력만큼 때리고,
+	// 일반 몹은 5초 경직, 맞힌 적마다 방패 내구도 10, 재사용 6초.
+
+	/** 재사용 대기(틱). 6초. */
+	static final int RUSH_COOLDOWN_TICKS = 120;
+	/** 나가는 거리(블록). 출발점에서 수평으로 잰다. */
+	static final double RUSH_DISTANCE = 10.0D;
+	/** 한 틱에 나가는 최대 거리(블록). 서버의 「너무 빨리 움직임」 검사(틱당 10칸)보다 한참 아래다. */
+	static final double RUSH_MAX_SPEED = 3.9D;
+	/** 끝에 가까울 때도 이만큼은 나간다. 없으면 남은 거리에 비례해 줄다 영영 못 닿는다. */
+	static final double RUSH_MIN_SPEED = 0.6D;
+	/** 벽에 막히는 등으로 못 닿아도 이 틱이 지나면 끝낸다. */
+	static final int RUSH_MAX_TICKS = 20;
+	/** 일반 몹 경직(틱). 5초. */
+	static final int RUSH_STUN_TICKS = 100;
+	/** 맞힌 적 하나마다 닳는 방패 내구도. */
+	static final int RUSH_WEAR = 10;
+
+	/** 지금 나가는 중인 돌진. 사람마다 하나. */
+	private static final class Dash {
+		final Vec3 start;
+		final Vec3 direction;
+		final Set<UUID> hit = new HashSet<>();
+		Vec3 last;
+		int ticks;
+		Dash(Vec3 start, Vec3 direction) { this.start = start; this.direction = direction; this.last = start; }
+	}
+	private static final Map<UUID, Dash> DASHES = new HashMap<>();
+
 	public static int rushRemaining(ServerPlayer player) {
 		return (int) Math.max(0, RUSH_READY.getOrDefault(player.getUUID(), 0L) - player.level().getServer().getTickCount());
 	}
 	static boolean startRush(UUID player, long now) {
 		if (RUSH_READY.getOrDefault(player, 0L) > now) return false;
-		RUSH_READY.put(player, now + 200);
+		RUSH_READY.put(player, now + RUSH_COOLDOWN_TICKS);
 		return true;
 	}
-	static float rushDamage(int armor) { return Math.max(0, armor) * 0.5F; }
-	/** 한 칸 걸음(0.25블록)의 수평 방향. 바로 위·아래를 보면 수평 성분이 없어 null 이다. */
-	static @Nullable Vec3 rushStep(Vec3 look) {
-		Vec3 flat = new Vec3(look.x, 0, look.z).normalize();
-		return flat.lengthSqr() == 0 ? null : flat.scale(0.25);
+	/** 사람이 정한 것(2026-11-11) — 방어력의 절반이 아니라 방어력 숫자 그대로(다이아 전신 20). */
+	static float rushDamage(int armor) { return Math.max(0, armor); }
+	/** 돌진할 수평 방향(길이 1). 바로 위·아래를 보면 수평 성분이 없어 null 이다. */
+	static @Nullable Vec3 rushDirection(Vec3 look) {
+		Vec3 flat = new Vec3(look.x, 0, look.z);
+		return flat.lengthSqr() < 1.0e-12 ? null : flat.normalize();
 	}
 	/**
-	 * 방향을 먼저 정하고, 나갈 수 있을 때만 쿨타임을 건다. 나가지도 않는 돌진에 10초를 묶지 않는다.
+	 * 방향을 먼저 정하고, 나갈 수 있을 때만 쿨타임을 건다. 나가지도 않는 돌진에 쿨타임을 묶지 않는다.
 	 * 쿨타임 중이거나 방향이 없으면 null.
 	 */
 	static @Nullable Vec3 beginRush(UUID player, long now, Vec3 look) {
-		Vec3 step = rushStep(look);
-		return step != null && startRush(player, now) ? step : null;
+		Vec3 direction = rushDirection(look);
+		return direction != null && startRush(player, now) ? direction : null;
+	}
+	/**
+	 * 이번 틱에 나갈 거리. 처음엔 최대로 밀고, 끝에 가까울수록 줄여 미끄러지듯 멈춘다. 남은 거리를 넘지 않는다.
+	 * 다 왔으면 0.
+	 */
+	static double rushSpeed(double travelled) {
+		double remaining = RUSH_DISTANCE - travelled;
+		if (remaining <= 0.05D) return 0.0D;
+		return Math.min(remaining, Math.max(RUSH_MIN_SPEED, Math.min(RUSH_MAX_SPEED, remaining * 0.6D)));
 	}
 	/**
 	 * 돌진에 쓸 수 있는 방패인가. 도끼에 맞아 무력화된 방패는 아이템 쿨타임이 걸려 있고, 그동안은 막지 못하니
@@ -236,34 +282,75 @@ public final class PerkShieldCombat {
 	private static void rush(ServerPlayer player) {
 		ItemStack shield = player.getMainHandItem();
 		if (!rushShieldReady(shield, player.getCooldowns()) || player.isSpectator() || !player.isAlive()
-				|| player.isPassenger() || !has(player, ShieldRushEffect.class) || rushRemaining(player) > 0) return;
-		Vec3 step = beginRush(player.getUUID(), player.level().getServer().getTickCount(), player.getLookAngle());
-		if (step == null) return;
-		Set<UUID> hit = new HashSet<>();
-		for (int i = 0; i < 20; i++) {
-			Vec3 before = player.position();
-			player.move(MoverType.SELF, step);
-			for (Entity target : player.level().getEntities(player, player.getBoundingBox().inflate(0.35))) {
-				Entity victim = target instanceof EnderDragonPart part ? part.parentMob : target;
-				if (!(victim instanceof Mob) || !(victim instanceof Enemy) || !hit.add(victim.getUUID())) continue;
-				float damage = rushDamage(player.getArmorValue());
-				boolean hurt = victim instanceof EnderDragon dragon
-						? dragon.hurt(player.level(), target instanceof EnderDragonPart part ? part : dragon.head,
-								player.damageSources().playerAttack(player), damage)
-						: victim.hurtServer(player.level(), player.damageSources().playerAttack(player), damage);
-				if (hurt) {
-					PerkProcFeedback.fire(player, "sharedfate:shield_rush");
-					shield.hurtAndBreak(5, player, InteractionHand.MAIN_HAND);
-					if (ordinaryEnemy(victim)) {
-						Mob mob = (Mob) victim;
-						STUNS.put(mob, new Stun(player.level().getServer().getTickCount() + 20L));
-						mob.setDeltaMovement(Vec3.ZERO);
-					}
-				}
+				|| player.isPassenger() || DASHES.containsKey(player.getUUID())
+				|| !has(player, ShieldRushEffect.class) || rushRemaining(player) > 0) return;
+		Vec3 direction = beginRush(player.getUUID(), player.level().getServer().getTickCount(), player.getLookAngle());
+		if (direction == null) return;
+		Dash dash = new Dash(player.position(), direction);
+		DASHES.put(player.getUUID(), dash);
+		push(player, direction.scale(rushSpeed(0.0D)));
+	}
+	/**
+	 * 수평 속도를 이 값으로 정하고 클라이언트에 보낸다. 세로 속도는 0 — 돌진하는 동안은 떨어지지 않는다.
+	 *
+	 * <p>사람의 자리는 클라이언트가 정하므로 속도를 <b>본인에게</b> 보내야 실제로 움직인다. 26.3 에서 그 깃발은
+	 * {@code syncVelocity} 다({@code ServerEntity} 가 본인과 지켜보는 사람 모두에게 보낸다). {@code needsSync} 는
+	 * 지켜보는 사람에게만 가서 본인은 그대로다. 최후의 저항 넉백과 같은 방식이다.
+	 */
+	private static void push(ServerPlayer player, Vec3 horizontal) {
+		player.setDeltaMovement(horizontal.x, 0.0D, horizontal.z);
+		player.syncVelocity = true;
+	}
+	/** 틱마다 돌진을 이어 간다 — 지나온 길의 적을 때리고, 남은 거리만큼 다시 민다. */
+	private static void tickDashes(net.minecraft.server.MinecraftServer server) {
+		if (DASHES.isEmpty()) return;
+		Iterator<Map.Entry<UUID, Dash>> it = DASHES.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry<UUID, Dash> entry = it.next();
+			ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+			Dash dash = entry.getValue();
+			if (player == null || !player.isAlive() || player.isRemoved() || player.isSpectator()) {
+				it.remove();
+				continue;
 			}
-			if (shield.isEmpty() || player.position().distanceToSqr(before) < 0.001) break;
+			dash.ticks++;
+			Vec3 now = player.position();
+			hitAlong(player, dash, now);
+			double travelled = Math.hypot(now.x - dash.start.x, now.z - dash.start.z);
+			double speed = rushSpeed(travelled);
+			boolean stuck = dash.ticks > 2 && now.distanceToSqr(dash.last) < 0.0025D;
+			ItemStack shield = player.getMainHandItem();
+			if (speed <= 0.0D || stuck || dash.ticks >= RUSH_MAX_TICKS || !shield.is(Items.SHIELD)) {
+				push(player, Vec3.ZERO);
+				it.remove();
+				continue;
+			}
+			dash.last = now;
+			push(player, dash.direction.scale(speed));
 		}
-		player.teleportTo(player.getX(), player.getY(), player.getZ());
+	}
+	/** 지난 틱 자리에서 지금 자리까지 몸이 쓸고 간 상자 안의 적을 한 번씩 때린다. 빨라도 건너뛰지 않는다. */
+	private static void hitAlong(ServerPlayer player, Dash dash, Vec3 now) {
+		ServerLevel level = player.level();
+		var swept = player.getBoundingBox().expandTowards(dash.last.subtract(now)).inflate(0.5D);
+		for (Entity target : level.getEntities(player, swept)) {
+			Entity victim = target instanceof EnderDragonPart part ? part.parentMob : target;
+			if (!(victim instanceof Mob) || !(victim instanceof Enemy) || !dash.hit.add(victim.getUUID())) continue;
+			float damage = rushDamage(player.getArmorValue());
+			boolean hurt = victim instanceof EnderDragon dragon
+					? dragon.hurt(level, target instanceof EnderDragonPart part ? part : dragon.head,
+							player.damageSources().playerAttack(player), damage)
+					: victim.hurtServer(level, player.damageSources().playerAttack(player), damage);
+			if (!hurt) continue;
+			PerkProcFeedback.fire(player, "sharedfate:shield_rush");
+			ItemStack shield = player.getMainHandItem();
+			if (shield.is(Items.SHIELD)) shield.hurtAndBreak(RUSH_WEAR, player, InteractionHand.MAIN_HAND);
+			if (ordinaryEnemy(victim)) {
+				Mob mob = (Mob) victim;
+				STUNS.put(mob, new Stun(level.getServer().getTickCount() + RUSH_STUN_TICKS));
+				mob.setDeltaMovement(Vec3.ZERO);
+			}
+		}
 	}
 	/** 저장되는 NoAI 값을 건드리지 않아 경직 중 청크를 떠나도 영구 정지하지 않는다. */
 	public static boolean stunned(Mob mob) {
@@ -272,6 +359,6 @@ public final class PerkShieldCombat {
 				&& stun.until() > mob.level().getServer().getTickCount();
 	}
 	static void clear() {
-		STUNS.clear(); COUNTERS.clear(); RUSH_READY.clear(); RETURNS.clear(); BLOCK_WEAR.remove(); FOLLOW_UP.remove();
+		STUNS.clear(); COUNTERS.clear(); RUSH_READY.clear(); DASHES.clear(); RETURNS.clear(); BLOCK_WEAR.remove(); FOLLOW_UP.remove();
 	}
 }

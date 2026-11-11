@@ -42,28 +42,50 @@ class ShieldCombatTest {
 		PerkShieldCombat.arm(first, 200);
 		assertEquals(1, PerkShieldCombat.consume(first, 261, true));
 	}
-	@Test void 돌진은_개인별_십초_쿨타임이고_방어력_절반이다() {
+	/** 사람이 정한 것(2026-11-11, 인터뷰) — 재사용 6초, 피해는 방어력 숫자 그대로. */
+	@Test void 돌진은_개인별_육초_쿨타임이고_방어력만큼_때린다() {
 		UUID first = UUID.randomUUID(), second = UUID.randomUUID();
 		assertTrue(PerkShieldCombat.startRush(first, 10));
-		assertFalse(PerkShieldCombat.startRush(first, 209));
+		assertFalse(PerkShieldCombat.startRush(first, 129));
 		assertTrue(PerkShieldCombat.startRush(second, 11));
-		assertTrue(PerkShieldCombat.startRush(first, 210));
-		assertEquals(10, PerkShieldCombat.rushDamage(20));
-		assertEquals(1.5F, PerkShieldCombat.rushDamage(3));
+		assertTrue(PerkShieldCombat.startRush(first, 130));
+		assertEquals(20, PerkShieldCombat.rushDamage(20));
+		assertEquals(3, PerkShieldCombat.rushDamage(3));
 		assertEquals(0, PerkShieldCombat.rushDamage(0));
+		assertEquals(0, PerkShieldCombat.rushDamage(-4));
+	}
+	/**
+	 * 예전에는 한 틱에 5칸을 옮겨 순간이동처럼 보였다. 이제는 틱마다 속도로 밀어 10칸을 미끄러져 간다. 한 틱에
+	 * 4칸을 넘지 않고(서버의 「너무 빨리 움직임」 검사 아래), 남은 거리를 넘지 않으며, 10칸에서 멈춘다.
+	 */
+	@Test void 돌진은_속도로_밀어_10칸에서_멈춘다() {
+		double travelled = 0.0;
+		int ticks = 0;
+		double speed;
+		while ((speed = PerkShieldCombat.rushSpeed(travelled)) > 0.0 && ticks < 100) {
+			assertTrue(speed <= 3.9 + 1.0e-9, "한 틱에 너무 멀리 간다: " + speed);
+			assertTrue(travelled + speed <= 10.0 + 1.0e-9, "10칸을 넘어간다");
+			travelled += speed;
+			ticks++;
+		}
+		assertEquals(10.0, travelled, 0.051, "10칸까지 가야 한다");
+		assertTrue(ticks >= 3 && ticks <= PerkShieldCombat.RUSH_MAX_TICKS,
+				"한 틱에 끝나면 순간이동이고, 너무 길면 돌진이 아니다: " + ticks);
+		assertEquals(3.9, PerkShieldCombat.rushSpeed(0.0), 1.0e-9, "처음엔 세게 민다");
+		assertEquals(0.0, PerkShieldCombat.rushSpeed(10.0));
 	}
 	@Test void 바로_위아래를_보면_돌진하지_않고_쿨타임도_걸지_않는다() {
 		UUID id = UUID.randomUUID();
 		// 실제 시선 계산 그대로 — 고개는 ±90도까지 젖혀진다.
 		for (float yaw : new float[]{0F, 37F, -135F, 180F}) {
-			assertNull(PerkShieldCombat.rushStep(Entity.calculateViewVector(-90F, yaw)));
-			assertNull(PerkShieldCombat.rushStep(Entity.calculateViewVector(90F, yaw)));
+			assertNull(PerkShieldCombat.rushDirection(Entity.calculateViewVector(-90F, yaw)));
+			assertNull(PerkShieldCombat.rushDirection(Entity.calculateViewVector(90F, yaw)));
 			assertNull(PerkShieldCombat.beginRush(id, 10, Entity.calculateViewVector(-90F, yaw)));
 		}
 		// 나가지 못한 돌진은 쿨타임을 남기지 않아 곧바로 다시 돌진할 수 있다.
 		Vec3 step = PerkShieldCombat.beginRush(id, 11, Entity.calculateViewVector(-60F, 37F));
 		assertNotNull(step);
-		assertEquals(0.25, step.length(), 1.0e-9);
+		assertEquals(1.0, step.length(), 1.0e-9);
 		assertEquals(0, step.y);
 		assertNull(PerkShieldCombat.beginRush(id, 12, Entity.calculateViewVector(0F, 0F)));
 	}

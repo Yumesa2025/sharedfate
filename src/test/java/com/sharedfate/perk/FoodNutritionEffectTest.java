@@ -189,7 +189,7 @@ class FoodNutritionEffectTest {
 
 		state.ownedPerks.clear();
 		state.ownedPerks.add("sharedfate:spoiled_feast");
-		assertEquals(3.0, PerkFoodRules.nutritionMultiplier(state), "상한 진수성찬");
+		assertEquals(3.0, PerkFoodRules.nutritionMultiplier(state), "진수성찬");
 
 		state.ownedPerks.clear();
 		state.ownedPerks.add("sharedfate:ascetic");

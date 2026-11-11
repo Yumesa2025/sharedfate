@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * 광물 블록을 캘 때마다 1~3개를 무작위로 더 떨어뜨리고, 실제로 더 나온 순간에만 알린다.
+ * 광물 블록을 캘 때마다 0~2개를 무작위로 더 떨어뜨리고, 실제로 더 나온 순간에만 알린다.
  *
  * <p>정의는 {@code { "type": "lucky_ore" }} 하나뿐이고 필수 필드가 없다. 실버 「운수 좋은 날」이
  * 쓴다. 대상 블록을 좁히거나 넓히고 싶으면 {@code "blocks"} 배열을 적어 덮어쓸 수 있고, 적지
@@ -22,7 +22,8 @@ import java.util.List;
  * <h2>{@code bonus_drop} 과 무엇이 다른가</h2>
  * <p>{@link BonusDropEffect}는 "확률로 정해진 개수"다. 이쪽은 <b>캘 때마다 반드시 굴리되 나오는
  * 개수가 매번 다르다</b>. 예전에는 0개(꽝)도 40% 나왔지만 2026-10-16 사람 결정으로 대가를
- * 걷어내 지금은 언제나 1개 이상이다. 1~3개의 비율 30:20:10 은 그대로 두었다.
+ * 걷어냈다가, 2026-11-11 사람 결정으로 다시 0~2개가 됐다 — 「광물이 1~3개 더 나오지 말고 0~2개로」. 셋은
+ * 같은 확률(각 1/3)이다.
  *
  * <h2>대상 블록은 「욕심 많은 곡괭이」와 같다</h2>
  * <p>{@link #DEFAULT_ORE_BLOCKS}는 {@code sharedfate:greedy_pickaxe} 의 {@code blocks} 배열을
@@ -64,15 +65,14 @@ public final class LuckyOreEffect implements PerkEffect {
 			"minecraft:ancient_debris");
 
 	/**
-	 * 추가 개수별 가중치. 차례로 0개·1개·2개·3개다. 0개는 가중치 0 이라 나오지 않는다.
+	 * 추가 개수별 가중치. 차례로 0개·1개·2개다. 사람이 정한 것(2026-11-11) — 셋 다 같은 확률.
 	 *
-	 * <p>기댓값은 {@code (1*30 + 2*20 + 3*10) / 60 ≈ 1.67} 이다. 합은 {@link #TOTAL_WEIGHT}와
-	 * 같아야 한다.
+	 * <p>기댓값은 {@code (0 + 1 + 2) / 3 = 1} 이다. 합은 {@link #TOTAL_WEIGHT}와 같아야 한다.
 	 */
-	static final int[] EXTRA_WEIGHTS = {0, 30, 20, 10};
+	static final int[] EXTRA_WEIGHTS = {1, 1, 1};
 
 	/** 가중치의 합. 난수를 이 값 미만으로 굴린다. */
-	static final int TOTAL_WEIGHT = 60;
+	static final int TOTAL_WEIGHT = 3;
 
 	/** 한 번에 더 나올 수 있는 최대 개수. */
 	public static final int MAX_EXTRA = EXTRA_WEIGHTS.length - 1;

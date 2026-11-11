@@ -362,8 +362,8 @@ class BlockBreakPerkTest {
 				assertInstanceOf(DropReplaceEffect.class, fertile.effects().get(0));
 		assertEquals("minecraft:wheat", fertileReplace.fromId().toString());
 		assertEquals("minecraft:golden_carrot", fertileReplace.itemId().toString());
-		assertEquals(1, fertileReplace.min());
-		assertEquals(3, fertileReplace.max());
+		assertEquals(3, fertileReplace.min());
+		assertEquals(5, fertileReplace.max());
 		assertTrue(fertileReplace.appliesTo(state(Blocks.WHEAT)));
 		assertFalse(fertileReplace.appliesTo(state(Blocks.CARROTS)), "다른 작물은 그대로다");
 
